@@ -1,0 +1,132 @@
+{% import "partials/avatar.html" as avatarm %}
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Kairos{% endblock %}</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <script src="{{ url_for('static', filename='js/chip-select.js') }}" defer></script>
+</head>
+<body>
+
+{% if g.user %}
+<div class="topbar">
+  <div class="topbar-inner">
+  <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+    <a href="{{ url_for('main.accueil') }}"><img src="{{ url_for('static', filename='img/kairos-logo.png') }}" alt="Kairos"></a>
+  </div>
+
+  <div class="topbar-search" style="position:relative;">
+    <div class="topbar-search-box" style="position:relative;">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8b968f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="recherche-globale" autocomplete="off" placeholder="Rechercher un projet, une personne…" style="border:none; outline:none; background:none; font-size:14px; color:#33392f; width:100%; font-family:inherit;">
+      <div id="recherche-globale-resultats" style="display:none; position:absolute; top:calc(100% + 6px); left:0; right:0; background:#fff; border:1px solid #e7e9e4; border-radius:12px; box-shadow:0 8px 24px rgba(20,30,25,0.12); padding:6px; z-index:200; max-height:360px; overflow-y:auto;"></div>
+    </div>
+  </div>
+
+  <div class="topbar-actions">
+    <a class="iconbtn" href="{{ url_for('main.accueil') }}" title="Accueil">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></svg>
+    </a>
+    <a class="iconbtn" href="{{ url_for('dailylog.formulaire') }}" title="Daily log">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
+    </a>
+    <a class="iconbtn" href="{{ url_for('projets.liste') }}" title="Tous les projets">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="4"/><path d="M8.5 17 6.5 20v-3"/></svg>
+    </a>
+    <a class="iconbtn" href="{{ url_for('deadlines.liste') }}" title="Deadlines">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>
+    </a>
+    {% if g.user.role in ('admin', 'rh') %}
+    <a class="iconbtn" href="{{ url_for('utilisateurs.liste') }}" title="Utilisateurs">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    </a>
+    {% endif %}
+    <a class="iconbtn" href="{{ url_for('notifications.liste') }}" title="Notifications">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 4.2 1.4 5.5 1.4 5.5H4.6S6 13.2 6 9Z"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>
+      {% if g.notifications_non_lues %}
+        <span class="iconbtn-badge">{{ g.notifications_non_lues if g.notifications_non_lues < 10 else '9+' }}</span>
+      {% endif %}
+    </a>
+    <a class="iconbtn" href="{{ url_for('auth.logout') }}" title="Déconnexion">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+    </a>
+    <a href="{{ url_for('utilisateurs.mon_profil') }}" style="display:inline-block; margin-left:6px;" title="{{ g.user.prenom }} {{ g.user.nom }}">
+      {{ avatarm.avatar(g.user.id, g.user.prenom, g.user.nom, g.user.avatar_chemin, css_class='avatar avatar-lg') }}
+    </a>
+  </div>
+  </div>
+</div>
+<script>
+// Recherche globale (topbar) — demandé par Fadhel (2026-09-19) : jusqu'ici
+// décorative. Cherche parmi les projets visibles par l'utilisateur (par
+// "Code_nom") ; interroge /recherche/api en arrière-plan, avec un léger
+// délai pour ne pas spammer le serveur à chaque frappe.
+(function () {
+  var input = document.getElementById('recherche-globale');
+  var box = document.getElementById('recherche-globale-resultats');
+  if (!input || !box) return;
+  var timer = null;
+
+  function render(items) {
+    if (!items.length) {
+      box.innerHTML = '<div style="padding:10px 12px; font-size:12.5px; color:#9aa39c;">Aucun résultat.</div>';
+      box.style.display = 'block';
+      return;
+    }
+    box.innerHTML = items.map(function (it) {
+      return '<a href="' + it.url + '" style="display:block; padding:9px 12px; border-radius:8px; font-size:13px; color:inherit; text-decoration:none;" onmouseover="this.style.background=\'#f2f4f0\'" onmouseout="this.style.background=\'\'">' + it.label + '</a>';
+    }).join('');
+    box.style.display = 'block';
+  }
+
+  input.addEventListener('input', function () {
+    var q = input.value.trim();
+    clearTimeout(timer);
+    if (q.length < 2) { box.style.display = 'none'; return; }
+    timer = setTimeout(function () {
+      fetch('{{ url_for("main.recherche_api") }}?q=' + encodeURIComponent(q))
+        .then(function (r) { return r.json(); })
+        .then(function (data) { render(data.resultats || []); })
+        .catch(function () { box.style.display = 'none'; });
+    }, 220);
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!box.contains(e.target) && e.target !== input) box.style.display = 'none';
+  });
+})();
+</script>
+{% endif %}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  {# Popup flottant partout, y compris sur la page de connexion (retour
+     Fadhel, 2026-09-20) : "Email ou mot de passe incorrect" ne doit plus
+     pousser toute la page vers le bas — même bandeau flottant (.flash-wrap)
+     qu'ailleurs dans l'appli, jamais dans le flux normal de la mise en page. #}
+  <div class="flash-wrap">
+    {% for category, message in messages %}
+      <div class="flash flash-{{ category }}" onclick="this.remove()">{{ message }}</div>
+    {% endfor %}
+  </div>
+  <script>
+    // S'efface tout seul après quelques secondes (2026-09-19) — voir la
+    // note dans app.css sur le passage en toast flottant.
+    setTimeout(function () {
+      document.querySelectorAll('.flash').forEach(function (el) {
+        el.style.transition = 'opacity 0.25s ease';
+        el.style.opacity = '0';
+        setTimeout(function () { el.remove(); }, 250);
+      });
+    }, 4000);
+  </script>
+  {% endif %}
+{% endwith %}
+
+{% block body %}{% endblock %}
+
+</body>
+</html>

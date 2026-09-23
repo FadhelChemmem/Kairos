@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% import "partials/avatar.html" as avatarm %}
+{% block title %}Mes infos — Kairos{% endblock %}
+{% block body %}
+
+<div class="subbar">
+  <div class="subbar-inner">
+    <span style="font-size:14px; font-weight:700;">Infos perso</span>
+  </div>
+</div>
+
+<div class="page-body" style="grid-template-columns:1fr 1.3fr;">
+
+  <!-- Colonne gauche : infos, modifiables -->
+  <div class="col">
+    <div class="card">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:18px;">
+        {{ avatarm.avatar(utilisateur.id, utilisateur.prenom, utilisateur.nom, utilisateur.avatar_chemin, css_class='avatar avatar-lg', style='width:52px; height:52px; font-size:16px;') }}
+        <div style="min-width:0;">
+          <div style="font-size:16px; font-weight:800;">{{ utilisateur.prenom }} {{ utilisateur.nom }}</div>
+          <span class="pill pill-sm" style="background:#f2f4f0; color:#9aa39c;" title="Le rôle ne peut être modifié que par un administrateur ou le RH">{{ role_style(utilisateur.role).label }}</span>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:10px; font-size:12.5px; margin-bottom:18px;">
+        <div style="display:flex; justify-content:space-between;"><span style="color:#7c8780;">Email</span><span style="font-weight:600;">{{ utilisateur.email }}</span></div>
+        {% if utilisateur.equipe_code %}<div style="display:flex; justify-content:space-between;"><span style="color:#7c8780;">Équipe</span><span style="font-weight:600;">{{ equipe_libelle(utilisateur.equipe_code) }}</span></div>{% endif %}
+        {% if utilisateur.date_embauche %}<div style="display:flex; justify-content:space-between;"><span style="color:#7c8780;">Depuis le</span><span style="font-weight:600;">{{ utilisateur.date_embauche.strftime('%d/%m/%Y') }}</span></div>{% endif %}
+      </div>
+      <div style="font-size:11px; color:#9aa39c; margin-bottom:14px;">Le prénom, le nom, l'email et le rôle sont gérés par l'administrateur ou le RH. Vous pouvez modifier les champs ci-dessous.</div>
+
+      <form method="post" enctype="multipart/form-data">
+        <div class="form-row">
+          <label for="avatar">Photo de profil <span style="font-weight:400; color:#9aa39c;">— remplace les initiales</span></label>
+          <input type="file" id="avatar" name="avatar" accept=".png,.jpg,.jpeg,.gif,.webp,image/*">
+        </div>
+        <div class="form-row">
+          <label for="telephone">Téléphone</label>
+          <input type="tel" id="telephone" name="telephone" autocomplete="off" value="{{ utilisateur.telephone or '' }}" placeholder="55 555 555">
+        </div>
+        <div class="form-row">
+          <label for="poste">Poste</label>
+          <input type="text" id="poste" name="poste" autocomplete="off" value="{{ utilisateur.poste or '' }}" placeholder="Ingénieur, Technicien…">
+        </div>
+        <div class="form-row" style="margin-bottom:16px;">
+          <label for="adresse">Adresse</label>
+          <input type="text" id="adresse" name="adresse" autocomplete="off" value="{{ utilisateur.adresse or '' }}" placeholder="Rue, ville…">
+        </div>
+        <button type="submit" class="btn-primary" style="background:#4a7c59; color:#fff;">Enregistrer</button>
+      </form>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <div style="font-size:13px; font-weight:700; margin-bottom:14px;">Changer mon mot de passe</div>
+      <form method="post" action="{{ url_for('utilisateurs.mon_mot_de_passe') }}">
+        <div class="form-row">
+          <label for="mot_de_passe_actuel">Mot de passe actuel</label>
+          <input type="password" id="mot_de_passe_actuel" name="mot_de_passe_actuel" placeholder="••••••••" required>
+        </div>
+        <div class="form-row">
+          <label for="nouveau_mot_de_passe">Nouveau mot de passe</label>
+          <input type="password" id="nouveau_mot_de_passe" name="nouveau_mot_de_passe" placeholder="••••••••" minlength="8" required>
+        </div>
+        <div class="form-row" style="margin-bottom:16px;">
+          <label for="confirmation">Confirmer le nouveau mot de passe</label>
+          <input type="password" id="confirmation" name="confirmation" placeholder="••••••••" minlength="8" required>
+        </div>
+        <button type="submit" class="btn-primary" style="background:#4a7c59; color:#fff;">Changer le mot de passe</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Colonne droite : Daily log de la semaine dernière -->
+  <div class="col-center" style="max-width:none;">
+    <div class="card">
+      <div style="font-size:14px; font-weight:700; margin-bottom:14px;">Daily log — semaine dernière</div>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        {% for jour in semaine_derniere %}
+          <a href="{{ url_for('dailylog.formulaire', date=jour.date.isoformat()) }}" style="display:block; border:1px solid #eef0ec; border-radius:10px; padding:10px 14px; text-decoration:none; color:inherit;" title="Aller au Daily log de ce jour">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:{{ '8px' if jour.entrees else '0' }};">
+              <span style="font-size:12.5px; font-weight:700; text-transform:capitalize;">{{ date_fr(jour.date) }}</span>
+              <span style="font-size:12px; color:{{ '#7c8780' if jour.total_heures else '#c7cdc4' }};">{{ jour.total_heures|round(1) }} h</span>
+            </div>
+            {% for e in jour.entrees %}
+              <div style="display:flex; justify-content:space-between; font-size:12px; color:#55605a; padding:2px 0;">
+                <span>{{ e.projet_nom }}{% if e.tache_titre %} · {{ e.tache_titre }}{% endif %}</span>
+                <span style="color:#7c8780;">{{ e.heures }} h</span>
+              </div>
+            {% endfor %}
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

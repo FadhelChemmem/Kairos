@@ -1,0 +1,12 @@
+{# Macro d'avatar centralisée (retour Fadhel, 2026-09-20) : "mettre une
+   image au lieu du diminutif du nom prénom". Un seul endroit décide
+   d'afficher la photo de profil (si avatar_chemin est renseigné) ou de
+   retomber sur le rond initiales+couleur existant — tous les appels
+   d'avatar de l'appli passent par ici pour rester cohérents. #}
+{% macro avatar(id, prenom, nom, avatar_chemin, css_class='avatar', style='', couleur=none, titre=none) %}
+  {% if avatar_chemin %}
+    <img class="{{ css_class }}" style="{{ style }} object-fit:cover;" src="{{ url_for('fichiers.avatar', user_id=id) }}" alt="{{ prenom }} {{ nom }}" {% if titre %}title="{{ titre }}"{% endif %}>
+  {% else %}
+    <div class="{{ css_class }}" style="background:{{ couleur or avatar_color(id) }}; {{ style }}" {% if titre %}title="{{ titre }}"{% endif %}>{{ initials(prenom, nom) }}</div>
+  {% endif %}
+{% endmacro %}

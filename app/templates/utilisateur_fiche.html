@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}{{ utilisateur.prenom }} {{ utilisateur.nom }} — Kairos{% endblock %}
+{% block body %}
+
+<div class="subbar">
+  <div class="subbar-inner" style="max-width:600px;">
+    <a href="{{ url_for('utilisateurs.liste') }}" style="font-size:12.5px; color:#7c8780; font-weight:600;">← Utilisateurs</a>
+    <span style="font-size:14px; font-weight:700;">{{ utilisateur.prenom }} {{ utilisateur.nom }}</span>
+  </div>
+</div>
+
+<div style="max-width:600px; margin:24px auto 60px; padding:0 32px;">
+  <form method="post" class="card" style="padding:22px 22px 24px;" enctype="multipart/form-data">
+
+    <div class="section-title">Identité</div>
+    <div class="form-row-2">
+      <div class="form-row">
+        <label for="prenom">Prénom</label>
+        <input type="text" id="prenom" name="prenom" value="{{ utilisateur.prenom }}" required autofocus>
+      </div>
+      <div class="form-row">
+        <label for="nom">Nom</label>
+        <input type="text" id="nom" name="nom" value="{{ utilisateur.nom }}" required>
+      </div>
+    </div>
+    <div class="form-row">
+      <label for="avatar">Photo de profil <span style="font-weight:400; color:#9aa39c;">— optionnel, remplace les initiales</span></label>
+      <input type="file" id="avatar" name="avatar" accept=".png,.jpg,.jpeg,.gif,.webp,image/*">
+    </div>
+    <div class="form-row">
+      <label for="email">Email <span style="font-weight:400; color:#9aa39c;">— identifiant de connexion</span></label>
+      <input type="email" id="email" name="email" value="{{ utilisateur.email }}" required>
+    </div>
+    <div class="form-row">
+      <label for="telephone">Téléphone</label>
+      <input type="tel" id="telephone" name="telephone" autocomplete="off" value="{{ utilisateur.telephone or '' }}" placeholder="55 555 555">
+    </div>
+    <div class="form-row-2">
+      <div class="form-row">
+        <label for="poste">Poste</label>
+        <input type="text" id="poste" name="poste" autocomplete="off" value="{{ utilisateur.poste or '' }}" placeholder="Ingénieur, Technicien…">
+      </div>
+      <div class="form-row">
+        <label for="date_embauche">Date d'embauche</label>
+        <input type="date" id="date_embauche" name="date_embauche" value="{{ utilisateur.date_embauche or '' }}">
+      </div>
+    </div>
+    <div class="form-row">
+      <label for="adresse">Adresse</label>
+      <input type="text" id="adresse" name="adresse" autocomplete="off" value="{{ utilisateur.adresse or '' }}" placeholder="Rue, ville…">
+    </div>
+
+    <div class="section-title">Bureau et rôle</div>
+    <div class="form-row-2">
+      <div class="form-row">
+        <label for="equipe_code">Équipe</label>
+        <select id="equipe_code" name="equipe_code">
+          {% for code, libelle in equipe_choices %}
+            <option value="{{ code }}" {{ 'selected' if code == utilisateur.equipe_code }}>{{ libelle }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="role">Rôle {% if utilisateur.id == g.user.id %}<span style="font-weight:400; color:#9aa39c;">— non modifiable sur votre propre compte</span>{% endif %}</label>
+        <select id="role" name="role" {{ 'disabled' if utilisateur.id == g.user.id }}>
+          {% for r in roles_creables %}
+            <option value="{{ r }}" {{ 'selected' if r == utilisateur.role }}>
+              {{ {"intervenant": "Intervenant", "chef_de_projet": "Chef de projet", "admin": "Admin", "rh": "RH"}[r] }}
+            </option>
+          {% endfor %}
+        </select>
+        {# Un <select> désactivé n'envoie pas sa valeur au serveur : on la
+           renvoie donc dans un champ caché pour que le formulaire reste
+           cohérent même si le garde-fou côté route venait à changer. #}
+        {% if utilisateur.id == g.user.id %}
+          <input type="hidden" name="role" value="{{ utilisateur.role }}">
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="section-title">Mot de passe</div>
+    <div class="form-row">
+      <label for="nouveau_mot_de_passe">Nouveau mot de passe <span style="font-weight:400; color:#9aa39c;">— laisser vide pour ne pas le changer</span></label>
+      <input type="password" id="nouveau_mot_de_passe" name="nouveau_mot_de_passe" placeholder="••••••••" minlength="8">
+    </div>
+
+    <div class="section-title">Champs personnalisés <span style="font-weight:400; color:#c7cdc4; text-transform:none; letter-spacing:0;">(optionnel, extensible)</span></div>
+    <div id="cf-list">
+      {% for cle, valeur in (utilisateur.champs_perso or {}).items() %}
+        <div class="cf-row">
+          <input type="text" name="champ_perso_nom" value="{{ cle }}" placeholder="Nom du champ">
+          <input type="text" name="champ_perso_valeur" value="{{ valeur }}" placeholder="Valeur">
+          <button type="button" class="linkbtn cf-remove"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+        </div>
+      {% endfor %}
+    </div>
+    <button type="button" id="cf-add" style="display:flex; align-items:center; gap:6px; background:none; border:1px dashed #c7cdc4; border-radius:9px; padding:8px 12px; font-size:12.5px; color:#55605a; cursor:pointer; width:100%; font-family:inherit;">+ Ajouter un champ</button>
+
+    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+      <a href="{{ url_for('utilisateurs.liste') }}" class="btn-secondary" style="width:auto; padding:10px 18px; text-decoration:none; display:inline-flex; align-items:center;">Annuler</a>
+      <button type="submit" class="btn-primary" style="width:auto; padding:10px 18px; background:#4a7c59; color:#fff;">Enregistrer</button>
+    </div>
+
+  </form>
+</div>
+
+<script>
+document.getElementById('cf-add').addEventListener('click', function () {
+  var row = document.createElement('div');
+  row.className = 'cf-row';
+  row.innerHTML =
+    '<input type="text" name="champ_perso_nom" placeholder="Nom du champ (ex. Taille T-shirt)">' +
+    '<input type="text" name="champ_perso_valeur" placeholder="Valeur">' +
+    '<button type="button" class="linkbtn cf-remove"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>';
+  document.getElementById('cf-list').appendChild(row);
+  row.querySelector('.cf-remove').addEventListener('click', function () { row.remove(); });
+});
+document.querySelectorAll('.cf-remove').forEach(function (btn) {
+  btn.addEventListener('click', function () { btn.closest('.cf-row').remove(); });
+});
+</script>
+
+{% endblock %}

@@ -1,0 +1,482 @@
+{% extends "base.html" %}
+{% block title %}Daily log — Kairos{% endblock %}
+{% block body %}
+
+<div class="subbar">
+  <div class="subbar-inner" style="max-width:720px;">
+    <span style="font-size:14px; font-weight:700;">DailyLog</span>
+    <span style="font-size:12.5px; color:#7c8780;">Répartissez les heures de votre journée entre vos projets</span>
+  </div>
+</div>
+
+<div style="max-width:720px; margin:24px auto 60px; padding:0 32px;">
+
+  <!-- Navigation par date -->
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; position:relative;">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <a class="daynav-btn" href="{{ url_for('dailylog.formulaire', date=hier.isoformat()) }}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </a>
+      <div id="date-pill" style="display:flex; align-items:center; gap:8px; background:#ffffff; border:1px solid #e7e9e4; border-radius:10px; padding:7px 14px; cursor:pointer;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7c8780" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+        <span style="font-size:13.5px; font-weight:700;">{{ date_fr(date) }}</span>
+        {% if est_aujourdhui %}<span class="pill" style="background:#eaf3ee; color:#14513b; margin-left:2px;">Aujourd'hui</span>{% endif %}
+      </div>
+      {% if not est_aujourdhui %}
+      <a class="daynav-btn" href="{{ url_for('dailylog.formulaire', date=demain.isoformat()) }}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+      </a>
+      {% else %}
+      <span class="daynav-btn" style="opacity:0.3; cursor:default;" title="Pas de saisie pour un jour futur">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+      </span>
+      {% endif %}
+
+      <div id="cal-popup" class="card" style="display:none; position:absolute; top:44px; left:42px; z-index:60; padding:12px; width:240px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <button type="button" class="iconbtn" id="cal-prev-month" style="width:26px; height:26px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <span id="cal-month-label" style="font-size:12.5px; font-weight:700;"></span>
+          <button type="button" class="iconbtn" id="cal-next-month" style="width:26px; height:26px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px; margin-bottom:4px;">
+          {% for l in ('L','M','M','J','V','S','D') %}<span style="text-align:center; font-size:10px; color:#9aa39c; font-weight:700;">{{ l }}</span>{% endfor %}
+        </div>
+        <div id="cal-grid" style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px;"></div>
+        <div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:10.5px; color:#7c8780;">
+          <span style="width:6px; height:6px; border-radius:999px; background:#4a7c59;"></span> rempli
+        </div>
+      </div>
+    </div>
+    <span style="font-size:11.5px; color:#9aa39c;">Journée type : {{ standard_hours }}h</span>
+  </div>
+
+  {% if rappel_hier %}
+  <div class="card" style="display:flex; align-items:center; gap:10px; padding:10px 14px; margin-bottom:16px; background:#fdf3ec; border-color:#f3ddc6;">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#c97a24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+    <span style="font-size:12.5px; color:#8a5a1e;">Le DailyLog d'hier ({{ hier.strftime('%d/%m') }}) n'a pas été rempli.</span>
+    <a href="{{ url_for('dailylog.formulaire', date=hier.isoformat()) }}" style="font-size:12.5px; font-weight:700; margin-left:auto;">Le remplir →</a>
+  </div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('dailylog.enregistrer') }}" id="dailylog-form">
+    <input type="hidden" name="date" value="{{ date.isoformat() }}">
+    <div id="lignes-hidden"></div>
+
+    <!-- Barre visuelle du jour (cliquable : cliquer un segment augmente et
+         fixe sa part, comme l'appui double/long sur une ligne plus bas) -->
+    <div class="card" style="padding:16px 16px 14px;">
+      <div id="day-bar-title" style="font-size:12px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:10px;">Journée du {{ date.strftime('%d/%m') }}</div>
+      <div id="day-bar" style="display:flex; border-radius:8px; overflow:hidden; margin-bottom:6px;"></div>
+      <div style="font-size:11px; color:#9aa39c;">Touchez un nom/pastille pour (dé)sélectionner un projet — le temps se répartit à parts égales entre les projets sélectionnés. Appui double ou long sur un nom augmente sa part et la fixe. Le curseur se glisse aussi directement.</div>
+    </div>
+
+    <!-- Lignes -->
+    <div class="card" style="margin-top:14px; padding:6px 0;" id="lines-container"></div>
+
+    <!-- Ajouter une ligne -->
+    <div class="card" style="margin-top:14px; padding:10px 14px;">
+      <div style="display:flex; align-items:center; gap:8px; border:1px solid #e7e9e4; border-radius:10px; padding:8px 12px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8b968f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="add-search" placeholder="Filtrer par nom de projet ou de tâche…" style="border:none; padding:0; background:transparent; flex:1; width:auto; min-width:0;">
+      </div>
+
+      <div style="font-size:10.5px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin:10px 0 4px;">Vos projets (intervenant / chef)</div>
+      <div id="sugg-mine" style="display:flex; flex-direction:column; gap:2px;"></div>
+
+      <div style="font-size:10.5px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin:12px 0 4px;">Autres projets de l'entreprise</div>
+      <div id="sugg-others" style="display:flex; flex-direction:column; gap:2px;"></div>
+
+      <div style="font-size:11px; color:#9aa39c; margin-top:8px;">Double-appui (ou appui long) sur un projet grisé pour l'ajouter ponctuellement aujourd'hui.</div>
+    </div>
+
+    <!-- Total + enregistrer -->
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:18px; padding:14px 4px 0; border-top:1px solid #e7e9e4;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4a7c59" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        <span id="total-line" style="font-size:12.5px; color:#14513b; font-weight:600;"></span>
+      </div>
+      <button type="submit" class="btn-primary" style="width:auto; padding:10px 18px; background:#4a7c59; color:#fff; display:inline-flex; align-items:center; gap:6px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+        Enregistrer
+      </button>
+    </div>
+  </form>
+
+</div>
+
+<script id="dailylog-data" type="application/json">
+{{ {
+  "standardHours": standard_hours,
+  "dateIso": date.isoformat(),
+  "todayIso": aujourdhui.isoformat(),
+  "lignesInitiales": lignes_initiales,
+  "suggestionsMine": suggestions.mine,
+  "suggestionsAutres": suggestions.autres,
+  "joursRemplis": jours_remplis,
+  "moisAffiche": date.strftime('%Y-%m'),
+  "urlFormulaire": url_for('dailylog.formulaire'),
+  "urlJoursRemplis": url_for('dailylog.api_jours_remplis'),
+}|tojson }}
+</script>
+
+<script>
+(function () {
+  var DATA = JSON.parse(document.getElementById('dailylog-data').textContent);
+  var STANDARD_HOURS = DATA.standardHours;
+  var PALETTE = ['#4a7c59', '#ea6c1a', '#3b7de0', '#7c6ff0', '#e3512c', '#2fa876', '#c9a24a', '#4a90a4'];
+  var colorIndex = 0;
+  function nextColor() { return PALETTE[(colorIndex++) % PALETTE.length]; }
+
+  var lines = DATA.lignesInitiales.map(function (l) {
+    return {
+      projetId: l.projet_id, tacheId: l.tache_id, nom: l.nom, tacheTitre: l.tache_titre,
+      color: nextColor(), selected: true, locked: false, pct: l.pct, adhoc: false,
+    };
+  });
+
+  function fmtPct(p) { return (Math.round(p * 10) / 10) + '%'; }
+  function fmtHours(p) {
+    return (Math.round(p / 100 * STANDARD_HOURS * 100) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + ' h';
+  }
+
+  function headroom(forLine) {
+    var otherLocked = 0;
+    lines.forEach(function (l) { if (l !== forLine && l.selected && l.locked) otherLocked += l.pct; });
+    return Math.max(0, 100 - otherLocked);
+  }
+
+  function redistribute() {
+    var lockedSum = 0, unlocked = [];
+    lines.forEach(function (l) {
+      if (!l.selected) { l.pct = 0; return; }
+      if (l.locked) { lockedSum += l.pct; } else { unlocked.push(l); }
+    });
+    var remaining = Math.max(0, 100 - lockedSum);
+    if (unlocked.length) {
+      var share = remaining / unlocked.length;
+      unlocked.forEach(function (l) { l.pct = share; });
+    }
+    render();
+  }
+
+  function toggleSelect(line) {
+    if (line.selected) { line.selected = false; line.locked = false; line.pct = 0; }
+    else { line.selected = true; line.locked = false; }
+    redistribute();
+  }
+
+  function bump(line, step) {
+    if (!line.selected) { line.selected = true; line.locked = false; line.pct = 0; }
+    line.locked = true;
+    var max = headroom(line);
+    line.pct = Math.min(max, line.pct + step);
+    redistribute();
+  }
+
+  function removeLine(line) {
+    var idx = lines.indexOf(line);
+    if (idx !== -1) lines.splice(idx, 1);
+    redistribute();
+  }
+
+  function addLine(proto, adhoc) {
+    lines.push({
+      projetId: proto.projet_id, tacheId: proto.tache_id, nom: proto.nom, tacheTitre: proto.tache_titre,
+      color: nextColor(), selected: true, locked: false, pct: 0, adhoc: !!adhoc,
+    });
+    redistribute();
+  }
+
+  function attachTapAndHold(el, onTap, onHold) {
+    var pressTimer = null, held = false, clickTimer = null;
+    el.addEventListener('pointerdown', function (evt) {
+      evt.preventDefault();
+      held = false;
+      pressTimer = setTimeout(function () {
+        held = true;
+        onHold();
+        pressTimer = setInterval(onHold, 450);
+      }, 500);
+    });
+    function cancelPress() { clearTimeout(pressTimer); clearInterval(pressTimer); }
+    el.addEventListener('pointerup', function () {
+      cancelPress();
+      if (!held) {
+        if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; onHold(); }
+        else { clickTimer = setTimeout(function () { clickTimer = null; onTap(); }, 260); }
+      }
+    });
+    el.addEventListener('pointerleave', cancelPress);
+  }
+
+  function render() {
+    var bar = document.getElementById('day-bar');
+    bar.innerHTML = '';
+    var used = 0;
+    lines.forEach(function (l) {
+      if (!l.selected || l.pct < 0.05) return;
+      used += l.pct;
+      var seg = document.createElement('div');
+      seg.className = 'dayseg';
+      seg.style.width = Math.min(l.pct, 100) + '%';
+      seg.style.background = l.color;
+      seg.style.cursor = 'pointer';
+      seg.title = l.nom + ' — cliquer pour augmenter et fixer sa part';
+      seg.textContent = fmtPct(l.pct);
+      // La barre du haut permet aussi d'agrandir/fixer la part d'un
+      // projet par simple clic (retour Fadhel, 2026-09-19) — même geste
+      // que l'appui double/long sur une ligne plus bas.
+      seg.addEventListener('click', function () { bump(l, 5); });
+      bar.appendChild(seg);
+    });
+    if (used < 99.9) {
+      var rest = document.createElement('div');
+      rest.className = 'dayseg';
+      rest.style.width = (100 - used) + '%';
+      rest.style.background = 'repeating-linear-gradient(45deg, #e7e9e4, #e7e9e4 5px, #f2f4f0 5px, #f2f4f0 10px)';
+      rest.style.color = '#9aa39c';
+      bar.appendChild(rest);
+    }
+
+    var container = document.getElementById('lines-container');
+    container.innerHTML = '';
+    if (!lines.length) {
+      container.innerHTML = '<div style="padding:20px 16px; font-size:12.5px; color:#7c8780;">Aucune ligne pour l\'instant — ajoutez un projet ci-dessous.</div>';
+    }
+    lines.forEach(function (l, idx) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex; align-items:center; gap:12px; padding:14px 16px;' + (idx < lines.length - 1 ? 'border-bottom:1px solid #eef0ec;' : '') + (l.selected ? '' : 'opacity:0.5;');
+      row.innerHTML =
+        '<span class="lrow-dot" style="width:10px; height:10px; border-radius:3px; background:' + l.color + '; flex-shrink:0; cursor:pointer;"></span>' +
+        '<div class="lrow-info" style="width:220px; flex-shrink:0; cursor:pointer;">' +
+          '<div style="font-size:13px; font-weight:700; line-height:1.3;">' + l.nom + (l.locked ? ' <span title="valeur fixée manuellement" style="font-size:10px;">🔒</span>' : '') + (l.adhoc ? ' <span class="pill" style="background:#f2f4f0; color:#7c8780; font-size:10px; padding:1px 7px;">ponctuel</span>' : '') + '</div>' +
+          '<div style="font-size:11.5px; color:' + (l.tacheTitre ? '#7c8780' : '#b6bdb2') + '; line-height:1.3;' + (l.tacheTitre ? '' : 'font-style:italic;') + '">' + (l.tacheTitre || 'Projet seul (pas de tâche précise)') + '</div>' +
+        '</div>' +
+        '<div class="lrow-track" style="position:relative; flex:1; height:8px; border-radius:999px; background:#eef0ec; cursor:pointer;">' +
+          '<div class="lrow-fill" style="position:absolute; left:0; top:0; bottom:0; border-radius:999px; width:' + (l.selected ? Math.min(l.pct, 100) : 0) + '%; background:' + l.color + '; opacity:' + (l.selected ? 1 : 0.3) + ';"></div>' +
+          '<div class="lrow-thumb" style="position:absolute; top:50%; left:' + (l.selected ? Math.min(l.pct, 100) : 0) + '%; width:16px; height:16px; border-radius:999px; background:#fff; border:3px solid ' + l.color + '; transform:translate(-50%,-50%); box-shadow:0 1px 3px rgba(20,30,25,0.2); cursor:ew-resize;' + (l.selected ? '' : 'display:none;') + '"></div>' +
+        '</div>' +
+        '<div style="width:52px; text-align:right; font-size:12.5px; font-weight:700; flex-shrink:0; color:' + (l.selected ? '#2b2b26' : '#b6bdb2') + ';">' + (l.selected ? fmtPct(l.pct) : '—') + '</div>' +
+        '<div style="width:56px; text-align:right; font-size:11.5px; color:#7c8780; flex-shrink:0;">' + (l.selected ? fmtHours(l.pct) : '') + '</div>' +
+        '<button type="button" class="iconbtn lrow-remove" style="width:28px; height:28px; color:#b6bdb2;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>';
+      container.appendChild(row);
+
+      var dot = row.querySelector('.lrow-dot');
+      var info = row.querySelector('.lrow-info');
+      var removeBtn = row.querySelector('.lrow-remove');
+      var track = row.querySelector('.lrow-track');
+      var thumb = row.querySelector('.lrow-thumb');
+
+      attachTapAndHold(dot, function () { toggleSelect(l); }, function () { bump(l, 5); });
+      attachTapAndHold(info, function () { toggleSelect(l); }, function () { bump(l, 5); });
+      removeBtn.addEventListener('click', function (evt) { evt.stopPropagation(); removeLine(l); });
+
+      function pctFromEvent(evt) {
+        var rect = track.getBoundingClientRect();
+        var x = evt.clientX - rect.left;
+        var raw = Math.max(0, Math.min(1, x / rect.width)) * 100;
+        return Math.min(raw, headroom(l));
+      }
+
+      // Glisser le curseur (thumb) : un simple appui SANS déplacement le
+      // fige à sa valeur actuelle ("verrouillé" — appui long/double sur le
+      // nom fait la même chose), un vrai glisser le repositionne. Avant ce
+      // correctif (retour Fadhel, 2026-09-19), le moindre appui sur le
+      // curseur le faisait sauter à la position exacte du clic (souvent
+      // proche de 100% vu la taille réduite du curseur) au lieu de le
+      // figer — d'où sa remarque "je voulais dire vérouillé, pas bloquer".
+      function startDragThumb(evt) {
+        evt.preventDefault();
+        evt.stopPropagation();
+        if (!l.selected) l.selected = true;
+        var startX = evt.clientX, moved = false;
+        function onMove(moveEvt) {
+          if (!moved && Math.abs(moveEvt.clientX - startX) > 3) moved = true;
+          if (moved) { l.locked = true; l.pct = pctFromEvent(moveEvt); redistribute(); }
+        }
+        function stopDrag() {
+          document.removeEventListener('pointermove', onMove);
+          document.removeEventListener('pointerup', stopDrag);
+          if (!moved) { l.locked = true; redistribute(); }
+        }
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', stopDrag);
+      }
+      // Cliquer ailleurs sur la piste (pas sur le curseur lui-même) reste
+      // un vrai "aller à cette position" façon slider classique.
+      function seekTrack(evt) {
+        evt.preventDefault();
+        if (!l.selected) l.selected = true;
+        l.locked = true;
+        l.pct = pctFromEvent(evt);
+        redistribute();
+      }
+      thumb.addEventListener('pointerdown', startDragThumb);
+      track.addEventListener('pointerdown', function (evt) { if (evt.target === thumb) return; seekTrack(evt); });
+    });
+
+    var total = lines.reduce(function (s, l) { return s + (l.selected ? l.pct : 0); }, 0);
+    document.getElementById('total-line').textContent = fmtPct(Math.round(total * 10) / 10) + ' réparti · ' + fmtHours(total) + ' sur ' + STANDARD_HOURS + ' h';
+
+    // Régression corrigée (2026-09-19, retour Fadhel) : supprimer une ligne
+    // (bouton "×") ne rafraîchissait pas le catalogue "Ajouter une ligne"
+    // en dessous — le projet retiré restait affiché "déjà ajouté" (grisé,
+    // impossible à recliquer) puisque `lineKeys` n'était recalculé que par
+    // renderSuggestions(), jamais appelée après une suppression. On la
+    // rappelle systématiquement ici, à chaque render(), pour que le
+    // catalogue soit toujours cohérent avec les lignes du jour.
+    renderSuggestions();
+  }
+
+  // ---- Catalogue "Ajouter une ligne" ----
+  var searchTerm = '';
+  function matches(item) {
+    if (!searchTerm) return true;
+    var hay = (item.nom + ' ' + (item.tache_titre || '')).toLowerCase();
+    return hay.indexOf(searchTerm) !== -1;
+  }
+  function suggestionKey(item) { return item.projet_id + '-' + (item.tache_id || 0); }
+
+  function renderSuggestions() {
+    var mineWrap = document.getElementById('sugg-mine');
+    var othersWrap = document.getElementById('sugg-others');
+    mineWrap.innerHTML = '';
+    othersWrap.innerHTML = '';
+
+    var lineKeys = {};
+    lines.forEach(function (l) { lineKeys[l.projetId + '-' + (l.tacheId || 0)] = true; });
+
+    DATA.suggestionsMine.filter(matches).forEach(function (item) {
+      var deja = !!lineKeys[suggestionKey(item)];
+      var row = document.createElement('div');
+      row.className = 'add-suggestion';
+      row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; background:#f7f8f6;' + (deja ? 'opacity:0.4;' : '');
+      row.innerHTML =
+        '<span style="font-size:12.5px; font-weight:600;">' + item.nom + '</span>' +
+        '<span style="font-size:11.5px; color:#7c8780;">' + (item.tache_titre ? '— ' + item.tache_titre : '(projet seul, sans tâche)') + '</span>' +
+        '<span style="margin-left:auto; font-size:11px; font-weight:700; color:#4a7c59;">' + (deja ? 'déjà ajouté' : '+ ajouter') + '</span>';
+      if (!deja) row.addEventListener('click', function () { addLine(item, false); renderSuggestions(); });
+      mineWrap.appendChild(row);
+    });
+    if (!DATA.suggestionsMine.filter(matches).length) {
+      mineWrap.innerHTML = '<div style="font-size:12px; color:#b6bdb2; padding:4px 10px;">Aucun résultat.</div>';
+    }
+
+    DATA.suggestionsAutres.filter(matches).forEach(function (item) {
+      var deja = !!lineKeys[suggestionKey(item)];
+      var row = document.createElement('div');
+      row.className = 'add-suggestion';
+      row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; border:1px dashed #c7cdc4; opacity:' + (deja ? '0.4' : '0.75') + ';';
+      row.innerHTML =
+        '<span style="font-size:12.5px; font-weight:600;">' + item.nom + '</span>' +
+        '<span style="font-size:11.5px; color:#7c8780;">(projet seul, sans tâche)</span>' +
+        '<span style="margin-left:auto; font-size:11px; font-weight:700; color:#b6bdb2;">' + (deja ? 'déjà ajouté' : '+ ajouter (ponctuel)') + '</span>';
+      if (!deja) {
+        attachTapAndHold(row, function () {}, function () { addLine(item, true); renderSuggestions(); });
+      }
+      othersWrap.appendChild(row);
+    });
+    if (!DATA.suggestionsAutres.filter(matches).length) {
+      othersWrap.innerHTML = '<div style="font-size:12px; color:#b6bdb2; padding:4px 10px;">Aucun résultat.</div>';
+    }
+  }
+
+  document.getElementById('add-search').addEventListener('input', function (evt) {
+    searchTerm = evt.target.value.trim().toLowerCase();
+    renderSuggestions();
+  });
+
+  // ---- Calendrier (navigation de mois en JS, sélection = vraie navigation de page) ----
+  var FR_MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  var todayIso = DATA.todayIso;
+  var selectedIso = DATA.dateIso;
+  var filledSet = {};
+  DATA.joursRemplis.forEach(function (d) { filledSet[d] = true; });
+  var calYear = parseInt(DATA.moisAffiche.split('-')[0], 10);
+  var calMonth = parseInt(DATA.moisAffiche.split('-')[1], 10) - 1;
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function isoOf(y, m, d) { return y + '-' + pad(m + 1) + '-' + pad(d); }
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+  function renderCalendarGrid() {
+    document.getElementById('cal-month-label').textContent = cap(FR_MOIS[calMonth]) + ' ' + calYear;
+    var grid = document.getElementById('cal-grid');
+    grid.innerHTML = '';
+    var firstOfMonth = new Date(calYear, calMonth, 1);
+    var startOffset = (firstOfMonth.getDay() + 6) % 7; // lundi = 0
+    var daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+    for (var i = 0; i < startOffset; i++) grid.appendChild(document.createElement('span'));
+    for (var d = 1; d <= daysInMonth; d++) {
+      var iso = isoOf(calYear, calMonth, d);
+      var a = document.createElement('a');
+      a.className = 'cal-day';
+      a.href = DATA.urlFormulaire + '?date=' + iso;
+      if (iso === todayIso) a.style.cssText += 'background:#eaf3ee; font-weight:800; color:#14513b;';
+      if (iso === selectedIso) a.style.cssText += 'border:1.5px solid #4a7c59;';
+      if (iso > todayIso) a.style.opacity = '0.4';
+      a.textContent = d;
+      if (filledSet[iso]) {
+        var dot = document.createElement('span');
+        dot.className = 'cal-dot';
+        dot.style.background = '#4a7c59';
+        a.appendChild(dot);
+      }
+      grid.appendChild(a);
+    }
+  }
+
+  function loadMonth(year, month) {
+    calYear = year; calMonth = month;
+    renderCalendarGrid();
+    fetch(DATA.urlJoursRemplis + '?annee=' + year + '&mois=' + (month + 1))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        filledSet = {};
+        (data.jours || []).forEach(function (d) { filledSet[d] = true; });
+        renderCalendarGrid();
+      })
+      .catch(function () {});
+  }
+
+  document.getElementById('date-pill').addEventListener('click', function (evt) {
+    evt.stopPropagation();
+    renderCalendarGrid();
+    var pop = document.getElementById('cal-popup');
+    pop.style.display = (pop.style.display === 'none') ? '' : 'none';
+  });
+  document.getElementById('cal-prev-month').addEventListener('click', function (evt) {
+    evt.stopPropagation();
+    var m = calMonth - 1, y = calYear; if (m < 0) { m = 11; y--; }
+    loadMonth(y, m);
+  });
+  document.getElementById('cal-next-month').addEventListener('click', function (evt) {
+    evt.stopPropagation();
+    var m = calMonth + 1, y = calYear; if (m > 11) { m = 0; y++; }
+    loadMonth(y, m);
+  });
+  document.addEventListener('click', function (evt) {
+    var pop = document.getElementById('cal-popup');
+    if (pop.style.display !== 'none' && !pop.contains(evt.target)) pop.style.display = 'none';
+  });
+
+  // ---- Soumission : convertit les lignes en champs cachés juste avant l'envoi ----
+  document.getElementById('dailylog-form').addEventListener('submit', function () {
+    var wrap = document.getElementById('lignes-hidden');
+    wrap.innerHTML = '';
+    lines.forEach(function (l) {
+      if (!l.selected || l.pct < 0.05) return;
+      var heures = Math.round(l.pct / 100 * STANDARD_HOURS * 100) / 100;
+      [['ligne_projet_id', l.projetId], ['ligne_tache_id', l.tacheId || ''], ['ligne_heures', heures]].forEach(function (pair) {
+        var input = document.createElement('input');
+        input.type = 'hidden'; input.name = pair[0]; input.value = pair[1];
+        wrap.appendChild(input);
+      });
+    });
+  });
+
+  render();
+  renderSuggestions();
+})();
+</script>
+{% endblock %}

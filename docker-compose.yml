@@ -1,0 +1,64 @@
+version: "3.9"
+
+# Déploiement LAN-first : deux services, pas de dépendance internet une
+# fois les images construites. Les données Postgres vivent dans un
+# volume nommé (persistant entre redémarrages / mises à jour de l'appli).
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kairos}
+      POSTGRES_USER: ${POSTGRES_USER:-kairos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?définir POSTGRES_PASSWORD dans .env}
+    volumes:
+      - kairos_pgdata:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports:
+      # Exposé sur le LAN uniquement si besoin de s'y connecter avec un
+      # client SQL depuis un autre poste ; sinon, retirer cette section.
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kairos}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kairos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-kairos}
+      SECRET_KEY: ${SECRET_KEY:?définir SECRET_KEY dans .env}
+      FLASK_ENV: ${FLASK_ENV:-production}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      # Envoi d'email (mot de passe oublié / création de compte) — voir
+      # .env.example. Vides par défaut : ces fonctionnalités restent
+      # inactives (sans planter) tant que SMTP_HOST n'est pas renseigné.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+    ports:
+      - "8000:8000"
+    volumes:
+      # Pièces jointes (tâches/posts) stockées sur disque local, en dehors
+      # du conteneur applicatif, pour survivre aux mises à jour de l'image.
+      - kairos_uploads:/app/uploads
+
+# Noms explicites (`name:`) pour que le volume final s'appelle exactement
+# "kairos_pgdata"/"kairos_uploads" sur le disque, sans préfixe du nom de
+# projet Compose (qui varie selon le dossier d'installation) — utile pour
+# que la commande de migration donnée dans le README (renommage
+# workflowbook → Kairos, 2026-09-21) reste valable telle quelle.
+volumes:
+  kairos_pgdata:
+    name: kairos_pgdata
+  kairos_uploads:
+    name: kairos_uploads

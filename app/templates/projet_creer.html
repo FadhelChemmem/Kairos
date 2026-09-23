@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Nouveau projet — Kairos{% endblock %}
+{% block body %}
+<div style="max-width:560px; margin:0 auto; padding:24px 32px 60px;">
+  <div style="font-size:18px; font-weight:800; margin-bottom:16px;">Nouveau projet</div>
+
+  <form method="post" class="card">
+    <div class="form-row">
+      <label for="nom">Nom du projet</label>
+      <input type="text" id="nom" name="nom" required autofocus>
+    </div>
+    <div class="form-row">
+      <label for="code">Code (proposé, modifiable)</label>
+      <input type="text" id="code" name="code" value="{{ code_propose }}" required>
+    </div>
+    <div class="form-row">
+      <label for="phase">Phase</label>
+      <select id="phase" name="phase">
+        <option value="APS">APS</option>
+        <option value="APD">APD</option>
+        <option value="DCE">DCE</option>
+        <option value="EXE" selected>EXE</option>
+        <option value="DOE">DOE</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label for="lots">Lot(s)</label>
+      <select id="lots" name="lots" multiple data-chip-select>
+        <option value="CM">CM — Charpente Métallique</option>
+        <option value="GO">GO — Gros Œuvre</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label for="chef_projet_id">Chef de projet</label>
+      <select id="chef_projet_id" name="chef_projet_id">
+        {% for u in utilisateurs_actifs %}
+          <option value="{{ u.id }}" {{ 'selected' if u.id == g.user.id }}>{{ u.prenom }} {{ u.nom }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-row">
+      <label for="date_debut">Date de début</label>
+      <input type="date" id="date_debut" name="date_debut" value="{{ date_du_jour }}">
+    </div>
+    <button type="submit" class="btn-primary" style="background:#4a7c59; color:#fff;">Créer le projet</button>
+  </form>
+</div>
+{% endblock %}

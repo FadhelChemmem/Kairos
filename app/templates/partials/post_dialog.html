@@ -1,0 +1,167 @@
+{# Fenêtre flottante "Nouveau post" (retour Fadhel, 2026-09-19) : un post
+   est TOUJOURS une Tâche, une Information ou une Requête, créé via un
+   formulaire à champs — jamais un simple champ texte libre. Cette même
+   fenêtre sert à la fois pour "+ Nouveau post" (page projet et accueil) et
+   pour le rebond (répondre à un post existant, qui est lui aussi une
+   Tâche/Info/Requête liée — voir post_card.html) : on ne quitte plus la
+   page, un clic sur un déclencheur `data-open-post-dialog` l'ouvre par
+   dessus (voir app/static/js/post-dialog.js).
+
+   Attend dans le contexte :
+   - projet_id : projet fixe (page projet) ou None (accueil — l'utilisateur
+     choisit le projet dans la fenêtre, voir projets_choix).
+   - projets_choix : liste de projets {id, code, nom} — seulement utile
+     quand projet_id est None.
+   - utilisateurs_actifs, next_url.
+#}
+<dialog id="dialog-nouveau-post" class="post-dialog">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+    <span style="font-size:15px; font-weight:800;">Nouveau post</span>
+    <button type="button" data-close-post-dialog aria-label="Fermer" style="background:none; border:none; cursor:pointer; color:#9aa39c; padding:4px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+    </button>
+  </div>
+
+  {% if projet_id is none %}
+    <div class="form-row" data-post-dialog-projet-row>
+      <label for="dialog-post-projet">Projet</label>
+      <select id="dialog-post-projet">
+        {% for p in projets_choix %}
+          <option value="{{ p.id }}">{{ p.code }}_{{ p.nom }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-row" data-post-dialog-projet-figee style="display:none;">
+      <label>Projet</label>
+      <div style="font-size:13px; font-weight:600; padding:8px 0;" data-post-dialog-projet-figee-label></div>
+    </div>
+  {% endif %}
+
+  <!-- Sélecteur Tâche / Information / Requête — CSS pur, voir app.css -->
+  <input type="radio" id="intent-tache" name="intent-toggle" class="composer-radio" checked>
+  <input type="radio" id="intent-information" name="intent-toggle" class="composer-radio">
+  <input type="radio" id="intent-requete" name="intent-toggle" class="composer-radio">
+
+  <div class="seg">
+    <label for="intent-tache">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      Tâche
+    </label>
+    <label for="intent-information">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M11 11.5h1v4.5"/></svg>
+      Information
+    </label>
+    <label for="intent-requete">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg>
+      Requête
+    </label>
+  </div>
+
+  <div class="intent-panels">
+
+    <!-- Panneau Tâche -->
+    <div class="intent-panel panel-tache">
+      <form method="post"
+            {% if projet_id is not none %}action="{{ url_for('projets.creer_tache', projet_id=projet_id) }}"{% else %}data-action-template="{{ url_for('projets.creer_tache', projet_id=999999999) }}"{% endif %}>
+        <input type="hidden" name="parent_post_id" value="">
+        <div class="form-row">
+          <label for="dialog-titre-tache">Titre de la tâche</label>
+          <input type="text" id="dialog-titre-tache" name="titre" placeholder="Ex. Note de calcul EXE lot GO" required>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div class="form-row">
+            <label for="dialog-echeance-tache">Échéance</label>
+            <input type="date" id="dialog-echeance-tache" name="date_echeance">
+          </div>
+          <div class="form-row">
+            <label for="dialog-type-deadline-tache">Type de deadline</label>
+            <select id="dialog-type-deadline-tache" name="type_deadline">
+              <option value="rendu_client">Rendu client</option>
+              <option value="interne">Interne</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <label for="dialog-intervenants-tache">Intervenant(s) <span style="font-weight:400; color:#9aa39c;">— optionnel</span></label>
+          <select id="dialog-intervenants-tache" name="intervenants" multiple data-chip-select data-chip-filter="1" data-chip-filter-placeholder="Rechercher une personne…">
+            {% for u in utilisateurs_actifs %}
+              <option value="{{ u.id }}">{{ u.prenom }} {{ u.nom }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid #eef0ec;">
+          <button type="button" data-close-post-dialog class="btn-secondary" style="width:auto; padding:9px 16px;">Annuler</button>
+          <button type="submit" class="btn-primary" style="width:auto; padding:9px 18px; background:#4a7c59; color:#fff;">Publier la tâche</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Panneau Information — post hors-projet (étape 2), aperçu uniquement -->
+    <div class="intent-panel panel-information">
+      <div class="form-row">
+        <label>Contenu de l'information</label>
+        <textarea placeholder="Ex. Le bureau sera fermé le 25 pour jour férié…" disabled></textarea>
+      </div>
+      <div class="form-row" style="margin-bottom:4px;">
+        <label>Destinataires <span style="font-weight:400; color:#9aa39c;">— une ou plusieurs équipes</span></label>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          {% for eq in ("Midgard", "URBS", "SS", "Q", "IPCO", "Toutes les équipes") %}
+            <span class="pill pill-sm" style="background:#f2f4f0; color:#9aa39c;">{{ eq }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      <div style="margin-top:14px; background:#f2f4f0; border-radius:10px; padding:12px 14px; font-size:12px; color:#7c8780; line-height:1.5;">
+        Les posts "Information" (annonces ciblées sur une ou plusieurs équipes, indépendantes des projets) arrivent à l'étape 2 — pas encore publiables ici. Aperçu du composeur uniquement.
+      </div>
+      <div style="display:flex; justify-content:flex-end; margin-top:14px; padding-top:14px; border-top:1px solid #eef0ec;">
+        <button type="button" data-close-post-dialog class="btn-secondary" style="width:auto; padding:9px 16px;">Retour</button>
+      </div>
+    </div>
+
+    <!-- Panneau Requête -->
+    <div class="intent-panel panel-requete">
+      <form method="post" action="{{ url_for('posts.creer') }}" enctype="multipart/form-data">
+        <input type="hidden" name="next" value="{{ next_url }}">
+        <input type="hidden" name="projet_id" value="{{ projet_id or '' }}">
+        <input type="hidden" name="type_code" value="requete">
+        <input type="hidden" name="parent_post_id" value="">
+
+        <div class="form-row">
+          <label for="dialog-objet-requete">Objet de la requête</label>
+          <input type="text" id="dialog-objet-requete" name="objet" placeholder="Ex. Demande de plans mis à jour" required>
+        </div>
+        <div class="form-row">
+          <label for="dialog-description-requete">Description <span style="font-weight:400; color:#9aa39c;">— optionnel</span></label>
+          <textarea id="dialog-description-requete" name="contenu" placeholder="Détaillez la demande…"></textarea>
+        </div>
+        <div class="form-row">
+          <label for="dialog-mentions-requete">Personnes taguées <span style="font-weight:400; color:#9aa39c;">— optionnel</span></label>
+          <select id="dialog-mentions-requete" name="mentions" multiple data-chip-select data-chip-filter="1" data-chip-filter-placeholder="Rechercher une personne…">
+            {% for u in utilisateurs_actifs %}
+              <option value="{{ u.id }}">{{ u.prenom }} {{ u.nom }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="dialog-lien-requete">Lien <span style="font-weight:400; color:#9aa39c;">— optionnel</span></label>
+          <input type="text" id="dialog-lien-requete" name="lien" placeholder="\\NAS\Projets\...">
+        </div>
+        <div class="form-row" style="margin-bottom:0;">
+          <label>Pièce jointe <span style="font-weight:400; color:#9aa39c;">— optionnel</span></label>
+          <div class="dropzone" data-dropzone>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+            <span class="dropzone-label" data-dropzone-label>Glisser un fichier ici, ou cliquer pour parcourir</span>
+            <input type="file" name="fichier" class="dropzone-input">
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid #eef0ec;">
+          <button type="button" data-close-post-dialog class="btn-secondary" style="width:auto; padding:9px 16px;">Annuler</button>
+          <button type="submit" class="btn-primary" style="width:auto; padding:9px 18px; background:#4a7c59; color:#fff;">Publier la requête</button>
+        </div>
+      </form>
+    </div>
+
+  </div>
+</dialog>
+<script src="{{ url_for('static', filename='js/post-dialog.js') }}" defer></script>

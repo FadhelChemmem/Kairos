@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Nouvel utilisateur — Kairos{% endblock %}
+{% block body %}
+
+<div class="subbar">
+  <div class="subbar-inner" style="max-width:600px;">
+    <a href="{{ url_for('utilisateurs.liste') }}" style="font-size:12.5px; color:#7c8780; font-weight:600;">← Utilisateurs</a>
+    <span style="font-size:14px; font-weight:700;">Nouvel utilisateur</span>
+  </div>
+</div>
+
+<div style="max-width:600px; margin:24px auto 60px; padding:0 32px;">
+  <form method="post" class="card" style="padding:22px 22px 24px;" enctype="multipart/form-data">
+
+    <div class="section-title">Identité</div>
+    <div class="form-row-2">
+      <div class="form-row">
+        <label for="prenom">Prénom</label>
+        <input type="text" id="prenom" name="prenom" placeholder="Foulen" required autofocus>
+      </div>
+      <div class="form-row">
+        <label for="nom">Nom</label>
+        <input type="text" id="nom" name="nom" placeholder="Ben Foulen" required>
+      </div>
+    </div>
+    <div class="form-row">
+      <label for="avatar">Photo de profil <span style="font-weight:400; color:#9aa39c;">— optionnel, remplace les initiales</span></label>
+      <input type="file" id="avatar" name="avatar" accept=".png,.jpg,.jpeg,.gif,.webp,image/*">
+    </div>
+    <div class="form-row">
+      <label for="email">Email <span style="font-weight:400; color:#9aa39c;">— identifiant de connexion</span></label>
+      <input type="email" id="email" name="email" placeholder="foulen@gmail.com" required>
+    </div>
+    <div class="form-row">
+      <label for="telephone">Téléphone</label>
+      <input type="tel" id="telephone" name="telephone" autocomplete="off" placeholder="55 555 555">
+    </div>
+    <div class="form-row-2">
+      <div class="form-row">
+        <label for="poste">Poste</label>
+        <input type="text" id="poste" name="poste" autocomplete="off" placeholder="Ingénieur, Technicien…">
+      </div>
+      <div class="form-row">
+        <label for="date_embauche">Date d'embauche</label>
+        <input type="date" id="date_embauche" name="date_embauche">
+      </div>
+    </div>
+    <div class="form-row">
+      <label for="adresse">Adresse</label>
+      <input type="text" id="adresse" name="adresse" autocomplete="off" placeholder="Rue, ville…">
+    </div>
+
+    <div class="section-title">Bureau et rôle</div>
+    <div class="form-row-2">
+      <div class="form-row">
+        <label for="equipe_code">Équipe</label>
+        <select id="equipe_code" name="equipe_code">
+          {% for code, libelle in equipe_choices %}
+            <option value="{{ code }}">{{ libelle }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="role">Rôle <span style="font-weight:400; color:#9aa39c;">— un seul par personne</span></label>
+        <select id="role" name="role">
+          <option value="intervenant">Intervenant</option>
+          <option value="chef_de_projet">Chef de projet</option>
+          <option value="admin">Admin</option>
+          <option value="rh" {{ 'disabled' if rh_titulaire }}>
+            {{ 'RH — déjà attribué à ' ~ rh_titulaire.prenom ~ ' ' ~ rh_titulaire.nom if rh_titulaire else 'RH' }}
+          </option>
+        </select>
+      </div>
+    </div>
+    <div style="font-size:11px; color:#9aa39c; margin:-8px 0 4px;">RH est un rôle unique : un seul compte actif peut l'avoir à la fois. Désactivez le titulaire actuel pour le réattribuer ailleurs.</div>
+
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 2px;">
+      <div>
+        <div style="font-size:13px; font-weight:600;">Compte actif</div>
+        <div style="font-size:11px; color:#9aa39c;">Désactivé, le compte disparaît des listes d'affectation sans rien supprimer</div>
+      </div>
+      <input type="checkbox" id="actif" name="actif" class="actif-toggle-input" checked>
+      <label for="actif" class="toggle"><span class="toggle-knob"></span></label>
+    </div>
+
+    <div class="section-title">Accès</div>
+    <div class="radio-opt selected">
+      <input type="radio" checked disabled style="margin-top:2px;">
+      <div>
+        <div class="radio-opt-title">Email d'activation</div>
+        <div class="radio-opt-note">Aucun mot de passe n'est défini ici : un email est envoyé à l'utilisateur pour qu'il choisisse lui-même son mot de passe (lien valable 1 heure, si l'envoi d'email est configuré côté serveur — sinon vous verrez un avertissement). Le compte reste marqué "Non vérifié" tant qu'il ne l'a pas fait.</div>
+      </div>
+    </div>
+
+    <div class="section-title">Champs personnalisés <span style="font-weight:400; color:#c7cdc4; text-transform:none; letter-spacing:0;">(optionnel, extensible)</span></div>
+    <div id="cf-list"></div>
+    <button type="button" id="cf-add" style="display:flex; align-items:center; gap:6px; background:none; border:1px dashed #c7cdc4; border-radius:9px; padding:8px 12px; font-size:12.5px; color:#55605a; cursor:pointer; width:100%; font-family:inherit;">+ Ajouter un champ</button>
+
+    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+      <a href="{{ url_for('utilisateurs.liste') }}" class="btn-secondary" style="width:auto; padding:10px 18px; text-decoration:none; display:inline-flex; align-items:center;">Annuler</a>
+      <button type="submit" class="btn-primary" style="width:auto; padding:10px 18px; background:#4a7c59; color:#fff;">Créer l'utilisateur</button>
+    </div>
+
+  </form>
+</div>
+
+<script>
+// Lignes "Champs personnalisés" ajoutées dynamiquement — pas de framework,
+// juste deux inputs texte (nom/valeur) mappés vers champs_perso (JSONB)
+// côté serveur (voir routes/utilisateurs.py : champ_perso_nom / champ_perso_valeur).
+document.getElementById('cf-add').addEventListener('click', function () {
+  var row = document.createElement('div');
+  row.className = 'cf-row';
+  row.innerHTML =
+    '<input type="text" name="champ_perso_nom" placeholder="Nom du champ (ex. Taille T-shirt)">' +
+    '<input type="text" name="champ_perso_valeur" placeholder="Valeur">' +
+    '<button type="button" class="linkbtn cf-remove"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>';
+  document.getElementById('cf-list').appendChild(row);
+  row.querySelector('.cf-remove').addEventListener('click', function () { row.remove(); });
+});
+</script>
+
+{% endblock %}

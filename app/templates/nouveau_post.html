@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}Nouveau post — {{ projet.code }}_{{ projet.nom }} — Kairos{% endblock %}
+{% block body %}
+
+<div class="subbar">
+  <div class="subbar-inner">
+    <div style="font-size:12.5px; color:#7c8780; display:flex; align-items:center; gap:6px; flex-shrink:0;">
+      <a href="{{ url_for('projets.liste') }}" style="color:#7c8780; font-weight:600;">Projets</a>
+      <span>›</span>
+      <a href="{{ url_for('projets.detail', projet_id=projet.id) }}" style="color:#7c8780; font-weight:600;">{{ projet.code }}_{{ projet.nom }}</a>
+      <span>›</span>
+    </div>
+    <span style="font-size:14px; font-weight:700;">Nouveau post</span>
+  </div>
+</div>
+
+<div style="max-width:640px; margin:24px auto 60px; padding:0 32px;">
+  <div class="card">
+
+    <!-- Sélecteur Tâche / Information / Requête — CSS pur, voir app.css -->
+    <input type="radio" id="intent-tache" name="intent-toggle" class="composer-radio" {{ 'checked' if intent == 'tache' }}>
+    <input type="radio" id="intent-information" name="intent-toggle" class="composer-radio" {{ 'checked' if intent == 'information' }}>
+    <input type="radio" id="intent-requete" name="intent-toggle" class="composer-radio" {{ 'checked' if intent == 'requete' }}>
+
+    <div class="seg">
+      <label for="intent-tache">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        Tâche
+      </label>
+      <label for="intent-information">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M11 11.5h1v4.5"/></svg>
+        Information
+      </label>
+      <label for="intent-requete">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg>
+        Requête
+      </label>
+    </div>
+
+    <div class="intent-panels">
+
+      <!-- Panneau Tâche -->
+      <div class="intent-panel panel-tache">
+        <form method="post" action="{{ url_for('projets.creer_tache', projet_id=projet.id) }}">
+          {% if parent_post_id %}<input type="hidden" name="parent_post_id" value="{{ parent_post_id }}">{% endif %}
+          <div class="form-row">
+            <label for="titre-tache">Titre de la tâche</label>
+            <input type="text" id="titre-tache" name="titre" placeholder="Ex. Note de calcul EXE lot GO" required autofocus>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-row">
+              <label for="echeance-tache">Échéance</label>
+              <input type="date" id="echeance-tache" name="date_echeance">
+            </div>
+            <div class="form-row">
+              <label for="type-deadline-tache">Type de deadline</label>
+              <select id="type-deadline-tache" name="type_deadline">
+                <option value="rendu_client">Rendu client</option>
+                <option value="interne">Interne</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <label for="intervenants-tache">Intervenant(s) <span style="font-weight:400; color:#9aa39c;">— optionnel</span></label>
+            <select id="intervenants-tache" name="intervenants" multiple data-chip-select data-chip-filter="1" data-chip-filter-placeholder="Rechercher une personne…">
+              {% for u in utilisateurs_actifs %}
+                <option value="{{ u.id }}">{{ u.prenom }} {{ u.nom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid #eef0ec;">
+            <a href="{{ url_for('projets.detail', projet_id=projet.id) }}" class="btn-secondary" style="width:auto; padding:9px 16px;">Annuler</a>
+            <button type="submit" class="btn-primary" style="width:auto; padding:9px 18px; background:#4a7c59; color:#fff;">Publier la tâche</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Panneau Information — post hors-projet (étape 2), aperçu uniquement -->
+      <div class="intent-panel panel-information">
+        <div class="form-row">
+          <label>Contenu de l'information</label>
+          <textarea placeholder="Ex. Le bureau sera fermé le 25 pour jour férié…" disabled></textarea>
+        </div>
+        <div class="form-row" style="margin-bottom:4px;">
+          <label>Destinataires <span style="font-weight:400; color:#9aa39c;">— une ou plusieurs équipes</span></label>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            {% for eq in ("Midgard", "URBS", "SS", "Q", "IPCO", "Toutes les équipes") %}
+              <span class="pill pill-sm" style="background:#f2f4f0; color:#9aa39c;">{{ eq }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        <div style="margin-top:14px; background:#f2f4f0; border-radius:10px; padding:12px 14px; font-size:12px; color:#7c8780; line-height:1.5;">
+          Les posts "Information" (annonces ciblées sur une ou plusieurs équipes, indépendantes des projets) arrivent à l'étape 2 — pas encore publiables ici. Aperçu du composeur uniquement.
+        </div>
+        <div style="display:flex; justify-content:flex-end; margin-top:14px; padding-top:14px; border-top:1px solid #eef0ec;">
+          <a href="{{ url_for('projets.detail', projet_id=projet.id) }}" class="btn-secondary" style="width:auto; padding:9px 16px;">Retour</a>
+        </div>
+      </div>
+
+      <!-- Panneau Requête -->
+      <div class="intent-panel panel-requete">
+        <form method="post" action="{{ url_for('posts.creer') }}" enctype="multipart/form-data">
+          <input type="hidden" name="next" value="{{ url_for('projets.detail', projet_id=projet.id) }}">
+          <input type="hidden" name="projet_id" value="{{ projet.id }}">
+          <input type="hidden" name="type_code" value="requete">
+          {% if parent_post_id %}<input type="hidden" name="parent_post_id" value="{{ parent_post_id }}">{% endif %}
+
+          <div class="form-row">
+            <label for="objet-requete">Objet de la requête</label>
+            <input type="text" id="objet-requete" name="objet" placeholder="Ex. Demande de plans mis à jour" required>
+          </div>
+          <div class="form-row">
+            <label for="description-requete">Description <span style="font-weight:400; color:#9aa39c;">— optionnel</span></label>
+            <textarea id="description-requete" name="contenu" placeholder="Détaillez la demande…"></textarea>
+          </div>
+          <div class="form-row">
+            <label for="mentions-requete">Personnes taguées <span style="font-weight:400; color:#9aa39c;">— optionnel</span></label>
+            <select id="mentions-requete" name="mentions" multiple data-chip-select data-chip-filter="1" data-chip-filter-placeholder="Rechercher une personne…">
+              {% for u in utilisateurs_actifs %}
+                <option value="{{ u.id }}">{{ u.prenom }} {{ u.nom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="lien-requete">Lien <span style="font-weight:400; color:#9aa39c;">— ex. dossier sur le NAS interne, optionnel</span></label>
+            <input type="text" id="lien-requete" name="lien" placeholder="\\NAS\Projets\{{ projet.code }}\...">
+          </div>
+          <div class="form-row" style="margin-bottom:0;">
+            <label>Pièce jointe <span style="font-weight:400; color:#9aa39c;">— optionnel</span></label>
+            <div class="dropzone" data-dropzone>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+              <span class="dropzone-label" data-dropzone-label>Glisser un fichier ici, ou cliquer pour parcourir</span>
+              <input type="file" name="fichier" class="dropzone-input">
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid #eef0ec;">
+            <a href="{{ url_for('projets.detail', projet_id=projet.id) }}" class="btn-secondary" style="width:auto; padding:9px 16px;">Annuler</a>
+            <button type="submit" class="btn-primary" style="width:auto; padding:9px 18px; background:#4a7c59; color:#fff;">Publier la requête</button>
+          </div>
+        </form>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// Retour visuel du glisser-déposer (voir maquette) : le vrai <input
+// type=file> couvre toute la zone, donc le clic fonctionne nativement ;
+// ce script se contente d'afficher le nom du fichier choisi/déposé et de
+// pousser les fichiers déposés dans l'input pour que le formulaire les
+// envoie normalement.
+document.querySelectorAll('[data-dropzone]').forEach(function (dz) {
+  var input = dz.querySelector('input[type="file"]');
+  var label = dz.querySelector('[data-dropzone-label]');
+  var original = label.textContent;
+
+  function showFile(name) {
+    label.textContent = name;
+    dz.classList.add('has-file');
+  }
+
+  input.addEventListener('change', function () {
+    if (input.files && input.files[0]) {
+      showFile(input.files[0].name);
+    } else {
+      dz.classList.remove('has-file');
+      label.textContent = original;
+    }
+  });
+
+  dz.addEventListener('dragover', function (e) {
+    e.preventDefault();
+    dz.classList.add('dragover');
+  });
+  dz.addEventListener('dragleave', function () {
+    dz.classList.remove('dragover');
+  });
+  dz.addEventListener('drop', function (e) {
+    e.preventDefault();
+    dz.classList.remove('dragover');
+    var files = e.dataTransfer && e.dataTransfer.files;
+    if (files && files[0]) {
+      input.files = files;
+      showFile(files[0].name);
+    }
+  });
+});
+</script>
+
+{% endblock %}

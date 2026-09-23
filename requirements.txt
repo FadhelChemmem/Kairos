@@ -1,0 +1,11 @@
+# Kairos — dépendances Python
+#
+# Volontairement peu nombreuses : Flask + un pilote Postgres + un moteur
+# de templates (Jinja2 est inclus avec Flask) + htmx est du JS servi tel
+# quel (pas une dépendance Python). Aucun ORM : le schéma SQL fait
+# autorité (schema.sql), voir db.py.
+
+Flask==3.0.3
+psycopg2-binary==2.9.9
+python-dotenv==1.0.1
+gunicorn==22.0.0

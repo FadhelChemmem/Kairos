@@ -1,0 +1,141 @@
+{# Attend dans le contexte : post, show_projet (bool), next_url #}
+{% import "partials/avatar.html" as avatarm %}
+<div class="card">
+  <div style="display:flex; align-items:center; gap:10px;">
+    {{ avatarm.avatar(post.auteur_id, post.auteur_prenom, post.auteur_nom, post.auteur_avatar_chemin, css_class='avatar avatar-lg') }}
+    <div style="flex:1; min-width:0;">
+      {% if post.est_creation_tache %}
+        <div style="font-size:13.5px;"><span style="font-weight:700;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</span> a créé une tâche</div>
+      {% elif post.est_cloture_tache %}
+        <div style="font-size:13.5px;"><span style="font-weight:700;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</span> a terminé une tâche</div>
+      {% else %}
+        <div style="font-size:13.5px; font-weight:700;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</div>
+      {% endif %}
+      <div style="font-size:11.5px; color:#7c8780;">
+        {% if show_projet %}{{ post.projet_code }}_{{ post.projet_nom }} · {% endif %}{{ post.created_at|il_y_a }}
+      </div>
+    </div>
+    {% if post.est_creation_tache %}
+      <span class="pill" style="background:{{ post_tache_pill.bg }}; color:{{ post_tache_pill.fg }};">{{ post_tache_pill.label }}</span>
+    {% elif post.est_cloture_tache %}
+      {% set st = tache_etat_style('termine') %}
+      <span class="pill" style="background:{{ st.bg }}; color:{{ st.fg }};">{{ st.label }}</span>
+    {% else %}
+      {% set st = post_type_style(post.type_code) %}
+      <span class="pill" style="background:{{ st.bg }}; color:{{ st.fg }};">{{ st.label }}</span>
+    {% endif %}
+  </div>
+
+  {% if post.est_creation_tache or post.est_cloture_tache %}
+    <div style="font-size:13.5px; line-height:1.55; margin:12px 0 10px 46px; font-weight:600;">{{ post.contenu or post.tache_titre }}</div>
+  {% else %}
+    <div style="font-size:13.5px; line-height:1.55; margin:12px 0 12px 46px;">{{ post.contenu }}</div>
+  {% endif %}
+
+  {% if post.mentions %}
+    <div style="display:flex; flex-wrap:wrap; gap:6px; margin:0 0 8px 46px;">
+      {% for m in post.mentions %}
+        <span class="pill pill-sm" style="background:#f2f4f0; color:#55605a;">@{{ m.prenom }} {{ m.nom }}</span>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if post.lien %}
+    <a href="{{ post.lien }}" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:6px; margin:0 0 6px 46px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7c8780" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
+      <span style="font-size:12px; color:#7c8780; word-break:break-all;">{{ post.lien }}</span>
+    </a>
+  {% endif %}
+
+  {% for pj in post.pieces_jointes %}
+    <a href="{{ url_for('fichiers.download_post', piece_id=pj.id) }}" style="display:flex; align-items:center; gap:6px; margin:0 0 6px 46px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7c8780" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+      <span style="font-size:12px; color:#7c8780;">{{ pj.nom_fichier }}</span>
+    </a>
+  {% endfor %}
+
+  {% if post.parent_post_id %}
+    <div style="margin:0 0 12px 46px; background:#f7f8f6; border:1px solid #eef0ec; border-radius:12px; padding:12px 14px;">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7c8780" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h6a3 3 0 0 1 3 3v3"/><path d="M13 7l3 3-3 3"/><path d="M7 17h4"/></svg>
+        <span style="font-size:11.5px; color:#7c8780;">{{ post.parent_auteur_prenom }} {{ post.parent_auteur_nom }}</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        {% if post.parent_tache_titre %}
+          <span class="pill pill-sm" style="background:{{ post_tache_pill.bg }}; color:{{ post_tache_pill.fg }};">{{ post_tache_pill.label }}</span>
+          <span style="font-size:13px; font-weight:600;">{{ post.parent_tache_titre }}</span>
+        {% else %}
+          {% set pst = post_type_style(post.parent_type_code) %}
+          <span class="pill pill-sm" style="background:{{ pst.bg }}; color:{{ pst.fg }};">{{ pst.label }}</span>
+          <span style="font-size:13px; font-weight:600;">{{ post.parent_contenu }}</span>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="divider"></div>
+  <div style="display:flex; align-items:center; gap:6px; margin-left:46px;">
+    <form method="post" action="{{ url_for('posts.reagir', post_id=post.id) }}" style="display:inline;">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <input type="hidden" name="reaction_code" value="pouce">
+      <button type="submit" {% if post.reacteurs %}title="{% for r in post.reacteurs %}{{ r.prenom }} {{ r.nom }}{% if not loop.last %}, {% endif %}{% endfor %}"{% endif %} style="display:flex; align-items:center; gap:5px; background:{{ '#f2f4f0' if post.ma_reaction else 'transparent' }}; border:none; border-radius:8px; padding:6px 10px; font-size:12px; font-weight:600; color:#55605a; cursor:pointer;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> {{ post.nb_reactions }}
+      </button>
+    </form>
+    <details style="display:inline;">
+      <summary style="list-style:none; cursor:pointer; display:flex; align-items:center; gap:5px; padding:6px 10px; font-size:12px; font-weight:600; color:#7c8780;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="4"/><path d="M8.5 17 6.5 20v-3"/></svg> {{ post.nb_commentaires }} commentaire{{ 's' if post.nb_commentaires != 1 else '' }}
+      </summary>
+      <div class="post-comments">
+        {% for c in post.commentaires %}
+          <div class="post-comment">
+            {{ avatarm.avatar(c.auteur_id, c.auteur_prenom, c.auteur_nom, c.auteur_avatar_chemin, css_class='avatar avatar-sm', style='flex-shrink:0;') }}
+            <div class="post-comment-body">
+              <span style="font-weight:700;">{{ c.auteur_prenom }} {{ c.auteur_nom }}</span> {{ c.contenu }}
+            </div>
+          </div>
+        {% else %}
+          <div style="font-size:12px; color:#9aa39c;">Aucun commentaire pour l'instant.</div>
+        {% endfor %}
+      </div>
+      <form method="post" action="{{ url_for('posts.commenter', post_id=post.id) }}" class="post-comment-form">
+        <input type="hidden" name="next" value="{{ next_url }}">
+        <input type="text" name="contenu" placeholder="Écrire un commentaire…" required style="flex:1;">
+        <button type="submit" class="btn-secondary" style="width:auto; padding:7px 12px;">Envoyer</button>
+      </form>
+    </details>
+    <details style="margin-left:auto;">
+      <summary class="linkbtn" title="Joindre un fichier" style="list-style:none; cursor:pointer;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+      </summary>
+      <form method="post" action="{{ url_for('fichiers.upload_post', post_id=post.id) }}" enctype="multipart/form-data" style="display:flex; gap:6px; margin-top:8px; min-width:200px;">
+        <input type="hidden" name="next" value="{{ next_url }}">
+        <input type="file" name="fichier" style="flex:1; font-size:11px;">
+        <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">+</button>
+      </form>
+    </details>
+    <details style="margin-left:2px; position:relative;">
+      <summary class="linkbtn" title="Créer un post lié" style="list-style:none; cursor:pointer;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h6a3 3 0 0 1 3 3v3"/><path d="M13 7l3 3-3 3"/><path d="M7 17h4"/></svg>
+      </summary>
+      {# Rebond : un rebond est lui-même un post (Tâche, Information ou
+         Requête liée à ce post ET à son projet) — jamais un simple champ
+         texte libre (retour Fadhel, 2026-09-19). Ouvre la fenêtre flottante
+         partagée (voir partials/post_dialog.html) préremplie avec le
+         projet et le post d'origine, sans quitter la page. #}
+      <div style="position:absolute; right:0; top:calc(100% + 4px); background:#fff; border:1px solid #e7e9e4; border-radius:10px; padding:10px; min-width:220px; box-shadow:0 4px 12px rgba(20,30,25,0.08); z-index:10;">
+        <div style="display:flex; gap:6px;">
+          <button type="button" class="btn-secondary" style="width:auto; flex:1; padding:7px 4px; text-align:center; font-size:11.5px;"
+                  data-open-post-dialog data-intent="tache" data-parent-post-id="{{ post.id }}"
+                  data-projet-id="{{ post.projet_id }}" data-projet-label="{{ post.projet_code }}_{{ post.projet_nom }}">+ Tâche</button>
+          <button type="button" class="btn-secondary" style="width:auto; flex:1; padding:7px 4px; text-align:center; font-size:11.5px;"
+                  data-open-post-dialog data-intent="information" data-parent-post-id="{{ post.id }}"
+                  data-projet-id="{{ post.projet_id }}" data-projet-label="{{ post.projet_code }}_{{ post.projet_nom }}">+ Info</button>
+          <button type="button" class="btn-secondary" style="width:auto; flex:1; padding:7px 4px; text-align:center; font-size:11.5px;"
+                  data-open-post-dialog data-intent="requete" data-parent-post-id="{{ post.id }}"
+                  data-projet-id="{{ post.projet_id }}" data-projet-label="{{ post.projet_code }}_{{ post.projet_nom }}">+ Requête</button>
+        </div>
+      </div>
+    </details>
+  </div>
+</div>

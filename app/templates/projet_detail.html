@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% import "partials/avatar.html" as avatarm %}
+{% block title %}{{ projet.code }}_{{ projet.nom }} — Kairos{% endblock %}
+{% block body %}
+
+{% set petat = projet_etat_style(projet.etat) %}
+
+<!-- Sous-en-tête sticky : le nom du projet reste visible au défilement -->
+<div class="subbar">
+  <div class="subbar-inner">
+    <div style="font-size:12.5px; color:#7c8780; display:flex; align-items:center; gap:6px; flex-shrink:0;">
+      <a href="{{ url_for('projets.liste') }}" style="color:#7c8780; font-weight:600;">Projets</a>
+      <span>›</span>
+    </div>
+    <span style="font-size:14px; font-weight:700;">{{ projet.code }}_{{ projet.nom }}</span>
+    <span class="pill" style="background:{{ petat.bg }}; color:{{ petat.fg }}; font-size:11px; padding:2px 8px;">{{ petat.label }}</span>
+  </div>
+</div>
+
+<!-- En-tête projet -->
+<div style="max-width:1360px; margin:0 auto; padding:20px 32px 0;">
+  <div class="card">
+    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:20px; flex-wrap:wrap;">
+      <div style="min-width:0;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+          <span style="font-size:20px; font-weight:800; letter-spacing:-0.01em;">{{ projet.code }}_{{ projet.nom }}</span>
+          <span class="pill" style="background:#f2f4f0; color:#55605a;">{{ projet.phase }}</span>
+          <span class="pill" style="background:{{ petat.bg }}; color:{{ petat.fg }};">{{ petat.label }}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; font-size:12.5px; color:#7c8780;">
+          <span>Lot {% for l in lots %}<strong style="color:#55605a;">{{ l.code }}</strong>{% if not loop.last %} · {% endif %}{% endfor %}</span>
+          <span>{% if projet.date_debut %}Début {{ projet.date_debut.strftime('%d %b %Y') }}{% endif %}{% if projet.date_fin %} → Échéance {{ projet.date_fin.strftime('%d %b %Y') }}{% endif %}</span>
+          {% if projet.phase_liee_id %}
+            <a href="{{ url_for('projets.detail', projet_id=projet.phase_liee_id) }}" style="font-weight:600;">Phase liée : {{ projet.phase_liee_code }}_{{ projet.phase_liee_nom }}</a>
+          {% endif %}
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:22px; flex-shrink:0;">
+        <div style="text-align:right;">
+          <div style="font-size:20px; font-weight:800; line-height:1;">{{ projet.heures_cumulees|default(0, true)|round(1) }} h</div>
+          <div style="font-size:11px; color:#7c8780; margin-top:2px;">cumulées</div>
+        </div>
+        <div style="width:1px; height:32px; background:#eef0ec;"></div>
+        <div>
+          <div style="font-size:10.5px; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:5px; text-align:right;">Chef de projet</div>
+          <div style="display:flex; align-items:center; gap:6px; justify-content:flex-end;">
+            <span style="font-size:12.5px; font-weight:600;">{{ projet.chef_prenom }} {{ projet.chef_nom }}</span>
+            {{ avatarm.avatar(projet.chef_projet_id, projet.chef_prenom, projet.chef_nom, projet.chef_avatar_chemin, css_class='avatar avatar-md') }}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="page-body">
+
+  <!-- Colonne gauche -->
+  <div class="col">
+    <div class="card">
+      <div style="font-size:14px; font-weight:700; margin-bottom:12px;">Informations</div>
+      <div style="display:flex; flex-direction:column; gap:10px; font-size:12.5px;">
+        <div style="display:flex; justify-content:space-between;"><span style="color:#7c8780;">Phase</span><span style="font-weight:600;">{{ projet.phase }}</span></div>
+        <div style="display:flex; justify-content:space-between;"><span style="color:#7c8780;">Lot</span><span style="font-weight:600;">{{ lots|map(attribute='code')|join(' · ') }}</span></div>
+        <div style="display:flex; justify-content:space-between;"><span style="color:#7c8780;">État</span><span style="font-weight:600; color:{{ petat.fg }};">{{ petat.label }}</span></div>
+        {% if projet.date_debut %}<div style="display:flex; justify-content:space-between;"><span style="color:#7c8780;">Début</span><span style="font-weight:600;">{{ projet.date_debut.strftime('%d/%m/%Y') }}</span></div>{% endif %}
+        {% if projet.date_fin %}<div style="display:flex; justify-content:space-between;"><span style="color:#7c8780;">Échéance</span><span style="font-weight:600;">{{ projet.date_fin.strftime('%d/%m/%Y') }}</span></div>{% endif %}
+      </div>
+    </div>
+
+    {% if peut_gerer %}
+    <div class="card card-cta">
+      <div style="font-size:13px; font-weight:700; color:#fff; margin-bottom:4px;">Nouveau post</div>
+      <div style="font-size:12px; color:#d6efe8; margin-bottom:12px; line-height:1.4;">Créer une tâche, une information ou une requête sur ce projet.</div>
+      <button type="button" data-open-post-dialog data-intent="tache" class="btn-primary" style="display:block; width:100%; text-align:center; border:none; cursor:pointer; font-family:inherit;">+ Nouveau post</button>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Centre : tâches + fil -->
+  <div class="col-center">
+
+    <div class="card" style="padding:16px 18px 6px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; gap:12px; flex-wrap:wrap;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:14px; font-weight:700;">Tâches</span>
+          <span style="font-size:12px; color:#7c8780;">{{ nb_taches }} tâche{{ 's' if nb_taches != 1 else '' }} · {{ nb_en_cours }} en cours</span>
+        </div>
+        {% if peut_gerer %}
+        <div style="display:flex; align-items:center; gap:6px;">
+          <button type="button" data-open-post-dialog data-intent="tache" class="quickadd quickadd-primary" title="Créer une tâche sur ce projet">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Tâche
+          </button>
+          <button type="button" data-open-post-dialog data-intent="information" class="quickadd" title="Poster une information (visible hors de ce projet — étape 2)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Information
+          </button>
+          <button type="button" data-open-post-dialog data-intent="requete" class="quickadd" title="Créer une requête sur ce projet">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Requête
+          </button>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="thead">
+        <span>Tâche</span><span>Intervenant</span><span>État</span><span>Échéance</span><span>Heures</span><span></span>
+      </div>
+
+      {% for t in taches %}
+        {% set tst = tache_etat_style(t.etat) %}
+        <div class="taskrow">
+          <span style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; {% if t.etat in ('termine','abandonne') %}color:#9aa39c;{% endif %}">{{ t.titre }}</span>
+          <div class="avatar-stack" style="display:flex;">
+            {% for iv in t.intervenants %}
+              {{ avatarm.avatar(iv.id, iv.prenom, iv.nom, iv.avatar_chemin, css_class='avatar avatar-sm', titre=(iv.prenom ~ ' ' ~ iv.nom)) }}
+            {% endfor %}
+          </div>
+          <span class="pill" style="background:{{ tst.bg }}; color:{{ tst.fg }};">{{ tst.label }}</span>
+          <span style="font-size:12px; color:{{ '#9aa39c' if t.etat in ('termine','abandonne') else '#55605a' }};">
+            {% if t.date_echeance %}{{ t.date_echeance.strftime('%d %b') }}{% endif %}
+            {% if t.type_deadline == 'interne' %}<span style="color:#9aa39c;">#interne</span>{% endif %}
+          </span>
+          <span style="font-size:12px; color:#7c8780;">{{ t.heures_cumulees|default(0, true)|round(1) }} h</span>
+          <details>
+            <summary style="list-style:none; cursor:pointer;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9aa39c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg>
+            </summary>
+            <div style="position:relative;">
+              <div style="position:absolute; right:0; top:4px; background:#fff; border:1px solid #e7e9e4; border-radius:10px; padding:10px; width:220px; box-shadow:0 4px 12px rgba(20,30,25,0.08); z-index:10;">
+                {% if t.etat != 'termine' %}
+                <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" style="display:flex; gap:6px; margin-bottom:8px;">
+                  <select name="etat" style="flex:1;">
+                    <option value="en_cours" {{ 'selected' if t.etat == 'en_cours' }}>En cours</option>
+                    <option value="bloque" {{ 'selected' if t.etat == 'bloque' }}>Bloqué</option>
+                    <option value="verifie" {{ 'selected' if t.etat == 'verifie' }}>Vérifié</option>
+                    <option value="arret" {{ 'selected' if t.etat == 'arret' }}>Arrêt</option>
+                    <option value="abandonne" {{ 'selected' if t.etat == 'abandonne' }}>Abandonné</option>
+                  </select>
+                  <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">OK</button>
+                </form>
+                <form method="post" action="{{ url_for('projets.cloturer_tache', projet_id=projet.id, tache_id=t.id) }}">
+                  <label>Clôturer avec le tag</label>
+                  <select name="type_code" style="margin-bottom:6px;">
+                    <option value="envoi">Envoi</option>
+                    <option value="reponse">Réponse</option>
+                    <option value="question">Question</option>
+                    <option value="requete">Requête</option>
+                  </select>
+                  <button type="submit" class="btn-primary" style="background:#4a7c59; color:#fff;">Terminé</button>
+                </form>
+                {% else %}
+                  <span style="font-size:12px; color:#7c8780;">Tâche terminée le {{ t.date_fin.strftime('%d/%m/%Y') if t.date_fin }}</span>
+                {% endif %}
+
+                <div class="divider" style="margin-left:0;"></div>
+                <div style="font-size:11px; font-weight:700; color:#9aa39c; text-transform:uppercase; margin-bottom:6px;">Pièces jointes</div>
+                {% for pj in t.pieces_jointes %}
+                  <a href="{{ url_for('fichiers.download_tache', piece_id=pj.id) }}" style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:6px;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7c8780" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+                    {{ pj.nom_fichier }}
+                  </a>
+                {% else %}
+                  <div style="font-size:11.5px; color:#9aa39c; margin-bottom:6px;">Aucune.</div>
+                {% endfor %}
+                <form method="post" action="{{ url_for('fichiers.upload_tache', tache_id=t.id) }}" enctype="multipart/form-data" style="display:flex; gap:6px;">
+                  <input type="hidden" name="next" value="{{ request.path }}">
+                  <input type="file" name="fichier" style="flex:1; font-size:11px;">
+                  <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">+</button>
+                </form>
+              </div>
+            </div>
+          </details>
+        </div>
+      {% else %}
+        <div style="padding:16px 4px; font-size:12.5px; color:#7c8780;">Aucune tâche pour l'instant.</div>
+      {% endfor %}
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:14px;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div class="search-mini" style="flex:1;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b968f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span>Filtrer les posts de ce projet…</span>
+        </div>
+        {% if peut_gerer %}
+        <button type="button" data-open-post-dialog data-intent="tache" class="btn-secondary" style="width:auto; padding:10px 16px; flex-shrink:0;">+ Nouveau post</button>
+        {% endif %}
+      </div>
+
+      {% for post in fil %}
+        {% with post=post, show_projet=false, next_url=request.path %}
+          {% include "partials/post_card.html" %}
+        {% endwith %}
+      {% else %}
+        <div class="card" style="text-align:center; color:#7c8780; font-size:13px;">Aucun post pour l'instant.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Colonne droite -->
+  <div class="col">
+    <div class="card">
+      <div style="font-size:14px; font-weight:700; margin-bottom:12px;">Intervenants</div>
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        {% for iv in intervenants %}
+          <div style="display:flex; align-items:center; gap:10px;">
+            {{ avatarm.avatar(iv.id, iv.prenom, iv.nom, iv.avatar_chemin, css_class='avatar avatar-md') }}
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:12.5px; font-weight:600;">{{ iv.prenom }} {{ iv.nom }}</div>
+              <div style="font-size:11px; color:#7c8780;">{{ iv.role_label }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+      {% if peut_gerer %}
+      <div class="divider" style="margin-left:0;"></div>
+      <details>
+        <summary class="btn-secondary" style="list-style:none; cursor:pointer; text-align:center;">+ Ajouter un intervenant</summary>
+        <form method="post" action="{{ url_for('projets.ajouter_intervenant', projet_id=projet.id) }}" style="margin-top:10px; display:flex; gap:6px;">
+          <select name="utilisateur_id" style="flex:1;">
+            {% for u in utilisateurs_actifs %}
+              <option value="{{ u.id }}">{{ u.prenom }} {{ u.nom }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn-secondary" style="width:auto; padding:8px 12px;">Ajouter</button>
+        </form>
+      </details>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+{% with projet_id=projet.id, projets_choix=None, next_url=request.path %}
+  {% include "partials/post_dialog.html" %}
+{% endwith %}
+{% endblock %}

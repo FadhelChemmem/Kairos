@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Réinitialiser le mot de passe — Kairos{% endblock %}
+{% block body %}
+<div class="login-wrap">
+  <div class="login-blob login-blob-a"></div>
+  <div class="login-blob login-blob-b"></div>
+
+  <form method="post" class="card login-card">
+    <div style="display:flex; flex-direction:column; align-items:center; margin-bottom:28px;">
+      <img src="{{ url_for('static', filename='img/kairos-logo.png') }}" alt="Kairos" style="height:40px; width:auto; display:block; margin-bottom:12px;">
+      <h1 style="font-size:16px; margin:0; text-align:center;">Nouveau mot de passe</h1>
+    </div>
+
+    <div class="form-row" style="margin-bottom:16px;">
+      <label for="mot_de_passe">Nouveau mot de passe</label>
+      <input type="password" id="mot_de_passe" name="mot_de_passe" placeholder="••••••••••" minlength="8" required autofocus>
+    </div>
+    <div class="form-row" style="margin-bottom:20px;">
+      <label for="confirmation">Confirmer le mot de passe</label>
+      <input type="password" id="confirmation" name="confirmation" placeholder="••••••••••" minlength="8" required>
+    </div>
+
+    <button type="submit" class="btn-login">Changer le mot de passe</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Mot de passe oublié — Kairos{% endblock %}
+{% block body %}
+<div class="login-wrap">
+  <div class="login-blob login-blob-a"></div>
+  <div class="login-blob login-blob-b"></div>
+
+  <form method="post" class="card login-card">
+    <div style="display:flex; flex-direction:column; align-items:center; margin-bottom:28px;">
+      <img src="{{ url_for('static', filename='img/kairos-logo.png') }}" alt="Kairos" style="height:40px; width:auto; display:block; margin-bottom:12px;">
+      <h1 style="font-size:16px; margin:0; text-align:center;">Mot de passe oublié</h1>
+      <p style="font-size:12.5px; color:#7c8780; text-align:center; margin:8px 0 0;">
+        Indiquez votre adresse e-mail : si un compte existe, un lien de
+        réinitialisation valable 1 heure vous sera envoyé.
+      </p>
+    </div>
+
+    <div class="form-row" style="margin-bottom:20px;">
+      <label for="email">Adresse e-mail</label>
+      <input type="email" id="email" name="email" placeholder="vous@exemple.com" value="{{ request.form.email or '' }}" required autofocus>
+    </div>
+
+    <button type="submit" class="btn-login">Envoyer le lien</button>
+
+    <div style="display:flex; justify-content:center; margin-top:18px;">
+      <a class="forgot-link" href="{{ url_for('auth.login') }}">Retour à la connexion</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

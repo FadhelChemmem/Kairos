@@ -1,0 +1,26 @@
+name: Tests
+
+# Recommandation "architecte logiciel" (2026-09-20) : jusqu'ici, rien ne
+# vérifiait qu'un push passait les tests avant d'aller en prod (docker
+# compose up --build directement sur le NAS). Ce workflow tourne sur
+# GitHub, gratuitement pour un repo, à chaque push et pull request.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer les dépendances
+        run: pip install -r requirements.txt
+
+      - name: Lancer les tests
+        run: python3 -m unittest discover -s tests -v

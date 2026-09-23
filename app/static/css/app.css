@@ -1,0 +1,471 @@
+/* Kairos — styles partagés, repris à l'identique des maquettes
+   validées avec Fadhel (Main.dc.html / Projet.dc.html / Projets.dc.html /
+   Deadlines.dc.html). Les couleurs/tailles ne sont pas des choix
+   arbitraires : elles viennent directement des artboards approuvés. */
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #f5f6f3;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  color: #2b2b26;
+}
+
+a { color: #4a7c59; text-decoration: none; }
+a:hover { color: #14513b; }
+
+.card {
+  background: #ffffff;
+  border: 1px solid #e7e9e4;
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: 0 1px 2px rgba(20, 30, 25, 0.04);
+}
+
+.card-cta {
+  background: linear-gradient(160deg, #4a7c59, #14513b);
+  border: none;
+}
+
+.avatar {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 999px; color: #ffffff; font-weight: 700;
+  flex-shrink: 0; font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+.avatar-lg { width: 36px; height: 36px; font-size: 13px; }
+.avatar-md { width: 28px; height: 28px; font-size: 11px; }
+.avatar-sm { width: 24px; height: 24px; font-size: 10px; border: 2px solid #fff; }
+.avatar-stack .avatar-sm { margin-left: -6px; }
+.avatar-stack .avatar-sm:first-child { margin-left: 0; }
+
+.pill {
+  display: inline-flex; align-items: center; padding: 3px 10px;
+  border-radius: 999px; font-size: 12px; font-weight: 600;
+}
+.pill-sm { font-size: 10.5px; padding: 2px 7px; }
+
+.iconbtn {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 9px; color: #55605a;
+  background: transparent; border: none; cursor: pointer; position: relative;
+  text-decoration: none;
+}
+.iconbtn:hover { background: #f2f4f0; }
+
+.linkbtn {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; background: transparent; border: none;
+  border-radius: 8px; color: #7c8780; cursor: pointer;
+}
+.linkbtn:hover { background: #f2f4f0; }
+
+/* --- Top bar (sticky, identique sur toutes les pages connectées) ---
+   Condensée le 2026-09-19 (retour Fadhel, comparaison avec LinkedIn) :
+   moins haute, icônes plus rapprochées et légèrement plus petites — un
+   premier resserrement, pas une refonte complète du visuel. */
+.topbar {
+  position: sticky; top: 0; z-index: 50; height: 56px;
+  background: #ffffff; border-bottom: 1px solid #e7e9e4;
+}
+/* Aligné sur .page-body / .subbar-inner (2026-09-19, retour Fadhel) : la
+   barre elle-même reste pleine largeur (fond blanc jusqu'aux bords), mais
+   son contenu (logo, recherche, icônes) est contraint à la même largeur
+   que les trois colonnes en dessous, pour que tout soit bien aligné. */
+.topbar-inner {
+  max-width: 1360px; margin: 0 auto; height: 100%; box-sizing: border-box;
+  display: flex; align-items: center; gap: 18px; padding: 0 32px;
+}
+.topbar img { height: 24px; width: auto; display: block; }
+.topbar-search {
+  flex: 1; display: flex; justify-content: center;
+}
+.topbar-search-box {
+  width: 100%; max-width: 420px; display: flex; align-items: center; gap: 8px;
+  background: #f2f4f0; border-radius: 10px; padding: 7px 13px;
+}
+.topbar-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+
+/* --- Sous-en-tête sticky (page projet : nom du projet toujours visible) --- */
+.subbar {
+  position: sticky; top: 56px; z-index: 40; background: #ffffff;
+  border-bottom: 1px solid #e7e9e4; box-shadow: 0 2px 6px rgba(20, 30, 25, 0.03);
+}
+.subbar-inner {
+  max-width: 1360px; margin: 0 auto; padding: 12px 32px;
+  display: flex; align-items: center; gap: 12px;
+}
+
+.page-body {
+  max-width: 1360px; margin: 0 auto; padding: 24px 32px 60px;
+  display: grid; grid-template-columns: 252px 1fr 272px; gap: 20px; align-items: start;
+}
+.col { display: flex; flex-direction: column; gap: 16px; }
+.col-center { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+.search-mini {
+  display: flex; align-items: center; gap: 8px; background: #ffffff;
+  border: 1px solid #e7e9e4; border-radius: 11px; padding: 9px 14px;
+}
+.search-mini span { font-size: 13.5px; color: #8b968f; }
+
+.taskrow, .thead {
+  display: grid;
+  grid-template-columns: 1fr 96px 108px 118px 56px 34px;
+  align-items: center; gap: 10px;
+}
+.taskrow { padding: 11px 4px; border-bottom: 1px solid #eef0ec; }
+.taskrow:last-child { border-bottom: none; }
+.thead {
+  padding: 0 4px 8px; font-size: 11px; font-weight: 700; color: #9aa39c;
+  text-transform: uppercase; letter-spacing: 0.03em;
+}
+
+.divider { height: 1px; background: #eef0ec; margin: 0 0 10px 46px; }
+
+/* Flottant, hors du flux du document (2026-09-19, retour Fadhel : la
+   notification "DailyLog enregistré" poussait toute la page vers le bas —
+   "très cheap"). Un vrai toast en position fixe, centré en haut, qui ne
+   déplace plus rien en dessous ; s'efface tout seul (voir le petit script
+   dans base.html) mais reste cliquable pour être fermé plus tôt. */
+.flash-wrap {
+  position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+  z-index: 500; width: calc(100% - 64px); max-width: 480px;
+  display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0;
+  pointer-events: none;
+}
+.flash {
+  padding: 10px 14px; border-radius: 10px; font-size: 13.5px; margin-bottom: 0;
+  box-shadow: 0 6px 20px rgba(20, 30, 25, 0.14); cursor: pointer; pointer-events: auto;
+  animation: flash-in 0.18s ease-out;
+}
+@keyframes flash-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+.flash-error { background: #fdeae4; color: #c23a1a; }
+.flash-success { background: #eaf3ee; color: #14513b; }
+
+.btn-primary {
+  background: #ffffff; color: #14513b; border: none; border-radius: 9px;
+  padding: 9px 0; font-size: 13px; font-weight: 700; cursor: pointer; width: 100%;
+}
+.btn-secondary {
+  background: #f2f4f0; color: #55605a; border: none; border-radius: 9px;
+  padding: 8px 0; font-size: 12.5px; font-weight: 700; cursor: pointer; width: 100%;
+}
+input, select, textarea {
+  font-family: inherit; font-size: 13px; padding: 8px 10px;
+  border: 1px solid #e7e9e4; border-radius: 8px; width: 100%;
+}
+label { font-size: 12px; color: #7c8780; font-weight: 600; display: block; margin-bottom: 4px; }
+.form-row { margin-bottom: 10px; }
+
+.login-wrap {
+  min-height: 100vh; position: relative; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; padding: 32px;
+}
+.login-blob {
+  position: absolute; border-radius: 999px; pointer-events: none;
+}
+.login-blob-a {
+  top: -140px; left: -120px; width: 420px; height: 420px;
+  background: radial-gradient(circle, rgba(74,124,89,0.16), rgba(74,124,89,0) 70%);
+}
+.login-blob-b {
+  bottom: -160px; right: -140px; width: 460px; height: 460px;
+  background: radial-gradient(circle, rgba(234,108,26,0.10), rgba(234,108,26,0) 70%);
+}
+.login-card {
+  width: 400px; max-width: 100%; padding: 44px 40px 36px; position: relative; z-index: 1;
+  border-radius: 22px; border: none;
+  box-shadow: 0 30px 60px rgba(20,30,25,0.10), 0 6px 16px rgba(20,30,25,0.05);
+}
+.login-card .form-row input {
+  padding: 11px 14px; border: 1px solid #e2e6e0; border-radius: 10px;
+  font-size: 14px; background: #fbfcfa; transition: border-color 0.12s, background 0.12s;
+}
+.login-card .form-row input:focus { outline: none; border-color: #4a7c59; background: #ffffff; }
+.btn-login {
+  width: 100%; background: #4a7c59; color: #ffffff; border: none; border-radius: 12px;
+  padding: 13px 0; font-size: 14.5px; font-weight: 700; font-family: inherit; cursor: pointer;
+  box-shadow: 0 8px 20px rgba(74,124,89,0.28); transition: background 0.12s, transform 0.05s;
+}
+.btn-login:hover { background: #14513b; }
+.btn-login:active { transform: translateY(1px); }
+.forgot-link { color: #4a7c59; font-size: 12.5px; font-weight: 600; text-decoration: none; }
+.forgot-link:hover { text-decoration: underline; }
+
+/* --- Boutons rapides "+ Tâche / + Information / + Requête" (page projet) --- */
+.quickadd {
+  display: flex; align-items: center; gap: 5px;
+  border: 1px solid #e7e9e4; border-radius: 8px; background: #ffffff;
+  padding: 6px 11px; font-size: 12px; font-weight: 700; color: #55605a;
+  cursor: pointer; font-family: inherit; white-space: nowrap; text-decoration: none;
+}
+.quickadd:hover { background: #f7f8f6; color: #55605a; }
+.quickadd-primary { background: #4a7c59; border-color: #4a7c59; color: #ffffff; }
+.quickadd-primary:hover { background: #14513b; color: #ffffff; }
+
+/* --- Composeur "Nouveau post" : sélecteur Tâche/Information/Requête en
+   CSS pur (radios cachés + sibling selector), pas de JS nécessaire pour
+   le changement de panneau — cohérent avec le reste de l'appli (peu de
+   JS, principalement des formulaires serveur classiques). --- */
+.composer-radio { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+.seg { display: flex; background: #f2f4f0; border-radius: 10px; padding: 3px; gap: 3px; margin-bottom: 18px; }
+.seg label {
+  flex: 1; text-align: center; padding: 8px 0; border-radius: 8px; cursor: pointer;
+  font-size: 13px; font-weight: 700; color: #7c8780;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.intent-panel { display: none; }
+#intent-tache:checked ~ .seg label[for="intent-tache"],
+#intent-information:checked ~ .seg label[for="intent-information"],
+#intent-requete:checked ~ .seg label[for="intent-requete"] {
+  background: #ffffff; color: #2b2b26; box-shadow: 0 1px 2px rgba(20, 30, 25, 0.08);
+}
+#intent-tache:checked ~ .intent-panels .panel-tache,
+#intent-information:checked ~ .intent-panels .panel-information,
+#intent-requete:checked ~ .intent-panels .panel-requete {
+  display: block;
+}
+
+/* --- Zone de glisser-déposer pour une pièce jointe (composeur) : le vrai
+   <input type=file> couvre toute la zone (opacité 0), donc le clic ET le
+   glisser-déposer fonctionnent tous les deux nativement. --- */
+.dropzone {
+  position: relative; border: 1.5px dashed #d8dcd3; border-radius: 12px;
+  padding: 16px 14px; text-align: center; background: #fafbf9; cursor: pointer;
+  transition: border-color 0.12s, background 0.12s; display: flex; align-items: center;
+  justify-content: center; gap: 8px;
+}
+.dropzone.dragover { border-color: #4a7c59; background: #eaf3ee; }
+.dropzone.has-file { border-style: solid; border-color: #4a7c59; background: #eaf3ee; }
+.dropzone-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.dropzone-label { font-size: 12.5px; color: #7c8780; font-weight: 600; pointer-events: none; }
+.dropzone.has-file .dropzone-label { color: #4a7c59; }
+
+/* --- Fenêtre flottante "Nouveau post" (retour Fadhel, 2026-09-19) : un
+   <dialog> natif réutilisé pour "+ Nouveau post" (page projet / accueil)
+   et pour le rebond, pour ne plus jamais quitter la page — voir
+   partials/post_dialog.html + post-dialog.js. --- */
+.post-dialog {
+  border: none; border-radius: 16px; padding: 20px;
+  width: 92vw; max-width: 560px; max-height: 88vh; overflow-y: auto;
+  box-shadow: 0 20px 50px rgba(20, 30, 25, 0.22);
+}
+.post-dialog::backdrop { background: rgba(20, 30, 25, 0.45); }
+
+/* --- Page Utilisateurs (liste), voir Utilisateurs.dc.html --- */
+.uhead, .urow {
+  display: grid;
+  grid-template-columns: 1.5fr 100px 140px 120px 1.2fr 96px 70px;
+  align-items: center; gap: 12px;
+}
+.uhead { padding: 0 4px 8px; font-size: 11px; font-weight: 700; color: #9aa39c; text-transform: uppercase; letter-spacing: 0.03em; }
+.urow { padding: 13px 4px; border-bottom: 1px solid #eef0ec; }
+.urow:last-child { border-bottom: none; }
+.urow.inactif { opacity: 0.55; }
+
+.toggle {
+  display: inline-flex; align-items: center; width: 36px; height: 20px;
+  border-radius: 999px; padding: 2px; cursor: pointer; flex-shrink: 0; border: none;
+}
+.toggle-knob { width: 16px; height: 16px; border-radius: 999px; background: #ffffff; box-shadow: 0 1px 2px rgba(20, 30, 25, 0.25); }
+
+/* --- Formulaire "Nouvel utilisateur", voir Utilisateur-creer.dc.html --- */
+.section-title {
+  font-size: 11px; font-weight: 700; color: #9aa39c; text-transform: uppercase;
+  letter-spacing: 0.03em; margin: 22px 0 12px; padding-top: 14px; border-top: 1px solid #eef0ec;
+}
+.section-title:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
+.form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px; }
+.radio-opt {
+  display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px;
+  border: 1px solid #e7e9e4; border-radius: 10px; cursor: pointer; margin-bottom: 8px;
+}
+.radio-opt.selected { border-color: #4a7c59; background: #eaf3ee; }
+.radio-opt.disabled { cursor: not-allowed; color: #b6bdb2; }
+.radio-opt.disabled .radio-opt-title { color: #b6bdb2; }
+.radio-opt-title { font-size: 13px; font-weight: 600; }
+.radio-opt-note { font-size: 11.5px; color: #7c8780; margin-top: 2px; }
+.cf-row { display: grid; grid-template-columns: 1fr 1fr 32px; gap: 8px; margin-bottom: 8px; align-items: center; }
+
+/* Bascule "Compte actif" en CSS pur (case à cocher cachée + label stylé),
+   même logique que .composer-radio (pas de JS nécessaire). */
+.actif-toggle-input { position: absolute; opacity: 0; width: 0; height: 0; }
+.actif-toggle-input + .toggle { background: #e7e9e4; justify-content: flex-start; }
+.actif-toggle-input:checked + .toggle { background: #4a7c59; justify-content: flex-end; }
+
+/* --- DailyLog façon curseur, voir DailyLog.dc.html --- */
+.daynav-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 9px; color: #55605a;
+  background: #ffffff; border: 1px solid #e7e9e4; cursor: pointer; text-decoration: none;
+}
+.daynav-btn:hover { background: #f7f8f6; }
+.dayseg {
+  height: 34px; display: flex; align-items: center; justify-content: center;
+  font-size: 11.5px; font-weight: 700; color: #ffffff; white-space: nowrap;
+  overflow: hidden; transition: width 0.15s ease;
+}
+.lrow-dot, .lrow-info { user-select: none; -webkit-user-select: none; touch-action: none; }
+.lrow-track { touch-action: none; }
+.add-suggestion:hover { filter: brightness(0.97); }
+.cal-day {
+  display: flex; align-items: center; justify-content: center;
+  position: relative; width: 32px; height: 32px; border-radius: 8px;
+  font-size: 12px; cursor: pointer; color: #2b2b26; text-decoration: none;
+}
+.cal-day:hover { background: #eef0ec; }
+.cal-dot { position: absolute; bottom: 3px; width: 4px; height: 4px; border-radius: 999px; }
+
+/* --- Vue Deadlines (calendrier/Gantt à défilement horizontal) --- */
+.gantt {
+  display: grid;
+  grid-template-columns: 260px repeat(var(--gantt-days, 21), 58px);
+  min-width: max-content;
+}
+.g-label {
+  position: sticky; left: 0; z-index: 5;
+  background: #ffffff;
+  padding: 10px 14px;
+  border-right: 1px solid #e7e9e4;
+  border-bottom: 1px solid #eef0ec;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.g-daycell {
+  border-bottom: 1px solid #eef0ec;
+  border-right: 1px solid #f2f4f0;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; padding: 6px 0;
+}
+.g-row-track {
+  grid-column: 2 / span var(--gantt-days, 21);
+  display: grid;
+  grid-template-columns: repeat(var(--gantt-days, 21), 58px);
+  border-bottom: 1px solid #eef0ec;
+  position: relative;
+  min-height: 54px;
+}
+.g-bar {
+  display: flex; align-items: center;
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 11.5px; font-weight: 700; color: #ffffff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  align-self: center;
+  height: 26px;
+}
+
+/* --- Cloche de notifications (topbar) + page /notifications --- */
+.iconbtn-badge {
+  position: absolute; top: 3px; right: 3px; min-width: 15px; height: 15px;
+  padding: 0 3px; border-radius: 999px; background: #e3512c; color: #ffffff;
+  font-size: 9.5px; font-weight: 700; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid #ffffff;
+}
+
+.notif-list { display: flex; flex-direction: column; }
+.notif-item {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px 6px; border-bottom: 1px solid #f0f2ee;
+  text-decoration: none; color: inherit;
+}
+.notif-item:last-child { border-bottom: none; }
+.notif-item:hover { background: #f8faf7; }
+.notif-item.non-lu { background: #f5faf7; }
+.notif-dot { width: 8px; height: 8px; border-radius: 999px; background: #4a7c59; margin-top: 6px; flex-shrink: 0; }
+.notif-dot.vide { background: transparent; }
+
+/* --- Daily log CTA (accueil) : passe au rouge quand des jours ouvrés
+   passés n'ont pas été remplis (retour Fadhel, 2026-09-19). --- */
+.card-cta-alert {
+  background: linear-gradient(160deg, #e3512c, #c23f1f);
+  border: none;
+}
+
+/* --- Bannière Deadlines pleine largeur (accueil, entre la topbar et les
+   trois colonnes — retour Fadhel, 2026-09-19). --- */
+.deadline-banner {
+  text-decoration: none; color: inherit;
+  background: #ffffff; border: 1px solid #e7e9e4; border-radius: 14px;
+  max-width: 1360px; margin: 18px auto 0; padding: 14px 32px;
+  box-sizing: border-box;
+  display: block; overflow: hidden;
+}
+.deadline-banner:hover { border-color: #c7cdc4; }
+.deadline-banner-title {
+  display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700;
+  flex-shrink: 0;
+}
+.deadline-banner-head {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+}
+.deadline-banner-empty { font-size: 12.5px; color: #7c8780; }
+
+/* Mini-Gantt de la bannière d'accueil (retour Fadhel, 2026-09-19) : version
+   simplifiée du Gantt de /deadlines — mêmes couleurs de barre, mais sans
+   les filtres/légende, et des colonnes de jour en largeur flexible (1fr,
+   pas de px fixes) pour ne jamais déborder de la carte, quelle que soit la
+   largeur de l'écran. */
+.mini-gantt {
+  display: grid;
+  grid-template-columns: minmax(120px, 220px) repeat(var(--mg-days, 8), 1fr);
+  gap: 2px 4px;
+  width: 100%;
+}
+.mini-gantt-daycell {
+  font-size: 10px; font-weight: 700; text-align: center; padding-bottom: 4px;
+  border-bottom: 1px solid #eef0ec; white-space: nowrap; overflow: hidden;
+}
+.mini-gantt-label {
+  font-size: 12px; color: #55605a; line-height: 24px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px 0 0;
+}
+.mini-gantt-track {
+  display: grid;
+  grid-template-columns: repeat(var(--mg-days, 8), 1fr);
+  align-items: center; min-height: 24px;
+}
+.mini-gantt-bar {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px; height: 20px; font-size: 10.5px; font-weight: 700; color: #ffffff;
+  white-space: nowrap; overflow: hidden;
+}
+
+/* --- Sélecteur à puces (chips) réutilisable — remplace les <select
+   multiple> natifs (Lot(s), Intervenant(s), filtres "Tous les projets"),
+   retour Fadhel du 2026-09-19 ("comme sur LinkedIn/Facebook") : les
+   options déjà sélectionnées sont en surbrillance, un clic bascule la
+   sélection, un "×" apparaît sur la puce sélectionnée pour la retirer.
+   Le <select multiple> d'origine est conservé (masqué) : c'est toujours
+   lui qui est soumis avec le formulaire, aucun changement côté serveur
+   n'est nécessaire pour les cas simples. Voir app/static/js/chip-select.js. */
+.chip-select-wrap { display: flex; flex-direction: column; gap: 8px; }
+.chip-select-filter {
+  width: 100%; border: 1px solid #e7e9e4; border-radius: 9px; padding: 7px 11px;
+  font-size: 12.5px; font-family: inherit; color: #33392f;
+}
+.chip-select-filter:focus { outline: none; border-color: #4a7c59; }
+.chip-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-opt {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 999px; border: 1px solid #e7e9e4;
+  background: #ffffff; color: #55605a; font-size: 12.5px; font-weight: 600;
+  cursor: pointer; user-select: none; transition: background 0.1s ease, border-color 0.1s ease;
+}
+.chip-opt:hover { border-color: #c7cdc4; }
+.chip-opt.chip-selected { background: #eaf3ee; border-color: #4a7c59; color: #14513b; }
+.chip-opt .chip-remove {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; border-radius: 999px; background: rgba(20,81,59,0.16);
+  font-size: 10px; line-height: 1;
+}
+.chip-opt.chip-hidden { display: none; }
+
+/* --- Commentaires sur un post (accueil / page projet) --- */
+.post-comments { margin: 10px 0 0 46px; display: flex; flex-direction: column; gap: 8px; }
+.post-comment { display: flex; gap: 8px; }
+.post-comment-body {
+  background: #f7f8f6; border-radius: 10px; padding: 7px 11px; font-size:12.5px; flex:1;
+}
+.post-comment-form { display: flex; gap: 6px; margin: 10px 0 0 46px; }

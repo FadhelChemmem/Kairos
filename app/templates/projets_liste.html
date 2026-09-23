@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% import "partials/avatar.html" as avatarm %}
+{% block title %}Tous les projets — Kairos{% endblock %}
+{% block body %}
+<div style="max-width:1360px; margin:0 auto; padding:24px 32px 60px;">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+    <span style="font-size:18px; font-weight:800;">Tous les projets</span>
+    <a href="{{ url_for('projets.creer') }}" class="btn-secondary" style="width:auto; padding:9px 16px; text-decoration:none;">+ Nouveau projet</a>
+  </div>
+
+  <form method="get" id="filtres-projets">
+    <input type="hidden" name="filtres_actifs" value="1">
+    <div class="search-mini" style="margin-bottom:12px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b968f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" name="q" value="{{ q }}" placeholder="Rechercher un projet (code ou nom)…" style="flex:1; border:none; outline:none; background:none; font-size:13.5px; font-family:inherit;">
+    </div>
+
+    <div class="card" style="padding:14px 18px; margin-bottom:14px; display:flex; flex-direction:column; gap:12px;">
+      <div>
+        <div style="font-size:11px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:6px;">État</div>
+        <select name="etat" multiple data-chip-select data-chip-autosubmit="1">
+          <option value="en_cours" {{ 'selected' if 'en_cours' in etats }}>En cours</option>
+          <option value="bloque" {{ 'selected' if 'bloque' in etats }}>Bloqué</option>
+          <option value="termine" {{ 'selected' if 'termine' in etats }}>Terminé</option>
+          <option value="abandonne" {{ 'selected' if 'abandonne' in etats }}>Abandonné</option>
+        </select>
+      </div>
+      <div>
+        <div style="font-size:11px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:6px;">Phase</div>
+        <select name="phase" multiple data-chip-select data-chip-autosubmit="1">
+          {% for ph in phases_choices %}
+            <option value="{{ ph }}" {{ 'selected' if ph in phases }}>{{ ph }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <div style="font-size:11px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:6px;">Lots</div>
+        <select name="lot" multiple data-chip-select data-chip-autosubmit="1">
+          <option value="CM" {{ 'selected' if 'CM' in lots }}>CM — Charpente Métallique</option>
+          <option value="GO" {{ 'selected' if 'GO' in lots }}>GO — Gros Œuvre</option>
+        </select>
+      </div>
+      <div>
+        <div style="font-size:11px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:6px;">Chef de projet</div>
+        <select name="chef_id" multiple data-chip-select data-chip-autosubmit="1" data-chip-filter="1" data-chip-filter-placeholder="Rechercher une personne…">
+          {% for u in utilisateurs_actifs %}
+            <option value="{{ u.id }}" {{ 'selected' if u.id in chef_ids }}>{{ u.prenom }} {{ u.nom }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </form>
+
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+    <span style="font-size:12.5px; color:#7c8780;">{{ projets|length }} projet{{ 's' if projets|length != 1 else '' }}</span>
+  </div>
+
+  <div class="card" style="padding:8px 18px;">
+    <div style="display:grid; grid-template-columns:1.2fr 80px 130px 1fr 90px 110px 90px; gap:10px; padding:10px 4px; font-size:11px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; border-bottom:1px solid #eef0ec;">
+      <span>Projet</span><span>Phase</span><span>Lots</span><span>Chef de projet</span><span>Heures</span><span>Deadlines</span><span>État</span>
+    </div>
+    {% for p in projets %}
+      {% set st = projet_etat_style(p.etat) %}
+      <a href="{{ url_for('projets.detail', projet_id=p.id) }}" style="display:grid; grid-template-columns:1.2fr 80px 130px 1fr 90px 110px 90px; gap:10px; align-items:center; padding:12px 4px; border-bottom:1px solid #eef0ec; color:inherit;">
+        <span style="display:flex; align-items:center; gap:8px; min-width:0;">
+          <span style="width:8px; height:8px; border-radius:999px; background:{{ st.dot }}; flex-shrink:0;"></span>
+          <span style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.code }}_{{ p.nom }}</span>
+        </span>
+        <span class="pill" style="background:#f2f4f0; color:#55605a; width:fit-content;">{{ p.phase }}</span>
+        <span style="font-size:12.5px; color:#55605a;">{{ p.lots }}</span>
+        <span style="display:flex; align-items:center; gap:6px; font-size:12.5px;">
+          {{ avatarm.avatar(p.chef_id, p.chef_prenom, p.chef_nom, p.chef_avatar_chemin, css_class='avatar avatar-sm') }}
+          {{ p.chef_prenom }} {{ p.chef_nom }}
+        </span>
+        <span style="font-size:12.5px; color:#7c8780;">{{ p.heures_cumulees|default(0, true)|round(1) }} h</span>
+        <span style="font-size:12px; color:#7c8780;">{% if p.prochaine_echeance %}{{ p.prochaine_echeance.strftime('%d %b') }}{% endif %}</span>
+        <span class="pill" style="background:{{ st.bg }}; color:{{ st.fg }}; width:fit-content;">{{ st.label }}</span>
+      </a>
+    {% else %}
+      <div style="padding:20px 4px; font-size:13px; color:#7c8780;">Aucun projet pour l'instant.</div>
+    {% endfor %}
+  </div>
+</div>
+<script>
+// Recherche "Code_nom" (voir champ ci-dessus) : soumission automatique
+// avec un léger délai, pour ne pas recharger la page à chaque frappe.
+(function () {
+  var form = document.getElementById('filtres-projets');
+  var input = form.querySelector('input[name="q"]');
+  var timer = null;
+  input.addEventListener('input', function () {
+    clearTimeout(timer);
+    timer = setTimeout(function () { form.submit(); }, 350);
+  });
+})();
+</script>
+{% endblock %}

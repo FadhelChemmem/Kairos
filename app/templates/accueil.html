@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Accueil — Kairos{% endblock %}
+{% block body %}
+
+<!-- Bannière Deadlines pleine largeur, entre la topbar et les trois
+     colonnes (retour Fadhel, 2026-09-19) : mini-Gantt simplifié (jours +
+     barres, sans les filtres/légende de la page /deadlines — juste un
+     aperçu ; on y va en cliquant, comme avant). Fenêtre courte (8 jours) +
+     colonnes en largeur flexible (1fr) pour ne jamais déborder de la
+     largeur des 3 colonnes, quelle que soit la taille de l'écran. -->
+<a href="{{ url_for('deadlines.liste') }}" class="deadline-banner">
+  <div class="deadline-banner-head">
+    <span class="deadline-banner-title">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>
+      Deadlines
+    </span>
+    <span style="font-size:11.5px; color:#9aa39c;">Voir tout →</span>
+  </div>
+  {% if deadlines_gantt.rows %}
+    <div class="mini-gantt" style="--mg-days:{{ deadlines_gantt.window_days }};">
+      <div class="mini-gantt-label" style="visibility:hidden;"></div>
+      {% for d in deadlines_gantt.days %}
+        <div class="mini-gantt-daycell" style="color:{{ '#14513b' if d.date == deadlines_gantt.days[0].date else ('#c7cdc4' if d.est_weekend else '#9aa39c') }};">{{ d.lettre }} {{ d.label }}</div>
+      {% endfor %}
+      {% for t in deadlines_gantt.rows %}
+        <div class="mini-gantt-label">
+          <span style="font-weight:600;">{{ t.projet_code }}_{{ t.projet_nom }}</span> · {{ t.titre }}
+        </div>
+        <div class="mini-gantt-track" style="grid-column: 2 / span {{ deadlines_gantt.window_days }};">
+          <span class="mini-gantt-bar" style="grid-column: 1 / span {{ t.span }}; background:{{ t.couleur }};">{{ t.label_barre }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <span class="deadline-banner-empty">Aucune échéance à venir.</span>
+  {% endif %}
+</a>
+
+<div class="page-body">
+
+  <!-- Colonne gauche -->
+  <div class="col">
+
+    <div class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <span style="font-size:14px; font-weight:700;">Mes projets</span>
+        <a href="{{ url_for('projets.liste') }}" style="font-size:12px; font-weight:600;">Tout voir</a>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        {% for p in mes_projets %}
+          {% set st = projet_etat_style(p.etat) %}
+          {% set role_label = {'chef_de_projet': 'Chef de projet', 'co_chef': 'Co-chef', 'intervenant': 'Intervenant'}[p.mon_role] %}
+          <a href="{{ url_for('projets.detail', projet_id=p.id) }}" style="display:flex; align-items:center; gap:9px; color:inherit;">
+            <span style="width:8px; height:8px; border-radius:999px; background:{{ st.dot }}; flex-shrink:0;"></span>
+            <div style="min-width:0;">
+              <div style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.code }}_{{ p.nom }}</div>
+              <div style="font-size:11.5px; color:#7c8780;">{{ p.phase }} · {{ role_label }}</div>
+            </div>
+          </a>
+        {% else %}
+          <div style="font-size:12.5px; color:#7c8780;">Aucun projet pour l'instant.</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <span style="font-size:14px; font-weight:700;">Deadlines</span>
+        <a href="{{ url_for('deadlines.liste') }}" style="font-size:12px; font-weight:600;">Tout voir</a>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        {% for d in deadlines %}
+          <a href="{{ url_for('projets.detail', projet_id=d.projet_id) }}" style="display:flex; gap:10px; color:inherit;">
+            <div style="width:38px; flex-shrink:0; text-align:center; background:#f2f4f0; border-radius:8px; padding:4px 0;">
+              <div style="font-size:15px; font-weight:800; color:#55605a; line-height:1;">{{ d.date_echeance.day }}</div>
+              <div style="font-size:9.5px; color:#55605a; text-transform:uppercase;">{{ d.date_echeance.strftime('%b') }}</div>
+            </div>
+            <div style="min-width:0;">
+              <div style="font-size:12.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ d.projet_code }}_{{ d.projet_nom }}</div>
+              <div style="font-size:11px; color:#7c8780;">{{ d.titre }}</div>
+            </div>
+          </a>
+        {% else %}
+          <div style="font-size:12.5px; color:#7c8780;">Aucune échéance à venir.</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card {{ 'card-cta-alert' if dailylog_jours_manques else 'card-cta' }}">
+      <div style="font-size:13px; font-weight:700; color:#fff; margin-bottom:4px;">Daily log</div>
+      {% if dailylog_jours_manques %}
+        <div style="font-size:12px; color:#fbe2da; margin-bottom:12px; line-height:1.4;">
+          {{ dailylog_jours_manques|length }} jour{{ 's' if dailylog_jours_manques|length != 1 else '' }} sans saisie ({{ dailylog_jours_manques[0].strftime('%d %b') }}{% if dailylog_jours_manques|length > 1 %}…{% endif %}).
+        </div>
+      {% else %}
+        <div style="font-size:12px; color:#d6efe8; margin-bottom:12px; line-height:1.4;">Vous n'avez pas encore réparti vos heures d'aujourd'hui.</div>
+      {% endif %}
+      <a href="{{ url_for('dailylog.formulaire') }}" class="btn-primary" style="display:block; text-align:center; text-decoration:none;">Remplir mon Daily log</a>
+    </div>
+
+  </div>
+
+  <!-- Fil d'activité -->
+  <div class="col-center">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <div class="search-mini" style="flex:1;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b968f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="filtre-fil" autocomplete="off" placeholder="Filtrer le fil d'actualité…" style="flex:1; border:none; outline:none; background:none; font-size:13.5px; font-family:inherit;">
+      </div>
+      {% if mes_projets %}
+      <button type="button" data-open-post-dialog data-intent="tache" class="btn-secondary" style="width:auto; padding:10px 16px; flex-shrink:0;">+ Nouveau post</button>
+      {% endif %}
+    </div>
+
+    <div id="fil-liste">
+      {% for post in fil %}
+        <div class="fil-item" data-fil-texte="{{ (post.auteur_prenom ~ ' ' ~ post.auteur_nom ~ ' ' ~ post.projet_nom ~ ' ' ~ (post.contenu or ''))|lower }}">
+          {% with post=post, show_projet=true, next_url=url_for('main.accueil') %}
+            {% include "partials/post_card.html" %}
+          {% endwith %}
+        </div>
+      {% else %}
+        <div class="card" style="text-align:center; color:#7c8780; font-size:13px;">Aucune activité sur vos projets pour l'instant.</div>
+      {% endfor %}
+      <div id="fil-vide" style="display:none; text-align:center; color:#7c8780; font-size:13px; padding:14px;">Aucun résultat pour ce filtre.</div>
+    </div>
+  </div>
+
+  <!-- Colonne droite -->
+  <div class="col">
+    <div class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <span style="font-size:14px; font-weight:700;">Mes tâches</span>
+        <a href="#" style="font-size:12px; font-weight:600;">Tout voir</a>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        {% for t in mes_taches %}
+          {% set st = tache_etat_style(t.etat) %}
+          <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" style="display:flex; align-items:flex-start; gap:9px; color:inherit;">
+            <span class="pill pill-sm" style="background:{{ st.bg }}; color:{{ st.fg }}; flex-shrink:0; margin-top:1px;">{{ st.label }}</span>
+            <div style="min-width:0;">
+              <div style="font-size:12.5px; font-weight:600; line-height:1.3;">{{ t.titre }}</div>
+              <div style="font-size:11px; color:#7c8780;">{{ t.projet_nom }}{% if t.date_echeance %} · éch. {{ t.date_echeance.strftime('%d %b') }}{% endif %}</div>
+            </div>
+          </a>
+        {% else %}
+          <div style="font-size:12.5px; color:#7c8780;">Aucune tâche en cours.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+</div>
+<script>
+// Filtre du fil d'actualité (accueil) — recherche simple sur auteur, projet
+// et contenu, entièrement côté client (le fil est déjà rendu), demandé par
+// Fadhel le 2026-09-19.
+(function () {
+  var input = document.getElementById('filtre-fil');
+  if (!input) return;
+  var items = Array.prototype.slice.call(document.querySelectorAll('#fil-liste .fil-item'));
+  var vide = document.getElementById('fil-vide');
+  input.addEventListener('input', function () {
+    var q = input.value.trim().toLowerCase();
+    var visibles = 0;
+    items.forEach(function (item) {
+      var match = !q || item.dataset.filTexte.indexOf(q) !== -1;
+      item.style.display = match ? '' : 'none';
+      if (match) visibles++;
+    });
+    vide.style.display = (items.length && visibles === 0) ? 'block' : 'none';
+  });
+})();
+</script>
+
+{% with projet_id=None, projets_choix=mes_projets, next_url=url_for('main.accueil') %}
+  {% include "partials/post_dialog.html" %}
+{% endwith %}
+{% endblock %}

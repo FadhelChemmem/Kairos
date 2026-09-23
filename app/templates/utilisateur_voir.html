@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% import "partials/avatar.html" as avatarm %}
+{% block title %}{{ utilisateur.prenom }} {{ utilisateur.nom }} — Kairos{% endblock %}
+{% block body %}
+
+<div class="subbar">
+  <div class="subbar-inner" style="max-width:900px;">
+    <a href="{{ url_for('utilisateurs.liste') }}" style="font-size:12.5px; color:#7c8780; font-weight:600;">← Utilisateurs</a>
+    <span style="font-size:14px; font-weight:700;">{{ utilisateur.prenom }} {{ utilisateur.nom }}</span>
+    <span class="pill" style="background:#f2f4f0; color:#9aa39c; margin-left:auto;">Lecture seule</span>
+  </div>
+</div>
+
+<div class="page-body" style="grid-template-columns:1fr 1.3fr; max-width:900px;">
+
+  <!-- Chef de projet : nom, téléphone et Daily log de la semaine dernière
+       uniquement, rien de modifiable (retour Fadhel, 2026-09-21). -->
+  <div class="col">
+    <div class="card">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:18px;">
+        {{ avatarm.avatar(utilisateur.id, utilisateur.prenom, utilisateur.nom, utilisateur.avatar_chemin, css_class='avatar avatar-lg', style='width:52px; height:52px; font-size:16px;') }}
+        <div style="min-width:0;">
+          <div style="font-size:16px; font-weight:800;">{{ utilisateur.prenom }} {{ utilisateur.nom }}</div>
+          <span class="pill pill-sm" style="background:{{ role_style(utilisateur.role).bg }}; color:{{ role_style(utilisateur.role).fg }};">{{ role_style(utilisateur.role).label }}</span>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:10px; font-size:12.5px;">
+        <div style="display:flex; justify-content:space-between;"><span style="color:#7c8780;">Téléphone</span><span style="font-weight:600;">{{ utilisateur.telephone or '—' }}</span></div>
+      </div>
+      <div style="font-size:11px; color:#9aa39c; margin-top:14px;">Vue en lecture seule (chef de projet) : nom, téléphone et Daily log de la semaine dernière uniquement.</div>
+    </div>
+  </div>
+
+  <div class="col-center" style="max-width:none;">
+    <div class="card">
+      <div style="font-size:14px; font-weight:700; margin-bottom:14px;">Daily log — semaine dernière</div>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        {% for jour in semaine_derniere %}
+          <div style="border:1px solid #eef0ec; border-radius:10px; padding:10px 14px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:{{ '8px' if jour.entrees else '0' }};">
+              <span style="font-size:12.5px; font-weight:700; text-transform:capitalize;">{{ date_fr(jour.date) }}</span>
+              <span style="font-size:12px; color:{{ '#7c8780' if jour.total_heures else '#c7cdc4' }};">{{ jour.total_heures|round(1) }} h</span>
+            </div>
+            {% for e in jour.entrees %}
+              <div style="display:flex; justify-content:space-between; font-size:12px; color:#55605a; padding:2px 0;">
+                <span>{{ e.projet_nom }}{% if e.tache_titre %} · {{ e.tache_titre }}{% endif %}</span>
+                <span style="color:#7c8780;">{{ e.heures }} h</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div style="font-size:12.5px; color:#9aa39c;">Aucune entrée la semaine dernière.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

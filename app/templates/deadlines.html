@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Deadlines — Kairos{% endblock %}
+{% block body %}
+
+<div class="subbar">
+  <div class="subbar-inner">
+    <span style="font-size:14px; font-weight:700;">Deadlines</span>
+    <span style="font-size:12.5px; color:#7c8780;">{{ nb_taches }} tâche{{ 's' if nb_taches != 1 else '' }} avec échéance</span>
+  </div>
+</div>
+
+<div style="max-width:1360px; margin:0 auto; padding:20px 32px 60px;">
+
+  <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
+    <div class="search-mini" style="flex:1; min-width:200px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b968f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="filtre-deadlines" autocomplete="off" placeholder="Filtrer par projet…" style="flex:1; border:none; outline:none; background:none; font-size:13.5px; font-family:inherit;">
+    </div>
+    <div style="display:flex; align-items:center; gap:16px; font-size:11.5px; color:#7c8780; flex-shrink:0;">
+      <span style="display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:3px; background:#e3512c;"></span> En retard / imminent</span>
+      <span style="display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:3px; background:#ea6c1a;"></span> Cette semaine</span>
+      <span style="display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:3px; background:#4a7c59;"></span> Plus tard</span>
+    </div>
+  </div>
+
+  <div class="card" style="overflow-x:auto; padding:0;">
+    <div class="gantt" style="--gantt-days:{{ gantt.window_days }};">
+
+      <div class="g-label" style="z-index:10; top:0;">
+        <span style="font-size:12px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em;">Tâche</span>
+      </div>
+      {% for d in gantt.days %}
+        <div class="g-daycell" style="background:{{ '#eaf3ee' if d.date == gantt.days[0].date else ('#f7f8f6' if d.est_weekend else 'transparent') }};">
+          <span style="font-size:10px; font-weight:700; color:{{ '#14513b' if d.date == gantt.days[0].date else ('#c7cdc4' if d.est_weekend else '#9aa39c') }};">{{ d.lettre }}</span>
+          <span style="font-size:11px; font-weight:800; color:{{ '#14513b' if d.date == gantt.days[0].date else ('#c7cdc4' if d.est_weekend else '#55605a') }};">{{ d.label }}</span>
+        </div>
+      {% endfor %}
+
+      {% for t in gantt.rows %}
+        <div class="g-row" style="display:contents;" data-filtre="{{ (t.projet_code ~ ' ' ~ t.projet_nom ~ ' ' ~ t.titre)|lower }}">
+          <div class="g-label">
+            <div style="font-size:12.5px; font-weight:600; line-height:1.3;">{{ t.titre }}</div>
+            <div style="font-size:11px; color:#7c8780;">{{ t.projet_code }}_{{ t.projet_nom }}{% if t.type_deadline == 'interne' %} · #interne{% endif %}</div>
+          </div>
+          <div class="g-row-track">
+            <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" class="g-bar" style="grid-column: 1 / span {{ t.span }}; background:{{ t.couleur }}; justify-content:flex-start;">{{ t.label_barre }}</a>
+          </div>
+        </div>
+      {% else %}
+        <div class="g-label" style="grid-column: 1 / -1; border-right:none;">
+          <span style="font-size:12.5px; color:#7c8780;">Aucune échéance à venir.</span>
+        </div>
+      {% endfor %}
+
+    </div>
+  </div>
+
+  <div style="font-size:11.5px; color:#9aa39c; margin-top:10px;">← Faites défiler horizontalement pour voir les semaines suivantes</div>
+
+</div>
+<script>
+// Filtre "Filtrer par projet…" (voir plus haut) — masque les lignes du
+// Gantt dont le projet ou la tâche ne correspondent pas, sans recharger la
+// page (demandé par Fadhel, 2026-09-19).
+(function () {
+  var input = document.getElementById('filtre-deadlines');
+  if (!input) return;
+  var rows = Array.prototype.slice.call(document.querySelectorAll('.g-row'));
+  input.addEventListener('input', function () {
+    var q = input.value.trim().toLowerCase();
+    rows.forEach(function (row) {
+      row.style.display = (!q || row.dataset.filtre.indexOf(q) !== -1) ? 'contents' : 'none';
+    });
+  });
+})();
+</script>
+{% endblock %}

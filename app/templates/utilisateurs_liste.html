@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% import "partials/avatar.html" as avatarm %}
+{% block title %}Utilisateurs — Kairos{% endblock %}
+{% block body %}
+
+{% set peut_gerer = g.user.role in ('admin', 'rh') %}
+
+<div class="subbar">
+  <div class="subbar-inner">
+    <span style="font-size:14px; font-weight:700;">Utilisateurs</span>
+    <span style="font-size:12.5px; color:#7c8780;">{{ compte.total }} compte{{ 's' if compte.total != 1 else '' }} · {{ compte.actifs }} actif{{ 's' if compte.actifs != 1 else '' }}</span>
+    <span class="pill" style="background:#f2f4f0; color:#9aa39c; margin-left:auto;">Visible par : Admin, RH, Chef de projet</span>
+  </div>
+</div>
+
+<div style="max-width:1360px; margin:0 auto; padding:20px 32px 60px;">
+
+  <form method="get" style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+    <div class="search-mini" style="flex:1;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b968f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" name="q" value="{{ q }}" placeholder="Filtrer par nom, équipe, rôle…" style="flex:1; width:auto; min-width:0; border:none; padding:0; background:transparent;">
+    </div>
+    <select name="equipe_code" onchange="this.form.submit()">
+      <option value="">Toutes les équipes</option>
+      {% for code, libelle in equipe_choices %}
+        <option value="{{ code }}" {{ 'selected' if equipe_code == code }}>{{ libelle }}</option>
+      {% endfor %}
+    </select>
+    <select name="role" onchange="this.form.submit()">
+      <option value="">Tous les rôles</option>
+      <option value="admin" {{ 'selected' if role == 'admin' }}>Admin</option>
+      <option value="chef_de_projet" {{ 'selected' if role == 'chef_de_projet' }}>Chef de projet</option>
+      <option value="intervenant" {{ 'selected' if role == 'intervenant' }}>Intervenant</option>
+      <option value="rh" {{ 'selected' if role == 'rh' }}>RH</option>
+    </select>
+    <select name="actif" onchange="this.form.submit()">
+      <option value="" {{ 'selected' if actif_param == '' }}>Actifs et inactifs</option>
+      <option value="actifs" {{ 'selected' if actif_param == 'actifs' }}>Actifs seulement</option>
+      <option value="inactifs" {{ 'selected' if actif_param == 'inactifs' }}>Inactifs seulement</option>
+    </select>
+    {% if peut_gerer %}
+      <a href="{{ url_for('utilisateurs.creer') }}" class="quickadd quickadd-primary" style="padding:9px 16px;">+ Nouvel utilisateur</a>
+    {% endif %}
+  </form>
+
+  <div class="card" style="padding:16px 18px 6px;">
+    <div class="uhead">
+      <span>Utilisateur</span>
+      <span>Équipe</span>
+      <span>Rôle</span>
+      <span>Téléphone</span>
+      <span>Email</span>
+      <span>Embauche</span>
+      <span>Actif</span>
+    </div>
+
+    {% for u in utilisateurs %}
+      {% set rs = role_style(u.role) %}
+      <div class="urow {{ 'inactif' if not u.actif }}">
+        <a href="{{ url_for('utilisateurs.fiche', user_id=u.id) }}" style="display:flex; align-items:center; gap:10px; min-width:0; text-decoration:none; color:inherit;">
+          {{ avatarm.avatar(u.id, u.prenom, u.nom, u.avatar_chemin, css_class='avatar avatar-md', couleur=(none if u.actif else '#c7cdc4')) }}
+          <div style="min-width:0;">
+            <div style="font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; {{ 'color:#9aa39c;' if not u.actif }}">{{ u.prenom }} {{ u.nom }}</div>
+            <div style="font-size:11px; color:{{ '#c7cdc4' if not u.actif else '#9aa39c' }};">{{ u.poste or '—' }}{{ ' (parti)' if not u.actif }}</div>
+          </div>
+        </a>
+        <span style="font-size:12.5px; color:{{ '#9aa39c' if not u.actif else '#55605a' }};">{{ equipe_libelle(u.equipe_code) }}</span>
+        <span class="pill pill-sm" style="background:{{ rs.bg }}; color:{{ rs.fg }};">{{ rs.label }}</span>
+        <span style="font-size:12px; color:#55605a;">{{ u.telephone or '—' }}</span>
+        <div style="display:flex; align-items:center; gap:6px; min-width:0;">
+          <span style="font-size:12.5px; color:{{ '#9aa39c' if not u.actif else '#55605a' }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ u.email }}</span>
+          {% if u.actif %}
+            {% if u.verifie %}
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2fa876" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><title>Vérifié</title><path d="M20 6 9 17l-5-5"/></svg>
+            {% else %}
+              <span class="pill" style="background:#fdf3ec; color:#c97a24; font-size:10px; padding:1px 7px;" title="En attente de vérification">Non vérifié</span>
+            {% endif %}
+          {% endif %}
+        </div>
+        <span style="font-size:12px; color:#55605a;">{{ u.date_embauche.strftime('%m/%Y') if u.date_embauche else '—' }}</span>
+        {% if peut_gerer %}
+          <form method="post" action="{{ url_for('utilisateurs.toggle_actif', user_id=u.id) }}">
+            <input type="hidden" name="q" value="{{ q }}">
+            <input type="hidden" name="equipe_code" value="{{ equipe_code or '' }}">
+            <input type="hidden" name="role" value="{{ role or '' }}">
+            <input type="hidden" name="actif" value="{{ actif_param }}">
+            <button type="submit" class="toggle" style="background:{{ '#4a7c59' if u.actif else '#e7e9e4' }}; justify-content:{{ 'flex-end' if u.actif else 'flex-start' }};" title="{{ 'Désactiver' if u.actif else 'Réactiver' }} ce compte">
+              <span class="toggle-knob"></span>
+            </button>
+          </form>
+        {% else %}
+          <span class="pill pill-sm" style="background:{{ '#eaf3ee' if u.actif else '#f2f4f0' }}; color:{{ '#4a7c59' if u.actif else '#9aa39c' }};">{{ 'Actif' if u.actif else 'Inactif' }}</span>
+        {% endif %}
+      </div>
+    {% else %}
+      <div style="padding:20px 4px; font-size:13px; color:#7c8780;">Aucun utilisateur ne correspond à ces filtres.</div>
+    {% endfor %}
+  </div>
+
+  <div style="font-size:11px; color:#9aa39c; margin-top:10px;">Désactiver un compte le retire des listes d'affectation sans rien supprimer — tout l'historique (projets, tâches, posts) reste intact.</div>
+
+</div>
+{% endblock %}
