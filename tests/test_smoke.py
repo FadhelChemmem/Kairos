@@ -182,6 +182,18 @@ AUTRE_UTILISATEUR = {
     "role": "intervenant", "verifie": True, "actif": True, "champs_perso": {},
 }
 
+# Compte "client" (role_enum, schema.sql) — pas proposable depuis
+# utilisateur_creer.html/fiche.html (ROLES_CREABLES, étape 2), mais peut
+# exister en base via `flask create-user --role client` : sert à vérifier
+# le correctif PROMPT_CORRECTIONS.md P1 #12 (rôle hors liste verrouillé, pas
+# silencieusement remplacé par le premier de la liste).
+UTILISATEUR_CLIENT = {**AUTRE_UTILISATEUR, "role": "client"}
+
+# Compte sans équipe assignée (equipe_code NULL, colonne nullable) — sert à
+# vérifier le correctif PROMPT_CORRECTIONS.md P1 #12 (option vide du
+# <select> Équipe).
+UTILISATEUR_SANS_EQUIPE = {**AUTRE_UTILISATEUR, "equipe_code": None}
+
 RESET_TOKEN_ROW = {"id": 1, "email": "fadhel@midgard.tn", "prenom": "Foulen", "nom": "Chedly", "actif": True}
 
 TACHE_SANS_HEURES = {
@@ -1052,6 +1064,16 @@ class SmokeTestCase(unittest.TestCase):
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         self.assertIn("Cr\xe9er l'utilisateur".encode(), resp.data)
         self.assertIn("Compte actif".encode(), resp.data)
+
+    def test_utilisateur_creer_equipe_option_vide_selectionnee_par_defaut(self):
+        """PROMPT_CORRECTIONS.md P1 #12 : sans option vide, le <select>
+        Équipe affichait "Midgard" (première option) sans que personne ne
+        l'ait choisi, et cette valeur implicite était soumise comme un choix
+        explicite — un nouvel utilisateur pouvait se retrouver rattaché à
+        Midgard par défaut."""
+        resp = self._get("/utilisateurs/nouveau")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'<option value="" selected>', resp.data)
 
     def test_utilisateurs_pages_refused_to_intervenant(self):
         """role_required('admin', 'rh') doit rediriger un simple intervenant
@@ -2175,6 +2197,62 @@ class SmokeTestCase(unittest.TestCase):
                 p.stop()
         self.assertIn("R\xf4le invalide".encode(), resp.data)
         mock_update.assert_not_called()
+
+    # --- Changement silencieux d'équipe/rôle (PROMPT_CORRECTIONS.md P1 #12) :
+    # un <select> HTML sans <option> `selected` correspondant à la valeur
+    # réelle affiche par défaut sa PREMIÈRE option et soumet cette valeur
+    # comme n'importe quel autre choix explicite — enregistrer une fiche
+    # sans équipe, ou celle d'un rôle non listé (ex. "client"), changeait
+    # silencieusement la valeur en base. ---
+
+    def test_fiche_utilisateur_sans_equipe_selectionne_loption_vide(self):
+        resp = self._get("/utilisateurs/2", **{
+            "app.repositories.utilisateurs.get_utilisateur": UTILISATEUR_SANS_EQUIPE,
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'<option value="" selected>', resp.data)
+
+    def test_fiche_role_hors_liste_est_verrouille(self):
+        """Un compte "client" (créé via `flask create-user --role client`,
+        role_enum) n'est pas proposable depuis ROLES_CREABLES — le <select>
+        doit rester verrouillé sur sa valeur réelle plutôt que de basculer
+        silencieusement sur "Intervenant" (première option)."""
+        resp = self._get("/utilisateurs/2", **{
+            "app.repositories.utilisateurs.get_utilisateur": UTILISATEUR_CLIENT,
+        })
+        self.assertEqual(resp.status_code, 200)
+        body = resp.data.decode()
+        self.assertIn('<option value="client" selected>', body)
+        self.assertIn('<select id="role" name="role" disabled>', body)
+        self.assertIn('<input type="hidden" name="role" value="client">', body)
+
+    def test_fiche_conserve_un_role_hors_liste_non_modifie(self):
+        """Le champ caché renvoie la vraie valeur ("client") — la validation
+        du rôle (P1 #11) ne doit pas la rejeter tant qu'elle reste inchangée,
+        sinon la fiche d'un tel compte deviendrait impossible à modifier."""
+        patchers = self._patched(**{
+            "app.repositories.utilisateurs.get_utilisateur": UTILISATEUR_CLIENT,
+        })
+        self._login()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.utilisateurs.update_utilisateur_complet") as mock_update:
+                resp = self.client.post(
+                    "/utilisateurs/2",
+                    data={
+                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "role": "client", "equipe_code": "URBS",
+                        "telephone": "20 000 001",
+                    },
+                    follow_redirects=True,
+                )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertIn("mise \xe0 jour".encode(), resp.data)
+        mock_update.assert_called_once()
+        self.assertEqual(mock_update.call_args.kwargs["role"], "client")
 
     def test_fiche_change_le_mot_de_passe_si_fourni(self):
         patchers = self._patched(**{

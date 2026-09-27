@@ -54,7 +54,16 @@
     <div class="form-row-2">
       <div class="form-row">
         <label for="equipe_code">Équipe</label>
+        {# Option vide (PROMPT_CORRECTIONS.md P1 #12) : sans elle, le
+           <select> affiche par défaut sa première option ("Midgard") sans
+           qu'elle ait été choisie, et ce choix implicite est soumis comme
+           n'importe quel autre — un nouvel utilisateur pouvait donc se
+           retrouver rattaché à Midgard sans que personne ne l'ait
+           sélectionné. Sélectionnée par défaut ici (aucune équipe pré-choisie
+           à la création) ; voir utilisateur_fiche.html pour le même
+           correctif côté modification. #}
         <select id="equipe_code" name="equipe_code">
+          <option value="" selected>— Aucune —</option>
           {% for code, libelle in equipe_choices %}
             <option value="{{ code }}">{{ libelle }}</option>
           {% endfor %}

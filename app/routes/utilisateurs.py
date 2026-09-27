@@ -297,10 +297,17 @@ def fiche(user_id: int):
         # mais rien côté serveur n'empêchait auparavant une requête forgée
         # à la main de poser n'importe quelle valeur — acceptée telle
         # quelle par update_utilisateur_complet(), sans même la contrainte
-        # DB (pas de CHECK sur utilisateur.role).
+        # DB (pas de CHECK sur utilisateur.role). `role != utilisateur["role"]`
+        # laisse passer un rôle inchangé même hors ROLES_CREABLES : "client"
+        # (role_enum, schema.sql) existe en base — via `flask create-user
+        # --role client` — mais n'est pas encore proposable depuis cet écran
+        # (étape 2, voir ROLES_CREABLES) ; sans cette exception, la seule
+        # fiche d'un tel compte deviendrait impossible à modifier, même pour
+        # ses autres champs (voir aussi utilisateur_fiche.html, qui verrouille
+        # déjà le <select> dans ce cas — PROMPT_CORRECTIONS.md P1 #12).
         if user_id == g.user["id"] and role != utilisateur["role"]:
             flash("Vous ne pouvez pas changer votre propre rôle depuis cet écran.", "error")
-        elif role not in ROLES_CREABLES:
+        elif role not in ROLES_CREABLES and role != utilisateur["role"]:
             flash("Rôle invalide.", "error")
         elif not prenom or not nom or not email:
             flash("Prénom, nom et email sont obligatoires.", "error")
