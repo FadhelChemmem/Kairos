@@ -43,6 +43,20 @@ class Config:
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
 
+    # Base publique de l'application (revue sécurité, PROMPT_CORRECTIONS.md
+    # P0 #3), ex. "https://kairos.nanaki45.duckdns.org" (sans / final) —
+    # utilisée pour construire les liens ABSOLUS envoyés par email
+    # (réinitialisation de mot de passe, création de compte) sans jamais
+    # faire confiance à l'en-tête Host de la requête entrante. Sans ce
+    # réglage, url_for(..., _external=True) construirait l'URL à partir du
+    # Host reçu (aucun SERVER_NAME fixé) : un attaquant qui envoie une
+    # demande de réinitialisation avec un Host falsifié recevrait alors un
+    # lien de réinitialisation pointant vers un domaine qu'il contrôle, et
+    # capturerait le jeton dès que le lien est cliqué. Voir auth.py:
+    # generer_lien_reset, qui refuse de construire un lien externe tant que
+    # ce réglage est vide.
+    APP_BASE_URL = os.environ.get("APP_BASE_URL", "").rstrip("/")
+
     # Dossier où sont stockées les pièces jointes (tâches/posts). Dans
     # Docker Compose, ce chemin est un volume monté (voir docker-compose.yml).
     UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/app/uploads")

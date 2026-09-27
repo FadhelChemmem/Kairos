@@ -5,9 +5,10 @@ déjà fourni avec Flask.
 import datetime
 import functools
 import hashlib
+import logging
 import secrets
 
-from flask import Blueprint, g, redirect, render_template, request, session, url_for, flash
+from flask import Blueprint, current_app, g, redirect, render_template, request, session, url_for, flash
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from . import db, mailer
@@ -15,6 +16,8 @@ from .repositories import dailylog as dailylog_repo
 from .repositories import notifications as notifications_repo
 from .repositories import securite as securite_repo
 from .repositories import utilisateurs as utilisateurs_repo
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint("auth", __name__)
 
@@ -127,7 +130,23 @@ def generer_lien_reset(user_id: int) -> str:
     jeton_hash = hashlib.sha256(jeton.encode()).hexdigest()
     expire_le = datetime.datetime.now(datetime.timezone.utc) + RESET_TOKEN_TTL
     utilisateurs_repo.set_reset_token(user_id, jeton_hash, expire_le)
-    return url_for("auth.reinitialiser_mot_de_passe", jeton=jeton, _external=True)
+
+    # PROMPT_CORRECTIONS.md P0 #3 : on construit le lien à partir
+    # d'APP_BASE_URL (voir config.py), jamais avec
+    # url_for(..., _external=True) — celui-ci utiliserait l'en-tête Host de
+    # la requête entrante, que Flask ne valide pas par défaut (pas de
+    # SERVER_NAME fixé) : un Host falsifié produirait un lien de
+    # réinitialisation pointant vers un domaine contrôlé par l'attaquant.
+    chemin = url_for("auth.reinitialiser_mot_de_passe", jeton=jeton)
+    base = current_app.config.get("APP_BASE_URL") or ""
+    if not base:
+        logger.warning(
+            "APP_BASE_URL n'est pas configuré (voir .env.example) : le lien "
+            "envoyé par email est relatif, pas absolu — il ne fonctionnera "
+            "pas correctement dans un client mail."
+        )
+        return chemin
+    return f"{base}{chemin}"
 
 
 def role_required(*roles):
@@ -255,9 +274,15 @@ def reinitialiser_mot_de_passe(jeton):
         elif len(mot_de_passe) < MOT_DE_PASSE_MIN_LEN:
             flash(f"Le mot de passe doit faire au moins {MOT_DE_PASSE_MIN_LEN} caractères.", "error")
         else:
-            utilisateurs_repo.set_password(
-                utilisateur["id"], hash_password(mot_de_passe), utilisateur["id"]
-            )
+            # Consommation atomique du jeton (PROMPT_CORRECTIONS.md P0 #3) :
+            # get_par_reset_token_hash() ci-dessus n'a servi qu'à afficher
+            # la page ; la vérification qui compte est celle, atomique,
+            # faite par consommer_reset_token() (voir sa docstring — évite
+            # qu'un jeton valide soit utilisable deux fois en concurrence).
+            consomme = utilisateurs_repo.consommer_reset_token(jeton_hash, hash_password(mot_de_passe))
+            if consomme is None:
+                flash("Ce lien de réinitialisation est invalide ou a expiré.", "error")
+                return redirect(url_for("auth.mot_de_passe_oublie"))
             flash("Mot de passe changé. Vous pouvez vous connecter.", "success")
             return redirect(url_for("auth.login"))
 

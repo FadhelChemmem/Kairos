@@ -1547,35 +1547,74 @@ class SmokeTestCase(unittest.TestCase):
 
     def test_reinitialiser_mot_de_passe_change_le_mot_de_passe(self):
         with patch("app.repositories.utilisateurs.get_par_reset_token_hash", return_value=RESET_TOKEN_ROW), \
-             patch("app.repositories.utilisateurs.set_password") as mock_set_password:
+             patch("app.repositories.utilisateurs.consommer_reset_token", return_value=RESET_TOKEN_ROW) as mock_consommer:
             resp = self.client.post(
                 "/reinitialiser/un-vrai-jeton",
                 data={"mot_de_passe": "nouveau123", "confirmation": "nouveau123"},
                 follow_redirects=True,
             )
         self.assertIn("changé".encode(), resp.data)
-        mock_set_password.assert_called_once()
-        self.assertEqual(mock_set_password.call_args[0][0], RESET_TOKEN_ROW["id"])
+        mock_consommer.assert_called_once()
 
     def test_reinitialiser_mot_de_passe_rejette_mots_de_passe_differents(self):
         with patch("app.repositories.utilisateurs.get_par_reset_token_hash", return_value=RESET_TOKEN_ROW), \
-             patch("app.repositories.utilisateurs.set_password") as mock_set_password:
+             patch("app.repositories.utilisateurs.consommer_reset_token") as mock_consommer:
             resp = self.client.post(
                 "/reinitialiser/un-vrai-jeton",
                 data={"mot_de_passe": "nouveau123", "confirmation": "autre-chose"},
             )
         self.assertIn("ne correspondent pas".encode(), resp.data)
-        mock_set_password.assert_not_called()
+        mock_consommer.assert_not_called()
 
     def test_reinitialiser_mot_de_passe_rejette_trop_court(self):
         with patch("app.repositories.utilisateurs.get_par_reset_token_hash", return_value=RESET_TOKEN_ROW), \
-             patch("app.repositories.utilisateurs.set_password") as mock_set_password:
+             patch("app.repositories.utilisateurs.consommer_reset_token") as mock_consommer:
             resp = self.client.post(
                 "/reinitialiser/un-vrai-jeton",
                 data={"mot_de_passe": "court1", "confirmation": "court1"},
             )
         self.assertIn("au moins 8 caract\xe8res".encode(), resp.data)
-        mock_set_password.assert_not_called()
+        mock_consommer.assert_not_called()
+
+    def test_reinitialiser_mot_de_passe_jeton_deja_consomme_entre_temps(self):
+        """PROMPT_CORRECTIONS.md P0 #3 (TOCTOU) : même si la page a été
+        affichée avec un jeton valide, une consommation concurrente
+        (double soumission, ou jeton déjà utilisé juste avant) doit être
+        refusée sans planter — consommer_reset_token() est la SEULE source
+        de vérité au moment d'écrire, pas get_par_reset_token_hash()."""
+        with patch("app.repositories.utilisateurs.get_par_reset_token_hash", return_value=RESET_TOKEN_ROW), \
+             patch("app.repositories.utilisateurs.consommer_reset_token", return_value=None):
+            resp = self.client.post(
+                "/reinitialiser/un-vrai-jeton",
+                data={"mot_de_passe": "nouveau123", "confirmation": "nouveau123"},
+                follow_redirects=True,
+            )
+        self.assertIn("invalide ou a expir\xe9".encode(), resp.data)
+
+    def test_generer_lien_reset_est_relatif_sans_app_base_url(self):
+        """Sans APP_BASE_URL configuré (voir config.py), le lien ne doit
+        JAMAIS être construit à partir de l'en-tête Host de la requête
+        (url_for(..., _external=True)) — PROMPT_CORRECTIONS.md P0 #3."""
+        from app.auth import generer_lien_reset
+
+        with self.app.test_request_context("/", headers={"Host": "evil.attacker.tld"}), \
+             patch("app.repositories.utilisateurs.set_reset_token"):
+            lien = generer_lien_reset(1)
+        self.assertNotIn("evil.attacker.tld", lien)
+        self.assertTrue(lien.startswith("/reinitialiser/"))
+
+    def test_generer_lien_reset_utilise_app_base_url(self):
+        from app.auth import generer_lien_reset
+
+        self.app.config["APP_BASE_URL"] = "https://kairos.nanaki45.duckdns.org"
+        try:
+            with self.app.test_request_context("/", headers={"Host": "evil.attacker.tld"}), \
+                 patch("app.repositories.utilisateurs.set_reset_token"):
+                lien = generer_lien_reset(1)
+        finally:
+            self.app.config["APP_BASE_URL"] = ""
+        self.assertTrue(lien.startswith("https://kairos.nanaki45.duckdns.org/reinitialiser/"))
+        self.assertNotIn("evil.attacker.tld", lien)
 
     def test_creation_utilisateur_envoie_un_email_pour_definir_le_mot_de_passe(self):
         """Retour Fadhel (2026-09-21) : "ne pas définir un mot de passe à la

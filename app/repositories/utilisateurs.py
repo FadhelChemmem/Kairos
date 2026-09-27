@@ -234,6 +234,33 @@ def set_reset_token(user_id: int, token_hash: str, expires_at) -> None:
     )
 
 
+def consommer_reset_token(token_hash: str, mot_de_passe_hash: str) -> dict | None:
+    """Version ATOMIQUE de set_password(), réservée à la réinitialisation
+    par jeton (PROMPT_CORRECTIONS.md P0 #3) : la vérification de validité
+    du jeton ET son invalidation se font dans la MÊME requête UPDATE,
+    contrairement au couple get_par_reset_token_hash() + set_password()
+    utilisé auparavant (deux requêtes séparées). Sans ça, deux requêtes
+    concurrentes avec le même jeton valide (onglet dupliqué, lien cliqué
+    deux fois, ou un attaquant qui a intercepté le lien et tente de
+    "gagner de vitesse" l'utilisateur légitime) passeraient toutes les
+    deux la vérification avant qu'aucune n'ait eu le temps d'invalider le
+    jeton — chacune changerait le mot de passe sans le savoir.
+
+    Retourne le compte modifié (id, email, prenom, nom) si le jeton était
+    encore valide et vient d'être consommé, sinon None (jeton inconnu,
+    expiré, ou déjà utilisé)."""
+    return db.query_one(
+        """
+        UPDATE utilisateur
+        SET mot_de_passe_hash = %s, reset_token_hash = NULL, reset_token_expires_at = NULL,
+            verifie = true
+        WHERE reset_token_hash = %s AND reset_token_expires_at > now()
+        RETURNING id, email, prenom, nom
+        """,
+        (mot_de_passe_hash, token_hash),
+    )
+
+
 def get_par_reset_token_hash(token_hash: str) -> dict | None:
     """Retrouve le compte visé par un jeton de réinitialisation encore
     valable (pas expiré). Un jeton expiré ou inconnu renvoie None, sans
