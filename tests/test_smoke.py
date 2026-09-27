@@ -2943,6 +2943,221 @@ class SmokeTestCase(unittest.TestCase):
         mock_update.assert_not_called()
 
 
+class TestControlesDAccesStricts(unittest.TestCase):
+    """Audit n°2 (tests de mutation) : plusieurs tests de contrôle d'accès
+    restaient verts même quand le contrôle était SUPPRIMÉ — ils ne
+    vérifiaient qu'un code 302, que le chemin "succès" renvoie aussi, ou
+    un 404 dû à un fichier de test inexistant. Ici, chaque refus vérifie
+    que l'action protégée n'a JAMAIS été exécutée, et chaque
+    téléchargement porte sur un vrai fichier (seul le contrôle d'accès
+    peut alors expliquer un 404)."""
+
+    _login = SmokeTestCase._login
+    _patched = SmokeTestCase._patched
+
+    def setUp(self):
+        self.app = create_app(TestConfig)
+        self.client = self.app.test_client()
+        self._login()
+
+    def _requete(self, methode, chemin, espion, data=None, **overrides):
+        """Exécute la requête avec les mocks par défaut (+ overrides) et un
+        espion sur `espion` ; renvoie (réponse, espion)."""
+        patchers = self._patched(**overrides)
+        for p in patchers:
+            p.start()
+        try:
+            with patch(espion) as mock_espion:
+                resp = getattr(self.client, methode)(chemin, data=data or {})
+        finally:
+            for p in patchers:
+                p.stop()
+        return resp, mock_espion
+
+    # --- Tâches : changer l'état / clôturer (P0 #2) ---
+    NI_CHEF_NI_INTERVENANT = {
+        "app.repositories.projets.user_can_manage": False,
+        "app.repositories.taches.user_est_intervenant": False,
+    }
+
+    def test_changer_etat_refuse_nexecute_rien(self):
+        resp, set_etat = self._requete(
+            "post", "/projets/1/taches/5/etat", "app.repositories.taches.set_etat",
+            {"etat": "verifie"}, **self.NI_CHEF_NI_INTERVENANT,
+        )
+        self.assertEqual(resp.status_code, 302)
+        set_etat.assert_not_called()
+
+    def test_changer_etat_projet_invisible_404(self):
+        resp, set_etat = self._requete(
+            "post", "/projets/1/taches/5/etat", "app.repositories.taches.set_etat",
+            {"etat": "verifie"}, **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        set_etat.assert_not_called()
+
+    def test_changer_etat_valeur_invalide_nexecute_rien(self):
+        _, set_etat = self._requete(
+            "post", "/projets/1/taches/5/etat", "app.repositories.taches.set_etat", {"etat": "termine"},
+        )
+        set_etat.assert_not_called()
+
+    def test_cloturer_refuse_nexecute_rien(self):
+        resp, close = self._requete(
+            "post", "/projets/1/taches/5/cloturer", "app.repositories.taches.close_tache",
+            {"type_code": "envoi"}, **self.NI_CHEF_NI_INTERVENANT,
+        )
+        self.assertEqual(resp.status_code, 302)
+        close.assert_not_called()
+
+    def test_cloturer_projet_invisible_404(self):
+        resp, close = self._requete(
+            "post", "/projets/1/taches/5/cloturer", "app.repositories.taches.close_tache",
+            {"type_code": "envoi"}, **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        close.assert_not_called()
+
+    def test_cloturer_tag_invalide_nexecute_rien(self):
+        _, close = self._requete(
+            "post", "/projets/1/taches/5/cloturer", "app.repositories.taches.close_tache",
+            {"type_code": "inconnu"},
+        )
+        close.assert_not_called()
+
+    def test_cloturer_autorise_appelle_bien_close_tache(self):
+        """Contre-épreuve : sans elle, les tests ci-dessus passeraient même
+        si la route n'appelait jamais close_tache."""
+        _, close = self._requete(
+            "post", "/projets/1/taches/5/cloturer", "app.repositories.taches.close_tache",
+            {"type_code": "envoi"},
+        )
+        close.assert_called_once()
+
+    # --- Création de tâche / ajout d'intervenant : chef ou co-chef ---
+    def test_creer_tache_non_gestionnaire_nexecute_rien(self):
+        _, create = self._requete(
+            "post", "/projets/1/taches", "app.repositories.taches.create_tache", {"titre": "T"},
+            **{"app.repositories.projets.user_can_manage": False},
+        )
+        create.assert_not_called()
+
+    def test_ajouter_intervenant_non_gestionnaire_nexecute_rien(self):
+        _, add = self._requete(
+            "post", "/projets/1/intervenants", "app.repositories.projets.add_intervenant",
+            {"utilisateur_id": "3"}, **{"app.repositories.projets.user_can_manage": False},
+        )
+        add.assert_not_called()
+
+    def test_ajouter_intervenant_projet_invisible_404(self):
+        resp, add = self._requete(
+            "post", "/projets/1/intervenants", "app.repositories.projets.add_intervenant",
+            {"utilisateur_id": "3"}, **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        add.assert_not_called()
+
+    # --- Pièces jointes (P0 #1) : un VRAI fichier sur disque ---
+    def _ecrire_fichier(self, chemin_relatif):
+        chemin = pathlib.Path(self.app.config["UPLOAD_DIR"]) / chemin_relatif
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        chemin.write_bytes(b"%PDF-1.4 contenu de test")
+        self.addCleanup(chemin.unlink)
+
+    def _telecharger(self, url, visible):
+        patchers = self._patched(**{"app.repositories.projets.user_can_view": visible})
+        for p in patchers:
+            p.start()
+        try:
+            return self.client.get(url)
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_telechargement_tache_accorde_puis_refuse(self):
+        self._ecrire_fichier(PIECE_JOINTE_TACHE["chemin"])
+        ok = self._telecharger("/fichiers/taches/1", True)
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(ok.data, b"%PDF-1.4 contenu de test")
+        ok.close()
+        self.assertEqual(self._telecharger("/fichiers/taches/1", False).status_code, 404)
+
+    def test_telechargement_post_accorde_puis_refuse(self):
+        self._ecrire_fichier(PIECE_JOINTE_POST["chemin"])
+        ok = self._telecharger("/fichiers/posts/1", True)
+        self.assertEqual(ok.status_code, 200)
+        ok.close()
+        self.assertEqual(self._telecharger("/fichiers/posts/1", False).status_code, 404)
+
+    def test_upload_tache_projet_invisible_nenregistre_rien(self):
+        resp, save = self._requete(
+            "post", "/fichiers/taches/5/upload", "app.routes.fichiers.save_upload",
+            {"fichier": (io.BytesIO(b"x"), "note.pdf")},
+            **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        save.assert_not_called()
+
+    def test_upload_post_projet_invisible_nenregistre_rien(self):
+        resp, save = self._requete(
+            "post", "/fichiers/posts/1/upload", "app.routes.fichiers.save_upload",
+            {"fichier": (io.BytesIO(b"x"), "plan.pdf")},
+            **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        save.assert_not_called()
+
+    # --- Posts : réactions, commentaires, mentions ---
+    def test_reagir_projet_invisible_nexecute_rien(self):
+        resp, react = self._requete(
+            "post", "/posts/1/reagir", "app.repositories.posts.react", {"reaction_code": "pouce"},
+            **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        react.assert_not_called()
+
+    def test_reagir_code_hors_liste_nexecute_rien(self):
+        _, react = self._requete(
+            "post", "/posts/1/reagir", "app.repositories.posts.react", {"reaction_code": "inconnu"},
+        )
+        react.assert_not_called()
+
+    def test_retirer_reaction_projet_invisible_nexecute_rien(self):
+        resp, remove = self._requete(
+            "post", "/posts/1/reagir/supprimer", "app.repositories.posts.remove_reaction",
+            **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        remove.assert_not_called()
+
+    def test_commenter_projet_invisible_nexecute_rien(self):
+        resp, add = self._requete(
+            "post", "/posts/1/commenter", "app.repositories.posts.add_comment", {"contenu": "x"},
+            **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        add.assert_not_called()
+
+    def test_mentions_filtrees_aux_personnes_qui_voient_le_projet(self):
+        def peut_voir(projet_id, user_id):
+            return user_id in (1, 2)  # l'auteur (1) et la personne 2 ; pas la 3
+
+        patchers = self._patched() + [
+            patch("app.repositories.projets.user_can_view", side_effect=peut_voir),
+        ]
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.create_post", return_value=101) as create:
+                self.client.post("/posts", data={
+                    "projet_id": "1", "type_code": "requete", "contenu": "x", "mentions": ["2", "3"],
+                })
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(create.call_args.kwargs["mentionne_ids"], [2])
+
+
 class CsrfTestConfig(TestConfig):
     WTF_CSRF_ENABLED = True
 
@@ -3025,7 +3240,8 @@ class TestProtectionCSRF(unittest.TestCase):
         """Garde-fou statique : chaque <form method="post"> des templates
         doit contenir le champ caché csrf_token."""
         racine = pathlib.Path(__file__).resolve().parent.parent / "app" / "templates"
-        form_re = re.compile(r'<form\b[^>]*method="post"[^>]*>(.*?)</form>', re.I | re.S)
+        # Guillemets simples/doubles ou sans guillemets (audit n°2).
+        form_re = re.compile(r'<form\b[^>]*method=["\']?post\b[^>]*>(.*?)</form>', re.I | re.S)
         manquants = []
         for tpl in sorted(racine.rglob("*.html")):
             for m in form_re.finditer(tpl.read_text()):
