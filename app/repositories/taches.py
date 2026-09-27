@@ -94,6 +94,12 @@ def list_deadlines(user_id: int, limit: int = 20) -> list[dict]:
         LEFT JOIN tache_intervenant ti ON ti.tache_id = t.id AND ti.utilisateur_id = %(uid)s
         WHERE t.etat NOT IN ('termine', 'abandonne')
           AND t.date_echeance IS NOT NULL
+          -- PROMPT_CORRECTIONS.md P2 #23 : sans ce filtre, une tâche
+          -- restée "en_cours"/"bloque" sur un projet déjà terminé ou
+          -- abandonné continuait d'apparaître dans les échéances — le
+          -- projet, lui, ne bouge plus, donc cette deadline ne sera
+          -- jamais traitée.
+          AND p.etat IN ('en_cours', 'bloque')
           AND (
                 p.chef_projet_id = %(uid)s
                 OR cc.utilisateur_id IS NOT NULL

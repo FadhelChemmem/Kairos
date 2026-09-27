@@ -1942,6 +1942,20 @@ class SmokeTestCase(unittest.TestCase):
         self.assertIn("p.etat::text = ANY(%(etats)s)", source)
         self.assertIn("p.phase::text = ANY(%(phases)s)", source)
 
+    def test_list_deadlines_exclut_les_projets_termines_ou_abandonnes(self):
+        """PROMPT_CORRECTIONS.md P2 #23 : une tâche restée "en_cours" ou
+        "bloque" sur un projet déjà "termine"/"abandonne" continuait
+        d'apparaître dans les échéances — le projet, lui, ne bouge plus.
+        Comme pour list_projets ci-dessus, on ne peut pas exécuter du vrai
+        SQL ici (psycopg2 indisponible), donc on verrouille le texte de la
+        requête."""
+        import inspect
+
+        from app.repositories import taches as taches_repo
+
+        source = inspect.getsource(taches_repo.list_deadlines)
+        self.assertIn("p.etat IN ('en_cours', 'bloque')", source)
+
     # --- Revue sécurité (2026-09-20) : anti-bourrinage, mot de passe
     # oublié, réinitialisation, email à la création, fiche admin/RH. ---
 
