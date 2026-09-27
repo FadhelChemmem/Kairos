@@ -192,6 +192,14 @@ TACHE_SANS_HEURES = {
     "heures_cumulees": None, "intervenants": [], "pieces_jointes": [],
 }
 
+# Fixtures pour les contrôles d'accès (IDOR, PROMPT_CORRECTIONS.md P0 #1) :
+# tache_id=5/post_id=1, rattachés au projet_id=1, pour correspondre aux
+# autres fixtures/appels de test_write_routes_redirect_without_crashing.
+TACHE_POUR_FICHIERS = {**TACHE_SANS_HEURES, "id": 5, "projet_id": 1}
+POST_POUR_ACCES = {"id": 1, "projet_id": 1, "tache_id": None, "parent_post_id": None, "auteur_id": 2}
+PIECE_JOINTE_TACHE = {"id": 1, "tache_id": 5, "nom_fichier": "note_calcul.pdf", "chemin": "taches/5/x.pdf", "projet_id": 1}
+PIECE_JOINTE_POST = {"id": 1, "post_id": 1, "nom_fichier": "plan.pdf", "chemin": "posts/1/x.pdf", "projet_id": 1}
+
 LOTS = [{"code": "CM", "libelle": "Charpente Métallique"}, {"code": "GO", "libelle": "Gros Œuvre"}]
 
 INTERVENANTS = [
@@ -296,12 +304,17 @@ class SmokeTestCase(unittest.TestCase):
             "app.repositories.projets.list_lots": LOTS,
             "app.repositories.projets.list_intervenants": INTERVENANTS,
             "app.repositories.projets.user_can_manage": True,
+            "app.repositories.projets.user_can_view": True,
             "app.repositories.projets.propose_code": "26099X",
             "app.repositories.taches.list_deadlines": DEADLINES,
             "app.repositories.taches.list_mes_taches": MES_TACHES,
             "app.repositories.taches.list_taches_projet": TACHES_PROJET,
+            "app.repositories.taches.get_tache": TACHE_POUR_FICHIERS,
+            "app.repositories.taches.get_piece_jointe": PIECE_JOINTE_TACHE,
             "app.repositories.posts.list_feed_mes_projets": FEED,
             "app.repositories.posts.list_feed_projet": FEED,
+            "app.repositories.posts.get_post": POST_POUR_ACCES,
+            "app.repositories.posts.get_piece_jointe": PIECE_JOINTE_POST,
             "app.repositories.utilisateurs.list_actifs": UTILISATEURS_ACTIFS,
             "app.repositories.dailylog.list_projets_pour_dailylog": DAILYLOG_PROJETS,
             "app.repositories.dailylog.list_entrees_jour": DAILYLOG_ENTREES,
@@ -511,6 +524,163 @@ class SmokeTestCase(unittest.TestCase):
             p.start()
         try:
             resp = self.client.get("/projets/999/nouveau-post")
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 404)
+
+    # --- Contrôle d'accès aux projets (IDOR, PROMPT_CORRECTIONS.md P0 #1) :
+    # avant ce correctif, connaître/deviner un id de projet, de tâche, de
+    # post ou de pièce jointe suffisait à le consulter/le modifier, même
+    # hors de son équipe/affectations — voir user_can_view(). ---
+
+    def test_projet_detail_404_si_non_visible(self):
+        resp = self._get("/projets/1", **{"app.repositories.projets.user_can_view": False})
+        self.assertEqual(resp.status_code, 404)
+
+    def test_nouveau_post_composer_404_si_projet_non_visible(self):
+        resp = self._get("/projets/1/nouveau-post", **{"app.repositories.projets.user_can_view": False})
+        self.assertEqual(resp.status_code, 404)
+
+    def test_creer_tache_404_si_projet_non_visible(self):
+        self._login()
+        patchers = self._patched(**{"app.repositories.projets.user_can_view": False}) + [
+            patch("app.repositories.taches.create_tache", return_value=99),
+        ]
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post("/projets/1/taches", data={"titre": "Tâche test"})
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 404)
+
+    def test_posts_creer_404_si_projet_non_visible(self):
+        self._login()
+        patchers = self._patched(**{"app.repositories.projets.user_can_view": False}) + [
+            patch("app.repositories.posts.create_post", return_value=101),
+        ]
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post("/posts", data={"projet_id": "1", "type_code": "envoi", "contenu": "Test"})
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 404)
+
+    def test_posts_creer_rejette_un_rebond_vers_un_autre_projet(self):
+        """Un rebond (parent_post_id) doit pointer vers un post du MÊME
+        projet — sinon on pourrait relier deux projets sans lien de
+        visibilité entre eux."""
+        self._login()
+        patchers = self._patched(**{
+            "app.repositories.posts.get_post": {**POST_POUR_ACCES, "projet_id": 2},
+        }) + [
+            patch("app.repositories.posts.create_post", return_value=101),
+        ]
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post(
+                "/posts",
+                data={"projet_id": "1", "type_code": "envoi", "contenu": "Test", "parent_post_id": "1"},
+            )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 404)
+
+    def test_posts_reagir_404_si_post_non_visible(self):
+        self._login()
+        patchers = self._patched(**{"app.repositories.projets.user_can_view": False})
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post("/posts/1/reagir", data={"reaction_code": "pouce"})
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 404)
+
+    def test_posts_commenter_404_si_post_inexistant(self):
+        self._login()
+        patchers = self._patched(**{"app.repositories.posts.get_post": None})
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post("/posts/999/commenter", data={"contenu": "Test"})
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 404)
+
+    def test_fichiers_download_tache_404_si_projet_non_visible(self):
+        self._login()
+        patchers = self._patched(**{"app.repositories.projets.user_can_view": False})
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.get("/fichiers/taches/1")
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 404)
+
+    def test_fichiers_download_tache_sert_le_fichier_si_visible(self):
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.routes.fichiers.send_from_directory", return_value="ok") as mock_send:
+                resp = self.client.get("/fichiers/taches/1")
+            mock_send.assert_called_once()
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 200)
+
+    def test_fichiers_download_post_404_si_projet_non_visible(self):
+        self._login()
+        patchers = self._patched(**{"app.repositories.projets.user_can_view": False})
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.get("/fichiers/posts/1")
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 404)
+
+    def test_fichiers_upload_tache_404_si_tache_inexistante_ou_non_visible(self):
+        self._login()
+        patchers = self._patched(**{"app.repositories.taches.get_tache": None})
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post(
+                "/fichiers/taches/999/upload",
+                data={"fichier": (io.BytesIO(b"contenu bidon"), "note.pdf")},
+                content_type="multipart/form-data",
+            )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 404)
+
+    def test_fichiers_upload_post_404_si_post_inexistant(self):
+        self._login()
+        patchers = self._patched(**{"app.repositories.posts.get_post": None})
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post(
+                "/fichiers/posts/999/upload",
+                data={"fichier": (io.BytesIO(b"contenu bidon"), "note.pdf")},
+                content_type="multipart/form-data",
+            )
         finally:
             for p in patchers:
                 p.stop()

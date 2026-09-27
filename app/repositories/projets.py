@@ -201,6 +201,28 @@ def list_intervenants(projet_id: int) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def user_can_view(projet_id: int, user_id: int) -> bool:
+    """Vrai si `user_id` a le droit de voir le projet `projet_id`, selon
+    exactement la même règle que la vue `v_projet_visibilite` (équipe,
+    chef, co-chef, intervenant du projet ou d'une de ses tâches, ou
+    Admin/RH — voir schema.sql).
+
+    À utiliser pour tout accès DIRECT à un objet (page projet, création de
+    post/tâche, téléchargement de pièce jointe...), en miroir des listes
+    (list_projets/search) qui filtrent déjà par cette vue — corrige un
+    contrôle d'accès manquant de type IDOR (PROMPT_CORRECTIONS.md P0 #1) :
+    avant ce correctif, connaître/deviner un id de projet suffisait à en
+    voir le détail, quelle que soit l'équipe de l'utilisateur."""
+    sql = """
+        SELECT 1
+        FROM v_projet_visibilite vv
+        WHERE vv.projet_id = %s AND vv.utilisateur_id = %s
+    """
+    with db.get_cursor() as cur:
+        cur.execute(sql, (projet_id, user_id))
+        return cur.fetchone() is not None
+
+
 def user_can_manage(projet_id: int, user_id: int) -> bool:
     """Chef de projet OU co-chef : seuls eux peuvent créer des tâches sur
     ce projet (cf. décision "co-chef simple" — voir spec)."""

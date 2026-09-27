@@ -88,6 +88,17 @@ def list_feed_mes_projets(current_user_id: int, limit: int = 30) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def get_post(post_id: int) -> dict | None:
+    """Version minimale d'un post (id, projet, tâche, parent, auteur) —
+    utilisée pour les contrôles d'accès (visibilité du projet porteur)
+    avant de réagir/commenter/rebondir sur un post existant, voir
+    PROMPT_CORRECTIONS.md P0 #1."""
+    return db.query_one(
+        "SELECT id, projet_id, tache_id, parent_post_id, auteur_id FROM post WHERE id = %s",
+        (post_id,),
+    )
+
+
 def create_post(
     projet_id: int,
     auteur_id: int,
@@ -173,8 +184,17 @@ def add_piece_jointe(post_id: int, nom_fichier: str, chemin: str, uploaded_by: i
 
 
 def get_piece_jointe(piece_id: int) -> dict | None:
+    """Inclut `projet_id` (jointure sur `post`) pour permettre le contrôle
+    d'accès à la volée avant de servir le fichier (PROMPT_CORRECTIONS.md
+    P0 #1) — sans ça, un id de pièce jointe deviné/incrémenté suffisait à
+    télécharger n'importe quel fichier de l'entreprise."""
     return db.query_one(
-        "SELECT id, post_id, nom_fichier, chemin FROM post_piece_jointe WHERE id = %s",
+        """
+        SELECT pj.id, pj.post_id, pj.nom_fichier, pj.chemin, p.projet_id
+        FROM post_piece_jointe pj
+        JOIN post p ON p.id = pj.post_id
+        WHERE pj.id = %s
+        """,
         (piece_id,),
     )
 

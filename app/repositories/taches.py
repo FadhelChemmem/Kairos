@@ -175,8 +175,17 @@ def add_piece_jointe(tache_id: int, nom_fichier: str, chemin: str, uploaded_by: 
 
 
 def get_piece_jointe(piece_id: int) -> dict | None:
+    """Inclut `projet_id` (jointure sur `tache`) pour permettre le contrôle
+    d'accès à la volée avant de servir le fichier (PROMPT_CORRECTIONS.md
+    P0 #1) — sans ça, un id de pièce jointe deviné/incrémenté suffisait à
+    télécharger n'importe quel fichier de l'entreprise."""
     return db.query_one(
-        "SELECT id, tache_id, nom_fichier, chemin FROM tache_piece_jointe WHERE id = %s",
+        """
+        SELECT pj.id, pj.tache_id, pj.nom_fichier, pj.chemin, t.projet_id
+        FROM tache_piece_jointe pj
+        JOIN tache t ON t.id = pj.tache_id
+        WHERE pj.id = %s
+        """,
         (piece_id,),
     )
 

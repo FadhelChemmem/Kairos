@@ -9,6 +9,7 @@ from flask import Blueprint, abort, flash, g, redirect, request, url_for
 from ..auth import login_required
 from ..repositories import notifications as notifications_repo
 from ..repositories import posts as posts_repo
+from ..repositories import projets as projets_repo
 from ..storage import save_upload
 
 bp = Blueprint("posts", __name__, url_prefix="/posts")
@@ -50,6 +51,24 @@ def creer():
         flash("Message invalide.", "error")
         return _safe_redirect()
 
+    # Contrôle d'accès (IDOR, PROMPT_CORRECTIONS.md P0 #1) : on ne peut
+    # publier que sur un projet qu'on voit déjà.
+    if not projets_repo.user_can_view(projet_id, g.user["id"]):
+        abort(404)
+
+    # Un rebond doit obligatoirement pointer vers un post du MÊME projet —
+    # sinon on pourrait relier deux projets sans lien de visibilité entre
+    # eux (et laisser deviner l'existence d'un post d'un autre projet).
+    if parent_post_id:
+        parent = posts_repo.get_post(parent_post_id)
+        if parent is None or parent["projet_id"] != projet_id:
+            abort(404)
+
+    # Idem pour les mentions : on ne peut taguer que des personnes qui
+    # voient déjà ce projet (pas de fuite d'existence d'un utilisateur vers
+    # un projet auquel il n'a pas accès).
+    mentionne_ids = [uid for uid in mentionne_ids if projets_repo.user_can_view(projet_id, uid)]
+
     post_id = posts_repo.create_post(
         projet_id=projet_id,
         auteur_id=g.user["id"],
@@ -80,6 +99,11 @@ def creer():
 @bp.route("/<int:post_id>/reagir", methods=["POST"])
 @login_required
 def reagir(post_id: int):
+    # Contrôle d'accès (IDOR, PROMPT_CORRECTIONS.md P0 #1) : impossible de
+    # réagir à un post d'un projet qu'on ne voit pas.
+    post = posts_repo.get_post(post_id)
+    if post is None or not projets_repo.user_can_view(post["projet_id"], g.user["id"]):
+        abort(404)
     reaction_code = request.form.get("reaction_code")
     if reaction_code not in REACTIONS_VALIDES:
         abort(400)
@@ -90,6 +114,9 @@ def reagir(post_id: int):
 @bp.route("/<int:post_id>/reagir/supprimer", methods=["POST"])
 @login_required
 def retirer_reaction(post_id: int):
+    post = posts_repo.get_post(post_id)
+    if post is None or not projets_repo.user_can_view(post["projet_id"], g.user["id"]):
+        abort(404)
     posts_repo.remove_reaction(post_id, g.user["id"])
     return _safe_redirect()
 
@@ -97,12 +124,17 @@ def retirer_reaction(post_id: int):
 @bp.route("/<int:post_id>/commenter", methods=["POST"])
 @login_required
 def commenter(post_id: int):
+    post = posts_repo.get_post(post_id)
+    if post is None or not projets_repo.user_can_view(post["projet_id"], g.user["id"]):
+        abort(404)
     contenu = request.form.get("contenu", "").strip()
     if not contenu:
         flash("Le commentaire ne peut pas être vide.", "error")
         return _safe_redirect()
 
     mentionne_user_id = request.form.get("mentionne_user_id", type=int)
+    if mentionne_user_id and not projets_repo.user_can_view(post["projet_id"], mentionne_user_id):
+        mentionne_user_id = None
     posts_repo.add_comment(post_id, g.user["id"], contenu, mentionne_user_id)
 
     if mentionne_user_id and mentionne_user_id != g.user["id"]:

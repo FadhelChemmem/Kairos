@@ -3,6 +3,7 @@ from flask import Blueprint, abort, current_app, flash, g, redirect, request, se
 
 from ..auth import login_required
 from ..repositories import posts as posts_repo
+from ..repositories import projets as projets_repo
 from ..repositories import taches as taches_repo
 from ..repositories import utilisateurs as utilisateurs_repo
 from ..storage import save_upload
@@ -20,6 +21,16 @@ def _safe_redirect(default_endpoint="main.accueil"):
 @bp.route("/taches/<int:tache_id>/upload", methods=["POST"])
 @login_required
 def upload_tache(tache_id: int):
+    # Contrôle d'accès (IDOR, PROMPT_CORRECTIONS.md P0 #1) : on résout la
+    # tâche -> son projet AVANT d'écrire quoi que ce soit sur le disque —
+    # avant ce correctif, save_upload() était appelé sur un tache_id
+    # deviné/inexistant sans aucune vérification, créant des fichiers
+    # orphelins et laissant n'importe quel utilisateur connecté déposer une
+    # pièce jointe sur la tâche de n'importe quel autre projet.
+    tache = taches_repo.get_tache(tache_id)
+    if tache is None or not projets_repo.user_can_view(tache["projet_id"], g.user["id"]):
+        abort(404)
+
     fichier = request.files.get("fichier")
     if not fichier or not fichier.filename:
         flash("Aucun fichier sélectionné.", "error")
@@ -35,7 +46,7 @@ def upload_tache(tache_id: int):
 @login_required
 def download_tache(piece_id: int):
     piece = taches_repo.get_piece_jointe(piece_id)
-    if piece is None:
+    if piece is None or not projets_repo.user_can_view(piece["projet_id"], g.user["id"]):
         abort(404)
     return send_from_directory(
         current_app.config["UPLOAD_DIR"], piece["chemin"],
@@ -46,6 +57,10 @@ def download_tache(piece_id: int):
 @bp.route("/posts/<int:post_id>/upload", methods=["POST"])
 @login_required
 def upload_post(post_id: int):
+    post = posts_repo.get_post(post_id)
+    if post is None or not projets_repo.user_can_view(post["projet_id"], g.user["id"]):
+        abort(404)
+
     fichier = request.files.get("fichier")
     if not fichier or not fichier.filename:
         flash("Aucun fichier sélectionné.", "error")
@@ -61,7 +76,7 @@ def upload_post(post_id: int):
 @login_required
 def download_post(piece_id: int):
     piece = posts_repo.get_piece_jointe(piece_id)
-    if piece is None:
+    if piece is None or not projets_repo.user_can_view(piece["projet_id"], g.user["id"]):
         abort(404)
     return send_from_directory(
         current_app.config["UPLOAD_DIR"], piece["chemin"],

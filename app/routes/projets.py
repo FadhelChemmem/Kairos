@@ -103,6 +103,11 @@ def detail(projet_id: int):
     projet = projets.get_projet(projet_id)
     if projet is None:
         abort(404)
+    # Contrôle d'accès (IDOR, PROMPT_CORRECTIONS.md P0 #1) : un projet hors
+    # de l'équipe/affectations de l'utilisateur ne doit pas être consultable
+    # en devinant/itérant simplement son id dans l'URL.
+    if not projets.user_can_view(projet_id, g.user["id"]):
+        abort(404)
 
     lots = projets.list_lots(projet_id)
     intervenants = projets.list_intervenants(projet_id)
@@ -140,6 +145,8 @@ def nouveau_post(projet_id: int):
     projet = projets.get_projet(projet_id)
     if projet is None:
         abort(404)
+    if not projets.user_can_view(projet_id, g.user["id"]):
+        abort(404)
 
     intent = request.args.get("intent", "tache")
     if intent not in ("tache", "information", "requete"):
@@ -161,6 +168,8 @@ def nouveau_post(projet_id: int):
 @bp.route("/<int:projet_id>/taches", methods=["POST"])
 @login_required
 def creer_tache(projet_id: int):
+    if not projets.user_can_view(projet_id, g.user["id"]):
+        abort(404)
     if not projets.user_can_manage(projet_id, g.user["id"]):
         flash("Seul le chef de projet ou un co-chef peut créer une tâche sur ce projet.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
