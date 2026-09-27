@@ -12,6 +12,15 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-kairos}
       POSTGRES_USER: ${POSTGRES_USER:-kairos}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?définir POSTGRES_PASSWORD dans .env}
+      # Fuseau horaire (PROMPT_CORRECTIONS.md P2 #16) : sans ça, l'image
+      # postgres:16 tourne en UTC — `now()`/`CURRENT_DATE` (date de clôture
+      # d'une tâche, DailyLog...) ne correspondent alors plus à "aujourd'hui"
+      # en Tunisie entre 00h et 01h (UTC+1, pas d'heure d'été). L'image
+      # officielle applique TZ au fuseau système ET à la valeur par défaut
+      # du paramètre Postgres `timezone` ; PGTZ le fixe aussi côté client
+      # libpq, en ceinture et bretelles.
+      TZ: Africa/Tunis
+      PGTZ: Africa/Tunis
     volumes:
       - kairos_pgdata:/var/lib/postgresql/data
       - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
@@ -42,6 +51,11 @@ services:
       FLASK_ENV: ${FLASK_ENV:-production}
       APP_BASE_URL: ${APP_BASE_URL:-}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      # Fuseau horaire (PROMPT_CORRECTIONS.md P2 #16) : sans ça, le
+      # conteneur (Debian slim) tourne en UTC — `datetime.date.today()`
+      # (utilisé partout : DailyLog, deadlines, verrouillage du jour...)
+      # renvoie encore "hier" en Tunisie entre 00h et 01h.
+      TZ: Africa/Tunis
       # Envoi d'email (mot de passe oublié / création de compte) — voir
       # .env.example. Vides par défaut : ces fonctionnalités restent
       # inactives (sans planter) tant que SMTP_HOST n'est pas renseigné.
