@@ -1,7 +1,8 @@
 """Configuration de l'application, lue depuis les variables d'environnement.
 
 Rien de magique ici : tout vient de .env (voir .env.example) via
-python-dotenv, chargé une fois au démarrage dans wsgi.py / app/__init__.py.
+python-dotenv, chargé une fois au démarrage dans wsgi.py (en Docker, les
+variables sont passées directement par docker-compose.yml).
 """
 import datetime
 import os
@@ -64,6 +65,11 @@ class Config:
     # generer_lien_reset, qui refuse de construire un lien externe tant que
     # ce réglage est vide.
     APP_BASE_URL = os.environ.get("APP_BASE_URL", "").rstrip("/")
+
+    # Nombre de reverse proxys de confiance devant l'appli (ex. 1 pour un
+    # nginx/Synology en HTTPS devant gunicorn). 0 = accès direct : les
+    # en-têtes X-Forwarded-* sont alors ignorés. Voir app/__init__.py.
+    TRUSTED_PROXY_COUNT = int(os.environ.get("TRUSTED_PROXY_COUNT", "0") or 0)
 
     # Protection CSRF (Flask-WTF CSRFProtect, PROMPT_CORRECTIONS.md P2 #25) :
     # chaque POST doit porter le jeton de session, soit dans le champ caché

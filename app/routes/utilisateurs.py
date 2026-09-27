@@ -1,4 +1,5 @@
-"""Pages Utilisateurs (liste + création), réservées à l'admin et au RH —
+"""Pages Utilisateurs (liste + création) : gestion réservée à l'admin et au
+RH, consultation en lecture seule pour le chef de projet —
 pour que le RH puisse gérer les comptes sans passer par la commande CLI
 `flask create-user` (voir app/__init__.py). La page "Infos perso" (`/moi`)
 est différente : accessible à tout utilisateur connecté, uniquement sur
@@ -336,9 +337,14 @@ def fiche(user_id: int):
                             "changé.", "error",
                         )
                         return redirect(url_for("utilisateurs.fiche", user_id=user_id))
-                    utilisateurs_repo.set_password(
-                        user_id, hash_password(nouveau_mot_de_passe), g.user["id"]
-                    )
+                    nouveau_hash = hash_password(nouveau_mot_de_passe)
+                    utilisateurs_repo.set_password(user_id, nouveau_hash, g.user["id"])
+                    # Un admin/RH qui change SON PROPRE mot de passe depuis
+                    # sa fiche garde sa session (comme depuis "Infos
+                    # perso") — sans ça, l'empreinte ne correspondait plus
+                    # et il était déconnecté à la requête suivante (P2 #17).
+                    if user_id == g.user["id"]:
+                        session["pw_fingerprint"] = password_fingerprint(nouveau_hash)
             except Exception as exc:
                 if "idx_utilisateur_rh_singleton" in str(exc):
                     flash(
@@ -347,13 +353,27 @@ def fiche(user_id: int):
                     )
                 elif "idx_utilisateur_email_lower" in str(exc):
                     flash(f"Un compte existe déjà avec l'email {email}.", "error")
+                elif "rôle RH" in str(exc):
+                    # trg_check_passage_role_rh (migration 0005).
+                    flash(
+                        "Impossible de passer cette personne au rôle RH : elle est "
+                        "encore chef de projet, co-chef ou intervenant. Retirez-la "
+                        "d'abord de ses projets et tâches.", "error",
+                    )
                 else:
                     flash("Impossible de mettre à jour ce compte.", "error")
             else:
                 flash("Fiche mise à jour.", "success")
                 return redirect(url_for("utilisateurs.fiche", user_id=user_id))
 
-        utilisateur = utilisateurs_repo.get_utilisateur(user_id)
+        # Erreur : on réaffiche la saisie (audit n°2 — la fiche revenait aux
+        # valeurs enregistrées, toutes les modifications étaient perdues).
+        utilisateur = {
+            **utilisateurs_repo.get_utilisateur(user_id),
+            "prenom": prenom, "nom": nom, "email": email, "telephone": telephone,
+            "poste": poste, "adresse": adresse, "date_embauche": date_embauche,
+            "equipe_code": equipe_code, "role": role, "champs_perso": champs_perso,
+        }
 
     return render_template(
         "utilisateur_fiche.html",
@@ -384,4 +404,12 @@ def toggle_actif(user_id: int):
                 flash("Impossible de mettre à jour le statut de ce compte.", "error")
         else:
             flash("Statut du compte mis à jour.", "success")
-    return redirect(url_for("utilisateurs.liste", **request.form.to_dict(flat=True)))
+    # Filtres de la liste à conserver après l'action — liste explicite :
+    # renvoyer tout request.form recopiait aussi le jeton csrf_token dans
+    # l'URL (historique, journaux, Referer), voir audit n°2.
+    filtres = {
+        cle: request.form[cle]
+        for cle in ("q", "equipe_code", "role", "actif")
+        if request.form.get(cle)
+    }
+    return redirect(url_for("utilisateurs.liste", **filtres))

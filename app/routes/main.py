@@ -5,7 +5,7 @@ from flask import Blueprint, g, render_template, request, url_for
 
 from ..auth import login_required
 from ..repositories import dailylog as dailylog_repo
-from ..repositories import posts, projets, taches
+from ..repositories import posts, projets, taches, utilisateurs
 from ..utils import build_gantt
 
 bp = Blueprint("main", __name__)
@@ -37,9 +37,20 @@ def accueil():
     fil = posts.list_feed_mes_projets(user_id, limit=20)
     dailylog_jours_manques = dailylog_repo.jours_manques_recents(user_id)
 
+    # Fenêtre "+ Nouveau post" de l'accueil (audit n°2) : seulement les
+    # projets actifs (pas ceux terminés/abandonnés), la liste des personnes
+    # à affecter/taguer (elle n'était pas transmise : listes vides), et
+    # l'onglet ouvert par défaut adapté — "Tâche" seulement pour qui gère au
+    # moins un projet (sinon le formulaire était refusé à l'envoi).
+    projets_postables = [p for p in mes_projets if p["etat"] in ("en_cours", "bloque")]
+    gere_un_projet = any(p["mon_role"] in ("chef_de_projet", "co_chef") for p in projets_postables)
+
     return render_template(
         "accueil.html",
         mes_projets=mes_projets,
+        projets_postables=projets_postables,
+        intent_par_defaut="tache" if gere_un_projet else "requete",
+        utilisateurs_actifs=utilisateurs.list_actifs(),
         deadlines=deadlines,
         deadlines_gantt=deadlines_gantt,
         mes_taches=mes_taches,

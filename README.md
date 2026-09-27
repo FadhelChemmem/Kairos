@@ -62,14 +62,22 @@ Notifications et fil de posts (étape 1, complète). Flask + PostgreSQL
   affectation à une tâche, ajout comme intervenant, et rappel automatique
   si le DailyLog de la veille n'a pas été rempli.
 
-**Reste à construire** (étape 2, plus tard) : RH, Congés/Télétravail,
+**Reste à construire** (étape 2, plus tard) : Congés/Télétravail,
 rôle Client, fil "Information" hors-projet ciblé par équipe.
+
+**Sécurité** : toutes les actions (formulaires POST) sont protégées contre
+le CSRF (Flask-WTF), la déconnexion se fait en POST, et chaque accès à un
+projet, une tâche, un post ou une pièce jointe vérifie que l'utilisateur
+voit bien ce projet.
 
 ## Démarrer avec Docker (recommandé)
 
 ```bash
 cp .env.example .env
-# éditer .env : POSTGRES_PASSWORD et SECRET_KEY (voir les commentaires dans le fichier)
+# éditer .env (voir les commentaires dans le fichier) — au minimum :
+#   POSTGRES_PASSWORD, SECRET_KEY (32 caractères minimum, sinon l'appli refuse de démarrer),
+#   APP_BASE_URL et SMTP_* (la création de compte envoie un email pour choisir son mot de passe)
+#   Derrière un reverse proxy HTTPS : SESSION_COOKIE_SECURE=true, TRUSTED_PROXY_COUNT=1, WEB_BIND=127.0.0.1
 
 docker compose up -d --build
 ```
@@ -157,7 +165,8 @@ place : `docker volume rm <ancien_pgdata> <ancien_uploads>`. Pas d'urgence
 
 ## Sauvegardes
 
-`./scripts/backup_db.sh` fait un `pg_dump` compressé dans `./backups/`
+`./scripts/backup_db.sh` fait un `pg_dump` compressé de la base **et** une
+archive des pièces jointes (volume `kairos_uploads`) dans `./backups/`
 (30 dernières copies conservées, le reste est supprimé automatiquement,
 sous le préfixe `kairos_` depuis le 2026-09-21 — les anciens fichiers
 `workflowbook_*.sql.gz` restent sur disque mais ne sont plus comptés dans
@@ -170,7 +179,25 @@ une fois par jour via **TrueNAS SCALE > Système > Tâches planifiées
 ```
 
 Sans ça, toutes les données (projets, tâches, heures, historique) ne
-vivent que dans un seul volume Docker sur ce NAS.
+vivent que dans un seul volume Docker sur ce NAS. Les sauvegardes restent
+elles aussi sur ce NAS : copiez régulièrement `./backups/` ailleurs
+(autre disque, autre machine), sinon un disque mort emporte tout.
+
+### Restaurer une sauvegarde
+
+```bash
+./scripts/restore_db.sh backups/kairos_AAAA-MM-JJ_HHMM.sql.gz \
+    backups/kairos_uploads_AAAA-MM-JJ_HHMM.tar.gz
+```
+
+Le script vérifie les archives, demande confirmation (taper `RESTAURER`),
+démarre les services, vide le schéma, recharge la base, restaure les
+pièces jointes puis lance `flask migrer`. Il fonctionne aussi sur une
+installation toute neuve (`docker compose up` vient de créer une base
+vide avec `schema.sql`) — c'est exactement le cas "le disque est mort,
+je repars de zéro". **Remplace toutes les données actuelles.** Testez-le
+de temps en temps sur une machine de test : une sauvegarde jamais
+restaurée n'est pas une sauvegarde vérifiée.
 
 ## Migration des données depuis l'ancien Kairos (MySQL "chronos")
 
@@ -189,7 +216,9 @@ Produit trois fichiers dans le dossier de sortie (**jamais commités dans
 git**, voir `.gitignore`) :
 - `migration.sql` — à rejouer sur une base **fraîche** (schema.sql tout
   juste appliqué, aucune donnée métier existante) :
-  `docker compose exec -T db psql -U kairos -d kairos -f /chemin/vers/migration.sql`
+  `docker compose exec -T db psql -v ON_ERROR_STOP=1 -U kairos -d kairos < migration_sorties/2026-09-21/migration.sql`
+  (`ON_ERROR_STOP=1` : sans ça, une erreur au milieu annule tout le
+  chargement mais la commande se termine quand même "avec succès")
 - `identifiants_NE_PAS_COMMITER.csv` — un mot de passe temporaire par
   personne migrée, à transmettre **en main propre** (jamais par email) ;
   à supprimer une fois distribué.
@@ -249,7 +278,8 @@ code a été écrit.
 createdb kairos
 psql kairos -f schema.sql
 export DATABASE_URL=postgresql://localhost/kairos
-export SECRET_KEY=dev
+export SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+export UPLOAD_DIR=$PWD/uploads
 export FLASK_APP=wsgi.py
 export FLASK_ENV=development
 flask create-user --email test@midgard.tn --prenom Test --nom Utilisateur --password test1234
@@ -262,9 +292,10 @@ flask run
 python3 -m unittest discover -s tests -v
 ```
 
-113 tests au total, tous verts (lancés automatiquement sur GitHub à
-chaque push/pull request, voir `.github/workflows/tests.yml`). Ces tests
-ne nécessitent PAS de base de
+Tous verts (lancés automatiquement sur GitHub à chaque push sur `master`
+et à chaque pull request, voir `.github/workflows/tests.yml` — un second
+job y applique aussi `schema.sql` et toutes les migrations sur un vrai
+PostgreSQL 16). Ces tests ne nécessitent PAS de base de
 données réelle : ils simulent psycopg2 et remplacent les fonctions de
 repository par des données de test, pour vérifier que les pages se
 construisent sans erreur (Jinja2, routage, `url_for`) — c'est le risque
@@ -295,16 +326,16 @@ app/
   __init__.py       point d'entrée (create_app), commande CLI create-user
   config.py         configuration (variables d'environnement)
   db.py             pool de connexions + mécanisme app.current_user_id
-  auth.py           connexion/déconnexion, hachage mot de passe
+  auth.py           connexion/déconnexion (POST, protégée CSRF), hachage mot de passe
   utils.py          helpers d'affichage (avatars, pills, dates relatives, calcul du Gantt Deadlines)
   storage.py        stockage des pièces jointes sur disque (UPLOAD_DIR)
   repositories/     tout le SQL, une fonction = une requête (ou une petite transaction)
   routes/           les vues Flask (accueil, projets, posts, dailylog, deadlines, fichiers, utilisateurs, notifications)
   templates/        Jinja2, porté fidèlement des maquettes .dc.html
-  static/           CSS partagé + logo Kairos
+  static/           CSS partagé, JS (sélecteur à puces, composeur de post) + logo Kairos
 schema.sql          schéma canonique (source de vérité, appliqué tel quel à l'installation)
 migrations/         changements de schéma à appliquer sur une base déjà en place (`flask migrer`)
-scripts/            scripts d'exploitation (backup_db.sh)
+scripts/            exploitation : backup_db.sh, restore_db.sh, migrate_from_chronos.py (+ mysqldump_parser.py)
 tests/              tests de fumée (rendu des pages) + tests unitaires purs
 .github/workflows/  CI (tests automatiques à chaque push/pull request)
 docker-compose.yml, Dockerfile, .env.example

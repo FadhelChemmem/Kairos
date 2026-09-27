@@ -18,6 +18,7 @@ import io
 import pathlib
 import re
 import sys
+import tempfile
 import types
 import unittest
 from unittest.mock import patch
@@ -78,8 +79,16 @@ from app.config import Config  # noqa: E402
 MOT_DE_PASSE_HASH_PAR_DEFAUT = "hash-bidon"
 
 
+# Dossier d'upload jetable pour toute la suite : create_app() crée
+# UPLOAD_DIR au démarrage, et la valeur par défaut (/app/uploads) n'est
+# pas inscriptible sur un runner GitHub Actions (utilisateur non root) —
+# c'est ce qui faisait échouer la CI (159 erreurs PermissionError).
+_UPLOAD_DIR_TESTS = tempfile.mkdtemp(prefix="kairos-tests-uploads-")
+
+
 class TestConfig(Config):
     DATABASE_URL = "postgresql://fake/fake"  # jamais utilisé, get_cursor n'est pas appelé
+    UPLOAD_DIR = _UPLOAD_DIR_TESTS
     SECRET_KEY = "test-secret"
     TESTING = True
     # La protection CSRF est désactivée pour les tests de routes (qui
@@ -608,6 +617,53 @@ class SmokeTestCase(unittest.TestCase):
             for p in patchers:
                 p.stop()
 
+    def _poster_dailylog(self, heures, **overrides):
+        self._login()
+        patchers = self._patched(**overrides)
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
+                resp = self.client.post("/dailylog", data={
+                    "date": "2026-09-15",
+                    "ligne_projet_id": ["1"] * len(heures),
+                    "ligne_tache_id": [""] * len(heures),
+                    "ligne_heures": heures,
+                })
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        return mock_remplacer
+
+    def test_dailylog_refuse_nan_et_infini(self):
+        """Audit n°2 : `nan` passait les bornes (toute comparaison avec NaN
+        est fausse) et rendait les totaux d'heures du projet égaux à NaN."""
+        for valeur in ("nan", "NaN", "inf", "-inf"):
+            with self.subTest(valeur=valeur):
+                mock_remplacer = self._poster_dailylog([valeur])
+                self.assertEqual(mock_remplacer.call_args.args[2], [])
+
+    def test_dailylog_bornes_24h_exactes(self):
+        self.assertEqual(
+            self._poster_dailylog(["24"]).call_args.args[2],
+            [{"projet_id": 1, "tache_id": None, "heures": 24.0}],
+        )
+        self.assertEqual(self._poster_dailylog(["24.01"]).call_args.args[2], [])
+
+    def test_dailylog_ligne_refusee_conservee_et_signalee(self):
+        """Audit n°2 : une ligne refusée (ici, projet devenu invisible) ne
+        doit plus être supprimée en silence — sa clé est transmise à
+        remplacer_jour pour conserver la valeur déjà enregistrée, et
+        l'utilisateur est prévenu."""
+        mock_remplacer = self._poster_dailylog(
+            ["4"], **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(mock_remplacer.call_args.kwargs["conserver"], {(1, 0)})
+        with self.client.session_transaction() as sess:
+            flashes = sess.get("_flashes", [])
+        self.assertTrue(any("valeur précédente a été conservée" in msg for _, msg in flashes))
+
     def test_dailylog_enregistrer_date_invalide_repliee_sur_aujourdhui(self):
         self._login()
         patchers = self._patched()
@@ -706,37 +762,6 @@ class SmokeTestCase(unittest.TestCase):
         resp = self._get("/projets/code-propose?phase=BIDON")
         self.assertEqual(resp.status_code, 400)
 
-    def test_nouveau_post_composer_renders_default_tache(self):
-        resp = self._get("/projets/1/nouveau-post")
-        self.assertEqual(resp.status_code, 200, resp.data[:2000])
-        self.assertIn("Titre de la t\xe2che".encode(), resp.data)
-        self.assertIn("Objet de la requ\xeate".encode(), resp.data)
-        # Le panneau Information est un aperçu non fonctionnel (étape 2) :
-        # présent sur la page, mais sans <form> qui le soumette.
-        self.assertIn("\xe9tape 2".encode(), resp.data)
-
-    def test_nouveau_post_composer_preselects_intent_from_query(self):
-        resp = self._get("/projets/1/nouveau-post?intent=requete")
-        self.assertEqual(resp.status_code, 200, resp.data[:2000])
-        self.assertIn(b'id="intent-requete" name="intent-toggle" class="composer-radio" checked', resp.data)
-
-    def test_nouveau_post_composer_unknown_intent_falls_back_to_tache(self):
-        resp = self._get("/projets/1/nouveau-post?intent=n-importe-quoi")
-        self.assertEqual(resp.status_code, 200, resp.data[:2000])
-        self.assertIn(b'id="intent-tache" name="intent-toggle" class="composer-radio" checked', resp.data)
-
-    def test_nouveau_post_composer_404_on_unknown_projet(self):
-        self._login()
-        patchers = self._patched() + [patch("app.repositories.projets.get_projet", return_value=None)]
-        for p in patchers:
-            p.start()
-        try:
-            resp = self.client.get("/projets/999/nouveau-post")
-        finally:
-            for p in patchers:
-                p.stop()
-        self.assertEqual(resp.status_code, 404)
-
     # --- Contrôle d'accès aux projets (IDOR, PROMPT_CORRECTIONS.md P0 #1) :
     # avant ce correctif, connaître/deviner un id de projet, de tâche, de
     # post ou de pièce jointe suffisait à le consulter/le modifier, même
@@ -744,10 +769,6 @@ class SmokeTestCase(unittest.TestCase):
 
     def test_projet_detail_404_si_non_visible(self):
         resp = self._get("/projets/1", **{"app.repositories.projets.user_can_view": False})
-        self.assertEqual(resp.status_code, 404)
-
-    def test_nouveau_post_composer_404_si_projet_non_visible(self):
-        resp = self._get("/projets/1/nouveau-post", **{"app.repositories.projets.user_can_view": False})
         self.assertEqual(resp.status_code, 404)
 
     def test_creer_tache_404_si_projet_non_visible(self):
@@ -763,6 +784,60 @@ class SmokeTestCase(unittest.TestCase):
             for p in patchers:
                 p.stop()
         self.assertEqual(resp.status_code, 404)
+
+    def test_creer_tache_refuse_un_parent_dun_autre_projet(self):
+        """Audit n°2 : parent_post_id n'était pas vérifié ici — le fil du
+        projet affichait alors le contenu d'un post de n'importe quel
+        autre projet (fuite inter-projets)."""
+        self._login()
+        patchers = self._patched(**{
+            "app.repositories.posts.get_post": {**POST_POUR_ACCES, "projet_id": 99},
+        }) + [patch("app.repositories.taches.create_tache", return_value=99)]
+        mock_create = patchers[-1]
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post("/projets/1/taches", data={"titre": "T", "parent_post_id": "7"})
+            self.assertEqual(resp.status_code, 404)
+            self.assertFalse(mock_create.target.create_tache.called)
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_creer_tache_accepte_un_parent_du_meme_projet(self):
+        self._login()
+        patchers = self._patched(**{
+            "app.repositories.posts.get_post": {**POST_POUR_ACCES, "projet_id": 1},
+        })
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.taches.create_tache", return_value=99) as mock_create:
+                resp = self.client.post("/projets/1/taches", data={"titre": "T", "parent_post_id": "7"})
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(mock_create.call_args.kwargs["parent_post_id"], 7)
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_creer_tache_erreur_inattendue_na_pas_le_message_rh(self):
+        """Audit n°2 : toute erreur base était présentée comme "un RH ne
+        peut pas être intervenant"."""
+        self._login()
+        patchers = self._patched() + [
+            patch("app.repositories.taches.create_tache", side_effect=Exception("connexion perdue")),
+        ]
+        for p in patchers:
+            p.start()
+        try:
+            self.client.post("/projets/1/taches", data={"titre": "T"})
+        finally:
+            for p in patchers:
+                p.stop()
+        with self.client.session_transaction() as sess:
+            messages = [msg for _, msg in sess.get("_flashes", [])]
+        self.assertFalse(any("RH" in m for m in messages), messages)
+        self.assertTrue(any("erreur inattendue" in m for m in messages), messages)
 
     # --- Autres 500 qui devraient être des messages flash
     # (PROMPT_CORRECTIONS.md P1 #11) : creer_tache prenait type_deadline et
@@ -1295,7 +1370,7 @@ class SmokeTestCase(unittest.TestCase):
             p.start()
         try:
             with patch("app.repositories.notifications.marquer_lu") as mock_marquer:
-                resp = self.client.get("/notifications/10/ouvrir", follow_redirects=False)
+                resp = self.client.post("/notifications/10/ouvrir", follow_redirects=False)
                 mock_marquer.assert_called_once_with(10, 1)
         finally:
             for p in patchers:
@@ -1311,7 +1386,7 @@ class SmokeTestCase(unittest.TestCase):
         for p in patchers:
             p.start()
         try:
-            resp = self.client.get("/notifications/999/ouvrir")
+            resp = self.client.post("/notifications/999/ouvrir")
         finally:
             for p in patchers:
                 p.stop()
@@ -1577,6 +1652,51 @@ class SmokeTestCase(unittest.TestCase):
             flashes = sess.get("_flashes", [])
         self.assertTrue(any("compte RH actif" in msg for _, msg in flashes))
 
+    def test_toggle_actif_ne_recopie_pas_le_jeton_csrf_dans_lurl(self):
+        """Audit n°2 : la redirection recopiait tout request.form, donc
+        aussi csrf_token, dans l'URL de la liste."""
+        self._login()
+        patchers = self._patched() + [patch("app.repositories.utilisateurs.toggle_actif")]
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post("/utilisateurs/2/toggle-actif", data={
+                "csrf_token": "secret", "q": "wael", "equipe_code": "", "role": "intervenant",
+            })
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        self.assertNotIn("csrf_token", resp.headers["Location"])
+        self.assertIn("q=wael", resp.headers["Location"])
+        self.assertIn("role=intervenant", resp.headers["Location"])
+
+    def test_fiche_changer_son_propre_mot_de_passe_garde_la_session(self):
+        """Audit n°2 : un admin qui change son propre mot de passe depuis
+        sa fiche était déconnecté (empreinte de session non rafraîchie)."""
+        self._login()
+        patchers = self._patched(**{
+            "app.repositories.utilisateurs.get_utilisateur": {**UTILISATEUR_PROFIL, "id": 1},
+        }) + [
+            patch("app.repositories.utilisateurs.update_utilisateur_complet"),
+            patch("app.repositories.utilisateurs.set_password"),
+            patch("app.routes.utilisateurs.hash_password", return_value="nouveau-hash"),
+        ]
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post("/utilisateurs/1", data={
+                "prenom": "Foulen", "nom": "Chedly", "email": "fadhel@midgard.tn",
+                "role": "admin", "equipe_code": "MIDGARD",
+                "nouveau_mot_de_passe": "un-nouveau-mot-de-passe-solide",
+            })
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302, resp.data[:1500])
+        with self.client.session_transaction() as sess:
+            self.assertEqual(sess.get("pw_fingerprint"), password_fingerprint("nouveau-hash"))
+
     def test_mon_profil_post_avec_photo_appelle_set_avatar(self):
         self._login()
         patchers = self._patched()
@@ -1742,11 +1862,14 @@ class SmokeTestCase(unittest.TestCase):
         """Le rebond ouvre la fenêtre flottante partagée (retour Fadhel,
         2026-09-19) — un rebond est lui-même un post (Tâche/Info/Requête),
         jamais un lien vers une page séparée ni un champ texte libre."""
-        resp = self._get("/accueil")
+        feed_gere = [{**p, "je_gere": True} for p in FEED]
+        resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": feed_gere})
         self.assertEqual(resp.status_code, 200)
         body = resp.data.decode()
         self.assertIn("+ Tâche", body)
-        self.assertIn("+ Info", body)
+        # "+ Info" retiré tant que les posts Information ne sont pas
+        # publiables (étape 2) — audit n°2.
+        self.assertNotIn("+ Info", body)
         self.assertIn("+ Requête", body)
         self.assertIn('data-open-post-dialog', body)
         self.assertIn('data-parent-post-id="1"', body)
@@ -1754,6 +1877,21 @@ class SmokeTestCase(unittest.TestCase):
         self.assertNotIn('href="/projets/1/nouveau-post', body)
         # Plus de mini-formulaire "Répondre à ce post…" en texte libre.
         self.assertNotIn("Répondre à ce post", body)
+
+    def test_rebond_tache_masque_si_on_ne_gere_pas_le_projet(self):
+        """Audit n°2 : "+ Tâche" était proposé à tous, puis refusé par le
+        serveur (seuls chef/co-chef créent des tâches)."""
+        feed = [{**p, "je_gere": False} for p in FEED]
+        body = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": feed}).data.decode()
+        self.assertNotIn("+ Tâche", body)
+        self.assertIn("+ Requête", body)
+
+    def test_accueil_fenetre_post_liste_les_personnes(self):
+        """Audit n°2 : utilisateurs_actifs n'était pas transmis à l'accueil —
+        listes Intervenant(s)/Personnes taguées vides."""
+        body = self._get("/accueil").data.decode()
+        for u in UTILISATEURS_ACTIFS:
+            self.assertIn(f'value="{u["id"]}"', body)
 
     def test_projets_liste_applique_les_defauts_sans_filtres_actifs(self):
         resp = self._get("/projets", **{"app.repositories.projets.list_projets": [PROJET_LISTE_SANS_HEURES]})
@@ -1988,10 +2126,86 @@ class SmokeTestCase(unittest.TestCase):
                 data={"email": "fadhel@midgard.tn", "password": "mauvais"},
             )
         # PROMPT_CORRECTIONS.md P2 #24 : une tentative échouée est
-        # maintenant enregistrée à la fois par email ET par IP.
-        mock_enregistrer.assert_any_call("connexion", "fadhel@midgard.tn")
+        # maintenant enregistrée à la fois par email ET par IP — le
+        # compteur "email" est lié à l'IP (audit n°2), pour qu'un tiers ne
+        # puisse plus verrouiller le compte de quelqu'un d'autre.
+        mock_enregistrer.assert_any_call("connexion", "fadhel@midgard.tn|127.0.0.1")
         mock_enregistrer.assert_any_call("connexion_ip", "127.0.0.1")
         self.assertEqual(mock_enregistrer.call_count, 2)
+
+    def test_login_verrouillage_email_limite_a_lip_de_lattaquant(self):
+        """Audit n°2 : 5 échecs depuis une autre IP ne doivent plus
+        empêcher le vrai propriétaire de se connecter depuis son poste."""
+        def compter(type_, cle, fenetre):
+            # 5 échecs enregistrés pour cet email, mais depuis une autre IP.
+            return 5 if cle == "fadhel@midgard.tn|10.0.0.99" else 0
+
+        user_row = {**USER, "mot_de_passe_hash": "scrypt:bidon"}
+        with patch("app.repositories.securite.compter_tentatives_recentes", side_effect=compter), \
+             patch("app.auth.get_user_by_email", return_value=user_row), \
+             patch("app.auth.verify_password", return_value=True), \
+             patch("app.auth._verifier_rappel_dailylog"), \
+             patch("app.repositories.notifications.compter_non_lues", return_value=0):
+            resp = self.client.post(
+                "/connexion", data={"email": "fadhel@midgard.tn", "password": "bon"},
+            )
+        self.assertEqual(resp.status_code, 302)
+        with self.client.session_transaction() as sess:
+            self.assertEqual(sess.get("user_id"), 1)
+
+    def test_login_rehache_un_ancien_hash_pbkdf2(self):
+        """Audit n°2 : les comptes importés de Chronos (pbkdf2) sont
+        re-hachés à la première connexion réussie."""
+        user_row = {**USER, "mot_de_passe_hash": "pbkdf2:sha256:600000$sel$abc"}
+        with patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
+             patch("app.auth.get_user_by_email", return_value=user_row), \
+             patch("app.auth.verify_password", return_value=True), \
+             patch("app.auth._verifier_rappel_dailylog"), \
+             patch("app.repositories.notifications.compter_non_lues", return_value=0), \
+             patch("app.repositories.utilisateurs.set_password") as mock_set:
+            self.client.post("/connexion", data={"email": "fadhel@midgard.tn", "password": "bon"})
+        mock_set.assert_called_once()
+        self.assertTrue(mock_set.call_args.args[1].startswith("scrypt:"))
+
+    def test_login_ne_rehache_pas_un_hash_actuel(self):
+        user_row = {**USER, "mot_de_passe_hash": "scrypt:32768:8:1$sel$abc"}
+        with patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
+             patch("app.auth.get_user_by_email", return_value=user_row), \
+             patch("app.auth.verify_password", return_value=True), \
+             patch("app.auth._verifier_rappel_dailylog"), \
+             patch("app.repositories.notifications.compter_non_lues", return_value=0), \
+             patch("app.repositories.utilisateurs.set_password") as mock_set:
+            self.client.post("/connexion", data={"email": "fadhel@midgard.tn", "password": "bon"})
+        mock_set.assert_not_called()
+
+    def test_notification_ouvrir_nest_plus_accessible_en_get(self):
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.get("/notifications/10/ouvrir")
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 405)
+
+    def test_entetes_de_securite(self):
+        resp = self.client.get("/connexion")
+        self.assertEqual(resp.headers.get("X-Frame-Options"), "DENY")
+        self.assertEqual(resp.headers.get("X-Content-Type-Options"), "nosniff")
+        self.assertIn("frame-ancestors 'none'", resp.headers.get("Content-Security-Policy", ""))
+
+    def test_fichier_statique_sans_requete_sql(self):
+        """Audit n°2 : chaque fichier CSS/JS coûtait 3 requêtes SQL."""
+        self._login()
+        with patch("app.auth.get_user_by_id") as mock_user, \
+             patch("app.repositories.notifications.compter_non_lues") as mock_notifs:
+            resp = self.client.get("/static/css/app.css")
+            resp.close()
+        self.assertEqual(resp.status_code, 200)
+        mock_user.assert_not_called()
+        mock_notifs.assert_not_called()
 
     def test_login_bloque_apres_trop_de_tentatives_par_ip(self):
         """PROMPT_CORRECTIONS.md P2 #24 : au-delà de MAX_TENTATIVES_IP
@@ -2664,7 +2878,7 @@ class SmokeTestCase(unittest.TestCase):
         # Seul formulaire autorisé : la déconnexion de la barre du haut
         # (base.html, en POST depuis PROMPT_CORRECTIONS.md P2 #25) — la
         # fiche elle-même ne doit en contenir aucun.
-        contenu_page = resp.data.split(b'<div class="page-body"', 1)[1]
+        contenu_page = resp.data.split(b'class="page-body', 1)[1]
         self.assertNotIn(b"<form", contenu_page)
 
     def test_fiche_chef_de_projet_ne_peut_rien_modifier(self):
@@ -2692,6 +2906,221 @@ class SmokeTestCase(unittest.TestCase):
                 p.stop()
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         mock_update.assert_not_called()
+
+
+class TestControlesDAccesStricts(unittest.TestCase):
+    """Audit n°2 (tests de mutation) : plusieurs tests de contrôle d'accès
+    restaient verts même quand le contrôle était SUPPRIMÉ — ils ne
+    vérifiaient qu'un code 302, que le chemin "succès" renvoie aussi, ou
+    un 404 dû à un fichier de test inexistant. Ici, chaque refus vérifie
+    que l'action protégée n'a JAMAIS été exécutée, et chaque
+    téléchargement porte sur un vrai fichier (seul le contrôle d'accès
+    peut alors expliquer un 404)."""
+
+    _login = SmokeTestCase._login
+    _patched = SmokeTestCase._patched
+
+    def setUp(self):
+        self.app = create_app(TestConfig)
+        self.client = self.app.test_client()
+        self._login()
+
+    def _requete(self, methode, chemin, espion, data=None, **overrides):
+        """Exécute la requête avec les mocks par défaut (+ overrides) et un
+        espion sur `espion` ; renvoie (réponse, espion)."""
+        patchers = self._patched(**overrides)
+        for p in patchers:
+            p.start()
+        try:
+            with patch(espion) as mock_espion:
+                resp = getattr(self.client, methode)(chemin, data=data or {})
+        finally:
+            for p in patchers:
+                p.stop()
+        return resp, mock_espion
+
+    # --- Tâches : changer l'état / clôturer (P0 #2) ---
+    NI_CHEF_NI_INTERVENANT = {
+        "app.repositories.projets.user_can_manage": False,
+        "app.repositories.taches.user_est_intervenant": False,
+    }
+
+    def test_changer_etat_refuse_nexecute_rien(self):
+        resp, set_etat = self._requete(
+            "post", "/projets/1/taches/5/etat", "app.repositories.taches.set_etat",
+            {"etat": "verifie"}, **self.NI_CHEF_NI_INTERVENANT,
+        )
+        self.assertEqual(resp.status_code, 302)
+        set_etat.assert_not_called()
+
+    def test_changer_etat_projet_invisible_404(self):
+        resp, set_etat = self._requete(
+            "post", "/projets/1/taches/5/etat", "app.repositories.taches.set_etat",
+            {"etat": "verifie"}, **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        set_etat.assert_not_called()
+
+    def test_changer_etat_valeur_invalide_nexecute_rien(self):
+        _, set_etat = self._requete(
+            "post", "/projets/1/taches/5/etat", "app.repositories.taches.set_etat", {"etat": "termine"},
+        )
+        set_etat.assert_not_called()
+
+    def test_cloturer_refuse_nexecute_rien(self):
+        resp, close = self._requete(
+            "post", "/projets/1/taches/5/cloturer", "app.repositories.taches.close_tache",
+            {"type_code": "envoi"}, **self.NI_CHEF_NI_INTERVENANT,
+        )
+        self.assertEqual(resp.status_code, 302)
+        close.assert_not_called()
+
+    def test_cloturer_projet_invisible_404(self):
+        resp, close = self._requete(
+            "post", "/projets/1/taches/5/cloturer", "app.repositories.taches.close_tache",
+            {"type_code": "envoi"}, **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        close.assert_not_called()
+
+    def test_cloturer_tag_invalide_nexecute_rien(self):
+        _, close = self._requete(
+            "post", "/projets/1/taches/5/cloturer", "app.repositories.taches.close_tache",
+            {"type_code": "inconnu"},
+        )
+        close.assert_not_called()
+
+    def test_cloturer_autorise_appelle_bien_close_tache(self):
+        """Contre-épreuve : sans elle, les tests ci-dessus passeraient même
+        si la route n'appelait jamais close_tache."""
+        _, close = self._requete(
+            "post", "/projets/1/taches/5/cloturer", "app.repositories.taches.close_tache",
+            {"type_code": "envoi"},
+        )
+        close.assert_called_once()
+
+    # --- Création de tâche / ajout d'intervenant : chef ou co-chef ---
+    def test_creer_tache_non_gestionnaire_nexecute_rien(self):
+        _, create = self._requete(
+            "post", "/projets/1/taches", "app.repositories.taches.create_tache", {"titre": "T"},
+            **{"app.repositories.projets.user_can_manage": False},
+        )
+        create.assert_not_called()
+
+    def test_ajouter_intervenant_non_gestionnaire_nexecute_rien(self):
+        _, add = self._requete(
+            "post", "/projets/1/intervenants", "app.repositories.projets.add_intervenant",
+            {"utilisateur_id": "3"}, **{"app.repositories.projets.user_can_manage": False},
+        )
+        add.assert_not_called()
+
+    def test_ajouter_intervenant_projet_invisible_404(self):
+        resp, add = self._requete(
+            "post", "/projets/1/intervenants", "app.repositories.projets.add_intervenant",
+            {"utilisateur_id": "3"}, **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        add.assert_not_called()
+
+    # --- Pièces jointes (P0 #1) : un VRAI fichier sur disque ---
+    def _ecrire_fichier(self, chemin_relatif):
+        chemin = pathlib.Path(self.app.config["UPLOAD_DIR"]) / chemin_relatif
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        chemin.write_bytes(b"%PDF-1.4 contenu de test")
+        self.addCleanup(chemin.unlink)
+
+    def _telecharger(self, url, visible):
+        patchers = self._patched(**{"app.repositories.projets.user_can_view": visible})
+        for p in patchers:
+            p.start()
+        try:
+            return self.client.get(url)
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_telechargement_tache_accorde_puis_refuse(self):
+        self._ecrire_fichier(PIECE_JOINTE_TACHE["chemin"])
+        ok = self._telecharger("/fichiers/taches/1", True)
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(ok.data, b"%PDF-1.4 contenu de test")
+        ok.close()
+        self.assertEqual(self._telecharger("/fichiers/taches/1", False).status_code, 404)
+
+    def test_telechargement_post_accorde_puis_refuse(self):
+        self._ecrire_fichier(PIECE_JOINTE_POST["chemin"])
+        ok = self._telecharger("/fichiers/posts/1", True)
+        self.assertEqual(ok.status_code, 200)
+        ok.close()
+        self.assertEqual(self._telecharger("/fichiers/posts/1", False).status_code, 404)
+
+    def test_upload_tache_projet_invisible_nenregistre_rien(self):
+        resp, save = self._requete(
+            "post", "/fichiers/taches/5/upload", "app.routes.fichiers.save_upload",
+            {"fichier": (io.BytesIO(b"x"), "note.pdf")},
+            **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        save.assert_not_called()
+
+    def test_upload_post_projet_invisible_nenregistre_rien(self):
+        resp, save = self._requete(
+            "post", "/fichiers/posts/1/upload", "app.routes.fichiers.save_upload",
+            {"fichier": (io.BytesIO(b"x"), "plan.pdf")},
+            **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        save.assert_not_called()
+
+    # --- Posts : réactions, commentaires, mentions ---
+    def test_reagir_projet_invisible_nexecute_rien(self):
+        resp, react = self._requete(
+            "post", "/posts/1/reagir", "app.repositories.posts.react", {"reaction_code": "pouce"},
+            **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        react.assert_not_called()
+
+    def test_reagir_code_hors_liste_nexecute_rien(self):
+        _, react = self._requete(
+            "post", "/posts/1/reagir", "app.repositories.posts.react", {"reaction_code": "inconnu"},
+        )
+        react.assert_not_called()
+
+    def test_retirer_reaction_projet_invisible_nexecute_rien(self):
+        resp, remove = self._requete(
+            "post", "/posts/1/reagir/supprimer", "app.repositories.posts.remove_reaction",
+            **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        remove.assert_not_called()
+
+    def test_commenter_projet_invisible_nexecute_rien(self):
+        resp, add = self._requete(
+            "post", "/posts/1/commenter", "app.repositories.posts.add_comment", {"contenu": "x"},
+            **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        add.assert_not_called()
+
+    def test_mentions_filtrees_aux_personnes_qui_voient_le_projet(self):
+        def peut_voir(projet_id, user_id):
+            return user_id in (1, 2)  # l'auteur (1) et la personne 2 ; pas la 3
+
+        patchers = self._patched() + [
+            patch("app.repositories.projets.user_can_view", side_effect=peut_voir),
+        ]
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.create_post", return_value=101) as create:
+                self.client.post("/posts", data={
+                    "projet_id": "1", "type_code": "requete", "contenu": "x", "mentions": ["2", "3"],
+                })
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(create.call_args.kwargs["mentionne_ids"], [2])
 
 
 class CsrfTestConfig(TestConfig):
@@ -2776,7 +3205,8 @@ class TestProtectionCSRF(unittest.TestCase):
         """Garde-fou statique : chaque <form method="post"> des templates
         doit contenir le champ caché csrf_token."""
         racine = pathlib.Path(__file__).resolve().parent.parent / "app" / "templates"
-        form_re = re.compile(r'<form\b[^>]*method="post"[^>]*>(.*?)</form>', re.I | re.S)
+        # Guillemets simples/doubles ou sans guillemets (audit n°2).
+        form_re = re.compile(r'<form\b[^>]*method=["\']?post\b[^>]*>(.*?)</form>', re.I | re.S)
         manquants = []
         for tpl in sorted(racine.rglob("*.html")):
             for m in form_re.finditer(tpl.read_text()):
@@ -2803,6 +3233,32 @@ class TestProtectionCSRF(unittest.TestCase):
         self.assertIn("/connexion", resp.headers["Location"])
         with self.client.session_transaction() as sess:
             self.assertNotIn("user_id", sess)
+
+
+class TestReverseProxy(unittest.TestCase):
+    """Audit n°2 : derrière un reverse proxy, sans ProxyFix, tout le monde
+    avait l'IP du proxy (limite de connexions par IP partagée). Les
+    en-têtes X-Forwarded-* ne sont crus que si TRUSTED_PROXY_COUNT > 0."""
+
+    def _ip_vue_par_la_connexion(self, nb_proxys):
+        class ConfigProxy(TestConfig):
+            TRUSTED_PROXY_COUNT = nb_proxys
+
+        client = create_app(ConfigProxy).test_client()
+        with patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
+             patch("app.auth.get_user_by_email", return_value=None), \
+             patch("app.repositories.securite.enregistrer_tentative") as mock_enregistrer:
+            client.post(
+                "/connexion", data={"email": "x@y.tn", "password": "z"},
+                headers={"X-Forwarded-For": "203.0.113.7"},
+            )
+        return [c.args[1] for c in mock_enregistrer.call_args_list if c.args[0] == "connexion_ip"]
+
+    def test_ip_reelle_derriere_un_proxy_de_confiance(self):
+        self.assertEqual(self._ip_vue_par_la_connexion(1), ["203.0.113.7"])
+
+    def test_en_tete_ignore_sans_proxy_de_confiance(self):
+        self.assertEqual(self._ip_vue_par_la_connexion(0), ["127.0.0.1"])
 
 
 class TestSecretKeyValidation(unittest.TestCase):
@@ -2842,6 +3298,7 @@ class TestSecretKeyValidation(unittest.TestCase):
         class ConfigOk(Config):
             SECRET_KEY = secrets_mod.token_hex(32)
             DATABASE_URL = "postgresql://fake/fake"
+            UPLOAD_DIR = _UPLOAD_DIR_TESTS
 
         create_app(ConfigOk)  # ne doit pas lever
 

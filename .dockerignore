@@ -19,9 +19,12 @@
 # mots de passe temporaires en clair — voir .gitignore)
 backups/
 migration_sorties/
-identifiants*NE_PAS_COMMITER*.csv
-chronos_*.sql
-migration.sql
+# "**/" : sans ce préfixe, ces motifs ne visent QUE la racine du dossier de
+# build (contrairement à .gitignore) — un dump posé dans un sous-dossier
+# partait quand même dans l'image (audit n°2).
+**/identifiants*NE_PAS_COMMITER*.csv
+**/chronos_*.sql
+**/migration.sql
 
 # Pièces jointes déjà uploadées (volume Docker en prod, jamais du contenu
 # à embarquer dans l'image applicative elle-même)
@@ -34,10 +37,12 @@ uploads/
 
 # Tests, caches, artefacts Python — inutiles à l'exécution en production
 tests/
-__pycache__/
-*.pyc
-.pytest_cache/
-*.egg-info/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/*.egg-info/
+.venv/
+venv/
 
 # Divers
 .DS_Store

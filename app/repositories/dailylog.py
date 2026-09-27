@@ -41,41 +41,6 @@ def list_entrees_jour(user_id: int, date) -> list[dict]:
     return db.query_all(sql, (user_id, date))
 
 
-def upsert_entree(
-    user_id: int,
-    date,
-    projet_id: int,
-    heures,
-    tache_id: int | None = None,
-    current_user_id: int | None = None,
-) -> dict:
-    """Une seule ligne par (utilisateur, jour, projet, tâche) — y compris
-    quand tache_id est vide, grâce à l'index fonctionnel COALESCE validé
-    sur le schéma (idx_dailylog_unique). `current_user_id` est en général
-    égal à `user_id`, sauf correction faite par un admin pour quelqu'un
-    d'autre.
-    """
-    author = current_user_id if current_user_id is not None else user_id
-    sql = """
-        INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, tache_id, heures, updated_by)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        ON CONFLICT (utilisateur_id, date, projet_id, COALESCE(tache_id, 0))
-        DO UPDATE SET heures = EXCLUDED.heures, updated_by = EXCLUDED.updated_by
-        RETURNING id, heures
-        """
-    with db.get_cursor(user_id=author) as cur:
-        cur.execute(sql, (user_id, date, projet_id, tache_id, heures, author))
-        return dict(cur.fetchone())
-
-
-def delete_entree(entree_id: int, current_user_id: int) -> None:
-    db.execute(
-        "DELETE FROM dailylog_entree WHERE id = %s",
-        (entree_id,),
-        user_id=current_user_id,
-    )
-
-
 def list_projets_recents(user_id: int, exclude_ids: list[int], limit: int = 5) -> list[dict]:
     """Jusqu'à `limit` projets sur lesquels l'utilisateur a le plus
     récemment saisi des heures (historique DailyLog), en excluant ceux déjà
@@ -244,13 +209,31 @@ def jours_manques_recents(user_id: int, aujourdhui=None, fenetre_jours: int = 14
     return sorted(j for j in jours_ouvres if j not in jours_remplis)
 
 
-def remplacer_jour(user_id: int, date, lignes: list[dict], current_user_id: int) -> None:
+def remplacer_jour(user_id: int, date, lignes: list[dict], current_user_id: int,
+                   conserver: set | None = None) -> None:
     """Remplace en une fois toutes les lignes DailyLog d'un utilisateur pour
     un jour donné : les lignes absentes de `lignes` sont supprimées, les
     autres insérées/mises à jour — cohérent avec la sauvegarde explicite
     "journée entière" du prototype curseur (pas d'auto-save ligne par
-    ligne). Mêmes contraintes que `upsert_entree` (une ligne par
-    utilisateur/jour/projet/tâche, `idx_dailylog_unique`)."""
+    ligne). Une ligne par utilisateur/jour/projet/tâche
+    (`idx_dailylog_unique`).
+
+    `conserver` : clés (projet_id, tache_id or 0) de lignes soumises mais
+    refusées par la validation de la route — une valeur déjà enregistrée
+    pour ces clés n'est jamais supprimée (audit n°2 : une ligne refusée
+    disparaissait auparavant en silence). Deux lignes soumises avec la
+    même clé sont additionnées au lieu que la dernière écrase l'autre."""
+    conserver = conserver or set()
+    fusionnees: dict = {}
+    for ligne in lignes:
+        cle = (ligne["projet_id"], ligne.get("tache_id") or 0)
+        if cle in fusionnees:
+            # Plafonné à 24 h, comme une ligne seule (contrainte
+            # dailylog_entree_heures_valides, migration 0005).
+            fusionnees[cle]["heures"] = min(24, round(fusionnees[cle]["heures"] + ligne["heures"], 2))
+        else:
+            fusionnees[cle] = dict(ligne)
+    lignes = list(fusionnees.values())
     with db.get_cursor(user_id=current_user_id) as cur:
         cur.execute(
             "SELECT id, projet_id, tache_id FROM dailylog_entree WHERE utilisateur_id = %s AND date = %s",
@@ -272,6 +255,9 @@ def remplacer_jour(user_id: int, date, lignes: list[dict], current_user_id: int)
                 (user_id, date, ligne["projet_id"], ligne.get("tache_id"), ligne["heures"], current_user_id),
             )
 
-        a_supprimer = [existantes[cle] for cle in existantes if cle not in gardees]
+        a_supprimer = [
+            existantes[cle] for cle in existantes
+            if cle not in gardees and cle not in conserver
+        ]
         if a_supprimer:
             cur.execute("DELETE FROM dailylog_entree WHERE id = ANY(%s)", (a_supprimer,))

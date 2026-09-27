@@ -4,7 +4,7 @@
 
 <div class="subbar">
   <div class="subbar-inner" style="max-width:600px;">
-    <a href="{{ url_for('utilisateurs.liste') }}" style="font-size:12.5px; color:#7c8780; font-weight:600;">← Utilisateurs</a>
+    <a href="{{ url_for('utilisateurs.liste') }}" style="font-size:12.5px; color:#646e67; font-weight:600;">← Utilisateurs</a>
     <span style="font-size:14px; font-weight:700;">{{ utilisateur.prenom }} {{ utilisateur.nom }}</span>
   </div>
 </div>
@@ -25,11 +25,11 @@
       </div>
     </div>
     <div class="form-row">
-      <label for="avatar">Photo de profil <span style="font-weight:400; color:#9aa39c;">— optionnel, remplace les initiales</span></label>
+      <label for="avatar">Photo de profil <span style="font-weight:400; color:#6c766f;">— optionnel, remplace les initiales</span></label>
       <input type="file" id="avatar" name="avatar" accept=".png,.jpg,.jpeg,.gif,.webp,image/*">
     </div>
     <div class="form-row">
-      <label for="email">Email <span style="font-weight:400; color:#9aa39c;">— identifiant de connexion</span></label>
+      <label for="email">Email <span style="font-weight:400; color:#6c766f;">— identifiant de connexion</span></label>
       <input type="email" id="email" name="email" value="{{ utilisateur.email }}" required>
     </div>
     <div class="form-row">
@@ -73,9 +73,9 @@
         {% set role_hors_liste = utilisateur.role not in roles_creables %}
         <label for="role">Rôle
           {% if utilisateur.id == g.user.id %}
-            <span style="font-weight:400; color:#9aa39c;">— non modifiable sur votre propre compte</span>
+            <span style="font-weight:400; color:#6c766f;">— non modifiable sur votre propre compte</span>
           {% elif role_hors_liste %}
-            <span style="font-weight:400; color:#9aa39c;">— non modifiable depuis cet écran</span>
+            <span style="font-weight:400; color:#6c766f;">— non modifiable depuis cet écran</span>
           {% endif %}
         </label>
         {# Rôle hors ROLES_CREABLES (PROMPT_CORRECTIONS.md P1 #12) : "client"
@@ -107,7 +107,7 @@
 
     <div class="section-title">Mot de passe</div>
     <div class="form-row">
-      <label for="nouveau_mot_de_passe">Nouveau mot de passe <span style="font-weight:400; color:#9aa39c;">— laisser vide pour ne pas le changer</span></label>
+      <label for="nouveau_mot_de_passe">Nouveau mot de passe <span style="font-weight:400; color:#6c766f;">— laisser vide pour ne pas le changer</span></label>
       <input type="password" id="nouveau_mot_de_passe" name="nouveau_mot_de_passe" placeholder="••••••••" minlength="8">
     </div>
 
@@ -115,9 +115,9 @@
     <div id="cf-list">
       {% for cle, valeur in (utilisateur.champs_perso or {}).items() %}
         <div class="cf-row">
-          <input type="text" name="champ_perso_nom" value="{{ cle }}" placeholder="Nom du champ">
-          <input type="text" name="champ_perso_valeur" value="{{ valeur }}" placeholder="Valeur">
-          <button type="button" class="linkbtn cf-remove"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+          <input type="text" name="champ_perso_nom" aria-label="Nom du champ" value="{{ cle }}" placeholder="Nom du champ">
+          <input type="text" name="champ_perso_valeur" aria-label="Valeur" value="{{ valeur }}" placeholder="Valeur">
+          <button type="button" class="linkbtn cf-remove" aria-label="Retirer ce champ"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
         </div>
       {% endfor %}
     </div>
@@ -136,9 +136,9 @@ document.getElementById('cf-add').addEventListener('click', function () {
   var row = document.createElement('div');
   row.className = 'cf-row';
   row.innerHTML =
-    '<input type="text" name="champ_perso_nom" placeholder="Nom du champ (ex. Taille T-shirt)">' +
-    '<input type="text" name="champ_perso_valeur" placeholder="Valeur">' +
-    '<button type="button" class="linkbtn cf-remove"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>';
+    '<input type="text" name="champ_perso_nom" aria-label="Nom du champ" placeholder="Nom du champ (ex. Taille T-shirt)">' +
+    '<input type="text" name="champ_perso_valeur" aria-label="Valeur" placeholder="Valeur">' +
+    '<button type="button" class="linkbtn cf-remove" aria-label="Retirer ce champ"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>';
   document.getElementById('cf-list').appendChild(row);
   row.querySelector('.cf-remove').addEventListener('click', function () { row.remove(); });
 });

@@ -3,7 +3,9 @@ import logging
 import os
 
 from flask import Flask, flash, g, redirect, request, url_for
+from flask.logging import default_handler as flask_default_handler
 from flask_wtf.csrf import CSRFError, CSRFProtect
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from . import db, utils
 from .config import Config
@@ -70,11 +72,50 @@ def create_app(config_class=Config) -> Flask:
         _handler.setFormatter(logging.Formatter(
             "%(asctime)s %(levelname)s %(name)s: %(message)s"
         ))
+        # Retire le handler par défaut de Flask (installé au premier accès
+        # à app.logger), sinon chaque ligne sortait deux fois (audit n°2).
+        app.logger.removeHandler(flask_default_handler)
         app.logger.addHandler(_handler)
         app.logger.setLevel(logging.INFO)
 
+    # Derrière un reverse proxy HTTPS (APP_BASE_URL en https://...), sans
+    # ProxyFix, request.remote_addr vaut l'IP du proxy pour TOUS les
+    # utilisateurs : la limite de connexions par IP (auth.py) bloquait
+    # alors tout le monde dès 30 échecs, et le schéma/l'hôte vus par
+    # l'appli étaient faux. TRUSTED_PROXY_COUNT = nombre de proxys de
+    # confiance devant l'appli (0 = accès direct, aucun en-tête X-Forwarded-*
+    # n'est cru — sinon n'importe qui pourrait usurper une IP).
+    nb_proxys = app.config.get("TRUSTED_PROXY_COUNT", 0)
+    if nb_proxys:
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app, x_for=nb_proxys, x_proto=nb_proxys,
+            x_host=nb_proxys, x_port=nb_proxys,
+        )
+
+    if (app.config.get("APP_BASE_URL", "").startswith("https://")
+            and not app.config.get("SESSION_COOKIE_SECURE")):
+        app.logger.warning(
+            "APP_BASE_URL est en https:// mais SESSION_COOKIE_SECURE=false : le "
+            "cookie de session peut circuler en clair. Passez-le à true dans .env."
+        )
+
     db.init_pool(app.config["DATABASE_URL"])
     utils.register(app)
+
+    @app.after_request
+    def _entetes_securite(response):
+        # En-têtes de sécurité (audit n°2) : interdit l'affichage de
+        # l'appli dans une iframe d'un autre site (clickjacking), le
+        # "reniflage" de type MIME, et limite le Referer envoyé hors site.
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "same-origin")
+        if app.config.get("SESSION_COOKIE_SECURE"):
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
+        return response
 
     @app.errorhandler(CSRFError)
     def _csrf_error(exc):
@@ -128,13 +169,6 @@ def create_app(config_class=Config) -> Flask:
         if g.user is None:
             return redirect(url_for("auth.login"))
         return redirect(url_for("main.accueil"))
-
-    @app.teardown_appcontext
-    def _close_db(exception=None):
-        # Les connexions sont gérées par le pool (voir db.get_cursor) —
-        # rien à faire ici par requête, le pool reste ouvert pour tout le
-        # cycle de vie du process.
-        pass
 
     _register_cli(app)
 

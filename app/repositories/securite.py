@@ -20,7 +20,12 @@ def compter_tentatives_recentes(type_: str, cle: str, fenetre_minutes: int = 15)
 
 
 def enregistrer_tentative(type_: str, cle: str) -> None:
-    db.execute(
-        "INSERT INTO tentative_securite (type, cle) VALUES (%s, %s)",
-        (type_, cle.strip().lower()),
-    )
+    """Enregistre une tentative ratée, et purge au passage celles de plus
+    d'un jour (audit n°2 : la table n'était jamais nettoyée et grossissait
+    à chaque échec de connexion ; seules les 15 dernières minutes servent)."""
+    with db.get_cursor() as cur:
+        cur.execute(
+            "INSERT INTO tentative_securite (type, cle) VALUES (%s, %s)",
+            (type_, cle.strip().lower()),
+        )
+        cur.execute("DELETE FROM tentative_securite WHERE created_at < now() - interval '1 day'")

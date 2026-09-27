@@ -3,7 +3,7 @@ et les actions sur les tâches d'un projet (création, clôture, changement
 d'état)."""
 import datetime
 
-from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, url_for
 
 from ..auth import login_required
 from ..repositories import notifications as notifications_repo
@@ -23,6 +23,23 @@ TYPES_CLOTURE_VALIDES = {"envoi", "reponse", "question", "requete"}
 # une valeur hors de cette liste faisait planter creer_tache en 500
 # (violation de l'ENUM Postgres), voir PROMPT_CORRECTIONS.md P1 #11.
 TYPE_DEADLINE_VALIDES = {"rendu_client", "interne"}
+
+# Codes de lot valides (table `lot`, schema.sql) — un code inconnu faisait
+# échouer l'INSERT, présenté comme "code déjà utilisé ?" (audit n°2).
+LOTS_VALIDES = {"CM", "GO"}
+
+
+def _message_erreur_intervenant(exc: Exception, action: str) -> str:
+    """Message d'erreur à afficher quand l'ajout d'intervenant(s) échoue en
+    base. Seul le garde-fou RH (trg_check_*_intervenant_role, qui lève
+    "Un utilisateur avec le rôle RH ne peut pas être ...") justifie le
+    message RH ; toute autre erreur (clé étrangère, connexion perdue...)
+    était auparavant présentée à tort comme un problème de RH — elle est
+    maintenant journalisée et signalée comme une erreur générique."""
+    if "rôle RH" in str(exc):
+        return f"Impossible {action} : un RH ne peut pas être intervenant."
+    current_app.logger.exception("Échec inattendu (%s)", action)
+    return f"Impossible {action} (erreur inattendue, réessayez)."
 
 
 def _parser_date_tache(date_str: str | None):
@@ -47,6 +64,10 @@ def liste():
     # État "En cours"+"Bloqué", Chef de projet = utilisateur connecté,
     # Phases toutes cochées (= pas de filtre). Une fois soumis, même un
     # groupe vidé volontairement (tout décoché) est respecté tel quel.
+    # Bug corrigé (2026-09-27, retour Fadhel) : le filtre "Chef de projet"
+    # listait tout le monde (Intervenants, Clients...) via
+    # utilisateurs.list_actifs() — voir list_chefs_de_projet().
+    chefs_de_projet = projets.list_chefs_de_projet()
     if request.args.get("filtres_actifs"):
         etats = request.args.getlist("etat") or None
         phases = request.args.getlist("phase") or None
@@ -55,17 +76,17 @@ def liste():
     else:
         etats = ["en_cours", "bloque"]
         phases = list(PHASES)
-        chef_ids = [g.user["id"]]
+        # "Chef de projet = moi" seulement si l'utilisateur EST chef d'au
+        # moins un projet (audit n°2) : sinon un intervenant voyait "0 projet"
+        # par défaut, sans comprendre pourquoi (aucune puce cochée).
+        est_chef = any(c["id"] == g.user["id"] for c in chefs_de_projet)
+        chef_ids = [g.user["id"]] if est_chef else None
         lots = None
     q = request.args.get("q") or None
 
     tous = projets.list_projets(
         user_id=g.user["id"], etats=etats, phases=phases, chef_ids=chef_ids, lots=lots, q=q,
     )
-    # Bug corrigé (2026-09-27, retour Fadhel) : le filtre "Chef de projet"
-    # listait tout le monde (Intervenants, Clients...) via
-    # utilisateurs.list_actifs() — voir list_chefs_de_projet().
-    chefs_de_projet = projets.list_chefs_de_projet()
     contexte = dict(
         projets=tous, q=q or "",
         etats=etats or [], phases=phases or [], chef_ids=chef_ids or [], lots=lots or [],
@@ -87,6 +108,8 @@ def creer():
         flash("Seuls les chefs de projet et l'admin peuvent créer un projet.", "error")
         return redirect(url_for("projets.liste"))
 
+    utilisateurs_actifs = utilisateurs.list_actifs()
+    saisie = {}
     if request.method == "POST":
         nom = request.form.get("nom", "").strip()
         phase = request.form.get("phase", "EXE")
@@ -94,9 +117,26 @@ def creer():
         chef_projet_id = request.form.get("chef_projet_id", type=int) or g.user["id"]
         date_debut = request.form.get("date_debut") or None
         lots = request.form.getlist("lots")
+        # Saisie renvoyée au formulaire en cas d'erreur (audit n°2 : tout
+        # était perdu, phase revenue à EXE et code reproposé pour EXE).
+        saisie = {
+            "nom": nom, "code": code, "phase": phase, "chef_projet_id": chef_projet_id,
+            "date_debut": date_debut or "", "lots": lots,
+        }
+
+        try:
+            date_debut_valide = _parser_date_tache(date_debut)
+        except ValueError:
+            date_debut_valide = False
 
         if not nom or not code:
             flash("Le code et le nom du projet sont obligatoires.", "error")
+        elif date_debut_valide is False:
+            flash("Date de début invalide.", "error")
+        elif any(l not in LOTS_VALIDES for l in lots):
+            flash("Lot invalide.", "error")
+        elif chef_projet_id not in {u["id"] for u in utilisateurs_actifs}:
+            flash("Chef de projet invalide.", "error")
         elif phase not in PHASES:
             # PROMPT_CORRECTIONS.md P2 #22 : `phase` n'était pas validée —
             # une valeur hors de phase_enum (schema.sql) plantait l'INSERT
@@ -109,18 +149,30 @@ def creer():
                     code=code, nom=nom, phase=phase, chef_projet_id=chef_projet_id,
                     lots=lots, date_debut=date_debut, current_user_id=g.user["id"],
                 )
-            except Exception:
-                flash("Impossible de créer ce projet (code déjà utilisé ?).", "error")
+            except Exception as exc:
+                # Seule une violation d'unicité du code justifie ce message ;
+                # le reste était auparavant présenté à tort comme "code déjà
+                # utilisé ?" (audit n°2).
+                if "unique" in str(exc).lower() or "duplicate" in str(exc).lower():
+                    flash(f"Le code « {code} » est déjà utilisé par un autre projet.", "error")
+                else:
+                    current_app.logger.exception("Échec inattendu de création de projet")
+                    flash("Impossible de créer ce projet (erreur inattendue, réessayez).", "error")
             else:
                 flash("Projet créé.", "success")
                 return redirect(url_for("projets.detail", projet_id=projet_id))
 
-    utilisateurs_actifs = utilisateurs.list_actifs()
-    code_propose = projets.propose_code(request.args.get("phase", "EXE"))
+    phase_initiale = saisie.get("phase") or request.args.get("phase", "EXE")
+    if phase_initiale not in PHASES:
+        phase_initiale = "EXE"
+    code_propose = saisie.get("code") or projets.propose_code(phase_initiale)
     return render_template(
         "projet_creer.html",
         utilisateurs_actifs=utilisateurs_actifs,
         code_propose=code_propose,
+        phase_initiale=phase_initiale,
+        phases=PHASES,
+        saisie=saisie,
         # Pré-rempli avec la date du jour, modifiable — demandé par Fadhel
         # (2026-09-19), le champ apparaissait vide (jj/mm/aaaa).
         date_du_jour=datetime.date.today().isoformat(),
@@ -178,38 +230,6 @@ def detail(projet_id: int):
     )
 
 
-@bp.route("/<int:projet_id>/nouveau-post")
-@login_required
-def nouveau_post(projet_id: int):
-    """Composeur "Nouveau post" (Tâche / Information / Requête), voir
-    maquette Post-creer.dc.html. "Information" reste un aperçu non
-    fonctionnel — différé à l'étape 2 (post RH hors-projet, ciblage
-    équipe(s)), voir spec. `intent` pré-sélectionne le panneau, utilisé
-    par les boutons rapides "+ Tâche"/"+ Information"/"+ Requête" de la
-    page projet."""
-    projet = projets.get_projet(projet_id)
-    if projet is None:
-        abort(404)
-    if not projets.user_can_view(projet_id, g.user["id"]):
-        abort(404)
-
-    intent = request.args.get("intent", "tache")
-    if intent not in ("tache", "information", "requete"):
-        intent = "tache"
-    # Rebond (voir post_card.html) : le post d'origine reste référencé sur
-    # le post système créé ici, qu'il s'agisse d'une tâche ou d'une requête.
-    parent_post_id = request.args.get("parent_post_id", type=int)
-
-    utilisateurs_actifs = utilisateurs.list_actifs()
-    return render_template(
-        "nouveau_post.html",
-        projet=projet,
-        intent=intent,
-        parent_post_id=parent_post_id,
-        utilisateurs_actifs=utilisateurs_actifs,
-    )
-
-
 @bp.route("/<int:projet_id>/taches", methods=["POST"])
 @login_required
 def creer_tache(projet_id: int):
@@ -236,8 +256,23 @@ def creer_tache(projet_id: int):
         flash("Date de début ou d'échéance invalide.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
 
-    intervenant_ids = [int(v) for v in request.form.getlist("intervenants") if v.isdigit()]
+    # Seules des personnes qui voient déjà le projet peuvent y être
+    # affectées (même règle que les mentions dans routes/posts.py) — un id
+    # inexistant est ainsi écarté ici au lieu de faire échouer l'INSERT.
+    intervenant_ids = [
+        int(v) for v in request.form.getlist("intervenants")
+        if v.isdigit() and projets.user_can_view(projet_id, int(v))
+    ]
+
+    # Un rebond doit pointer vers un post du MÊME projet (même contrôle que
+    # routes/posts.py:creer) : sinon le fil de ce projet afficherait le
+    # contenu, l'auteur et la tâche d'un post de n'importe quel autre
+    # projet — fuite de données inter-projets (revue sécurité, audit n°2).
     parent_post_id = request.form.get("parent_post_id", type=int)
+    if parent_post_id:
+        parent = posts.get_post(parent_post_id)
+        if parent is None or parent["projet_id"] != projet_id:
+            abort(404)
 
     try:
         tache_id = taches.create_tache(
@@ -250,7 +285,7 @@ def creer_tache(projet_id: int):
             intervenant_ids=intervenant_ids,
             parent_post_id=parent_post_id,
         )
-    except Exception:
+    except Exception as exc:
         # Garde-fou base de données (trg_check_tache_intervenant_role, même
         # contrainte que trg_check_projet_intervenant_role côté projet — voir
         # ajouter_intervenant ci-dessous) : un RH ne peut pas être
@@ -258,7 +293,7 @@ def creer_tache(projet_id: int):
         # (list_actifs exclut déjà le RH des listes), mais une requête
         # forgée à la main plantait auparavant en 500
         # (PROMPT_CORRECTIONS.md P1 #11).
-        flash("Impossible de créer cette tâche (un RH ne peut pas être intervenant).", "error")
+        flash(_message_erreur_intervenant(exc, "de créer cette tâche"), "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
 
     if intervenant_ids:
@@ -344,6 +379,8 @@ def cloturer_tache(projet_id: int, tache_id: int):
 @bp.route("/<int:projet_id>/intervenants", methods=["POST"])
 @login_required
 def ajouter_intervenant(projet_id: int):
+    if not projets.user_can_view(projet_id, g.user["id"]):
+        abort(404)
     if not projets.user_can_manage(projet_id, g.user["id"]):
         flash("Seul le chef de projet ou un co-chef peut ajouter un intervenant.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
@@ -355,12 +392,12 @@ def ajouter_intervenant(projet_id: int):
 
     try:
         projets.add_intervenant(projet_id, utilisateur_id, g.user["id"])
-    except Exception:
+    except Exception as exc:
         # Garde-fou base de données (trg_check_projet_intervenant_role) :
         # un RH ne peut pas être intervenant. Ne devrait pas arriver via
         # l'UI normale (list_actifs exclut déjà le RH des listes), mais on
         # évite une page d'erreur brute si ça arrive quand même.
-        flash("Impossible d'ajouter cet utilisateur comme intervenant (le RH ne peut pas être intervenant).", "error")
+        flash(_message_erreur_intervenant(exc, "d'ajouter cet intervenant"), "error")
     else:
         if utilisateur_id != g.user["id"]:
             projet = projets.get_projet(projet_id)

@@ -15,6 +15,14 @@ _FEED_SELECT = """
            -- voir repositories/taches.py.
            (p.evenement = 'creation_tache') AS est_creation_tache,
            (p.evenement = 'cloture_tache') AS est_cloture_tache,
+           -- L'utilisateur gère-t-il le projet du post (chef ou co-chef) ?
+           -- Sert à n'afficher "+ Tâche" (rebond) qu'à ceux qui pourront
+           -- effectivement la créer (audit n°2 : le bouton était montré à
+           -- tous, puis refusé par le serveur une fois le formulaire rempli).
+           (proj.chef_projet_id = %(uid)s OR EXISTS (
+              SELECT 1 FROM projet_co_chef cc
+              WHERE cc.projet_id = p.projet_id AND cc.utilisateur_id = %(uid)s
+           )) AS je_gere,
            (SELECT count(*) FROM post_reaction r WHERE r.post_id = p.id) AS nb_reactions,
            (SELECT count(*) FROM post_commentaire c WHERE c.post_id = p.id) AS nb_commentaires,
            (SELECT pr.reaction_code FROM post_reaction pr
@@ -204,16 +212,3 @@ def get_piece_jointe(piece_id: int) -> dict | None:
     )
 
 
-def list_comments(post_id: int) -> list[dict]:
-    sql = """
-        SELECT c.id, c.contenu, c.created_at,
-               u.id AS auteur_id, u.prenom AS auteur_prenom, u.nom AS auteur_nom,
-               u.avatar_chemin AS auteur_avatar_chemin,
-               m.prenom AS mentionne_prenom, m.nom AS mentionne_nom
-        FROM post_commentaire c
-        JOIN utilisateur u ON u.id = c.auteur_id
-        LEFT JOIN utilisateur m ON m.id = c.mentionne_user_id
-        WHERE c.post_id = %s
-        ORDER BY c.created_at
-    """
-    return db.query_all(sql, (post_id,))

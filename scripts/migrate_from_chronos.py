@@ -282,6 +282,18 @@ def build_utilisateurs(data, email_domain, report):
         if u["isBanned"]:
             report["comptes_bannis_desactives"].append(uid)
 
+        # Un seul compte RH actif possible (idx_utilisateur_rh_singleton,
+        # schema.sql) : un second RH actif faisait échouer TOUT le
+        # chargement de migration.sql. Le premier garde le rôle ; les
+        # suivants sont importés comme intervenants, signalés dans le
+        # rapport pour décision (audit n°2).
+        if role == "rh" and actif:
+            if report.get("_rh_actif_deja_attribue"):
+                role = "intervenant"
+                report["rh_supplementaires_retrogrades"].append(uid)
+            else:
+                report["_rh_actif_deja_attribue"] = True
+
         telephone = clean_text(profile["phone"]) if profile else None
         poste = clean_text(profile["poste"]) if profile else None
         adresse = clean_text(profile["address"]) if profile else None
@@ -315,7 +327,7 @@ def derive_code(customid: str, fallback: str) -> str:
     return (customid or fallback or "").strip()
 
 
-def build_projets(data, valid_user_ids, report):
+def build_projets(data, valid_user_ids, report, rh_ids=frozenset()):
     phases_by_id = {p["id"]: p["name"] for p in data["phases"]}
     lots_by_id = {l["id"]: l["name"] for l in data["lots"]}
 
@@ -344,6 +356,12 @@ def build_projets(data, valid_user_ids, report):
         manager = p["manager"]
         if manager not in valid_user_ids:
             report["projets_manager_invalide"].append((pid, manager))
+            continue
+        if manager in rh_ids:
+            # Un RH ne peut pas être chef de projet (trigger
+            # trg_check_projet_chef_role) : l'insertion ferait échouer tout
+            # le chargement (audit n°2).
+            report["projets_manager_rh"].append((pid, manager))
             continue
 
         etat = PROJET_ETAT_MAP.get(p["state"], "en_cours")
@@ -449,14 +467,20 @@ def build_taches(data, valid_projet_ids, report):
 # Étape 4 : intervenants (projet_intervenant / tache_intervenant)
 # =====================================================================
 
-def build_intervenants(data, valid_user_ids, valid_projet_ids, valid_tache_ids, report):
+def build_intervenants(data, valid_user_ids, valid_projet_ids, valid_tache_ids, report,
+                       rh_ids=frozenset()):
     projet_intervenant = set()
     tache_intervenant = set()
-    rh_ids = set()  # rempli par l'appelant si besoin (non utilisé ici directement)
 
     for r in data["intervenants"]:
         uid = r["intervenantID"]
         if uid is None or uid not in valid_user_ids:
+            continue
+        if uid in rh_ids:
+            # Un RH ne peut pas être intervenant (triggers
+            # trg_check_*_intervenant_role) : l'insertion ferait échouer
+            # tout le chargement (audit n°2).
+            report["intervenants_rh_ignores"].append(uid)
             continue
         if r["taskID"] is not None:
             if r["taskID"] in valid_tache_ids:
@@ -726,6 +750,17 @@ def emit_rapport(path, report, counts, args):
     if report["codes_projet_renommes"]:
         a(f"- {len(report['codes_projet_renommes'])} code(s) projet renommé(s) pour éviter un "
           f"doublon : {report['codes_projet_renommes']}")
+    if report["projets_manager_rh"]:
+        a(f"- {len(report['projets_manager_rh'])} projet(s) dont le chef est un compte RH "
+          "(interdit : un RH ne peut pas être chef de projet) — non importés, à recréer "
+          f"avec un autre chef : {report['projets_manager_rh']}")
+    if report["intervenants_rh_ignores"]:
+        a(f"- {len(report['intervenants_rh_ignores'])} affectation(s) d'un compte RH comme "
+          "intervenant — ignorée(s) (interdit dans le nouveau Kairos) : "
+          f"{sorted(set(report['intervenants_rh_ignores']))}")
+    if report["rh_supplementaires_retrogrades"]:
+        a(f"- Plusieurs comptes RH actifs : un seul est autorisé. Importé(s) comme "
+          f"intervenant(s), à ajuster si besoin : {report['rh_supplementaires_retrogrades']}")
     if report["comptes_bannis_desactives"]:
         a(f"- Compte(s) banni(s) désactivé(s) d'office : {report['comptes_bannis_desactives']}")
     if report["roles_inconnus"]:
@@ -800,9 +835,10 @@ def main():
 
     print("Transformation des utilisateurs ...")
     utilisateurs, credentials, valid_user_ids = build_utilisateurs(data, args.email_domain, report)
+    rh_ids = frozenset(u["id"] for u in utilisateurs if u["role"] == "rh")
 
     print("Transformation des projets ...")
-    projets, projet_lots, liens_phase, valid_projet_ids = build_projets(data, valid_user_ids, report)
+    projets, projet_lots, liens_phase, valid_projet_ids = build_projets(data, valid_user_ids, report, rh_ids)
     projets_by_id = {p["id"]: p for p in projets}
 
     print("Transformation des tâches ...")
@@ -810,7 +846,7 @@ def main():
 
     print("Transformation des intervenants ...")
     projet_intervenant, tache_intervenant = build_intervenants(
-        data, valid_user_ids, valid_projet_ids, valid_tache_ids, report)
+        data, valid_user_ids, valid_projet_ids, valid_tache_ids, report, rh_ids)
 
     print("Reconstruction du DailyLog ...")
     dailylog = build_dailylog(data, valid_user_ids, valid_projet_ids, valid_tache_ids, report)

@@ -1,5 +1,3 @@
-version: "3.9"
-
 # Déploiement LAN-first : deux services, pas de dépendance internet une
 # fois les images construites. Les données Postgres vivent dans un
 # volume nommé (persistant entre redémarrages / mises à jour de l'appli).
@@ -33,11 +31,22 @@ services:
       # connecter avec un client SQL depuis un AUTRE poste du LAN, passer
       # par un tunnel SSH plutôt que de rouvrir ce port en grand.
       - "127.0.0.1:5432:5432"
+    # Via TCP (-h 127.0.0.1) et non le socket Unix (audit n°2) : au tout
+    # premier démarrage, le serveur temporaire qui applique schema.sql
+    # n'écoute que sur le socket — pg_isready répondait "prêt" trop tôt et
+    # `web` démarrait avant la fin de l'initialisation.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kairos}"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-kairos} -d ${POSTGRES_DB:-kairos}"]
       interval: 5s
       timeout: 5s
       retries: 10
+    logging: &journaux
+      # Rotation des journaux Docker (audit n°2) : sans limite, ils
+      # grossissaient indéfiniment sur le disque du NAS.
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   web:
     build: .
@@ -46,16 +55,24 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-kairos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-kairos}
+      # Mot de passe passé à part (PGPASSWORD, lu par libpq) plutôt que dans
+      # l'URL (audit n°2) : un mot de passe contenant @, /, : ou % cassait
+      # l'URL et le conteneur web redémarrait en boucle.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kairos}@db:5432/${POSTGRES_DB:-kairos}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
       SECRET_KEY: ${SECRET_KEY:?définir SECRET_KEY dans .env}
       FLASK_ENV: ${FLASK_ENV:-production}
       APP_BASE_URL: ${APP_BASE_URL:-}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      TRUSTED_PROXY_COUNT: ${TRUSTED_PROXY_COUNT:-0}
       # Fuseau horaire (PROMPT_CORRECTIONS.md P2 #16) : sans ça, le
       # conteneur (Debian slim) tourne en UTC — `datetime.date.today()`
       # (utilisé partout : DailyLog, deadlines, verrouillage du jour...)
       # renvoie encore "hier" en Tunisie entre 00h et 01h.
       TZ: Africa/Tunis
+      # Fuseau des sessions PostgreSQL ouvertes par l'appli (lu par libpq) —
+      # PGTZ sur le service `db` ne s'applique qu'à psql DANS ce conteneur.
+      PGTZ: Africa/Tunis
       # Envoi d'email (mot de passe oublié / création de compte) — voir
       # .env.example. Vides par défaut : ces fonctionnalités restent
       # inactives (sans planter) tant que SMTP_HOST n'est pas renseigné.
@@ -66,7 +83,19 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
     ports:
-      - "8000:8000"
+      # WEB_BIND=127.0.0.1 une fois un reverse proxy HTTPS en place sur la
+      # même machine : sinon le port 8000 reste joignable en HTTP simple
+      # depuis le LAN, en contournant le proxy (audit n°2). Par défaut,
+      # accès direct depuis le LAN comme aujourd'hui.
+      - "${WEB_BIND:-0.0.0.0}:8000:8000"
+    healthcheck:
+      # Pas de curl dans l'image : Python fait la requête.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/connexion', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging: *journaux
     volumes:
       # Pièces jointes (tâches/posts) stockées sur disque local, en dehors
       # du conteneur applicatif, pour survivre aux mises à jour de l'image.

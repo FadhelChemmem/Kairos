@@ -4,6 +4,11 @@
 # Docker. Les variables FAKE_DOCKER_FAIL_DB / FAKE_DOCKER_FAIL_UPLOADS
 # (0/1) et FAKE_UPLOADS_DIR sont injectées par le test Python.
 args="$*"
+# Trace des invocations, pour que les tests vérifient les arguments
+# réellement transmis (utilisateur/base de pg_dump...).
+if [ -n "${FAKE_DOCKER_LOG:-}" ]; then
+  echo "$args" >> "$FAKE_DOCKER_LOG"
+fi
 case "$args" in
   *pg_dump*)
     if [ "${FAKE_DOCKER_FAIL_DB:-0}" = "1" ]; then
@@ -16,9 +21,13 @@ case "$args" in
   *"tar czf"*)
     if [ "${FAKE_DOCKER_FAIL_UPLOADS:-0}" = "1" ]; then
       echo "tar: fake failure" >&2
-      exit 1
+      exit 2
     fi
     tar czf - -C "$FAKE_UPLOADS_DIR" .
+    if [ "${FAKE_DOCKER_TAR_CHANGED:-0}" = "1" ]; then
+      echo "tar: ./note.pdf: file changed as we read it" >&2
+      exit 1
+    fi
     ;;
   *)
     echo "faux docker : invocation inattendue : $args" >&2

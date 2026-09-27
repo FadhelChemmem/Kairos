@@ -1,5 +1,5 @@
 """Upload et téléchargement des pièces jointes (tâches et posts)."""
-from flask import Blueprint, abort, current_app, flash, g, redirect, request, send_from_directory, url_for
+from flask import Blueprint, abort, current_app, flash, g, request, send_from_directory
 
 from ..auth import login_required
 from ..repositories import posts as posts_repo
@@ -7,19 +7,13 @@ from ..repositories import projets as projets_repo
 from ..repositories import taches as taches_repo
 from ..repositories import utilisateurs as utilisateurs_repo
 from ..storage import save_upload
-from ..utils import is_safe_next
+from ..utils import redirect_vers_next
 
 bp = Blueprint("fichiers", __name__, url_prefix="/fichiers")
 
 
 def _safe_redirect(default_endpoint="main.accueil"):
-    # PROMPT_CORRECTIONS.md P0 #5 : startswith("/") seul acceptait encore
-    # "//evil.tld" et "/\\evil.tld" (ouverture de redirection) — voir
-    # is_safe_next() dans utils.py.
-    next_url = request.form.get("next")
-    if is_safe_next(next_url):
-        return redirect(next_url)
-    return redirect(url_for(default_endpoint))
+    return redirect_vers_next(default_endpoint)
 
 
 @bp.route("/taches/<int:tache_id>/upload", methods=["POST"])

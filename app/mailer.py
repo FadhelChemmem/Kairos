@@ -8,6 +8,7 @@ renvoie False (ex. flash d'avertissement pour l'admin).
 """
 import logging
 import smtplib
+import threading
 from email.message import EmailMessage
 
 from flask import current_app
@@ -48,3 +49,20 @@ def envoyer(destinataire: str, sujet: str, corps: str) -> bool:
     except Exception:
         logger.exception("Échec de l'envoi d'email à %s (sujet : %s)", destinataire, sujet)
         return False
+
+
+def envoyer_en_arriere_plan(destinataire: str, sujet: str, corps: str) -> None:
+    """Comme `envoyer`, mais sans faire attendre la requête HTTP : utilisé
+    quand le temps de réponse ne doit rien révéler (mot de passe oublié —
+    un envoi SMTP de plusieurs secondes trahissait qu'un compte existe).
+    En mode test, l'envoi reste synchrone pour rester vérifiable."""
+    app = current_app._get_current_object()
+    if app.testing:
+        envoyer(destinataire, sujet, corps)
+        return
+
+    def _envoyer():
+        with app.app_context():
+            envoyer(destinataire, sujet, corps)
+
+    threading.Thread(target=_envoyer, daemon=True).start()

@@ -17,9 +17,11 @@ def liste():
     return render_template("notifications_liste.html", notifications=notifs)
 
 
-@bp.route("/<int:notification_id>/ouvrir")
+@bp.route("/<int:notification_id>/ouvrir", methods=["POST"])
 @login_required
 def ouvrir(notification_id: int):
+    """POST (audit n°2) : en GET, une simple image sur une page tierce
+    pouvait marquer les notifications de la victime comme lues."""
     notif = notifications_repo.get_notification(notification_id, g.user["id"])
     if notif is None:
         abort(404)
