@@ -662,6 +662,44 @@ class SmokeTestCase(unittest.TestCase):
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         self.assertIn("Cr\xe9er le projet".encode(), resp.data)
 
+    # --- PROMPT_CORRECTIONS.md P2 #22 : code proposé (propose_code) et
+    # validation de la phase à la création d'un projet. ---
+
+    def test_projet_creer_rejette_une_phase_invalide(self):
+        """Sans validation, une phase hors phase_enum (schema.sql) faisait
+        planter l'INSERT (violation d'ENUM Postgres), remontant comme
+        "code déjà utilisé ?" — message trompeur puisque le code n'y est
+        pour rien."""
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.projets.create_projet") as mock_create:
+                resp = self.client.post(
+                    "/projets/nouveau",
+                    data={"nom": "Test", "code": "26099X", "phase": "BIDON"},
+                    follow_redirects=True,
+                )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 200, resp.data[:2000])
+        self.assertIn("Phase invalide".encode(), resp.data)
+        mock_create.assert_not_called()
+
+    def test_api_code_propose_renvoie_un_code_json(self):
+        resp = self._get(
+            "/projets/code-propose?phase=DCE",
+            **{"app.repositories.projets.propose_code": "26004D"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json(), {"code": "26004D"})
+
+    def test_api_code_propose_rejette_une_phase_invalide(self):
+        resp = self._get("/projets/code-propose?phase=BIDON")
+        self.assertEqual(resp.status_code, 400)
+
     def test_nouveau_post_composer_renders_default_tache(self):
         resp = self._get("/projets/1/nouveau-post")
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
@@ -2696,6 +2734,41 @@ class TestVerifierRappelDailylog(unittest.TestCase):
             _verifier_rappel_dailylog(1, aujourdhui=dimanche)
         mock_list.assert_not_called()
         mock_creer.assert_not_called()
+
+
+class TestProposeCode(unittest.TestCase):
+    """PROMPT_CORRECTIONS.md P2 #22 : tests unitaires directs de
+    projets_repo.propose_code(), sans passer par Flask — seul db.query_all
+    est mocké."""
+
+    def test_numero_suivant_normal(self):
+        from app.repositories import projets as projets_repo
+
+        with patch("app.db.query_all", return_value=[{"code": "26005X"}, {"code": "26012X"}]):
+            self.assertEqual(projets_repo.propose_code("EXE", annee=2026), "26013X")
+
+    def test_aucun_code_existant_demarre_a_001(self):
+        from app.repositories import projets as projets_repo
+
+        with patch("app.db.query_all", return_value=[]):
+            self.assertEqual(projets_repo.propose_code("DCE", annee=2026), "26001D")
+
+    def test_tri_texte_ne_casse_plus_apres_999(self):
+        """Régression : "26999X" est lexicalement supérieur à "261000X"
+        bien qu'inférieur numériquement — un tri texte (ORDER BY code DESC
+        LIMIT 1, l'ancien code) aurait proposé "261000X" à nouveau, déjà
+        pris, au lieu de "261001X"."""
+        from app.repositories import projets as projets_repo
+
+        with patch("app.db.query_all", return_value=[{"code": "26999X"}, {"code": "261000X"}]):
+            self.assertEqual(projets_repo.propose_code("EXE", annee=2026), "261001X")
+
+    def test_phase_invalide_repliee_sur_exe(self):
+        from app.repositories import projets as projets_repo
+
+        with patch("app.db.query_all", return_value=[]):
+            self.assertEqual(projets_repo.propose_code("BIDON", annee=2026), "26001X")
+
 
 if __name__ == "__main__":
     unittest.main()

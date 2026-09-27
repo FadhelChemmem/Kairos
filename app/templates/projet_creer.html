@@ -45,4 +45,38 @@
     <button type="submit" class="btn-primary" style="background:#4a7c59; color:#fff;">Créer le projet</button>
   </form>
 </div>
+<script>
+  // PROMPT_CORRECTIONS.md P2 #22 : le code proposé n'était calculé qu'une
+  // fois par le serveur au chargement de la page — changer la phase dans
+  // le formulaire ne le mettait jamais à jour (ex. rester sur un suffixe
+  // "X" d'EXE après être passé sur DCE). On le recalcule maintenant côté
+  // serveur (voir projets.api_code_propose) à chaque changement de phase,
+  // sauf si l'utilisateur a lui-même déjà modifié le champ (il reste
+  // "proposé, modifiable" — on ne veut pas écraser une saisie manuelle).
+  (function () {
+    var champCode = document.getElementById('code');
+    var champPhase = document.getElementById('phase');
+    var modifieManuellement = false;
+
+    champCode.addEventListener('input', function () {
+      modifieManuellement = true;
+    });
+
+    champPhase.addEventListener('change', function () {
+      if (modifieManuellement) return;
+      fetch('/projets/code-propose?phase=' + encodeURIComponent(champPhase.value))
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.code) {
+            champCode.value = data.code;
+          }
+        })
+        .catch(function () {
+          // Silencieux : le code déjà affiché reste une proposition
+          // valable, juste pour la phase précédente — l'utilisateur peut
+          // toujours l'ajuster à la main.
+        });
+    });
+  })();
+</script>
 {% endblock %}

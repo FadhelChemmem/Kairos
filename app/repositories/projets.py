@@ -249,32 +249,43 @@ def add_intervenant(projet_id: int, utilisateur_id: int, current_user_id: int) -
     )
 
 
+# Phases valides (phase_enum, schema.sql) — voir PROMPT_CORRECTIONS.md P2
+# #22 : propose_code() ne validait pas `phase`, une valeur inconnue
+# tombait silencieusement sur la lettre "X" (celle d'EXE).
+PHASES_VALIDES = {"APS", "APD", "DCE", "EXE", "DOE"}
+
+
 def propose_code(phase: str, annee: int | None = None) -> str:
     """Propose le prochain code projet pour une année/phase données
     (ex. "26099X"), modifiable ensuite par l'utilisateur — voir spec :
     le code reste semi-automatique côté application, la base ne fait que
     garantir son unicité (contrainte UNIQUE sur projet.code).
+
+    PROMPT_CORRECTIONS.md P2 #22 : le numéro n'est plus déduit d'un tri
+    texte (`ORDER BY code DESC LIMIT 1`), qui casse dès que le numéro
+    dépasse 999 — "26999X" est lexicalement supérieur à "261000X" bien
+    qu'inférieur numériquement, ce qui aurait proposé un code déjà pris.
+    On récupère tous les codes de l'année/phase et on prend le MAX() du
+    numéro extrait par regex.
     """
     import datetime
+    import re
 
-    lettre = {"APS": "P", "APD": "P", "DCE": "D", "EXE": "X", "DOE": "E"}.get(phase, "X")
+    if phase not in PHASES_VALIDES:
+        phase = "EXE"
+    lettre = {"APS": "P", "APD": "P", "DCE": "D", "EXE": "X", "DOE": "E"}[phase]
     annee = annee or datetime.date.today().year
     prefixe = f"{annee % 100:02d}"
 
-    sql = """
-        SELECT code FROM projet
-        WHERE code LIKE %s
-        ORDER BY code DESC
-        LIMIT 1
-    """
-    row = db.query_one(sql, (f"{prefixe}%{lettre}",))
-    if row is None:
-        numero = 1
-    else:
-        # ex. "26099X" -> "099" -> 99
-        chiffres = row["code"][2:-1]
-        numero = int(chiffres) + 1 if chiffres.isdigit() else 1
-    return f"{prefixe}{numero:03d}{lettre}"
+    sql = "SELECT code FROM projet WHERE code LIKE %s"
+    rows = db.query_all(sql, (f"{prefixe}%{lettre}",))
+    motif = re.compile(rf"^{re.escape(prefixe)}(\d+){re.escape(lettre)}$")
+    numero_max = 0
+    for row in rows:
+        m = motif.match(row["code"])
+        if m:
+            numero_max = max(numero_max, int(m.group(1)))
+    return f"{prefixe}{numero_max + 1:03d}{lettre}"
 
 
 def create_projet(

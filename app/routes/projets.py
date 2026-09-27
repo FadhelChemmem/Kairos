@@ -97,6 +97,12 @@ def creer():
 
         if not nom or not code:
             flash("Le code et le nom du projet sont obligatoires.", "error")
+        elif phase not in PHASES:
+            # PROMPT_CORRECTIONS.md P2 #22 : `phase` n'était pas validée —
+            # une valeur hors de phase_enum (schema.sql) plantait l'INSERT
+            # (violation d'ENUM Postgres), remontant jusqu'ici comme
+            # "code déjà utilisé ?" alors que le code n'y était pour rien.
+            flash("Phase invalide.", "error")
         else:
             try:
                 projet_id = projets.create_projet(
@@ -119,6 +125,21 @@ def creer():
         # (2026-09-19), le champ apparaissait vide (jj/mm/aaaa).
         date_du_jour=datetime.date.today().isoformat(),
     )
+
+
+@bp.route("/code-propose")
+@login_required
+def api_code_propose():
+    """Petite API JSON interne (même origine, même session), même
+    principe que dailylog.api_jours_remplis — PROMPT_CORRECTIONS.md P2
+    #22 : le code proposé n'était calculé qu'une fois, au chargement de la
+    page (voir creer() ci-dessus) — il ne se mettait jamais à jour quand on
+    changeait la phase dans le formulaire. Appelée en JS par
+    projet_creer.html à chaque changement de phase (voir son script)."""
+    phase = request.args.get("phase", "EXE")
+    if phase not in PHASES:
+        return {"erreur": "Phase invalide."}, 400
+    return {"code": projets.propose_code(phase)}
 
 
 @bp.route("/<int:projet_id>")
