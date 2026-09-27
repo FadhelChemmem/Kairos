@@ -97,13 +97,22 @@ def create_utilisateur(
     *, email: str, mot_de_passe_hash: str, prenom: str, nom: str, role: str,
     telephone: str | None = None, poste: str | None = None, adresse: str | None = None,
     date_embauche=None, equipe_code: str | None = None, verifie: bool = False,
-    champs_perso: dict | None = None, avatar_chemin: str | None = None,
+    actif: bool = True, champs_perso: dict | None = None, avatar_chemin: str | None = None,
     current_user_id: int | None = None,
 ) -> int:
     """Crée un compte utilisateur depuis la page Utilisateurs. Mêmes
     contraintes que la commande CLI `flask create-user` (idx_utilisateur_
     rh_singleton, idx_utilisateur_email_lower) — laissées remonter en
     exception, gérées côté route pour un message clair.
+
+    `actif` (PROMPT_CORRECTIONS.md P1 #11) : réglé directement à l'INSERT,
+    plutôt que de toujours insérer `actif=true` puis appeler toggle_actif()
+    juste après pour un compte censé naître inactif. L'ancienne façon de
+    faire laissait exister, entre les deux requêtes (deux transactions
+    séparées), un compte réellement actif en base — une fenêtre de
+    "course" inutile — et pouvait déclencher à tort la contrainte
+    idx_utilisateur_rh_singleton pour un compte RH qu'on voulait justement
+    créer inactif (l'INSERT le voyait actif, même brièvement).
 
     avatar_chemin : photo de profil optionnelle, déjà enregistrée sur
     disque par app/storage.py avant l'appel (retour Fadhel, 2026-09-20 :
@@ -114,11 +123,11 @@ def create_utilisateur(
             (email, mot_de_passe_hash, prenom, nom, telephone, poste, adresse,
              date_embauche, equipe_code, role, verifie, actif, champs_perso,
              avatar_chemin, created_by)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true, %s::jsonb, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
         RETURNING id
         """,
         (email, mot_de_passe_hash, prenom, nom, telephone, poste, adresse,
-         date_embauche, equipe_code, role, verifie,
+         date_embauche, equipe_code, role, verifie, actif,
          json.dumps(champs_perso or {}), avatar_chemin, current_user_id),
         user_id=current_user_id,
     )

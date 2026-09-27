@@ -698,6 +698,74 @@ class SmokeTestCase(unittest.TestCase):
                 p.stop()
         self.assertEqual(resp.status_code, 404)
 
+    # --- Autres 500 qui devraient être des messages flash
+    # (PROMPT_CORRECTIONS.md P1 #11) : creer_tache prenait type_deadline et
+    # les dates telles quelles, sans validation — une valeur hors de
+    # type_deadline_enum, une date mal formée, ou un intervenant RH
+    # (garde-fou trg_check_tache_intervenant_role) faisaient toutes planter
+    # la création de tâche en 500 au lieu d'un message clair. ---
+
+    def test_creer_tache_rejette_un_type_deadline_invalide(self):
+        self._login()
+        patchers = self._patched() + [patch("app.repositories.taches.create_tache", return_value=99)]
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post(
+                "/projets/1/taches",
+                data={"titre": "Tâche test", "type_deadline": "autre_chose"},
+            )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        with self.client.session_transaction() as sess:
+            flashes = sess.get("_flashes", [])
+        self.assertTrue(any("chéance invalide" in msg for _, msg in flashes))
+
+    def test_creer_tache_rejette_une_date_invalide(self):
+        self._login()
+        patchers = self._patched() + [patch("app.repositories.taches.create_tache", return_value=99)]
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post(
+                "/projets/1/taches",
+                data={"titre": "Tâche test", "date_echeance": "31/12/2026"},
+            )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        with self.client.session_transaction() as sess:
+            flashes = sess.get("_flashes", [])
+        self.assertTrue(any("Date de d\xe9but ou d'\xe9ch\xe9ance invalide" in msg for _, msg in flashes))
+
+    def test_creer_tache_gere_le_garde_fou_intervenant_rh(self):
+        """Un intervenant RH (garde-fou trg_check_tache_intervenant_role)
+        plantait auparavant la création de tâche en 500 — même logique que
+        ajouter_intervenant() sur le garde-fou équivalent côté projet."""
+        self._login()
+        patchers = self._patched() + [
+            patch("app.repositories.taches.create_tache", side_effect=Exception(
+                "Un utilisateur avec le rôle RH ne peut pas être intervenant (utilisateur id=9)."
+            )),
+        ]
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post(
+                "/projets/1/taches",
+                data={"titre": "Tâche test", "intervenants": ["9"]},
+            )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        with self.client.session_transaction() as sess:
+            flashes = sess.get("_flashes", [])
+        self.assertTrue(any("ne peut pas \xeatre intervenant" in msg for _, msg in flashes))
+
     def test_posts_creer_404_si_projet_non_visible(self):
         self._login()
         patchers = self._patched(**{"app.repositories.projets.user_can_view": False}) + [
@@ -1362,6 +1430,62 @@ class SmokeTestCase(unittest.TestCase):
             for p in patchers:
                 p.stop()
 
+    # --- Autres 500 qui devraient être des messages flash
+    # (PROMPT_CORRECTIONS.md P1 #11), suite : create_utilisateur() posait
+    # toujours actif=true à l'INSERT puis, pour un compte censé naître
+    # inactif, appelait toggle_actif() juste après — deux transactions
+    # séparées, avec une fenêtre où le compte existait réellement actif en
+    # base, et où idx_utilisateur_rh_singleton pouvait se déclencher à tort
+    # pour un compte RH qu'on voulait justement créer inactif. ---
+
+    def test_creation_utilisateur_inactif_passe_actif_directement_a_linsert(self):
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.utilisateurs.create_utilisateur", return_value=42) as mock_create, \
+                 patch("app.repositories.utilisateurs.toggle_actif") as mock_toggle:
+                resp = self.client.post(
+                    "/utilisateurs/nouveau",
+                    data={
+                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "role": "intervenant", "equipe_code": "MIDGARD",
+                        # Pas de "actif": "on" → compte voulu inactif.
+                    },
+                )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302, resp.data[:2000])
+        self.assertFalse(mock_create.call_args.kwargs["actif"])
+        # Ancienne façon de faire : un second appel séparé à toggle_actif().
+        # Le nouvel INSERT pose déjà actif=false, plus besoin de ce détour.
+        mock_toggle.assert_not_called()
+
+    def test_toggle_actif_gere_le_garde_fou_rh_singleton(self):
+        """Réactiver un compte RH alors qu'un autre est déjà actif
+        (idx_utilisateur_rh_singleton) plantait auparavant en 500 — même
+        message clair que pour creer()/fiche() sur la même contrainte."""
+        self._login()
+        patchers = self._patched() + [
+            patch(
+                "app.repositories.utilisateurs.toggle_actif",
+                side_effect=Exception('duplicate key value violates unique constraint "idx_utilisateur_rh_singleton"'),
+            ),
+        ]
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post("/utilisateurs/2/toggle-actif", data={})
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        with self.client.session_transaction() as sess:
+            flashes = sess.get("_flashes", [])
+        self.assertTrue(any("compte RH actif" in msg for _, msg in flashes))
+
     def test_mon_profil_post_avec_photo_appelle_set_avatar(self):
         self._login()
         patchers = self._patched()
@@ -2023,6 +2147,33 @@ class SmokeTestCase(unittest.TestCase):
             for p in patchers:
                 p.stop()
         self.assertIn("propre r\xf4le".encode(), resp.data)
+        mock_update.assert_not_called()
+
+    def test_fiche_rejette_un_role_invalide(self):
+        """PROMPT_CORRECTIONS.md P1 #11 : contrairement à creer(), fiche()
+        n'imposait aucune validation de `role` avant d'appeler
+        update_utilisateur_complet() — une requête forgée à la main pouvait
+        poser n'importe quelle valeur, sans même la contrainte DB (pas de
+        CHECK sur utilisateur.role)."""
+        patchers = self._patched(**{
+            "app.repositories.utilisateurs.get_utilisateur": AUTRE_UTILISATEUR,
+        })
+        self._login()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.utilisateurs.update_utilisateur_complet") as mock_update:
+                resp = self.client.post(
+                    "/utilisateurs/2",
+                    data={
+                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "role": "super_admin", "equipe_code": "URBS",
+                    },
+                )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertIn("R\xf4le invalide".encode(), resp.data)
         mock_update.assert_not_called()
 
     def test_fiche_change_le_mot_de_passe_si_fourni(self):

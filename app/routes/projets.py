@@ -19,6 +19,24 @@ PHASES = ["APS", "APD", "DCE", "EXE", "DOE"]
 # voir PROMPT_CORRECTIONS.md P0 #2.
 TYPES_CLOTURE_VALIDES = {"envoi", "reponse", "question", "requete"}
 
+# Valeurs valides de tache.type_deadline (type_deadline_enum, schema.sql) —
+# une valeur hors de cette liste faisait planter creer_tache en 500
+# (violation de l'ENUM Postgres), voir PROMPT_CORRECTIONS.md P1 #11.
+TYPE_DEADLINE_VALIDES = {"rendu_client", "interne"}
+
+
+def _parser_date_tache(date_str: str | None):
+    """Parse une date du formulaire "Nouvelle tâche" (date_debut/date_echeance),
+    ou None si absente/vide. Lève ValueError sur un format invalide — à la
+    différence de dailylog._parser_date (qui ramène silencieusement à
+    aujourd'hui), on préfère ici prévenir clairement l'utilisateur plutôt que
+    d'enregistrer une date différente de celle saisie (PROMPT_CORRECTIONS.md
+    P1 #11 : un format invalide plantait auparavant l'INSERT en 500 via une
+    erreur Postgres, faute de validation applicative)."""
+    if not date_str:
+        return None
+    return datetime.date.fromisoformat(date_str)
+
 
 @bp.route("")
 @login_required
@@ -186,21 +204,41 @@ def creer_tache(projet_id: int):
         return redirect(url_for("projets.detail", projet_id=projet_id))
 
     type_deadline = request.form.get("type_deadline", "rendu_client")
-    date_debut = request.form.get("date_debut") or None
-    date_echeance = request.form.get("date_echeance") or None
+    if type_deadline not in TYPE_DEADLINE_VALIDES:
+        flash("Type d'échéance invalide.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+
+    try:
+        date_debut = _parser_date_tache(request.form.get("date_debut"))
+        date_echeance = _parser_date_tache(request.form.get("date_echeance"))
+    except ValueError:
+        flash("Date de début ou d'échéance invalide.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+
     intervenant_ids = [int(v) for v in request.form.getlist("intervenants") if v.isdigit()]
     parent_post_id = request.form.get("parent_post_id", type=int)
 
-    tache_id = taches.create_tache(
-        projet_id=projet_id,
-        titre=titre,
-        current_user_id=g.user["id"],
-        type_deadline=type_deadline,
-        date_debut=date_debut,
-        date_echeance=date_echeance,
-        intervenant_ids=intervenant_ids,
-        parent_post_id=parent_post_id,
-    )
+    try:
+        tache_id = taches.create_tache(
+            projet_id=projet_id,
+            titre=titre,
+            current_user_id=g.user["id"],
+            type_deadline=type_deadline,
+            date_debut=date_debut,
+            date_echeance=date_echeance,
+            intervenant_ids=intervenant_ids,
+            parent_post_id=parent_post_id,
+        )
+    except Exception:
+        # Garde-fou base de données (trg_check_tache_intervenant_role, même
+        # contrainte que trg_check_projet_intervenant_role côté projet — voir
+        # ajouter_intervenant ci-dessous) : un RH ne peut pas être
+        # intervenant sur une tâche. Ne devrait pas arriver via l'UI normale
+        # (list_actifs exclut déjà le RH des listes), mais une requête
+        # forgée à la main plantait auparavant en 500
+        # (PROMPT_CORRECTIONS.md P1 #11).
+        flash("Impossible de créer cette tâche (un RH ne peut pas être intervenant).", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
 
     if intervenant_ids:
         notifications_repo.creer_pour_plusieurs(

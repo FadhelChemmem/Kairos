@@ -127,11 +127,9 @@ def creer():
                     email=email, mot_de_passe_hash=hash_password(secrets.token_urlsafe(32)),
                     prenom=prenom, nom=nom, role=role, telephone=telephone,
                     poste=poste, adresse=adresse, date_embauche=date_embauche,
-                    equipe_code=equipe_code, verifie=False, champs_perso=champs_perso,
-                    current_user_id=g.user["id"],
+                    equipe_code=equipe_code, verifie=False, actif=actif_compte,
+                    champs_perso=champs_perso, current_user_id=g.user["id"],
                 )
-                if not actif_compte:
-                    utilisateurs_repo.toggle_actif(user_id, g.user["id"])
                 _enregistrer_avatar_si_fourni(user_id, g.user["id"])
                 email_envoye = False
                 if actif_compte:
@@ -294,8 +292,16 @@ def fiche(user_id: int):
             if n.strip()
         }
 
+        # Validation du rôle (PROMPT_CORRECTIONS.md P1 #11) : le champ
+        # <select> du formulaire n'offre que les rôles de ROLES_CREABLES,
+        # mais rien côté serveur n'empêchait auparavant une requête forgée
+        # à la main de poser n'importe quelle valeur — acceptée telle
+        # quelle par update_utilisateur_complet(), sans même la contrainte
+        # DB (pas de CHECK sur utilisateur.role).
         if user_id == g.user["id"] and role != utilisateur["role"]:
             flash("Vous ne pouvez pas changer votre propre rôle depuis cet écran.", "error")
+        elif role not in ROLES_CREABLES:
+            flash("Rôle invalide.", "error")
         elif not prenom or not nom or not email:
             flash("Prénom, nom et email sont obligatoires.", "error")
         else:
@@ -348,6 +354,20 @@ def toggle_actif(user_id: int):
     if user_id == g.user["id"]:
         flash("Vous ne pouvez pas désactiver votre propre compte.", "error")
     else:
-        utilisateurs_repo.toggle_actif(user_id, g.user["id"])
-        flash("Statut du compte mis à jour.", "success")
+        try:
+            utilisateurs_repo.toggle_actif(user_id, g.user["id"])
+        except Exception as exc:
+            # Réactivation d'un compte RH alors qu'un autre est déjà actif
+            # (PROMPT_CORRECTIONS.md P1 #11) : idx_utilisateur_rh_singleton
+            # remontait auparavant telle quelle jusqu'à une erreur 500, au
+            # lieu du message clair déjà utilisé ailleurs (creer(), fiche()).
+            if "idx_utilisateur_rh_singleton" in str(exc):
+                flash(
+                    "Il y a déjà un compte RH actif. Désactivez-le d'abord "
+                    "pour en réactiver un autre.", "error",
+                )
+            else:
+                flash("Impossible de mettre à jour le statut de ce compte.", "error")
+        else:
+            flash("Statut du compte mis à jour.", "success")
     return redirect(url_for("utilisateurs.liste", **request.form.to_dict(flat=True)))
