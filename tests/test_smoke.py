@@ -1981,7 +1981,44 @@ class SmokeTestCase(unittest.TestCase):
                 "/connexion",
                 data={"email": "fadhel@midgard.tn", "password": "mauvais"},
             )
-        mock_enregistrer.assert_called_once_with("connexion", "fadhel@midgard.tn")
+        # PROMPT_CORRECTIONS.md P2 #24 : une tentative échouée est
+        # maintenant enregistrée à la fois par email ET par IP.
+        mock_enregistrer.assert_any_call("connexion", "fadhel@midgard.tn")
+        mock_enregistrer.assert_any_call("connexion_ip", "127.0.0.1")
+        self.assertEqual(mock_enregistrer.call_count, 2)
+
+    def test_login_bloque_apres_trop_de_tentatives_par_ip(self):
+        """PROMPT_CORRECTIONS.md P2 #24 : au-delà de MAX_TENTATIVES_IP
+        échecs récents pour une même IP (même avec des emails différents à
+        chaque fois), on n'interroge plus la base non plus."""
+        def compter(type_, cle, fenetre):
+            return 30 if type_ == "connexion_ip" else 0
+
+        with patch("app.repositories.securite.compter_tentatives_recentes", side_effect=compter), \
+             patch("app.auth.get_user_by_email") as mock_get_user:
+            resp = self.client.post(
+                "/connexion",
+                data={"email": "quelquun@midgard.tn", "password": "peu-importe"},
+            )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("Trop de tentatives", resp.data.decode())
+        mock_get_user.assert_not_called()
+
+    def test_login_email_inconnu_compare_a_un_hash_factice(self):
+        """PROMPT_CORRECTIONS.md P2 #24 : même sans compte correspondant,
+        verify_password() doit être appelée (temps de réponse comparable à
+        un email existant) — sinon le temps de réponse permettrait de
+        deviner quels emails sont des comptes réels."""
+        with patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
+             patch("app.repositories.securite.enregistrer_tentative"), \
+             patch("app.auth.get_user_by_email", return_value=None), \
+             patch("app.auth.verify_password", return_value=False) as mock_verify:
+            self.client.post(
+                "/connexion",
+                data={"email": "inconnu@midgard.tn", "password": "peu-importe"},
+            )
+        mock_verify.assert_called_once()
+        self.assertEqual(mock_verify.call_args.args[0], "peu-importe")
 
     def test_mot_de_passe_oublie_page_affiche_un_formulaire(self):
         resp = self.client.get("/mot-de-passe-oublie")

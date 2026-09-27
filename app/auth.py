@@ -40,6 +40,28 @@ RESET_TOKEN_TTL = datetime.timedelta(hours=1)
 MAX_TENTATIVES = 5
 FENETRE_TENTATIVES_MINUTES = 15
 
+# Anti-bourrinage par IP (PROMPT_CORRECTIONS.md P2 #24) : une limite
+# uniquement par email permet à n'importe qui connaissant l'adresse d'un
+# compte (l'admin, par exemple) de le verrouiller à répétition — un simple
+# déni de service, sans avoir besoin de deviner le mot de passe. Le seuil
+# est volontairement plus haut que MAX_TENTATIVES : plusieurs personnes
+# travaillent derrière la même IP au bureau (voir plus bas), on ne veut
+# pas les bloquer tous pour l'erreur de l'un. Ça ne supprime pas la
+# possibilité de verrouiller UN compte ciblé (il suffit toujours de
+# connaître son email), mais ça limite un bourrinage automatisé ou touchant
+# plusieurs comptes depuis une même source.
+MAX_TENTATIVES_IP = 30
+
+# Hash de mot de passe factice (PROMPT_CORRECTIONS.md P2 #24) : généré une
+# fois au démarrage, jamais associé à aucun compte. Quand aucun utilisateur
+# ne correspond à l'email saisi, on compare quand même le mot de passe
+# fourni à CE hash (résultat ignoré) plutôt que de court-circuiter
+# directement — sans ça, une tentative sur un email qui EXISTE prend
+# mesurablement plus de temps (un hash à vérifier) qu'une tentative sur un
+# email inconnu, ce qui permettrait de deviner quels emails sont des
+# comptes réels rien qu'en chronométrant les réponses.
+_HASH_FACTICE = generate_password_hash(secrets.token_urlsafe(32))
+
 
 def get_user_by_email(email: str) -> dict | None:
     """Recherche insensible à la casse — cohérent avec idx_utilisateur_email_lower."""
@@ -199,18 +221,38 @@ def login():
         user = None
 
         # Anti-bourrinage (revue sécurité, 2026-09-20) : ne compte que les
-        # tentatives ratées, par email — pas par IP (LAN interne, plusieurs
-        # personnes derrière la même IP au bureau).
-        if email and securite_repo.compter_tentatives_recentes(
+        # tentatives ratées, par email — pas seulement par IP, puisque
+        # plusieurs personnes travaillent derrière la même IP au bureau
+        # (LAN interne). PROMPT_CORRECTIONS.md P2 #24 : une limite PAR IP
+        # est ajoutée en plus (voir MAX_TENTATIVES_IP) pour freiner un
+        # bourrinage automatisé/distribué sur plusieurs comptes depuis une
+        # même source — ip toujours vérifiée, même sans email saisi.
+        ip = request.remote_addr or "ip-inconnue"
+        trop_de_tentatives_email = email and securite_repo.compter_tentatives_recentes(
             "connexion", email, FENETRE_TENTATIVES_MINUTES
-        ) >= MAX_TENTATIVES:
+        ) >= MAX_TENTATIVES
+        trop_de_tentatives_ip = securite_repo.compter_tentatives_recentes(
+            "connexion_ip", ip, FENETRE_TENTATIVES_MINUTES
+        ) >= MAX_TENTATIVES_IP
+
+        if trop_de_tentatives_email or trop_de_tentatives_ip:
             error = "Trop de tentatives. Réessayez dans quelques minutes."
         else:
             user = get_user_by_email(email)
-            if user is None or not verify_password(password, user["mot_de_passe_hash"]):
+            if user is None:
+                # PROMPT_CORRECTIONS.md P2 #24 : comparaison à un hash
+                # factice pour que ce chemin prenne un temps comparable à
+                # celui où l'email existe (voir _HASH_FACTICE) — résultat
+                # ignoré, seul le temps passé compte ici.
+                verify_password(password, _HASH_FACTICE)
                 error = "Email ou mot de passe incorrect."
                 if email:
                     securite_repo.enregistrer_tentative("connexion", email)
+                securite_repo.enregistrer_tentative("connexion_ip", ip)
+            elif not verify_password(password, user["mot_de_passe_hash"]):
+                error = "Email ou mot de passe incorrect."
+                securite_repo.enregistrer_tentative("connexion", email)
+                securite_repo.enregistrer_tentative("connexion_ip", ip)
             elif not user["actif"]:
                 error = "Ce compte a été désactivé."
 
