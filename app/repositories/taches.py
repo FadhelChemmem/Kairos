@@ -124,10 +124,10 @@ def create_tache(
     parent_post_id: int | None = None,
 ) -> int:
     """Crée la tâche ET son post système de création, dans une seule
-    transaction (voir la note en tête de fichier sur la convention
-    created_at == created_at). `parent_post_id` relie ce post système au
-    post d'origine quand la tâche est créée via un "rebond" (voir
-    routes/projets.py:nouveau_post et posts.py)."""
+    transaction, marqué evenement='creation_tache' (voir la note en tête
+    de fichier). `parent_post_id` relie ce post système au post d'origine
+    quand la tâche est créée via un "rebond" (voir routes/projets.py:
+    creer_tache, qui vérifie que ce post appartient au même projet)."""
     with db.get_cursor(user_id=current_user_id) as cur:
         cur.execute(
             """

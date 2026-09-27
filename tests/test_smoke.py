@@ -762,37 +762,6 @@ class SmokeTestCase(unittest.TestCase):
         resp = self._get("/projets/code-propose?phase=BIDON")
         self.assertEqual(resp.status_code, 400)
 
-    def test_nouveau_post_composer_renders_default_tache(self):
-        resp = self._get("/projets/1/nouveau-post")
-        self.assertEqual(resp.status_code, 200, resp.data[:2000])
-        self.assertIn("Titre de la t\xe2che".encode(), resp.data)
-        self.assertIn("Objet de la requ\xeate".encode(), resp.data)
-        # Le panneau Information est un aperçu non fonctionnel (étape 2) :
-        # présent sur la page, mais sans <form> qui le soumette.
-        self.assertIn("\xe9tape 2".encode(), resp.data)
-
-    def test_nouveau_post_composer_preselects_intent_from_query(self):
-        resp = self._get("/projets/1/nouveau-post?intent=requete")
-        self.assertEqual(resp.status_code, 200, resp.data[:2000])
-        self.assertIn(b'id="intent-requete" name="intent-toggle" class="composer-radio" checked', resp.data)
-
-    def test_nouveau_post_composer_unknown_intent_falls_back_to_tache(self):
-        resp = self._get("/projets/1/nouveau-post?intent=n-importe-quoi")
-        self.assertEqual(resp.status_code, 200, resp.data[:2000])
-        self.assertIn(b'id="intent-tache" name="intent-toggle" class="composer-radio" checked', resp.data)
-
-    def test_nouveau_post_composer_404_on_unknown_projet(self):
-        self._login()
-        patchers = self._patched() + [patch("app.repositories.projets.get_projet", return_value=None)]
-        for p in patchers:
-            p.start()
-        try:
-            resp = self.client.get("/projets/999/nouveau-post")
-        finally:
-            for p in patchers:
-                p.stop()
-        self.assertEqual(resp.status_code, 404)
-
     # --- Contrôle d'accès aux projets (IDOR, PROMPT_CORRECTIONS.md P0 #1) :
     # avant ce correctif, connaître/deviner un id de projet, de tâche, de
     # post ou de pièce jointe suffisait à le consulter/le modifier, même
@@ -800,10 +769,6 @@ class SmokeTestCase(unittest.TestCase):
 
     def test_projet_detail_404_si_non_visible(self):
         resp = self._get("/projets/1", **{"app.repositories.projets.user_can_view": False})
-        self.assertEqual(resp.status_code, 404)
-
-    def test_nouveau_post_composer_404_si_projet_non_visible(self):
-        resp = self._get("/projets/1/nouveau-post", **{"app.repositories.projets.user_can_view": False})
         self.assertEqual(resp.status_code, 404)
 
     def test_creer_tache_404_si_projet_non_visible(self):

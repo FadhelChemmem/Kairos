@@ -23,7 +23,8 @@ def list_actifs() -> list[dict]:
 
 def list_tous(q: str | None = None, equipe_code: str | None = None,
               role: str | None = None, actif: bool | None = None) -> list[dict]:
-    """Liste complète pour la page Utilisateurs (admin/RH), avec filtres
+    """Liste complète pour la page Utilisateurs (admin/RH, et chef de projet
+    en lecture seule), avec filtres
     optionnels — voir routes/utilisateurs.py. Les comptes inactifs restent
     listés (grisés côté template) : on ne masque jamais l'historique."""
     conditions = []
@@ -76,12 +77,6 @@ def get_utilisateur(user_id: int) -> dict | None:
         """,
         (user_id,),
     )
-
-
-def email_deja_utilise(email: str) -> bool:
-    return db.query_one(
-        "SELECT 1 AS x FROM utilisateur WHERE lower(email) = lower(%s)", (email,)
-    ) is not None
 
 
 def rh_deja_attribue() -> dict | None:

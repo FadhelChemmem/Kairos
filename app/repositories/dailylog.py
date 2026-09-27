@@ -41,41 +41,6 @@ def list_entrees_jour(user_id: int, date) -> list[dict]:
     return db.query_all(sql, (user_id, date))
 
 
-def upsert_entree(
-    user_id: int,
-    date,
-    projet_id: int,
-    heures,
-    tache_id: int | None = None,
-    current_user_id: int | None = None,
-) -> dict:
-    """Une seule ligne par (utilisateur, jour, projet, tâche) — y compris
-    quand tache_id est vide, grâce à l'index fonctionnel COALESCE validé
-    sur le schéma (idx_dailylog_unique). `current_user_id` est en général
-    égal à `user_id`, sauf correction faite par un admin pour quelqu'un
-    d'autre.
-    """
-    author = current_user_id if current_user_id is not None else user_id
-    sql = """
-        INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, tache_id, heures, updated_by)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        ON CONFLICT (utilisateur_id, date, projet_id, COALESCE(tache_id, 0))
-        DO UPDATE SET heures = EXCLUDED.heures, updated_by = EXCLUDED.updated_by
-        RETURNING id, heures
-        """
-    with db.get_cursor(user_id=author) as cur:
-        cur.execute(sql, (user_id, date, projet_id, tache_id, heures, author))
-        return dict(cur.fetchone())
-
-
-def delete_entree(entree_id: int, current_user_id: int) -> None:
-    db.execute(
-        "DELETE FROM dailylog_entree WHERE id = %s",
-        (entree_id,),
-        user_id=current_user_id,
-    )
-
-
 def list_projets_recents(user_id: int, exclude_ids: list[int], limit: int = 5) -> list[dict]:
     """Jusqu'à `limit` projets sur lesquels l'utilisateur a le plus
     récemment saisi des heures (historique DailyLog), en excluant ceux déjà
@@ -250,8 +215,8 @@ def remplacer_jour(user_id: int, date, lignes: list[dict], current_user_id: int,
     un jour donné : les lignes absentes de `lignes` sont supprimées, les
     autres insérées/mises à jour — cohérent avec la sauvegarde explicite
     "journée entière" du prototype curseur (pas d'auto-save ligne par
-    ligne). Mêmes contraintes que `upsert_entree` (une ligne par
-    utilisateur/jour/projet/tâche, `idx_dailylog_unique`).
+    ligne). Une ligne par utilisateur/jour/projet/tâche
+    (`idx_dailylog_unique`).
 
     `conserver` : clés (projet_id, tache_id or 0) de lignes soumises mais
     refusées par la validation de la route — une valeur déjà enregistrée

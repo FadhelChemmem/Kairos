@@ -1,7 +1,8 @@
 """Configuration de l'application, lue depuis les variables d'environnement.
 
 Rien de magique ici : tout vient de .env (voir .env.example) via
-python-dotenv, chargé une fois au démarrage dans wsgi.py / app/__init__.py.
+python-dotenv, chargé une fois au démarrage dans wsgi.py (en Docker, les
+variables sont passées directement par docker-compose.yml).
 """
 import datetime
 import os

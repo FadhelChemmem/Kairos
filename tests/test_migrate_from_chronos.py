@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from migrate_from_chronos import (  # noqa: E402
-    build_projets, mysql_date_only, mysql_dt_to_pg, sql_str,
+    build_intervenants, build_projets, build_utilisateurs, mysql_date_only, mysql_dt_to_pg, sql_str,
 )
 
 
@@ -103,6 +103,44 @@ class TestLotsCodesInvalides(unittest.TestCase):
         _projets, projet_lots, _liens, _ids = build_projets(data, {1}, report)
         self.assertEqual(projet_lots, [])
         self.assertEqual(report["lots_non_reconnus"], [(1, "Plomberie")])
+
+
+class TestComptesRH(unittest.TestCase):
+    """Audit n°2 : un RH chef de projet, un RH intervenant ou un second RH
+    actif faisaient échouer tout le chargement de migration.sql (triggers
+    RH et index idx_utilisateur_rh_singleton du nouveau schéma)."""
+
+    @staticmethod
+    def _utilisateur(uid, role):
+        return {"id": uid, "role": role, "isSuperUser": False, "active": 1, "isBanned": 0,
+                "email": f"u{uid}@x.tn", "createdAt": None, "updatedAt": None}
+
+    def test_second_rh_actif_importe_comme_intervenant(self):
+        data = {
+            "users": [self._utilisateur(1, "ressource_humaine"), self._utilisateur(2, "ressource_humaine")],
+            "UserProfiles": [],
+        }
+        report = defaultdict(list)
+        utilisateurs, _creds, _ids = build_utilisateurs(data, "kairos.tn", report)
+        self.assertEqual([u["role"] for u in utilisateurs], ["rh", "intervenant"])
+        self.assertEqual(report["rh_supplementaires_retrogrades"], [2])
+
+    def test_projet_dirige_par_un_rh_non_importe_et_signale(self):
+        data = TestLotsCodesInvalides._data_minimale(None, lots=[], project_lots=[])
+        report = defaultdict(list)
+        projets, _lots, _liens, ids = build_projets(data, {1}, report, rh_ids=frozenset({1}))
+        self.assertEqual(projets, [])
+        self.assertEqual(report["projets_manager_rh"], [(1, 1)])
+
+    def test_rh_intervenant_ignore_et_signale(self):
+        data = {"intervenants": [
+            {"id": 1, "intervenantID": 7, "taskID": None, "projectID": 1},
+            {"id": 2, "intervenantID": 8, "taskID": None, "projectID": 1},
+        ]}
+        report = defaultdict(list)
+        projet_iv, _tache_iv = build_intervenants(data, {7, 8}, {1}, set(), report, rh_ids=frozenset({7}))
+        self.assertEqual(projet_iv, [(1, 8)])
+        self.assertEqual(report["intervenants_rh_ignores"], [7])
 
 
 if __name__ == "__main__":

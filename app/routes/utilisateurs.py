@@ -1,4 +1,5 @@
-"""Pages Utilisateurs (liste + création), réservées à l'admin et au RH —
+"""Pages Utilisateurs (liste + création) : gestion réservée à l'admin et au
+RH, consultation en lecture seule pour le chef de projet —
 pour que le RH puisse gérer les comptes sans passer par la commande CLI
 `flask create-user` (voir app/__init__.py). La page "Infos perso" (`/moi`)
 est différente : accessible à tout utilisateur connecté, uniquement sur

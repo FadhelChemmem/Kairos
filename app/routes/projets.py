@@ -230,38 +230,6 @@ def detail(projet_id: int):
     )
 
 
-@bp.route("/<int:projet_id>/nouveau-post")
-@login_required
-def nouveau_post(projet_id: int):
-    """Composeur "Nouveau post" (Tâche / Information / Requête), voir
-    maquette Post-creer.dc.html. "Information" reste un aperçu non
-    fonctionnel — différé à l'étape 2 (post RH hors-projet, ciblage
-    équipe(s)), voir spec. `intent` pré-sélectionne le panneau, utilisé
-    par les boutons rapides "+ Tâche"/"+ Information"/"+ Requête" de la
-    page projet."""
-    projet = projets.get_projet(projet_id)
-    if projet is None:
-        abort(404)
-    if not projets.user_can_view(projet_id, g.user["id"]):
-        abort(404)
-
-    intent = request.args.get("intent", "tache")
-    if intent not in ("tache", "information", "requete"):
-        intent = "tache"
-    # Rebond (voir post_card.html) : le post d'origine reste référencé sur
-    # le post système créé ici, qu'il s'agisse d'une tâche ou d'une requête.
-    parent_post_id = request.args.get("parent_post_id", type=int)
-
-    utilisateurs_actifs = utilisateurs.list_actifs()
-    return render_template(
-        "nouveau_post.html",
-        projet=projet,
-        intent=intent,
-        parent_post_id=parent_post_id,
-        utilisateurs_actifs=utilisateurs_actifs,
-    )
-
-
 @bp.route("/<int:projet_id>/taches", methods=["POST"])
 @login_required
 def creer_tache(projet_id: int):

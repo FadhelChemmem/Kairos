@@ -46,13 +46,6 @@ def init_pool(database_url: str, minconn: int = 1, maxconn: int = 10) -> None:
     logger.info("Pool de connexions Postgres initialisé (min=%s, max=%s)", minconn, maxconn)
 
 
-def close_pool() -> None:
-    global _pool
-    if _pool is not None:
-        _pool.closeall()
-        _pool = None
-
-
 @contextlib.contextmanager
 def get_cursor(user_id: int | None = None, commit: bool = True):
     """Fournit un curseur (lignes sous forme de dict) sur une connexion du pool.

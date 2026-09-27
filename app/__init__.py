@@ -170,13 +170,6 @@ def create_app(config_class=Config) -> Flask:
             return redirect(url_for("auth.login"))
         return redirect(url_for("main.accueil"))
 
-    @app.teardown_appcontext
-    def _close_db(exception=None):
-        # Les connexions sont gérées par le pool (voir db.get_cursor) —
-        # rien à faire ici par requête, le pool reste ouvert pour tout le
-        # cycle de vie du process.
-        pass
-
     _register_cli(app)
 
     return app

@@ -4,9 +4,9 @@
 --
 -- Portée : Projets, Tâches, DailyLog, Posts (fil d'activité, y compris
 -- Requêtes en tant que type de post), Utilisateurs.
--- Hors périmètre étape 1 (colonnes/tables prévues mais non utilisées) :
--- Congé/Télétravail, Notifications RH, posts hors-projet (RH/Information),
--- rôle Client, Honoraires.
+-- Hors périmètre pour l'instant (colonnes/tables prévues mais non
+-- utilisées) : Congé/Télétravail, posts hors-projet (Information), rôle
+-- Client, Honoraires. Le rôle RH, lui, est actif.
 --
 -- Choix de conception :
 --  - ENUM Postgres pour les listes fermées et stables (phase, état projet,
@@ -85,8 +85,9 @@ CREATE TYPE tache_etat_enum AS ENUM (
 -- sur la vue calendaire (#interne).
 CREATE TYPE type_deadline_enum AS ENUM ('rendu_client', 'interne');
 
--- Rôle utilisateur. RH et Client existent dans l'énum dès étape 1 pour
--- éviter une migration future, mais ne sont pas exploités avant l'étape 2.
+-- Rôle utilisateur. RH est actif (compte unique, voir
+-- idx_utilisateur_rh_singleton) ; Client existe dans l'énum pour éviter une
+-- migration future mais n'est pas encore proposé dans l'interface.
 CREATE TYPE role_enum AS ENUM ('admin', 'chef_de_projet', 'intervenant', 'rh', 'client');
 
 
@@ -97,7 +98,7 @@ CREATE TYPE role_enum AS ENUM ('admin', 'chef_de_projet', 'intervenant', 'rh', '
 -- Bureaux / entités du groupe (Midgard, URBS, SS, Q, IPCO, ...)
 -- ISBG renommé en URBS + ajout d'IPCO (retour Fadhel, 2026-09-20) — sur une
 -- base déjà installée, ce INSERT ne joue aucun rôle (il ne tourne qu'à la
--- création du schéma) : voir la migration correspondante à lancer à la main.
+-- création du schéma) : voir migrations/0001, appliquée par `flask migrer`.
 CREATE TABLE equipe (
   code       VARCHAR(20) PRIMARY KEY,
   libelle    VARCHAR(100) NOT NULL,

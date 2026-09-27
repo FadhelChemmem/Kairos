@@ -55,6 +55,19 @@ def is_safe_next(url: str | None) -> bool:
     parsed = urlparse(url)
     return not parsed.scheme and not parsed.netloc
 
+def redirect_vers_next(default_endpoint: str = "main.accueil"):
+    """Redirige vers le champ caché "next" du formulaire s'il désigne une
+    page interne sûre (voir is_safe_next), sinon vers `default_endpoint`.
+    Factorisé ici (audit n°2) : la même fonction était copiée dans
+    routes/posts.py et routes/fichiers.py."""
+    from flask import redirect, request, url_for
+
+    next_url = request.form.get("next")
+    if is_safe_next(next_url):
+        return redirect(next_url)
+    return redirect(url_for(default_endpoint))
+
+
 # Palette reprise telle quelle des maquettes (Main.dc.html / Projet.dc.html).
 # Teintes assombries (audit n°2) pour que les initiales blanches restent
 # lisibles (contraste ≥ 4,5:1, contre 3,0 à 4,0 auparavant).
@@ -85,13 +98,11 @@ _POST_TYPE_STYLE = {
 }
 
 # Pill "Tâche" utilisée pour les posts système de création de tâche
-# (voir posts.py — POST_TACHE_PILL) ; ne correspond à aucun type_code,
+# (voir partials/post_card.html) ; ne correspond à aucun type_code,
 # c'est une présentation dédiée aux événements liés à une tâche.
 POST_TACHE_PILL = {"bg": "#efecfd", "fg": "#7c6ff0", "label": "Tâche"}
 
-# Couleurs/labels de rôle (page Utilisateurs), reprises de Utilisateurs.dc.html
-# — RH garde une pill grisée "réservée" tant que le rôle n'est pas actif à
-# l'étape 1 (voir spec).
+# Couleurs/labels de rôle (page Utilisateurs), reprises de Utilisateurs.dc.html.
 _ROLE_STYLE = {
     "admin": {"bg": "#efecfd", "fg": "#7c6ff0", "label": "Admin"},
     "chef_de_projet": {"bg": "#eaf1fd", "fg": "#3b7de0", "label": "Chef de projet"},
@@ -102,7 +113,7 @@ _ROLE_STYLE = {
 
 # Équipes de référence (table `equipe`, schema.sql) — codes stockés en
 # base, non requêtés ici (liste fixe et stable, comme ailleurs dans
-# l'appli, voir nouveau_post.html). ISBG renommé en URBS + ajout d'IPCO
+# l'appli, voir partials/post_dialog.html). ISBG renommé en URBS + ajout d'IPCO
 # (retour Fadhel, 2026-09-20).
 EQUIPE_CHOICES = [
     ("MIDGARD", "Midgard"),

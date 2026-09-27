@@ -165,17 +165,6 @@ def list_lots(projet_id: int) -> list[dict]:
     return db.query_all(sql, (projet_id,))
 
 
-def list_co_chefs(projet_id: int) -> list[dict]:
-    sql = """
-        SELECT u.id, u.prenom, u.nom
-        FROM projet_co_chef cc
-        JOIN utilisateur u ON u.id = cc.utilisateur_id
-        WHERE cc.projet_id = %s
-        ORDER BY u.nom
-    """
-    return db.query_all(sql, (projet_id,))
-
-
 def list_intervenants(projet_id: int) -> list[dict]:
     """Chef de projet + co-chefs + intervenants, avec un libellé de rôle —
     alimente le panneau "Intervenants" de la page projet.
