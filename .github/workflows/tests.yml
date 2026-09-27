@@ -58,6 +58,8 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # historique complet : schéma d'origine pour le test de montée de version
 
       - name: Appliquer schema.sql puis les migrations
         env:
@@ -68,4 +70,23 @@ jobs:
           for fichier in migrations/*.sql; do
             echo "--- $fichier ---"
             psql -h localhost -U kairos -d kairos -v ON_ERROR_STOP=1 -f "$fichier"
+          done
+
+      # Chemin de mise à jour réel (audit n°2) : appliquer les migrations
+      # sur schema.sql, qui les contient déjà, ne prouve pas qu'elles
+      # fonctionnent sur une base de PRODUCTION créée avant elles. On part
+      # donc du schéma de la première version livrée, puis on joue toutes
+      # les migrations, deux fois (elles doivent rester rejouables).
+      - name: Montée de version depuis le schéma d'origine
+        env:
+          PGPASSWORD: kairos
+        run: |
+          set -e
+          psql -h localhost -U kairos -d kairos -c "CREATE DATABASE montee_version"
+          git show "$(git rev-list --max-parents=0 HEAD | tail -n1)":schema.sql > /tmp/schema_origine.sql
+          psql -h localhost -U kairos -d montee_version -v ON_ERROR_STOP=1 -q -f /tmp/schema_origine.sql
+          for passe in 1 2; do
+            for fichier in migrations/*.sql; do
+              psql -h localhost -U kairos -d montee_version -v ON_ERROR_STOP=1 -q -f "$fichier"
+            done
           done

@@ -132,6 +132,39 @@ class BackupDbTestCase(unittest.TestCase):
         self.assertNotIn(anciens_sql[0], noms)
         self.assertNotIn(anciens_tar[0], noms)
 
+    # --- Audit n°2 : le faux `docker` ignorait ses arguments — un script
+    # qui passait le mauvais utilisateur/la mauvaise base à pg_dump restait
+    # vert. Il les trace maintenant (FAKE_DOCKER_LOG). ---
+
+    def _run_avec_trace(self, env_extra=None):
+        journal = self.tmp / "docker.log"
+        result = self._run(env_extra={"FAKE_DOCKER_LOG": str(journal), **(env_extra or {})})
+        return result, journal.read_text(encoding="utf-8") if journal.exists() else ""
+
+    def test_pg_dump_recoit_utilisateur_et_base_du_env(self):
+        result, trace = self._run_avec_trace()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        ligne = next(l for l in trace.splitlines() if "pg_dump" in l)
+        self.assertTrue(ligne.endswith("-U testuser testdb"), ligne)
+        # Sauvegarde restaurable dans une base déjà initialisée.
+        self.assertIn("--clean --if-exists", ligne)
+
+    def test_valeurs_entre_guillemets_et_commentaires(self):
+        (self.tmp / ".env").write_text(
+            'POSTGRES_USER="quoteduser"\nPOSTGRES_DB=basetest # commentaire\n', encoding="utf-8",
+        )
+        result, trace = self._run_avec_trace()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        ligne = next(l for l in trace.splitlines() if "pg_dump" in l)
+        self.assertTrue(ligne.endswith("-U quoteduser basetest"), ligne)
+
+    def test_fichier_modifie_pendant_tar_ne_fait_pas_echouer(self):
+        """tar sort en 1 si un fichier change pendant la lecture : l'archive
+        reste valide et la sauvegarde ne doit pas échouer."""
+        result, _ = self._run_avec_trace(env_extra={"FAKE_DOCKER_TAR_CHANGED": "1"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len([n for n in self._backups() if n.endswith(".tar.gz")]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

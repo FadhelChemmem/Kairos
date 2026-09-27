@@ -130,9 +130,21 @@ def parse_inserts(sql_text, table_columns):
     on l'utilise telle quelle plutôt que l'ordre de CREATE TABLE : rien ne
     garantit qu'un --complete-insert respecte cet ordre."""
     data = {t: [] for t in table_columns}
-    insert_re = re.compile(r'INSERT INTO `(\w+)`\s*(?:\(([^)]*)\)\s*)?VALUES\s*(.*?);\n', re.DOTALL)
+    # INSERT IGNORE (mysqldump --insert-ignore) et REPLACE INTO (--replace)
+    # sont acceptés aussi (audit n°2) : ils étaient ignorés en silence.
+    debut = r'(?:INSERT(?:\s+IGNORE)?|REPLACE)\s+INTO\s+`(\w+)`'
+    insert_re = re.compile(debut + r'\s*(?:\(([^)]*)\)\s*)?VALUES\s*(.*?);\n', re.DOTALL)
+    # Garde-fou "échec bruyant" (PROMPT_CORRECTIONS.md P1 #14) : chaque
+    # instruction d'insertion présente dans le dump doit avoir été lue. Sinon
+    # (format inattendu, dernière instruction sans retour à la ligne...), on
+    # s'arrête plutôt que de migrer une table partiellement ou totalement vide.
+    attendues = {}
+    for nom in re.findall(debut, sql_text):
+        attendues[nom] = attendues.get(nom, 0) + 1
+    lues = {}
     for m in insert_re.finditer(sql_text):
         name = m.group(1)
+        lues[name] = lues.get(name, 0) + 1
         if name not in table_columns:
             continue
         cols_declarees = m.group(2)
@@ -143,6 +155,13 @@ def parse_inserts(sql_text, table_columns):
             if len(vals) != len(cols):
                 raise ValueError(f"{name}: {len(vals)} valeurs vs {len(cols)} colonnes attendues")
             data[name].append(dict(zip(cols, vals)))
+    for nom, n in attendues.items():
+        if nom in table_columns and lues.get(nom, 0) != n:
+            raise ValueError(
+                f"{nom}: {n} instruction(s) d'insertion dans le dump, mais seulement "
+                f"{lues.get(nom, 0)} lue(s) — format non reconnu, migration arrêtée "
+                "pour ne pas produire une table incomplète."
+            )
     return data
 
 def load_dump(path):

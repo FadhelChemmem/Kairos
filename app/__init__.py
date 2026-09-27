@@ -92,6 +92,13 @@ def create_app(config_class=Config) -> Flask:
             x_host=nb_proxys, x_port=nb_proxys,
         )
 
+    if (app.config.get("APP_BASE_URL", "").startswith("https://")
+            and not app.config.get("SESSION_COOKIE_SECURE")):
+        app.logger.warning(
+            "APP_BASE_URL est en https:// mais SESSION_COOKIE_SECURE=false : le "
+            "cookie de session peut circuler en clair. Passez-le à true dans .env."
+        )
+
     db.init_pool(app.config["DATABASE_URL"])
     utils.register(app)
 

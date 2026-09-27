@@ -34,6 +34,11 @@ lire_env() {
   if [ -f .env ]; then
     valeur="$(grep -E "^${cle}=" .env | tail -n1 | cut -d '=' -f2-)"
   fi
+  # Comme Docker Compose : commentaire de fin de ligne (" # ...") ignoré,
+  # espaces et guillemets entourant la valeur retirés (audit n°2 :
+  # POSTGRES_USER="kairos" était passé à pg_dump guillemets compris).
+  valeur="${valeur%% #*}"
+  valeur="$(printf '%s' "$valeur" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\\(.*\\)'$/\\1/")"
   echo "${valeur:-$defaut}"
 }
 POSTGRES_USER="$(lire_env POSTGRES_USER kairos)"
@@ -54,7 +59,11 @@ TMP_DB="${FICHIER_DB}.tmp"
 # restaurer. On écrit donc d'abord dans un .tmp, jamais exposé sous le nom
 # final tant qu'il n'a pas été relu et validé (gzip -t).
 set +e
-sudo docker compose exec -T db pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > "$TMP_DB"
+# --clean --if-exists : la sauvegarde commence par supprimer les objets
+# existants, pour pouvoir être restaurée telle quelle dans une base déjà
+# initialisée par schema.sql (sinon "type phase_enum already exists", voir
+# scripts/restore_db.sh et le README).
+sudo docker compose exec -T db pg_dump --clean --if-exists -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > "$TMP_DB"
 statut_db=$?
 set -e
 if [ "$statut_db" -ne 0 ] || ! gzip -t "$TMP_DB" 2>/dev/null; then
@@ -80,6 +89,13 @@ set +e
 sudo docker compose exec -T web tar czf - -C /app/uploads . > "$TMP_UPLOADS"
 statut_uploads=$?
 set -e
+# tar renvoie 1 quand un fichier change pendant la lecture (un envoi de
+# pièce jointe en cours) : l'archive reste valide, ce n'est qu'un
+# avertissement — auparavant ça faisait échouer toute la sauvegarde.
+if [ "$statut_uploads" -eq 1 ]; then
+  echo "Avertissement : un fichier a changé pendant la sauvegarde des pièces jointes (archive conservée)." >&2
+  statut_uploads=0
+fi
 if [ "$statut_uploads" -ne 0 ] || ! gzip -t "$TMP_UPLOADS" 2>/dev/null; then
   echo "Erreur : sauvegarde des pièces jointes invalide — abandon, rien n'est remplacé." >&2
   rm -f "$TMP_UPLOADS"

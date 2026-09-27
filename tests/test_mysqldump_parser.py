@@ -65,3 +65,33 @@ class TestCompleteInsert(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestVariantesEtEchecBruyant(unittest.TestCase):
+    """Audit n°2 : INSERT IGNORE / REPLACE INTO étaient ignorés en silence,
+    et une instruction non reconnue produisait une table vide sans erreur."""
+
+    def test_insert_ignore_et_replace_into(self):
+        sql = (
+            CREATE_TABLE_USERS
+            + "INSERT IGNORE INTO `users` VALUES (1,'a@b.tn','admin');\n"
+            + "REPLACE INTO `users` VALUES (2,'c@d.tn','intervenant');\n"
+        )
+        data = parse_inserts(sql, parse_create_tables(sql))
+        self.assertEqual([r["id"] for r in data["users"]], [1, 2])
+
+    def test_echec_bruyant_si_une_insertion_nest_pas_lue(self):
+        # Dernière instruction sans retour à la ligne final : non lue par
+        # la regex, elle doit faire échouer le parsing au lieu d'être perdue.
+        sql = CREATE_TABLE_USERS + "INSERT INTO `users` VALUES (1,'a@b.tn','admin');"
+        with self.assertRaises(ValueError):
+            parse_inserts(sql, parse_create_tables(sql))
+
+    def test_chaines_avec_caracteres_speciaux(self):
+        sql = CREATE_TABLE_USERS + (
+            "INSERT INTO `users` VALUES (1,'l\\'a;b),(c','x\\\\y'),(2,NULL,'z');\n"
+        )
+        data = parse_inserts(sql, parse_create_tables(sql))
+        self.assertEqual(data["users"][0]["email"], "l'a;b),(c")
+        self.assertEqual(data["users"][0]["role"], "x\\y")
+        self.assertIsNone(data["users"][1]["email"])
