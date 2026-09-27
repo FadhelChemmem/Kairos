@@ -1,0 +1,4 @@
+#!/bin/sh
+# Faux `sudo` pour les tests : exécute simplement la commande, sans
+# privilège — ce script tourne dans un environnement de test isolé.
+exec "$@"

@@ -1,0 +1,27 @@
+#!/bin/sh
+# Faux `docker` pour les tests de scripts/backup_db.sh : reconnaît les deux
+# invocations que le script fait réellement, sans jamais toucher à un vrai
+# Docker. Les variables FAKE_DOCKER_FAIL_DB / FAKE_DOCKER_FAIL_UPLOADS
+# (0/1) et FAKE_UPLOADS_DIR sont injectées par le test Python.
+args="$*"
+case "$args" in
+  *pg_dump*)
+    if [ "${FAKE_DOCKER_FAIL_DB:-0}" = "1" ]; then
+      echo "pg_dump: fake failure" >&2
+      exit 1
+    fi
+    echo "-- fake pg_dump output"
+    echo "CREATE TABLE foo (id int);"
+    ;;
+  *"tar czf"*)
+    if [ "${FAKE_DOCKER_FAIL_UPLOADS:-0}" = "1" ]; then
+      echo "tar: fake failure" >&2
+      exit 1
+    fi
+    tar czf - -C "$FAKE_UPLOADS_DIR" .
+    ;;
+  *)
+    echo "faux docker : invocation inattendue : $args" >&2
+    exit 2
+    ;;
+esac
