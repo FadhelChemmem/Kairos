@@ -72,12 +72,35 @@ def verify_password(plain: str, hashed: str) -> bool:
     return check_password_hash(hashed, plain)
 
 
+def password_fingerprint(mot_de_passe_hash: str) -> str:
+    """Empreinte non réversible du hash de mot de passe, déposée dans la
+    session à la connexion (PROMPT_CORRECTIONS.md P2 #17) — jamais le hash
+    lui-même : le cookie de session est signé (donc pas falsifiable) mais
+    reste lisible par quiconque y a accès, et mot_de_passe_hash n'a pas à
+    s'y trouver. Comparée à celle du hash actuel à chaque requête (voir
+    load_logged_in_user ci-dessous) : si le mot de passe a changé entre
+    temps (par soi-même sur un autre appareil, par un admin, ou via "mot de
+    passe oublié"), l'empreinte ne correspond plus et la session est
+    invalidée — exactement l'effet recherché."""
+    return hashlib.sha256(mot_de_passe_hash.encode()).hexdigest()
+
+
 def load_logged_in_user() -> None:
     """Appelé avant chaque requête (voir app/__init__.py) pour peupler g.user
     et, dans la foulée, le compteur de notifications non lues affiché dans
     la cloche de la barre du haut (base.html)."""
     user_id = session.get("user_id")
     g.user = get_user_by_id(user_id) if user_id else None
+
+    if g.user is not None:
+        # Invalidation de session après changement de mot de passe (PROMPT_
+        # CORRECTIONS.md P2 #17) — voir password_fingerprint() ci-dessus.
+        hash_actuel = utilisateurs_repo.get_mot_de_passe_hash(user_id)
+        if hash_actuel is None or session.get("pw_fingerprint") != password_fingerprint(hash_actuel):
+            session.clear()
+            g.user = None
+            flash("Votre mot de passe a été changé, veuillez vous reconnecter.", "error")
+
     g.notifications_non_lues = notifications_repo.compter_non_lues(g.user["id"]) if g.user else 0
 
 
@@ -199,6 +222,9 @@ def login():
             # qui expire à la fermeture du navigateur.
             session.permanent = True
             session["user_id"] = user["id"]
+            # Empreinte du mot de passe actuel (PROMPT_CORRECTIONS.md P2 #17)
+            # — voir password_fingerprint().
+            session["pw_fingerprint"] = password_fingerprint(user["mot_de_passe_hash"])
             _verifier_rappel_dailylog(user["id"])
             # Ouverture de redirection (PROMPT_CORRECTIONS.md P0 #5) : ?next=
             # n'est jamais fiable tel quel (lien envoyé par un tiers) — voir

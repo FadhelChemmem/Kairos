@@ -65,7 +65,15 @@ def _install_fake_psycopg2():
 _install_fake_psycopg2()
 
 from app import create_app  # noqa: E402
+from app.auth import password_fingerprint  # noqa: E402
 from app.config import Config  # noqa: E402
+
+# Hash de mot de passe "actuel" par défaut pour tous les tests connectés via
+# _login() ci-dessous — PROMPT_CORRECTIONS.md P2 #17 : load_logged_in_user()
+# compare désormais, à chaque requête, l'empreinte mémorisée en session à
+# celle du hash renvoyé par get_mot_de_passe_hash() ; les deux doivent
+# rester cohérentes pour qu'une session ouverte via _login() reste valide.
+MOT_DE_PASSE_HASH_PAR_DEFAUT = "hash-bidon"
 
 
 class TestConfig(Config):
@@ -300,6 +308,7 @@ class SmokeTestCase(unittest.TestCase):
     def _login(self):
         with self.client.session_transaction() as sess:
             sess["user_id"] = 1
+            sess["pw_fingerprint"] = password_fingerprint(MOT_DE_PASSE_HASH_PAR_DEFAUT)
 
     def _patched(self, **overrides):
         """`overrides` permet à un test de remplacer, par sa cible (ex.
@@ -343,6 +352,7 @@ class SmokeTestCase(unittest.TestCase):
             "app.repositories.utilisateurs.get_utilisateur": UTILISATEUR_PROFIL,
             "app.repositories.utilisateurs.update_profil": None,
             "app.repositories.utilisateurs.set_reset_token": None,
+            "app.repositories.utilisateurs.get_mot_de_passe_hash": MOT_DE_PASSE_HASH_PAR_DEFAUT,
             "app.repositories.projets.search": [],
             "app.repositories.notifications.compter_non_lues": 2,
             "app.repositories.notifications.list_notifications": NOTIFICATIONS,
@@ -2345,7 +2355,15 @@ class SmokeTestCase(unittest.TestCase):
             p.start()
         try:
             with patch("app.routes.utilisateurs.verify_password", return_value=True), \
-                 patch("app.repositories.utilisateurs.set_password") as mock_set_password:
+                 patch("app.repositories.utilisateurs.set_password") as mock_set_password, \
+                 patch("app.routes.utilisateurs.hash_password", return_value=MOT_DE_PASSE_HASH_PAR_DEFAUT):
+                # set_password() est mocké (n'écrit donc rien en base) : on
+                # fixe aussi le hash "nouveau" au même hash que celui déjà
+                # renvoyé par get_mot_de_passe_hash ci-dessus, pour que
+                # l'empreinte déposée en session par mon_mot_de_passe() reste
+                # cohérente avec le hash "actuel" que la requête suivante
+                # (follow_redirects) va relire — sinon la session serait
+                # invalidée par erreur (PROMPT_CORRECTIONS.md P2 #17).
                 resp = self.client.post(
                     "/utilisateurs/moi/mot-de-passe",
                     data={
@@ -2436,6 +2454,79 @@ class SmokeTestCase(unittest.TestCase):
                 p.stop()
         self.assertIn("au moins 8 caract\xe8res".encode(), resp.data)
         mock_set_password.assert_not_called()
+
+    # --- Invalidation de session après changement de mot de passe
+    # (PROMPT_CORRECTIONS.md P2 #17) ---
+
+    def test_session_invalidee_si_le_mot_de_passe_a_change_ailleurs(self):
+        """Simule un mot de passe changé depuis un autre appareil (ou par un
+        admin, ou via "mot de passe oublié") pendant qu'une session reste
+        ouverte ici : get_mot_de_passe_hash() renvoie désormais un hash
+        différent de celui mémorisé en session à la connexion -> la session
+        doit être coupée, comme si le compte avait été désactivé."""
+        self._login()
+        patchers = self._patched(**{
+            "app.repositories.utilisateurs.get_mot_de_passe_hash": "un-autre-hash-tout-neuf",
+        })
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.get("/accueil", follow_redirects=True)
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertIn(b"Se connecter", resp.data)
+        self.assertIn("Votre mot de passe a \xe9t\xe9 chang\xe9".encode(), resp.data)
+
+    def test_session_conservee_si_le_hash_na_pas_change(self):
+        """Contre-exemple : tant que get_mot_de_passe_hash() renvoie le même
+        hash que celui mémorisé à la connexion, la session reste valide."""
+        resp = self._get("/accueil")
+        self.assertEqual(resp.status_code, 200, resp.data[:2000])
+        self.assertNotIn(b"Se connecter", resp.data)
+
+    def test_mon_mot_de_passe_garde_la_session_active_apres_changement(self):
+        """Changer soi-même son mot de passe ne doit PAS déconnecter la
+        session en cours (seules les AUTRES sessions du compte doivent
+        l'être) : mon_mot_de_passe() met à jour l'empreinte en session avec
+        le nouveau hash, cohérent avec ce que get_mot_de_passe_hash()
+        renverrait désormais en production."""
+        self._login()
+        # "Base" factice : get_mot_de_passe_hash() renvoie ce que set_password()
+        # y a écrit en dernier — comme un vrai aller-retour SQL, contrairement
+        # à un simple return_value figé qui renverrait la même chose avant ET
+        # après l'appel à set_password() dans la route.
+        etat_hash = {"valeur": MOT_DE_PASSE_HASH_PAR_DEFAUT}
+
+        def _fake_get_hash(user_id):
+            return etat_hash["valeur"]
+
+        def _fake_set_password(user_id, nouveau_hash, current_user_id):
+            etat_hash["valeur"] = nouveau_hash
+
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.utilisateurs.get_mot_de_passe_hash", side_effect=_fake_get_hash), \
+                 patch("app.routes.utilisateurs.verify_password", return_value=True), \
+                 patch("app.repositories.utilisateurs.set_password", side_effect=_fake_set_password), \
+                 patch("app.routes.utilisateurs.hash_password", return_value="nouveau-hash-genere"):
+                resp = self.client.post(
+                    "/utilisateurs/moi/mot-de-passe",
+                    data={
+                        "mot_de_passe_actuel": "ancien123",
+                        "nouveau_mot_de_passe": "nouveau123",
+                        "confirmation": "nouveau123",
+                    },
+                    follow_redirects=True,
+                )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 200, resp.data[:2000])
+        self.assertIn("Mot de passe chang\xe9".encode(), resp.data)
+        self.assertNotIn(b"Se connecter", resp.data)
 
     def test_liste_visible_pour_chef_de_projet_sans_actions_admin(self):
         """Un chef de projet peut voir la liste des utilisateurs, mais sans

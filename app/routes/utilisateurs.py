@@ -8,12 +8,12 @@ semaine dernière)."""
 import datetime
 import secrets
 
-from flask import Blueprint, flash, g, redirect, render_template, request, url_for
+from flask import Blueprint, flash, g, redirect, render_template, request, session, url_for
 
 from .. import mailer
 from ..auth import (
     MOT_DE_PASSE_MIN_LEN, generer_lien_reset, hash_password, login_required,
-    role_required, verify_password,
+    password_fingerprint, role_required, verify_password,
 )
 from ..repositories import dailylog as dailylog_repo
 from ..repositories import utilisateurs as utilisateurs_repo
@@ -238,7 +238,14 @@ def mon_mot_de_passe():
     elif len(nouveau) < MOT_DE_PASSE_MIN_LEN:
         flash(f"Le nouveau mot de passe doit faire au moins {MOT_DE_PASSE_MIN_LEN} caractères.", "error")
     else:
-        utilisateurs_repo.set_password(user_id, hash_password(nouveau), user_id)
+        nouveau_hash = hash_password(nouveau)
+        utilisateurs_repo.set_password(user_id, nouveau_hash, user_id)
+        # Garder CETTE session connectée après le changement — seules les
+        # AUTRES sessions ouvertes pour ce compte doivent être invalidées
+        # (PROMPT_CORRECTIONS.md P2 #17, voir load_logged_in_user()) : sans
+        # cette ligne, la prochaine requête déconnecterait aussi
+        # l'utilisateur qui vient de changer son propre mot de passe.
+        session["pw_fingerprint"] = password_fingerprint(nouveau_hash)
         flash("Mot de passe changé.", "success")
 
     return redirect(url_for("utilisateurs.mon_profil"))
