@@ -62,6 +62,9 @@ def list_mes_taches(user_id: int, limit: int = 10) -> list[dict]:
         FROM tache t
         JOIN projet p ON p.id = t.projet_id
         WHERE t.etat NOT IN ('termine', 'abandonne')
+          -- Projets terminés/abandonnés exclus, comme pour les échéances
+          -- (PROMPT_CORRECTIONS.md P2 #23, étendu à "Mes tâches" — audit n°2).
+          AND p.etat IN ('en_cours', 'bloque')
           AND (
                 t.created_by = %(uid)s
                 OR EXISTS (

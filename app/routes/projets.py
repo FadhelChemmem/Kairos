@@ -24,6 +24,10 @@ TYPES_CLOTURE_VALIDES = {"envoi", "reponse", "question", "requete"}
 # (violation de l'ENUM Postgres), voir PROMPT_CORRECTIONS.md P1 #11.
 TYPE_DEADLINE_VALIDES = {"rendu_client", "interne"}
 
+# Codes de lot valides (table `lot`, schema.sql) — un code inconnu faisait
+# échouer l'INSERT, présenté comme "code déjà utilisé ?" (audit n°2).
+LOTS_VALIDES = {"CM", "GO"}
+
 
 def _message_erreur_intervenant(exc: Exception, action: str) -> str:
     """Message d'erreur à afficher quand l'ajout d'intervenant(s) échoue en
@@ -60,6 +64,10 @@ def liste():
     # État "En cours"+"Bloqué", Chef de projet = utilisateur connecté,
     # Phases toutes cochées (= pas de filtre). Une fois soumis, même un
     # groupe vidé volontairement (tout décoché) est respecté tel quel.
+    # Bug corrigé (2026-09-27, retour Fadhel) : le filtre "Chef de projet"
+    # listait tout le monde (Intervenants, Clients...) via
+    # utilisateurs.list_actifs() — voir list_chefs_de_projet().
+    chefs_de_projet = projets.list_chefs_de_projet()
     if request.args.get("filtres_actifs"):
         etats = request.args.getlist("etat") or None
         phases = request.args.getlist("phase") or None
@@ -68,17 +76,17 @@ def liste():
     else:
         etats = ["en_cours", "bloque"]
         phases = list(PHASES)
-        chef_ids = [g.user["id"]]
+        # "Chef de projet = moi" seulement si l'utilisateur EST chef d'au
+        # moins un projet (audit n°2) : sinon un intervenant voyait "0 projet"
+        # par défaut, sans comprendre pourquoi (aucune puce cochée).
+        est_chef = any(c["id"] == g.user["id"] for c in chefs_de_projet)
+        chef_ids = [g.user["id"]] if est_chef else None
         lots = None
     q = request.args.get("q") or None
 
     tous = projets.list_projets(
         user_id=g.user["id"], etats=etats, phases=phases, chef_ids=chef_ids, lots=lots, q=q,
     )
-    # Bug corrigé (2026-09-27, retour Fadhel) : le filtre "Chef de projet"
-    # listait tout le monde (Intervenants, Clients...) via
-    # utilisateurs.list_actifs() — voir list_chefs_de_projet().
-    chefs_de_projet = projets.list_chefs_de_projet()
     contexte = dict(
         projets=tous, q=q or "",
         etats=etats or [], phases=phases or [], chef_ids=chef_ids or [], lots=lots or [],
@@ -100,6 +108,8 @@ def creer():
         flash("Seuls les chefs de projet et l'admin peuvent créer un projet.", "error")
         return redirect(url_for("projets.liste"))
 
+    utilisateurs_actifs = utilisateurs.list_actifs()
+    saisie = {}
     if request.method == "POST":
         nom = request.form.get("nom", "").strip()
         phase = request.form.get("phase", "EXE")
@@ -107,9 +117,26 @@ def creer():
         chef_projet_id = request.form.get("chef_projet_id", type=int) or g.user["id"]
         date_debut = request.form.get("date_debut") or None
         lots = request.form.getlist("lots")
+        # Saisie renvoyée au formulaire en cas d'erreur (audit n°2 : tout
+        # était perdu, phase revenue à EXE et code reproposé pour EXE).
+        saisie = {
+            "nom": nom, "code": code, "phase": phase, "chef_projet_id": chef_projet_id,
+            "date_debut": date_debut or "", "lots": lots,
+        }
+
+        try:
+            date_debut_valide = _parser_date_tache(date_debut)
+        except ValueError:
+            date_debut_valide = False
 
         if not nom or not code:
             flash("Le code et le nom du projet sont obligatoires.", "error")
+        elif date_debut_valide is False:
+            flash("Date de début invalide.", "error")
+        elif any(l not in LOTS_VALIDES for l in lots):
+            flash("Lot invalide.", "error")
+        elif chef_projet_id not in {u["id"] for u in utilisateurs_actifs}:
+            flash("Chef de projet invalide.", "error")
         elif phase not in PHASES:
             # PROMPT_CORRECTIONS.md P2 #22 : `phase` n'était pas validée —
             # une valeur hors de phase_enum (schema.sql) plantait l'INSERT
@@ -122,18 +149,30 @@ def creer():
                     code=code, nom=nom, phase=phase, chef_projet_id=chef_projet_id,
                     lots=lots, date_debut=date_debut, current_user_id=g.user["id"],
                 )
-            except Exception:
-                flash("Impossible de créer ce projet (code déjà utilisé ?).", "error")
+            except Exception as exc:
+                # Seule une violation d'unicité du code justifie ce message ;
+                # le reste était auparavant présenté à tort comme "code déjà
+                # utilisé ?" (audit n°2).
+                if "unique" in str(exc).lower() or "duplicate" in str(exc).lower():
+                    flash(f"Le code « {code} » est déjà utilisé par un autre projet.", "error")
+                else:
+                    current_app.logger.exception("Échec inattendu de création de projet")
+                    flash("Impossible de créer ce projet (erreur inattendue, réessayez).", "error")
             else:
                 flash("Projet créé.", "success")
                 return redirect(url_for("projets.detail", projet_id=projet_id))
 
-    utilisateurs_actifs = utilisateurs.list_actifs()
-    code_propose = projets.propose_code(request.args.get("phase", "EXE"))
+    phase_initiale = saisie.get("phase") or request.args.get("phase", "EXE")
+    if phase_initiale not in PHASES:
+        phase_initiale = "EXE"
+    code_propose = saisie.get("code") or projets.propose_code(phase_initiale)
     return render_template(
         "projet_creer.html",
         utilisateurs_actifs=utilisateurs_actifs,
         code_propose=code_propose,
+        phase_initiale=phase_initiale,
+        phases=PHASES,
+        saisie=saisie,
         # Pré-rempli avec la date du jour, modifiable — demandé par Fadhel
         # (2026-09-19), le champ apparaissait vide (jj/mm/aaaa).
         date_du_jour=datetime.date.today().isoformat(),

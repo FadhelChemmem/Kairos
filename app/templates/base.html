@@ -58,7 +58,7 @@
   <div class="topbar-search" style="position:relative;">
     <div class="topbar-search-box" style="position:relative;">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8b968f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="text" id="recherche-globale" autocomplete="off" placeholder="Rechercher un projet, une personne…" style="border:none; outline:none; background:none; font-size:14px; color:#33392f; width:100%; font-family:inherit;">
+      <input type="text" id="recherche-globale" aria-label="Rechercher un projet" autocomplete="off" placeholder="Rechercher un projet, une personne…" style="border:none; outline:none; background:none; font-size:14px; color:#33392f; width:100%; font-family:inherit;">
       <div id="recherche-globale-resultats" style="display:none; position:absolute; top:calc(100% + 6px); left:0; right:0; background:#fff; border:1px solid #e7e9e4; border-radius:12px; box-shadow:0 8px 24px rgba(20,30,25,0.12); padding:6px; z-index:200; max-height:360px; overflow-y:auto;"></div>
     </div>
   </div>
@@ -76,7 +76,9 @@
     <a class="iconbtn" href="{{ url_for('deadlines.liste') }}" title="Deadlines">
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>
     </a>
-    {% if g.user.role in ('admin', 'rh') %}
+    {# Le chef de projet a accès à la liste (lecture seule) : lien affiché
+       pour lui aussi (PROMPT_CORRECTIONS.md P3 #27). #}
+    {% if g.user.role in ('admin', 'rh', 'chef_de_projet') %}
     <a class="iconbtn" href="{{ url_for('utilisateurs.liste') }}" title="Utilisateurs">
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
     </a>
@@ -122,7 +124,7 @@
     box.innerHTML = '';
     if (!items.length) {
       var vide = document.createElement('div');
-      vide.style.cssText = 'padding:10px 12px; font-size:12.5px; color:#9aa39c;';
+      vide.style.cssText = 'padding:10px 12px; font-size:12.5px; color:#6c766f;';
       vide.textContent = 'Aucun résultat.';
       box.appendChild(vide);
       box.style.display = 'block';

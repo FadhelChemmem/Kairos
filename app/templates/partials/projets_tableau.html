@@ -6,11 +6,11 @@
    projets_liste.html. #}
 {% import "partials/avatar.html" as avatarm %}
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-  <span style="font-size:12.5px; color:#7c8780;">{{ projets|length }} projet{{ 's' if projets|length != 1 else '' }}</span>
+  <span style="font-size:12.5px; color:#646e67;">{{ projets|length }} projet{{ 's' if projets|length != 1 else '' }}</span>
 </div>
 
 <div class="card table-scroll" style="padding:8px 18px;">
-  <div style="display:grid; grid-template-columns:1.2fr 80px 130px 1fr 90px 110px 90px; gap:10px; padding:10px 4px; font-size:11px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; border-bottom:1px solid #eef0ec;">
+  <div style="display:grid; grid-template-columns:1.2fr 80px 130px 1fr 90px 110px 90px; gap:10px; padding:10px 4px; font-size:11px; font-weight:700; color:#6c766f; text-transform:uppercase; letter-spacing:0.03em; border-bottom:1px solid #eef0ec;">
     <span>Projet</span><span>Phase</span><span>Lots</span><span>Chef de projet</span><span>Heures</span><span>Deadlines</span><span>État</span>
   </div>
   {% for p in projets %}
@@ -26,11 +26,11 @@
         {{ avatarm.avatar(p.chef_id, p.chef_prenom, p.chef_nom, p.chef_avatar_chemin, css_class='avatar avatar-sm') }}
         {{ p.chef_prenom }} {{ p.chef_nom }}
       </span>
-      <span style="font-size:12.5px; color:#7c8780;">{{ p.heures_cumulees|default(0, true)|round(1) }} h</span>
-      <span style="font-size:12px; color:#7c8780;">{% if p.prochaine_echeance %}{{ p.prochaine_echeance.strftime('%d %b') }}{% endif %}</span>
+      <span style="font-size:12.5px; color:#646e67;">{{ p.heures_cumulees|default(0, true)|round(1) }} h</span>
+      <span style="font-size:12px; color:#646e67;">{% if p.prochaine_echeance %}{{ p.prochaine_echeance|date_courte }}{% endif %}</span>
       <span class="pill" style="background:{{ st.bg }}; color:{{ st.fg }}; width:fit-content;">{{ st.label }}</span>
     </a>
   {% else %}
-    <div style="padding:20px 4px; font-size:13px; color:#7c8780;">Aucun projet pour l'instant.</div>
+    <div style="padding:20px 4px; font-size:13px; color:#646e67;">Aucun projet pour l'instant.</div>
   {% endfor %}
 </div>

@@ -1897,11 +1897,14 @@ class SmokeTestCase(unittest.TestCase):
         """Le rebond ouvre la fenêtre flottante partagée (retour Fadhel,
         2026-09-19) — un rebond est lui-même un post (Tâche/Info/Requête),
         jamais un lien vers une page séparée ni un champ texte libre."""
-        resp = self._get("/accueil")
+        feed_gere = [{**p, "je_gere": True} for p in FEED]
+        resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": feed_gere})
         self.assertEqual(resp.status_code, 200)
         body = resp.data.decode()
         self.assertIn("+ Tâche", body)
-        self.assertIn("+ Info", body)
+        # "+ Info" retiré tant que les posts Information ne sont pas
+        # publiables (étape 2) — audit n°2.
+        self.assertNotIn("+ Info", body)
         self.assertIn("+ Requête", body)
         self.assertIn('data-open-post-dialog', body)
         self.assertIn('data-parent-post-id="1"', body)
@@ -1909,6 +1912,21 @@ class SmokeTestCase(unittest.TestCase):
         self.assertNotIn('href="/projets/1/nouveau-post', body)
         # Plus de mini-formulaire "Répondre à ce post…" en texte libre.
         self.assertNotIn("Répondre à ce post", body)
+
+    def test_rebond_tache_masque_si_on_ne_gere_pas_le_projet(self):
+        """Audit n°2 : "+ Tâche" était proposé à tous, puis refusé par le
+        serveur (seuls chef/co-chef créent des tâches)."""
+        feed = [{**p, "je_gere": False} for p in FEED]
+        body = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": feed}).data.decode()
+        self.assertNotIn("+ Tâche", body)
+        self.assertIn("+ Requête", body)
+
+    def test_accueil_fenetre_post_liste_les_personnes(self):
+        """Audit n°2 : utilisateurs_actifs n'était pas transmis à l'accueil —
+        listes Intervenant(s)/Personnes taguées vides."""
+        body = self._get("/accueil").data.decode()
+        for u in UTILISATEURS_ACTIFS:
+            self.assertIn(f'value="{u["id"]}"', body)
 
     def test_projets_liste_applique_les_defauts_sans_filtres_actifs(self):
         resp = self._get("/projets", **{"app.repositories.projets.list_projets": [PROJET_LISTE_SANS_HEURES]})
@@ -2895,7 +2913,7 @@ class SmokeTestCase(unittest.TestCase):
         # Seul formulaire autorisé : la déconnexion de la barre du haut
         # (base.html, en POST depuis PROMPT_CORRECTIONS.md P2 #25) — la
         # fiche elle-même ne doit en contenir aucun.
-        contenu_page = resp.data.split(b'<div class="page-body"', 1)[1]
+        contenu_page = resp.data.split(b'class="page-body', 1)[1]
         self.assertNotIn(b"<form", contenu_page)
 
     def test_fiche_chef_de_projet_ne_peut_rien_modifier(self):

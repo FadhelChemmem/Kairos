@@ -14,13 +14,13 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>
       Deadlines
     </span>
-    <span style="font-size:11.5px; color:#9aa39c;">Voir tout →</span>
+    <span style="font-size:11.5px; color:#6c766f;">Voir tout →</span>
   </div>
   {% if deadlines_gantt.rows %}
     <div class="mini-gantt" style="--mg-days:{{ deadlines_gantt.window_days }};">
       <div class="mini-gantt-label" style="visibility:hidden;"></div>
       {% for d in deadlines_gantt.days %}
-        <div class="mini-gantt-daycell" style="color:{{ '#14513b' if d.date == deadlines_gantt.days[0].date else ('#c7cdc4' if d.est_weekend else '#9aa39c') }};">{{ d.lettre }} {{ d.label }}</div>
+        <div class="mini-gantt-daycell" style="color:{{ '#14513b' if d.date == deadlines_gantt.days[0].date else ('#c7cdc4' if d.est_weekend else '#6c766f') }};">{{ d.lettre }} {{ d.label }}</div>
       {% endfor %}
       {% for t in deadlines_gantt.rows %}
         <div class="mini-gantt-label">
@@ -54,11 +54,11 @@
             <span style="width:8px; height:8px; border-radius:999px; background:{{ st.dot }}; flex-shrink:0;"></span>
             <div style="min-width:0;">
               <div style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.code }}_{{ p.nom }}</div>
-              <div style="font-size:11.5px; color:#7c8780;">{{ p.phase }} · {{ role_label }}</div>
+              <div style="font-size:11.5px; color:#646e67;">{{ p.phase }} · {{ role_label }}</div>
             </div>
           </a>
         {% else %}
-          <div style="font-size:12.5px; color:#7c8780;">Aucun projet pour l'instant.</div>
+          <div style="font-size:12.5px; color:#646e67;">Aucun projet pour l'instant.</div>
         {% endfor %}
       </div>
     </div>
@@ -72,7 +72,7 @@
       <div style="font-size:13px; font-weight:700; color:#fff; margin-bottom:4px;">Daily log</div>
       {% if dailylog_jours_manques %}
         <div style="font-size:12px; color:#fbe2da; margin-bottom:12px; line-height:1.4;">
-          {{ dailylog_jours_manques|length }} jour{{ 's' if dailylog_jours_manques|length != 1 else '' }} sans saisie ({{ dailylog_jours_manques[0].strftime('%d %b') }}{% if dailylog_jours_manques|length > 1 %}…{% endif %}).
+          {{ dailylog_jours_manques|length }} jour{{ 's' if dailylog_jours_manques|length != 1 else '' }} sans saisie ({{ dailylog_jours_manques[0]|date_courte }}{% if dailylog_jours_manques|length > 1 %}…{% endif %}).
         </div>
       {% else %}
         <div style="font-size:12px; color:#d6efe8; margin-bottom:12px; line-height:1.4;">Vous n'avez pas encore réparti vos heures d'aujourd'hui.</div>
@@ -87,10 +87,10 @@
     <div style="display:flex; align-items:center; gap:10px;">
       <div class="search-mini" style="flex:1;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b968f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="filtre-fil" autocomplete="off" placeholder="Filtrer le fil d'actualité…" style="flex:1; border:none; outline:none; background:none; font-size:13.5px; font-family:inherit;">
+        <input type="text" id="filtre-fil" autocomplete="off" aria-label="Filtrer le fil d'actualité" placeholder="Filtrer le fil d'actualité…" style="flex:1; border:none; outline:none; background:none; font-size:13.5px; font-family:inherit;">
       </div>
-      {% if mes_projets %}
-      <button type="button" data-open-post-dialog data-intent="tache" class="btn-secondary" style="width:auto; padding:10px 16px; flex-shrink:0;">+ Nouveau post</button>
+      {% if projets_postables %}
+      <button type="button" data-open-post-dialog data-intent="{{ intent_par_defaut }}" class="btn-secondary" style="width:auto; padding:10px 16px; flex-shrink:0;">+ Nouveau post</button>
       {% endif %}
     </div>
 
@@ -102,9 +102,9 @@
           {% endwith %}
         </div>
       {% else %}
-        <div class="card" style="text-align:center; color:#7c8780; font-size:13px;">Aucune activité sur vos projets pour l'instant.</div>
+        <div class="card" style="text-align:center; color:#646e67; font-size:13px;">Aucune activité sur vos projets pour l'instant.</div>
       {% endfor %}
-      <div id="fil-vide" style="display:none; text-align:center; color:#7c8780; font-size:13px; padding:14px;">Aucun résultat pour ce filtre.</div>
+      <div id="fil-vide" style="display:none; text-align:center; color:#646e67; font-size:13px; padding:14px;">Aucun résultat pour ce filtre.</div>
     </div>
   </div>
 
@@ -113,7 +113,7 @@
     <div class="card">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
         <span style="font-size:14px; font-weight:700;">Mes tâches</span>
-        <a href="#" style="font-size:12px; font-weight:600;">Tout voir</a>
+        <a href="{{ url_for('deadlines.liste') }}" style="font-size:12px; font-weight:600;">Toutes les échéances</a>
       </div>
       <div style="display:flex; flex-direction:column; gap:12px;">
         {% for t in mes_taches %}
@@ -122,11 +122,11 @@
             <span class="pill pill-sm" style="background:{{ st.bg }}; color:{{ st.fg }}; flex-shrink:0; margin-top:1px;">{{ st.label }}</span>
             <div style="min-width:0;">
               <div style="font-size:12.5px; font-weight:600; line-height:1.3;">{{ t.titre }}</div>
-              <div style="font-size:11px; color:#7c8780;">{{ t.projet_nom }}{% if t.date_echeance %} · éch. {{ t.date_echeance.strftime('%d %b') }}{% endif %}</div>
+              <div style="font-size:11px; color:#646e67;">{{ t.projet_nom }}{% if t.date_echeance %} · éch. {{ t.date_echeance|date_courte }}{% endif %}</div>
             </div>
           </a>
         {% else %}
-          <div style="font-size:12.5px; color:#7c8780;">Aucune tâche en cours.</div>
+          <div style="font-size:12.5px; color:#646e67;">Aucune tâche en cours.</div>
         {% endfor %}
       </div>
     </div>
@@ -155,7 +155,7 @@
 })();
 </script>
 
-{% with projet_id=None, projets_choix=mes_projets, next_url=url_for('main.accueil') %}
+{% with projet_id=None, projets_choix=projets_postables, next_url=url_for('main.accueil') %}
   {% include "partials/post_dialog.html" %}
 {% endwith %}
 {% endblock %}

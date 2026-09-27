@@ -51,12 +51,14 @@ def creer():
     lien = request.form.get("lien", "").strip() or None
     # Schéma de lien restreint (PROMPT_CORRECTIONS.md P0 #4) : un lien
     # "javascript:..." s'exécuterait au clic pour quiconque ouvre le post
-    # (post_card.html) — voir is_lien_valide(). On ignore silencieusement
-    # un lien invalide plutôt que de rejeter tout le post : ce champ est
-    # optionnel et l'utilisateur n'a pas besoin de comprendre pourquoi son
-    # message a été refusé pour un détail annexe.
+    # (post_card.html) — voir is_lien_valide(). Un lien invalide est
+    # retiré plutôt que de rejeter tout le post (champ optionnel), mais
+    # l'utilisateur en est maintenant prévenu (audit n°2 : il disparaissait
+    # sans explication).
+    lien_ignore = False
     if lien and not is_lien_valide(lien):
         lien = None
+        lien_ignore = True
     mentionne_ids = [int(v) for v in request.form.getlist("mentions") if v.isdigit()]
 
     if not projet_id or type_code not in TYPES_VALIDES or not contenu:
@@ -104,7 +106,13 @@ def creer():
             post_id=post_id, exclure_id=g.user["id"],
         )
 
-    flash("Post publié.", "success")
+    if lien_ignore:
+        flash(
+            "Post publié, sans le lien : seuls les liens http(s)://, file:, smb: "
+            "ou les chemins réseau \\\\serveur\\partage sont acceptés.", "error",
+        )
+    else:
+        flash("Post publié.", "success")
     return _safe_redirect()
 
 

@@ -15,6 +15,14 @@ _FEED_SELECT = """
            -- voir repositories/taches.py.
            (p.evenement = 'creation_tache') AS est_creation_tache,
            (p.evenement = 'cloture_tache') AS est_cloture_tache,
+           -- L'utilisateur gère-t-il le projet du post (chef ou co-chef) ?
+           -- Sert à n'afficher "+ Tâche" (rebond) qu'à ceux qui pourront
+           -- effectivement la créer (audit n°2 : le bouton était montré à
+           -- tous, puis refusé par le serveur une fois le formulaire rempli).
+           (proj.chef_projet_id = %(uid)s OR EXISTS (
+              SELECT 1 FROM projet_co_chef cc
+              WHERE cc.projet_id = p.projet_id AND cc.utilisateur_id = %(uid)s
+           )) AS je_gere,
            (SELECT count(*) FROM post_reaction r WHERE r.post_id = p.id) AS nb_reactions,
            (SELECT count(*) FROM post_commentaire c WHERE c.post_id = p.id) AS nb_commentaires,
            (SELECT pr.reaction_code FROM post_reaction pr

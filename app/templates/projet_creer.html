@@ -8,7 +8,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-row">
       <label for="nom">Nom du projet</label>
-      <input type="text" id="nom" name="nom" required autofocus>
+      <input type="text" id="nom" name="nom" value="{{ saisie.nom or '' }}" required autofocus>
     </div>
     <div class="form-row">
       <label for="code">Code (proposé, modifiable)</label>
@@ -17,31 +17,29 @@
     <div class="form-row">
       <label for="phase">Phase</label>
       <select id="phase" name="phase">
-        <option value="APS">APS</option>
-        <option value="APD">APD</option>
-        <option value="DCE">DCE</option>
-        <option value="EXE" selected>EXE</option>
-        <option value="DOE">DOE</option>
+        {% for ph in phases %}
+          <option value="{{ ph }}" {{ 'selected' if ph == phase_initiale }}>{{ ph }}</option>
+        {% endfor %}
       </select>
     </div>
     <div class="form-row">
       <label for="lots">Lot(s)</label>
       <select id="lots" name="lots" multiple data-chip-select>
-        <option value="CM">CM — Charpente Métallique</option>
-        <option value="GO">GO — Gros Œuvre</option>
+        <option value="CM" {{ 'selected' if 'CM' in (saisie.lots or []) }}>CM — Charpente Métallique</option>
+        <option value="GO" {{ 'selected' if 'GO' in (saisie.lots or []) }}>GO — Gros Œuvre</option>
       </select>
     </div>
     <div class="form-row">
       <label for="chef_projet_id">Chef de projet</label>
       <select id="chef_projet_id" name="chef_projet_id">
         {% for u in utilisateurs_actifs %}
-          <option value="{{ u.id }}" {{ 'selected' if u.id == g.user.id }}>{{ u.prenom }} {{ u.nom }}</option>
+          <option value="{{ u.id }}" {{ 'selected' if u.id == (saisie.chef_projet_id or g.user.id) }}>{{ u.prenom }} {{ u.nom }}</option>
         {% endfor %}
       </select>
     </div>
     <div class="form-row">
       <label for="date_debut">Date de début</label>
-      <input type="date" id="date_debut" name="date_debut" value="{{ date_du_jour }}">
+      <input type="date" id="date_debut" name="date_debut" value="{{ saisie.date_debut if saisie else date_du_jour }}">
     </div>
     <button type="submit" class="btn-primary" style="background:#4a7c59; color:#fff;">Créer le projet</button>
   </form>
@@ -57,7 +55,10 @@
   (function () {
     var champCode = document.getElementById('code');
     var champPhase = document.getElementById('phase');
-    var modifieManuellement = false;
+    var urlCodePropose = {{ url_for('projets.api_code_propose')|tojson }};
+    // Code déjà saisi (renvoi après erreur) : ne jamais l'écraser.
+    var modifieManuellement = {{ 'true' if saisie.code else 'false' }};
+    var derniereDemande = 0;
 
     champCode.addEventListener('input', function () {
       modifieManuellement = true;
@@ -65,9 +66,13 @@
 
     champPhase.addEventListener('change', function () {
       if (modifieManuellement) return;
-      fetch('/projets/code-propose?phase=' + encodeURIComponent(champPhase.value))
+      // Changements de phase rapides : seule la réponse à la DERNIÈRE
+      // demande est appliquée (audit n°2 : la plus lente gagnait).
+      var numero = ++derniereDemande;
+      fetch(urlCodePropose + '?phase=' + encodeURIComponent(champPhase.value))
         .then(function (r) { return r.json(); })
         .then(function (data) {
+          if (numero !== derniereDemande || modifieManuellement) return;
           if (data.code) {
             champCode.value = data.code;
           }

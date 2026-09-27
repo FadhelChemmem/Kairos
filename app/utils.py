@@ -56,7 +56,9 @@ def is_safe_next(url: str | None) -> bool:
     return not parsed.scheme and not parsed.netloc
 
 # Palette reprise telle quelle des maquettes (Main.dc.html / Projet.dc.html).
-_AVATAR_PALETTE = ["#4a7c59", "#ea6c1a", "#3b7de0", "#7c6ff0", "#e3512c", "#2fa876"]
+# Teintes assombries (audit n°2) pour que les initiales blanches restent
+# lisibles (contraste ≥ 4,5:1, contre 3,0 à 4,0 auparavant).
+_AVATAR_PALETTE = ["#4a7c59", "#b8520f", "#2f65b8", "#5f52d1", "#c0401d", "#1f7a55"]
 
 _TACHE_ETAT_STYLE = {
     "en_cours": {"bg": "#eaf1fd", "fg": "#3b7de0", "label": "En cours"},
@@ -64,21 +66,21 @@ _TACHE_ETAT_STYLE = {
     "verifie": {"bg": "#efecfd", "fg": "#7c6ff0", "label": "Vérifié"},
     "termine": {"bg": "#eaf3ee", "fg": "#4a7c59", "label": "Terminé"},
     "arret": {"bg": "#f2f4f0", "fg": "#55605a", "label": "Arrêt"},
-    "abandonne": {"bg": "#f2f4f0", "fg": "#9aa39c", "label": "Abandonné"},
+    "abandonne": {"bg": "#f2f4f0", "fg": "#6c766f", "label": "Abandonné"},
 }
 
 _PROJET_ETAT_STYLE = {
     "en_cours": {"dot": "#2fa876", "bg": "#eaf3ee", "fg": "#4a7c59", "label": "En cours"},
     "bloque": {"dot": "#e3512c", "bg": "#fdeae4", "fg": "#e3512c", "label": "Bloqué"},
     "termine": {"dot": "#c7cdc4", "bg": "#f2f4f0", "fg": "#55605a", "label": "Terminé"},
-    "abandonne": {"dot": "#c7cdc4", "bg": "#f2f4f0", "fg": "#9aa39c", "label": "Abandonné"},
+    "abandonne": {"dot": "#c7cdc4", "bg": "#f2f4f0", "fg": "#6c766f", "label": "Abandonné"},
 }
 
 _POST_TYPE_STYLE = {
     "envoi": {"bg": "#eaf3ee", "fg": "#4a7c59", "label": "Envoi"},
     "reponse": {"bg": "#eaf1fd", "fg": "#3b7de0", "label": "Réponse"},
     "question": {"bg": "#f2f4f0", "fg": "#55605a", "label": "Question"},
-    "requete": {"bg": "#fdeee4", "fg": "#ea6c1a", "label": "Requête"},
+    "requete": {"bg": "#fdeee4", "fg": "#a3480d", "label": "Requête"},
     "information": {"bg": "#f2f4f0", "fg": "#55605a", "label": "Information"},
 }
 
@@ -94,8 +96,8 @@ _ROLE_STYLE = {
     "admin": {"bg": "#efecfd", "fg": "#7c6ff0", "label": "Admin"},
     "chef_de_projet": {"bg": "#eaf1fd", "fg": "#3b7de0", "label": "Chef de projet"},
     "intervenant": {"bg": "#f2f4f0", "fg": "#55605a", "label": "Intervenant"},
-    "rh": {"bg": "#f2f4f0", "fg": "#9aa39c", "label": "RH"},
-    "client": {"bg": "#f2f4f0", "fg": "#9aa39c", "label": "Client"},
+    "rh": {"bg": "#f2f4f0", "fg": "#6c766f", "label": "RH"},
+    "client": {"bg": "#f2f4f0", "fg": "#6c766f", "label": "Client"},
 }
 
 # Équipes de référence (table `equipe`, schema.sql) — codes stockés en
@@ -197,6 +199,16 @@ def date_fr(d) -> str:
     return f"{_JOURS_COMPLETS[d.weekday()]} {d.day} {_MOIS_COMPLETS[d.month - 1]} {d.year}"
 
 
+def date_courte(d, avec_annee: bool = False) -> str:
+    """Date courte en français ("20 sept.", "20 sept. 2026") — remplace
+    strftime('%d %b'), qui donnait des mois en anglais ("20 Sep") sur un
+    serveur sans locale française (audit n°2)."""
+    if d is None:
+        return ""
+    texte = f"{d.day:02d} {_MOIS_ABBR[d.month - 1]}"
+    return f"{texte} {d.year}" if avec_annee else texte
+
+
 def build_gantt(taches: list[dict], today, window_days: int = 21) -> dict:
     """Construit les données d'affichage de la vue Deadlines (calendrier
     horizontal à la Deadlines.dc.html) à partir d'une liste de tâches ayant
@@ -257,5 +269,7 @@ def register(app):
         date_fr=date_fr,
         notif_categorie_style=notif_categorie_style,
         is_lien_valide=is_lien_valide,
+        zip=zip,
     )
     app.jinja_env.filters["il_y_a"] = il_y_a
+    app.jinja_env.filters["date_courte"] = date_courte

@@ -27,17 +27,32 @@
       filterInput.type = 'text';
       filterInput.className = 'chip-select-filter';
       filterInput.placeholder = select.dataset.chipFilterPlaceholder || 'Rechercher…';
+      filterInput.setAttribute('aria-label', filterInput.placeholder);
+      // Entrée dans ce champ de filtre soumettait le formulaire parent
+      // (ex. publier une tâche avant d'avoir choisi un intervenant) —
+      // audit n°2.
+      filterInput.addEventListener('keydown', function (evt) {
+        if (evt.key === 'Enter') evt.preventDefault();
+      });
       wrap.appendChild(filterInput);
     }
 
     var cloud = document.createElement('div');
     cloud.className = 'chip-cloud';
+    cloud.setAttribute('role', 'group');
+    var libelle = select.id && document.querySelector('label[for="' + select.id + '"]');
+    if (libelle) cloud.setAttribute('aria-label', libelle.textContent.trim());
     wrap.appendChild(cloud);
 
     var chips = [];
     Array.prototype.forEach.call(select.options, function (opt) {
-      var chip = document.createElement('span');
+      // Vrai bouton (et non <span>) : atteignable au clavier (Tab) et
+      // activable par Entrée/Espace, état annoncé par aria-pressed (audit
+      // n°2 — les puces n'étaient utilisables qu'à la souris).
+      var chip = document.createElement('button');
+      chip.type = 'button';
       chip.className = 'chip-opt' + (opt.selected ? ' chip-selected' : '');
+      chip.setAttribute('aria-pressed', opt.selected ? 'true' : 'false');
       chip.dataset.label = opt.textContent.trim().toLowerCase();
 
       var label = document.createElement('span');
@@ -51,6 +66,7 @@
       chip.addEventListener('click', function () {
         opt.selected = !opt.selected;
         chip.classList.toggle('chip-selected', opt.selected);
+        chip.setAttribute('aria-pressed', opt.selected ? 'true' : 'false');
         select.dispatchEvent(new Event('change', { bubbles: true }));
         if (select.dataset.chipAutosubmit && select.form) {
           select.form.submit();

@@ -56,7 +56,7 @@ a:hover { color: #14513b; }
 .linkbtn {
   display: flex; align-items: center; justify-content: center;
   width: 30px; height: 30px; background: transparent; border: none;
-  border-radius: 8px; color: #7c8780; cursor: pointer;
+  border-radius: 8px; color: #646e67; cursor: pointer;
 }
 .linkbtn:hover { background: #f2f4f0; }
 
@@ -116,6 +116,12 @@ a:hover { color: #14513b; }
    pour pouvoir réduire son padding horizontal au responsive (voir plus
    bas) sans dupliquer la media query partout. Chaque page garde son propre
    padding-top/bottom via son style inline. */
+/* Variante deux colonnes (Infos perso, fiche en lecture seule) — en
+   classe plutôt qu'en style inline, pour que la media query mobile puisse
+   la repasser en une colonne (audit n°2 : 2 colonnes forcées à 360px). */
+.page-body-2col { grid-template-columns: 1fr 1.3fr; }
+.dailylog-wrap { padding-left: 32px; padding-right: 32px; }
+
 .page-wrap { max-width: 1360px; margin: 0 auto; padding-left: 32px; padding-right: 32px; }
 .col { display: flex; flex-direction: column; gap: 16px; }
 .col-center { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
@@ -134,7 +140,7 @@ a:hover { color: #14513b; }
 .taskrow { padding: 11px 4px; border-bottom: 1px solid #eef0ec; }
 .taskrow:last-child { border-bottom: none; }
 .thead {
-  padding: 0 4px 8px; font-size: 11px; font-weight: 700; color: #9aa39c;
+  padding: 0 4px 8px; font-size: 11px; font-weight: 700; color: #6c766f;
   text-transform: uppercase; letter-spacing: 0.03em;
 }
 
@@ -172,7 +178,7 @@ input, select, textarea {
   font-family: inherit; font-size: 13px; padding: 8px 10px;
   border: 1px solid #e7e9e4; border-radius: 8px; width: 100%;
 }
-label { font-size: 12px; color: #7c8780; font-weight: 600; display: block; margin-bottom: 4px; }
+label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margin-bottom: 4px; }
 .form-row { margin-bottom: 10px; }
 
 .login-wrap {
@@ -229,7 +235,7 @@ label { font-size: 12px; color: #7c8780; font-weight: 600; display: block; margi
 .seg { display: flex; background: #f2f4f0; border-radius: 10px; padding: 3px; gap: 3px; margin-bottom: 18px; }
 .seg label {
   flex: 1; text-align: center; padding: 8px 0; border-radius: 8px; cursor: pointer;
-  font-size: 13px; font-weight: 700; color: #7c8780;
+  font-size: 13px; font-weight: 700; color: #646e67;
   display: flex; align-items: center; justify-content: center; gap: 6px;
 }
 .intent-panel { display: none; }
@@ -256,7 +262,7 @@ label { font-size: 12px; color: #7c8780; font-weight: 600; display: block; margi
 .dropzone.dragover { border-color: #4a7c59; background: #eaf3ee; }
 .dropzone.has-file { border-style: solid; border-color: #4a7c59; background: #eaf3ee; }
 .dropzone-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-.dropzone-label { font-size: 12.5px; color: #7c8780; font-weight: 600; pointer-events: none; }
+.dropzone-label { font-size: 12.5px; color: #646e67; font-weight: 600; pointer-events: none; }
 .dropzone.has-file .dropzone-label { color: #4a7c59; }
 
 /* --- Fenêtre flottante "Nouveau post" (retour Fadhel, 2026-09-19) : un
@@ -276,7 +282,7 @@ label { font-size: 12px; color: #7c8780; font-weight: 600; display: block; margi
   grid-template-columns: 1.5fr 100px 140px 120px 1.2fr 96px 70px;
   align-items: center; gap: 12px;
 }
-.uhead { padding: 0 4px 8px; font-size: 11px; font-weight: 700; color: #9aa39c; text-transform: uppercase; letter-spacing: 0.03em; }
+.uhead { padding: 0 4px 8px; font-size: 11px; font-weight: 700; color: #6c766f; text-transform: uppercase; letter-spacing: 0.03em; }
 .urow { padding: 13px 4px; border-bottom: 1px solid #eef0ec; }
 .urow:last-child { border-bottom: none; }
 .urow.inactif { opacity: 0.55; }
@@ -289,7 +295,7 @@ label { font-size: 12px; color: #7c8780; font-weight: 600; display: block; margi
 
 /* --- Formulaire "Nouvel utilisateur", voir Utilisateur-creer.dc.html --- */
 .section-title {
-  font-size: 11px; font-weight: 700; color: #9aa39c; text-transform: uppercase;
+  font-size: 11px; font-weight: 700; color: #6c766f; text-transform: uppercase;
   letter-spacing: 0.03em; margin: 22px 0 12px; padding-top: 14px; border-top: 1px solid #eef0ec;
 }
 .section-title:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
@@ -302,7 +308,7 @@ label { font-size: 12px; color: #7c8780; font-weight: 600; display: block; margi
 .radio-opt.disabled { cursor: not-allowed; color: #b6bdb2; }
 .radio-opt.disabled .radio-opt-title { color: #b6bdb2; }
 .radio-opt-title { font-size: 13px; font-weight: 600; }
-.radio-opt-note { font-size: 11.5px; color: #7c8780; margin-top: 2px; }
+.radio-opt-note { font-size: 11.5px; color: #646e67; margin-top: 2px; }
 .cf-row { display: grid; grid-template-columns: 1fr 1fr 32px; gap: 8px; margin-bottom: 8px; align-items: center; }
 
 /* Bascule "Compte actif" en CSS pur (case à cocher cachée + label stylé),
@@ -324,7 +330,13 @@ label { font-size: 12px; color: #7c8780; font-weight: 600; display: block; margi
   overflow: hidden; transition: width 0.15s ease;
 }
 .lrow { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
-.lrow-dot, .lrow-info { user-select: none; -webkit-user-select: none; touch-action: none; }
+/* pan-y (et non none) : un glissement vertical sur le nom fait défiler la
+   page sur mobile (audit n°2 : la majeure partie de la ligne bloquait le
+   défilement). L'appui long reste géré (pointercancel l'interrompt proprement). */
+.lrow-dot, .lrow-info { user-select: none; -webkit-user-select: none; touch-action: pan-y; }
+.lrow-info:focus-visible, .lrow-track:focus-visible, .add-suggestion:focus-visible, #date-pill:focus-visible {
+  outline: 2px solid #4a7c59; outline-offset: 2px; border-radius: 8px;
+}
 .lrow-info { width: 220px; flex-shrink: 0; }
 .lrow-track { touch-action: none; }
 .lrow-pct { width: 52px; text-align: right; font-size: 12.5px; font-weight: 700; flex-shrink: 0; }
@@ -424,7 +436,7 @@ label { font-size: 12px; color: #7c8780; font-weight: 600; display: block; margi
 .deadline-banner-head {
   display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
 }
-.deadline-banner-empty { font-size: 12.5px; color: #7c8780; }
+.deadline-banner-empty { font-size: 12.5px; color: #646e67; }
 
 /* Mini-Gantt de la bannière d'accueil (retour Fadhel, 2026-09-19) : version
    simplifiée du Gantt de /deadlines — mêmes couleurs de barre, mais sans
@@ -476,6 +488,7 @@ label { font-size: 12px; color: #7c8780; font-weight: 600; display: block; margi
   display: inline-flex; align-items: center; gap: 6px;
   padding: 6px 12px; border-radius: 999px; border: 1px solid #e7e9e4;
   background: #ffffff; color: #55605a; font-size: 12.5px; font-weight: 600;
+  font: inherit; font-size: 12.5px; font-weight: 600;
   cursor: pointer; user-select: none; transition: background 0.1s ease, border-color 0.1s ease;
 }
 .chip-opt:hover { border-color: #c7cdc4; }
@@ -531,6 +544,17 @@ label { font-size: 12px; color: #7c8780; font-weight: 600; display: block; margi
      deviendraient illisibles) — l'utilisateur défile horizontalement dans
      la carte, dont l'en-tête (nom du projet/tâche) reste, lui, visible. */
   .table-scroll { overflow-x: auto; }
+  /* Menu d'actions d'une tâche : le conteneur défilant (overflow-x) le
+     coupait en bas de la carte — on l'affiche en panneau fixe en bas
+     d'écran (position fixe = hors du conteneur qui rogne). */
+  .task-menu-pop {
+    position: fixed !important; left: 16px !important; right: 16px !important;
+    top: auto !important; bottom: 16px; width: auto !important; z-index: 70 !important;
+    max-height: 70vh; overflow-y: auto;
+  }
+  .page-body-2col { grid-template-columns: 1fr; }
+  .post-upload-form { flex-wrap: wrap; }
+  .post-upload-form input[type=file] { min-width: 0; max-width: 100%; }
   .table-scroll .thead, .table-scroll .taskrow,
   .table-scroll .uhead, .table-scroll .urow,
   .table-scroll > a {
@@ -564,4 +588,11 @@ label { font-size: 12px; color: #7c8780; font-weight: 600; display: block; margi
      log, Projets, Deadlines, Notifications, profil), qui restent toutes
      accessibles au pouce sans défilement horizontal. */
   .topbar-projet-pill { display: none; }
+  /* Barre du haut à 360-375px : jusqu'à 7 icônes + avatar (admin/RH)
+     débordaient (407px pour 360) — icônes et marges réduites. */
+  .topbar-inner { gap: 4px; padding-left: 8px; padding-right: 8px; }
+  .topbar img { height: 18px; }
+  .topbar-actions .iconbtn { width: 30px; height: 30px; }
+  .topbar-actions .avatar-lg { width: 30px; height: 30px; font-size: 11px; }
+  .topbar-actions a[title] + a[style*="margin-left"] { margin-left: 2px !important; }
 }

@@ -5,7 +5,11 @@
 <div class="page-wrap" style="padding-top:24px; padding-bottom:60px;">
   <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
     <span style="font-size:18px; font-weight:800;">Tous les projets</span>
+    {# Même règle que la route projets.creer (admin, chef de projet) — le
+       bouton était montré à tous (audit n°2). #}
+    {% if g.user.role in ('admin', 'chef_de_projet') %}
     <a href="{{ url_for('projets.creer') }}" class="btn-secondary" style="width:auto; padding:9px 16px; text-decoration:none;">+ Nouveau projet</a>
+    {% endif %}
   </div>
 
   <form method="get" id="filtres-projets">
@@ -17,7 +21,7 @@
 
     <div class="card" style="padding:14px 18px; margin-bottom:14px; display:flex; flex-direction:column; gap:12px;">
       <div>
-        <div style="font-size:11px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:6px;">État</div>
+        <div style="font-size:11px; font-weight:700; color:#6c766f; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:6px;">État</div>
         <select name="etat" multiple data-chip-select>
           <option value="en_cours" {{ 'selected' if 'en_cours' in etats }}>En cours</option>
           <option value="bloque" {{ 'selected' if 'bloque' in etats }}>Bloqué</option>
@@ -26,7 +30,7 @@
         </select>
       </div>
       <div>
-        <div style="font-size:11px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:6px;">Phase</div>
+        <div style="font-size:11px; font-weight:700; color:#6c766f; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:6px;">Phase</div>
         <select name="phase" multiple data-chip-select>
           {% for ph in phases_choices %}
             <option value="{{ ph }}" {{ 'selected' if ph in phases }}>{{ ph }}</option>
@@ -34,14 +38,14 @@
         </select>
       </div>
       <div>
-        <div style="font-size:11px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:6px;">Lots</div>
+        <div style="font-size:11px; font-weight:700; color:#6c766f; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:6px;">Lots</div>
         <select name="lot" multiple data-chip-select>
           <option value="CM" {{ 'selected' if 'CM' in lots }}>CM — Charpente Métallique</option>
           <option value="GO" {{ 'selected' if 'GO' in lots }}>GO — Gros Œuvre</option>
         </select>
       </div>
       <div>
-        <div style="font-size:11px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:6px;">Chef de projet</div>
+        <div style="font-size:11px; font-weight:700; color:#6c766f; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:6px;">Chef de projet</div>
         <select name="chef_id" multiple data-chip-select data-chip-filter="1" data-chip-filter-placeholder="Rechercher une personne…">
           {% for u in utilisateurs_actifs %}
             <option value="{{ u.id }}" {{ 'selected' if u.id in chef_ids }}>{{ u.prenom }} {{ u.nom }}</option>
@@ -73,8 +77,15 @@
     var params = new URLSearchParams(new FormData(form));
     var url = window.location.pathname + '?' + params.toString();
     fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-      .then(function (r) { return r.text(); })
+      .then(function (r) {
+        // Session expirée : la requête a été redirigée vers la connexion —
+        // on y va vraiment, au lieu d'injecter la page de connexion dans le
+        // tableau (audit n°2).
+        if (r.redirected || !r.ok) { window.location.href = r.redirected ? r.url : url; return null; }
+        return r.text();
+      })
       .then(function (html) {
+        if (html === null) return;
         resultats.innerHTML = html;
         window.history.replaceState(null, '', url);
       })

@@ -365,7 +365,14 @@ def fiche(user_id: int):
                 flash("Fiche mise à jour.", "success")
                 return redirect(url_for("utilisateurs.fiche", user_id=user_id))
 
-        utilisateur = utilisateurs_repo.get_utilisateur(user_id)
+        # Erreur : on réaffiche la saisie (audit n°2 — la fiche revenait aux
+        # valeurs enregistrées, toutes les modifications étaient perdues).
+        utilisateur = {
+            **utilisateurs_repo.get_utilisateur(user_id),
+            "prenom": prenom, "nom": nom, "email": email, "telephone": telephone,
+            "poste": poste, "adresse": adresse, "date_embauche": date_embauche,
+            "equipe_code": equipe_code, "role": role, "champs_perso": champs_perso,
+        }
 
     return render_template(
         "utilisateur_fiche.html",

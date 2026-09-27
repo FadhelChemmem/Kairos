@@ -263,7 +263,9 @@ def remplacer_jour(user_id: int, date, lignes: list[dict], current_user_id: int,
     for ligne in lignes:
         cle = (ligne["projet_id"], ligne.get("tache_id") or 0)
         if cle in fusionnees:
-            fusionnees[cle]["heures"] = round(fusionnees[cle]["heures"] + ligne["heures"], 2)
+            # Plafonné à 24 h, comme une ligne seule (contrainte
+            # dailylog_entree_heures_valides, migration 0005).
+            fusionnees[cle]["heures"] = min(24, round(fusionnees[cle]["heures"] + ligne["heures"], 2))
         else:
             fusionnees[cle] = dict(ligne)
     lignes = list(fusionnees.values())

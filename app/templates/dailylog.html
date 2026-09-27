@@ -5,25 +5,25 @@
 <div class="subbar">
   <div class="subbar-inner" style="max-width:720px;">
     <span style="font-size:14px; font-weight:700;">DailyLog</span>
-    <span style="font-size:12.5px; color:#7c8780;">Répartissez les heures de votre journée entre vos projets</span>
+    <span style="font-size:12.5px; color:#646e67;">Répartissez les heures de votre journée entre vos projets</span>
   </div>
 </div>
 
-<div class="dailylog-wrap" style="max-width:720px; margin:24px auto 60px; padding:0 32px;">
+<div class="dailylog-wrap" style="max-width:720px; margin:24px auto 60px;">
 
   <!-- Navigation par date -->
-  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; position:relative;">
+  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:16px; position:relative;">
     <div style="display:flex; align-items:center; gap:10px;">
-      <a class="daynav-btn" href="{{ url_for('dailylog.formulaire', date=hier.isoformat()) }}">
+      <a class="daynav-btn" href="{{ url_for('dailylog.formulaire', date=hier.isoformat()) }}" aria-label="Jour précédent" title="Jour précédent">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
       </a>
-      <div id="date-pill" style="display:flex; align-items:center; gap:8px; background:#ffffff; border:1px solid #e7e9e4; border-radius:10px; padding:7px 14px; cursor:pointer;">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7c8780" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+      <div id="date-pill" role="button" tabindex="0" aria-haspopup="dialog" aria-label="Choisir une date ({{ date_fr(date) }})" style="display:flex; align-items:center; gap:8px; background:#ffffff; border:1px solid #e7e9e4; border-radius:10px; padding:7px 14px; cursor:pointer;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#646e67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
         <span style="font-size:13.5px; font-weight:700;">{{ date_fr(date) }}</span>
         {% if est_aujourdhui %}<span class="pill" style="background:#eaf3ee; color:#14513b; margin-left:2px;">Aujourd'hui</span>{% endif %}
       </div>
       {% if not est_aujourdhui %}
-      <a class="daynav-btn" href="{{ url_for('dailylog.formulaire', date=demain.isoformat()) }}">
+      <a class="daynav-btn" href="{{ url_for('dailylog.formulaire', date=demain.isoformat()) }}" aria-label="Jour suivant" title="Jour suivant">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
       </a>
       {% else %}
@@ -34,20 +34,20 @@
 
       <div id="cal-popup" class="card" style="display:none; position:absolute; top:44px; left:42px; z-index:60; padding:12px; width:240px;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-          <button type="button" class="iconbtn" id="cal-prev-month" style="width:26px; height:26px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <button type="button" class="iconbtn" id="cal-prev-month" aria-label="Mois précédent" style="width:26px; height:26px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
           <span id="cal-month-label" style="font-size:12.5px; font-weight:700;"></span>
-          <button type="button" class="iconbtn" id="cal-next-month" style="width:26px; height:26px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
+          <button type="button" class="iconbtn" id="cal-next-month" aria-label="Mois suivant" style="width:26px; height:26px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
         </div>
         <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px; margin-bottom:4px;">
-          {% for l in ('L','M','M','J','V','S','D') %}<span style="text-align:center; font-size:10px; color:#9aa39c; font-weight:700;">{{ l }}</span>{% endfor %}
+          {% for l in ('L','M','M','J','V','S','D') %}<span style="text-align:center; font-size:10px; color:#6c766f; font-weight:700;">{{ l }}</span>{% endfor %}
         </div>
         <div id="cal-grid" style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px;"></div>
-        <div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:10.5px; color:#7c8780;">
+        <div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:10.5px; color:#646e67;">
           <span style="width:6px; height:6px; border-radius:999px; background:#4a7c59;"></span> rempli
         </div>
       </div>
     </div>
-    <span style="font-size:11.5px; color:#9aa39c;">Journée type : {{ standard_hours }}h</span>
+    <span style="font-size:11.5px; color:#6c766f;">Journée type : {{ standard_hours }}h</span>
   </div>
 
   {% if rappel_hier %}
@@ -66,9 +66,9 @@
     <!-- Barre visuelle du jour (cliquable : cliquer un segment augmente et
          fixe sa part, comme l'appui double/long sur une ligne plus bas) -->
     <div class="card" style="padding:16px 16px 14px;">
-      <div id="day-bar-title" style="font-size:12px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:10px;">Journée du {{ date.strftime('%d/%m') }}</div>
+      <div id="day-bar-title" style="font-size:12px; font-weight:700; color:#6c766f; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:10px;">Journée du {{ date.strftime('%d/%m') }}</div>
       <div id="day-bar" style="display:flex; border-radius:8px; overflow:hidden; margin-bottom:6px;"></div>
-      <div style="font-size:11px; color:#9aa39c;">Touchez un nom/pastille pour (dé)sélectionner un projet — le temps se répartit à parts égales entre les projets sélectionnés. Appui double ou long sur un nom augmente sa part et la fixe. Le curseur se glisse aussi directement.</div>
+      <div style="font-size:11px; color:#6c766f;">Touchez un nom/pastille pour (dé)sélectionner un projet — le temps se répartit à parts égales entre les projets sélectionnés. Appui double ou long sur un nom augmente sa part et la fixe. Le curseur se glisse aussi directement. Au clavier : Tab jusqu'à un curseur, puis flèches (±5 %), Début/Fin.</div>
     </div>
 
     <!-- Lignes -->
@@ -78,10 +78,10 @@
     <div class="card" style="margin-top:14px; padding:10px 14px;">
       <div style="display:flex; align-items:center; gap:8px; border:1px solid #e7e9e4; border-radius:10px; padding:8px 12px;">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8b968f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="add-search" placeholder="Filtrer par nom de projet ou de tâche…" style="border:none; padding:0; background:transparent; flex:1; width:auto; min-width:0;">
+        <input type="text" id="add-search" aria-label="Filtrer par nom de projet ou de tâche" placeholder="Filtrer par nom de projet ou de tâche…" style="border:none; padding:0; background:transparent; flex:1; width:auto; min-width:0;">
       </div>
 
-      <div style="font-size:10.5px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin:10px 0 4px;">Vos projets (intervenant / chef)</div>
+      <div style="font-size:10.5px; font-weight:700; color:#6c766f; text-transform:uppercase; letter-spacing:0.03em; margin:10px 0 4px;">Vos projets (intervenant / chef)</div>
       <div id="sugg-mine" style="display:flex; flex-direction:column; gap:2px;"></div>
 
       {# Retour Fadhel (2026-09-27) : l'utilisateur n'a plus à voir tous
@@ -90,16 +90,16 @@
          une recherche pour le reste (voir dailylog.rechercher_projets /
          urlRechercheProjets ci-dessous). #}
       <div id="sugg-recentes-wrap" style="display:none;">
-        <div style="font-size:10.5px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin:12px 0 4px;">Récemment travaillés</div>
+        <div style="font-size:10.5px; font-weight:700; color:#6c766f; text-transform:uppercase; letter-spacing:0.03em; margin:12px 0 4px;">Récemment travaillés</div>
         <div id="sugg-recentes" style="display:flex; flex-direction:column; gap:2px;"></div>
       </div>
 
       <div id="sugg-recherche-wrap" style="display:none;">
-        <div style="font-size:10.5px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin:12px 0 4px;">Résultats de recherche</div>
+        <div style="font-size:10.5px; font-weight:700; color:#6c766f; text-transform:uppercase; letter-spacing:0.03em; margin:12px 0 4px;">Résultats de recherche</div>
         <div id="sugg-recherche" style="display:flex; flex-direction:column; gap:2px;"></div>
       </div>
 
-      <div style="font-size:11px; color:#9aa39c; margin-top:8px;">Double-appui (ou appui long) sur un projet grisé pour l'ajouter ponctuellement aujourd'hui.</div>
+      <div style="font-size:11px; color:#6c766f; margin-top:8px;">Double-appui (ou appui long) sur un projet grisé pour l'ajouter ponctuellement aujourd'hui.</div>
     </div>
 
     <!-- Total + enregistrer -->
@@ -137,16 +137,21 @@
 (function () {
   var DATA = JSON.parse(document.getElementById('dailylog-data').textContent);
   var STANDARD_HOURS = DATA.standardHours;
-  var PALETTE = ['#4a7c59', '#ea6c1a', '#3b7de0', '#7c6ff0', '#e3512c', '#2fa876', '#c9a24a', '#4a90a4'];
+  // Teintes assez foncées pour le % écrit en blanc dessus (contraste ≥ 4,5:1, audit n°2).
+  var PALETTE = ['#4a7c59', '#b8520f', '#2f65b8', '#5f52d1', '#c0401d', '#1f7a55', '#8a6a1f', '#35707f'];
   var colorIndex = 0;
   function nextColor() { return PALETTE[(colorIndex++) % PALETTE.length]; }
 
   var lines = DATA.lignesInitiales.map(function (l) {
     return {
       projetId: l.projet_id, tacheId: l.tache_id, nom: l.nom, tacheTitre: l.tache_titre,
-      color: nextColor(), selected: true, locked: false, pct: l.pct, adhoc: false,
+      // locked: true (audit n°2) — la répartition déjà enregistrée doit
+      // être conservée : non verrouillées, le moindre ajout/clic sur une
+      // ligne redistribuait tout à parts égales (5 h enregistrées -> 50/50).
+      color: nextColor(), selected: true, locked: true, pct: l.pct, adhoc: false,
     };
   });
+  var nbLignesInitiales = lines.length;
 
   function fmtPct(p) { return (Math.round(p * 10) / 10) + '%'; }
   function fmtHours(p) {
@@ -286,14 +291,14 @@
       rest.className = 'dayseg';
       rest.style.width = (100 - used) + '%';
       rest.style.background = 'repeating-linear-gradient(45deg, #e7e9e4, #e7e9e4 5px, #f2f4f0 5px, #f2f4f0 10px)';
-      rest.style.color = '#9aa39c';
+      rest.style.color = '#6c766f';
       bar.appendChild(rest);
     }
 
     var container = document.getElementById('lines-container');
     container.innerHTML = '';
     if (!lines.length) {
-      container.innerHTML = '<div style="padding:20px 16px; font-size:12.5px; color:#7c8780;">Aucune ligne pour l\'instant — ajoutez un projet ci-dessous.</div>';
+      container.innerHTML = '<div style="padding:20px 16px; font-size:12.5px; color:#646e67;">Aucune ligne pour l\'instant — ajoutez un projet ci-dessous.</div>';
     }
     lines.forEach(function (l, idx) {
       var row = document.createElement('div');
@@ -301,22 +306,22 @@
       row.style.cssText = (idx < lines.length - 1 ? 'border-bottom:1px solid #eef0ec;' : '') + (l.selected ? '' : 'opacity:0.5;');
       row.innerHTML =
         '<span class="lrow-dot" style="width:10px; height:10px; border-radius:3px; background:' + l.color + '; flex-shrink:0; cursor:pointer;"></span>' +
-        '<div class="lrow-info" style="cursor:pointer;">' +
+        '<div class="lrow-info" role="button" tabindex="0" aria-pressed="' + (l.selected ? 'true' : 'false') + '" style="cursor:pointer;">' +
           {# Retour Fadhel (2026-09-27) : plus d'icône "🔒" — aucune ligne
              ne doit paraître "verrouillée" pour l'utilisateur. Le
              comportement voulu (modifier une ligne ne touche jamais une
              autre ligne déjà ajustée manuellement) reste géré en interne
              par `l.locked`, simplement sans indicateur visuel. #}
-          '<div style="font-size:13px; font-weight:700; line-height:1.3;">' + escapeHtml(l.nom) + (l.adhoc ? ' <span class="pill" style="background:#f2f4f0; color:#7c8780; font-size:10px; padding:1px 7px;">ponctuel</span>' : '') + '</div>' +
-          '<div style="font-size:11.5px; color:' + (l.tacheTitre ? '#7c8780' : '#b6bdb2') + '; line-height:1.3;' + (l.tacheTitre ? '' : 'font-style:italic;') + '">' + escapeHtml(l.tacheTitre || 'Projet seul (pas de tâche précise)') + '</div>' +
+          '<div style="font-size:13px; font-weight:700; line-height:1.3;">' + escapeHtml(l.nom) + (l.adhoc ? ' <span class="pill" style="background:#f2f4f0; color:#646e67; font-size:10px; padding:1px 7px;">ponctuel</span>' : '') + '</div>' +
+          '<div style="font-size:11.5px; color:' + (l.tacheTitre ? '#646e67' : '#b6bdb2') + '; line-height:1.3;' + (l.tacheTitre ? '' : 'font-style:italic;') + '">' + escapeHtml(l.tacheTitre || 'Projet seul (pas de tâche précise)') + '</div>' +
         '</div>' +
-        '<div class="lrow-track" style="position:relative; flex:1; height:8px; border-radius:999px; background:#eef0ec; cursor:pointer;">' +
+        '<div class="lrow-track" role="slider" tabindex="0" aria-label="Part de ' + escapeHtml(l.nom) + (l.tacheTitre ? ' — ' + escapeHtml(l.tacheTitre) : '') + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(l.selected ? l.pct : 0) + '" aria-valuetext="' + (l.selected ? fmtPct(l.pct) + ', ' + fmtHours(l.pct) : 'non sélectionné') + '" style="position:relative; flex:1; height:8px; border-radius:999px; background:#eef0ec; cursor:pointer;">' +
           '<div class="lrow-fill" style="position:absolute; left:0; top:0; bottom:0; border-radius:999px; width:' + (l.selected ? Math.min(l.pct, 100) : 0) + '%; background:' + l.color + '; opacity:' + (l.selected ? 1 : 0.3) + ';"></div>' +
           '<div class="lrow-thumb" style="position:absolute; top:50%; left:' + (l.selected ? Math.min(l.pct, 100) : 0) + '%; width:16px; height:16px; border-radius:999px; background:#fff; border:3px solid ' + l.color + '; transform:translate(-50%,-50%); box-shadow:0 1px 3px rgba(20,30,25,0.2); cursor:ew-resize;' + (l.selected ? '' : 'display:none;') + '"></div>' +
         '</div>' +
         '<div class="lrow-pct" style="color:' + (l.selected ? '#2b2b26' : '#b6bdb2') + ';">' + (l.selected ? fmtPct(l.pct) : '—') + '</div>' +
-        '<div class="lrow-hours" style="color:#7c8780;">' + (l.selected ? fmtHours(l.pct) : '') + '</div>' +
-        '<button type="button" class="iconbtn lrow-remove" style="width:28px; height:28px; color:#b6bdb2;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>';
+        '<div class="lrow-hours" style="color:#646e67;">' + (l.selected ? fmtHours(l.pct) : '') + '</div>' +
+        '<button type="button" class="iconbtn lrow-remove" aria-label="Retirer ' + escapeHtml(l.nom) + '" title="Retirer cette ligne" style="width:28px; height:28px; color:#b6bdb2;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>';
       container.appendChild(row);
 
       var dot = row.querySelector('.lrow-dot');
@@ -382,8 +387,40 @@
         redistribute();
       }
       thumb.addEventListener('pointerdown', startDragThumb);
+
+      // Clavier (audit n°2 — la page n'était utilisable qu'à la souris ou
+      // au doigt) : Entrée/Espace sur le nom (dé)sélectionne la ligne ;
+      // flèches sur le curseur = ±5 %, Début/Fin = 0 %/maximum. Le focus
+      // est rendu à l'élément équivalent après le rafraîchissement.
+      info.addEventListener('keydown', function (evt) {
+        if (evt.key !== 'Enter' && evt.key !== ' ') return;
+        evt.preventDefault();
+        focusApresRendu = { index: idx, cible: '.lrow-info' };
+        toggleSelect(l);
+      });
+      track.addEventListener('keydown', function (evt) {
+        var pas = { ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5 }[evt.key];
+        var cible;
+        if (pas !== undefined) cible = (l.selected ? l.pct : 0) + pas;
+        else if (evt.key === 'Home') cible = 0;
+        else if (evt.key === 'End') cible = headroom(l);
+        else return;
+        evt.preventDefault();
+        if (!l.selected) l.selected = true;
+        l.locked = true;
+        l.pct = Math.max(0, Math.min(cible, headroom(l)));
+        focusApresRendu = { index: idx, cible: '.lrow-track' };
+        redistribute();
+      });
       track.addEventListener('pointerdown', function (evt) { if (evt.target === thumb) return; seekTrack(evt); });
     });
+
+    if (focusApresRendu) {
+      var rangee = container.children[focusApresRendu.index];
+      var el = rangee && rangee.querySelector(focusApresRendu.cible);
+      if (el) el.focus();
+      focusApresRendu = null;
+    }
 
     var total = lines.reduce(function (s, l) { return s + (l.selected ? l.pct : 0); }, 0);
     document.getElementById('total-line').textContent = fmtPct(Math.round(total * 10) / 10) + ' réparti · ' + fmtHours(total) + ' sur ' + STANDARD_HOURS + ' h';
@@ -396,7 +433,13 @@
     // rappelle systématiquement ici, à chaque render(), pour que le
     // catalogue soit toujours cohérent avec les lignes du jour.
     renderSuggestions();
+    // Idem pour les résultats de recherche affichés (audit n°2 : une ligne
+    // retirée par × y restait marquée "déjà ajouté").
+    if (dernierResultatsRecherche && dernierResultatsRecherche.length) {
+      renderRechercheResultats(dernierResultatsRecherche);
+    }
   }
+  var focusApresRendu = null;
 
   // ---- Catalogue "Ajouter une ligne" ----
   var searchTerm = '';
@@ -418,11 +461,21 @@
       (pointillee ? 'border:1px dashed #c7cdc4; opacity:' + (deja ? '0.4' : '0.75') + ';' : 'background:#f7f8f6;' + (deja ? 'opacity:0.4;' : ''));
     row.innerHTML =
       '<span style="font-size:12.5px; font-weight:600;">' + escapeHtml(item.nom) + '</span>' +
-      '<span style="font-size:11.5px; color:#7c8780;">' + (item.tache_titre ? '— ' + escapeHtml(item.tache_titre) : '(projet seul, sans tâche)') + '</span>' +
+      '<span style="font-size:11.5px; color:#646e67;">' + (item.tache_titre ? '— ' + escapeHtml(item.tache_titre) : '(projet seul, sans tâche)') + '</span>' +
       '<span style="margin-left:auto; font-size:11px; font-weight:700; color:' + (pointillee ? '#b6bdb2' : '#4a7c59') + ';">' + (deja ? 'déjà ajouté' : (pointillee ? '+ ajouter (ponctuel)' : '+ ajouter')) + '</span>';
     if (!deja) {
-      if (pointillee) attachTapAndHold(row, function () {}, function () { addLine(item, true); renderSuggestions(); renderRechercheResultats(dernierResultatsRecherche); });
-      else row.addEventListener('click', function () { addLine(item, false); renderSuggestions(); });
+      var ajouter = pointillee
+        ? function () { addLine(item, true); renderSuggestions(); renderRechercheResultats(dernierResultatsRecherche); }
+        : function () { addLine(item, false); renderSuggestions(); };
+      if (pointillee) attachTapAndHold(row, function () {}, ajouter);
+      else row.addEventListener('click', ajouter);
+      // Clavier : ligne focusable, Entrée/Espace l'ajoute directement.
+      row.setAttribute('role', 'button');
+      row.setAttribute('tabindex', '0');
+      row.setAttribute('aria-label', 'Ajouter ' + item.nom + (item.tache_titre ? ' — ' + item.tache_titre : '') + (pointillee ? ' (ponctuel)' : ''));
+      row.addEventListener('keydown', function (evt) {
+        if (evt.key === 'Enter' || evt.key === ' ') { evt.preventDefault(); ajouter(); }
+      });
     }
     return row;
   }
@@ -495,6 +548,12 @@
     }, 250);
   }
 
+  // Entrée dans ce champ de filtre soumettait tout le formulaire (il est
+  // dans #dailylog-form) : la journée était enregistrée sans le vouloir,
+  // lignes décochées comprises (audit n°2).
+  document.getElementById('add-search').addEventListener('keydown', function (evt) {
+    if (evt.key === 'Enter') evt.preventDefault();
+  });
   document.getElementById('add-search').addEventListener('input', function (evt) {
     var brut = evt.target.value.trim();
     searchTerm = brut.toLowerCase();
@@ -555,6 +614,9 @@
       .catch(function () {});
   }
 
+  document.getElementById('date-pill').addEventListener('keydown', function (evt) {
+    if (evt.key === 'Enter' || evt.key === ' ') { evt.preventDefault(); this.click(); }
+  });
   document.getElementById('date-pill').addEventListener('click', function (evt) {
     evt.stopPropagation();
     renderCalendarGrid();
@@ -577,7 +639,15 @@
   });
 
   // ---- Soumission : convertit les lignes en champs cachés juste avant l'envoi ----
-  document.getElementById('dailylog-form').addEventListener('submit', function () {
+  document.getElementById('dailylog-form').addEventListener('submit', function (evt) {
+    // Enregistrer une journée vide efface les heures déjà saisies ce
+    // jour-là : on demande confirmation (audit n°2).
+    var aEnvoyer = lines.filter(function (l) { return l.selected && l.pct >= 0.05; });
+    if (!aEnvoyer.length && nbLignesInitiales &&
+        !window.confirm('Aucune heure à enregistrer : les heures déjà saisies pour ce jour seront effacées. Continuer ?')) {
+      evt.preventDefault();
+      return;
+    }
     var wrap = document.getElementById('lignes-hidden');
     wrap.innerHTML = '';
     lines.forEach(function (l) {
