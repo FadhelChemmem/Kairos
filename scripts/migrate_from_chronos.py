@@ -32,7 +32,14 @@ Usage :
         --email-domain kairos.tn
 
 Le fichier .sql généré s'applique ensuite avec, par exemple :
-    docker compose exec -T db psql -U kairos -d kairos -f /chemin/migration.sql
+    docker compose exec -T db psql -v ON_ERROR_STOP=1 -U kairos -d kairos -f /chemin/migration.sql
+
+    (`-v ON_ERROR_STOP=1` est nécessaire : tout est dans une seule
+    transaction BEGIN/COMMIT — sans cette option, psql continue après une
+    erreur au lieu de s'arrêter, or une fois la transaction "avortée" côté
+    Postgres, TOUTES les instructions suivantes échouent silencieusement,
+    y compris le COMMIT final. Sans ON_ERROR_STOP=1, un import qui a
+    réellement échoué peut donner l'impression d'avoir réussi.)
 
 Le script part du principe que la base cible est FRAÎCHE (schema.sql tout
 juste appliqué, aucune donnée métier dedans à part les tables de référence
@@ -46,6 +53,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import os
 import re
 import secrets
 import sys
@@ -85,6 +93,20 @@ TACHE_ETAT_MAP = {
 }
 
 PHASES_VALIDES = {"APS", "APD", "DCE", "EXE", "DOE"}
+
+# Table de référence `lot` (schema.sql) : code court (clé de projet_lot.lot_code,
+# contrainte FK) associé à son libellé complet. À tenir synchronisé avec les
+# `INSERT INTO lot` de schema.sql si de nouveaux lots y sont ajoutés.
+LOTS_CIBLE = {
+    "CM": "Charpente Métallique",
+    "GO": "Gros Œuvre",
+}
+
+# MySQL autorise la "date zéro" ('0000-00-00', et son équivalent datetime
+# '0000-00-00 00:00:00') comme valeur par défaut/invalide — Postgres n'a pas
+# d'année 0000 et rejette purement et simplement un DATE/TIMESTAMP littéral
+# qui la contient (erreur à l'import, PROMPT_CORRECTIONS.md P1 #13).
+_MYSQL_ZERO_DATE_RE = re.compile(r"^0000-00-00")
 
 
 # =====================================================================
@@ -142,7 +164,14 @@ def gen_temp_password() -> str:
 def sql_str(v) -> str:
     if v is None:
         return "NULL"
-    return "'" + str(v).replace("\\", "\\\\").replace("'", "''") + "'"
+    # Pas de doublement de l'antislash (PROMPT_CORRECTIONS.md P1 #13) :
+    # Postgres a standard_conforming_strings=on par défaut (ni schema.sql ni
+    # ce script ne le changent) — dans un littéral '...' standard, contrairement
+    # à ce que ce code supposait, l'antislash n'a AUCUN rôle d'échappement.
+    # Le doubler ici produisait deux antislashs réels en base pour un seul
+    # dans la donnée source (ex. un chemin UNC \\NAS\Projets\...). Seule la
+    # quote simple doit être échappée (doublée) dans ce style de littéral.
+    return "'" + str(v).replace("'", "''") + "'"
 
 
 def sql_val(v) -> str:
@@ -156,16 +185,28 @@ def sql_val(v) -> str:
 
 
 def mysql_dt_to_pg(v) -> str | None:
-    """'2024-04-17 09:30:51' -> identique, Postgres l'accepte tel quel."""
+    """'2024-04-17 09:30:51' -> identique, Postgres l'accepte tel quel.
+
+    '0000-00-00...' (PROMPT_CORRECTIONS.md P1 #13) -> None : "date zéro"
+    MySQL, sans équivalent Postgres — laissée telle quelle, elle faisait
+    échouer l'INSERT/UPDATE correspondant à l'import (voir _MYSQL_ZERO_DATE_RE)."""
     if not v:
         return None
-    return str(v)
+    v = str(v)
+    if _MYSQL_ZERO_DATE_RE.match(v):
+        return None
+    return v
 
 
 def mysql_date_only(v) -> str | None:
+    """Même correctif "date zéro" que mysql_dt_to_pg, sur la partie date
+    seule (PROMPT_CORRECTIONS.md P1 #13)."""
     if not v:
         return None
-    return str(v)[:10]
+    v = str(v)[:10]
+    if _MYSQL_ZERO_DATE_RE.match(v):
+        return None
+    return v
 
 
 def us_date_to_iso(v) -> str | None:
@@ -317,11 +358,24 @@ def build_projets(data, valid_user_ids, report):
 
     valid_projet_ids = {p["id"] for p in projets}
 
+    # Correspondance ancien libellé de lot -> code court du nouveau schéma
+    # (PROMPT_CORRECTIONS.md P1 #13) : `lots_by_id` ne donne que le LIBELLÉ
+    # complet de l'ancien Kairos (ex. "Gros Œuvre"), alors que
+    # projet_lot.lot_code (nouveau schéma) est une clé étrangère vers
+    # lot.code, un code COURT ("GO") — inséré tel quel, le libellé complet
+    # violait systématiquement cette contrainte FK à l'import. Comparaison
+    # normalisée (slug_part) pour tolérer les variations d'accents/casse
+    # entre les deux bases.
+    lot_code_par_libelle = {slug_part(libelle): code for code, libelle in LOTS_CIBLE.items()}
+
     for pl in data["projectLots"]:
         if pl["projectID"] in valid_projet_ids:
-            lot_code = lots_by_id.get(pl["lotID"])
+            nom_ancien = lots_by_id.get(pl["lotID"])
+            lot_code = lot_code_par_libelle.get(slug_part(nom_ancien)) if nom_ancien else None
             if lot_code:
                 projet_lots.append((pl["projectID"], lot_code))
+            else:
+                report["lots_non_reconnus"].append((pl["projectID"], nom_ancien))
 
     # une liaison phase_liee_id ne vaut que si les deux projets existent
     liens_phase = [(a, b) for a, b in liens_phase if a in valid_projet_ids and b in valid_projet_ids]
@@ -647,6 +701,10 @@ def emit_rapport(path, report, counts, args):
       "total pour 807 projets).")
     a(f"- {report['dailylog_ignore_invalide']} ligne(s) `interventionHours` avec des données "
       "incohérentes (heures nulles/négatives, projet ou utilisateur introuvable) — ignorée(s).")
+    if report["lots_non_reconnus"]:
+        a(f"- {len(report['lots_non_reconnus'])} rattachement(s) projet/lot non reconnu(s) "
+          f"(libellé absent de LOTS_CIBLE dans le script) — ignoré(s), à assigner à la main "
+          f"si besoin : {report['lots_non_reconnus']}")
     if report["codes_projet_renommes"]:
         a(f"- {len(report['codes_projet_renommes'])} code(s) projet renommé(s) pour éviter un "
           f"doublon : {report['codes_projet_renommes']}")
@@ -672,8 +730,12 @@ def emit_rapport(path, report, counts, args):
       "```\n"
       "Puis, sur une base FRAÎCHE (schema.sql tout juste appliqué, aucune donnée dedans) :\n"
       "```\n"
-      "docker compose exec -T db psql -U kairos -d kairos -f /chemin/vers/migration.sql\n"
-      "```\n")
+      "docker compose exec -T db psql -v ON_ERROR_STOP=1 -U kairos -d kairos -f /chemin/vers/migration.sql\n"
+      "```\n"
+      "`-v ON_ERROR_STOP=1` est indispensable : tout est dans une seule transaction "
+      "BEGIN/COMMIT, donc sans cette option, une erreur au milieu du fichier avorte "
+      "silencieusement la transaction jusqu'au COMMIT final — psql continue et rend la "
+      "main sans erreur visible, en donnant l'impression trompeuse que tout a été importé.\n")
 
     path.write_text("\n".join(lines), encoding="utf-8")
 
@@ -694,6 +756,14 @@ def main():
     if not args.dump.exists():
         print(f"Fichier introuvable : {args.dump}", file=sys.stderr)
         sys.exit(1)
+
+    # Umask restrictif (PROMPT_CORRECTIONS.md P1 #13) AVANT de créer le
+    # dossier de sortie et ses fichiers : identifiants_NE_PAS_COMMITER.csv
+    # contient des mots de passe temporaires en clair, et rapport.md comme
+    # migration.sql contiennent des données personnelles (noms, ancien email
+    # réel) — sans ça, ces fichiers héritaient de l'umask du système
+    # (souvent 022, donc lisibles par tout le monde sur la machine).
+    os.umask(0o077)
 
     out_dir = args.out_dir or Path("migration_sorties") / datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir.mkdir(parents=True, exist_ok=True)
