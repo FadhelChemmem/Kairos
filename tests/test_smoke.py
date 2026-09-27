@@ -865,6 +865,21 @@ class SmokeTestCase(unittest.TestCase):
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         self.assertNotIn(b"javascript:alert", resp.data)
 
+    def test_post_card_reaction_pointe_vers_retirer_quand_deja_reagi(self):
+        """PROMPT_CORRECTIONS.md P2 #20 : sans ce correctif, le bouton
+        réaction postait toujours sur posts.reagir (upsert) — impossible de
+        retirer sa réaction une fois posée."""
+        post_avec_reaction = {**FEED_POST_MANUEL, "ma_reaction": "pouce"}
+        resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [post_avec_reaction]})
+        self.assertEqual(resp.status_code, 200, resp.data[:2000])
+        self.assertIn(f'action="/posts/{post_avec_reaction["id"]}/reagir/supprimer"'.encode(), resp.data)
+
+    def test_post_card_reaction_pointe_vers_ajouter_quand_pas_encore_reagi(self):
+        resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [FEED_POST_MANUEL]})
+        self.assertEqual(resp.status_code, 200, resp.data[:2000])
+        self.assertIn(f'action="/posts/{FEED_POST_MANUEL["id"]}/reagir"'.encode(), resp.data)
+        self.assertNotIn(f'/posts/{FEED_POST_MANUEL["id"]}/reagir/supprimer'.encode(), resp.data)
+
     def test_posts_reagir_404_si_post_non_visible(self):
         self._login()
         patchers = self._patched(**{"app.repositories.projets.user_can_view": False})

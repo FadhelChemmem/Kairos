@@ -85,9 +85,14 @@
 
   <div class="divider"></div>
   <div style="display:flex; align-items:center; gap:6px; margin-left:46px;">
-    <form method="post" action="{{ url_for('posts.reagir', post_id=post.id) }}" style="display:inline;">
+    {# Le formulaire pointe vers "retirer" quand on a déjà réagi, vers
+       "ajouter" sinon (PROMPT_CORRECTIONS.md P2 #20) : avant ce correctif,
+       le bouton postait toujours sur posts.reagir, qui ne fait qu'un
+       upsert (voir posts_repo.react) — impossible de retirer sa réaction
+       une fois posée, le seul bouton ne pouvait que la reconfirmer. #}
+    <form method="post" action="{{ url_for('posts.retirer_reaction' if post.ma_reaction else 'posts.reagir', post_id=post.id) }}" style="display:inline;">
       <input type="hidden" name="next" value="{{ next_url }}">
-      <input type="hidden" name="reaction_code" value="pouce">
+      {% if not post.ma_reaction %}<input type="hidden" name="reaction_code" value="pouce">{% endif %}
       <button type="submit" {% if post.reacteurs %}title="{% for r in post.reacteurs %}{{ r.prenom }} {{ r.nom }}{% if not loop.last %}, {% endif %}{% endfor %}"{% endif %} style="display:flex; align-items:center; gap:5px; background:{{ '#f2f4f0' if post.ma_reaction else 'transparent' }}; border:none; border-radius:8px; padding:6px 10px; font-size:12px; font-weight:600; color:#55605a; cursor:pointer;">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> {{ post.nb_reactions }}
       </button>
