@@ -4,9 +4,14 @@ name: Tests
 # vérifiait qu'un push passait les tests avant d'aller en prod (docker
 # compose up --build directement sur le NAS). Ce workflow tourne sur
 # GitHub, gratuitement pour un repo, à chaque push et pull request.
+#
+# PROMPT_CORRECTIONS.md P2 #18 : `branches: [main]` ne correspondait à
+# rien — la branche par défaut de ce dépôt est `master` — donc aucun push
+# ne déclenchait jamais ce workflow depuis sa création. Corrigé en
+# `master`.
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
 
 jobs:
@@ -24,3 +29,39 @@ jobs:
 
       - name: Lancer les tests
         run: python3 -m unittest discover -s tests -v
+
+  # PROMPT_CORRECTIONS.md P2 #18 : les tests ci-dessus stubent psycopg2 et
+  # ne touchent jamais une vraie base — une erreur SQL dans schema.sql ou
+  # dans une migration (typo, contrainte invalide, ordre de création...)
+  # ne serait donc repérée qu'au déploiement sur le NAS. Ce job applique
+  # les deux, dans l'ordre, sur un vrai PostgreSQL 16 (même image que
+  # docker-compose.yml) pour attraper ces erreurs ici.
+  schema:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:16
+        env:
+          POSTGRES_DB: kairos
+          POSTGRES_USER: kairos
+          POSTGRES_PASSWORD: kairos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kairos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Appliquer schema.sql puis les migrations
+        env:
+          PGPASSWORD: kairos
+        run: |
+          set -e
+          psql -h localhost -U kairos -d kairos -v ON_ERROR_STOP=1 -f schema.sql
+          for fichier in migrations/*.sql; do
+            echo "--- $fichier ---"
+            psql -h localhost -U kairos -d kairos -v ON_ERROR_STOP=1 -f "$fichier"
+          done
