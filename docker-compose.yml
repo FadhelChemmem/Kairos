@@ -16,9 +16,14 @@ services:
       - kairos_pgdata:/var/lib/postgresql/data
       - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     ports:
-      # Exposé sur le LAN uniquement si besoin de s'y connecter avec un
-      # client SQL depuis un autre poste ; sinon, retirer cette section.
-      - "5432:5432"
+      # Loopback UNIQUEMENT (revue sécurité, PROMPT_CORRECTIONS.md P0 #6) :
+      # "5432:5432" exposait Postgres à TOUT le LAN, sans lien avec le
+      # besoin réel (le service web s'y connecte via le réseau Docker
+      # interne, pas par ce port publié). "127.0.0.1:5432:5432" ne le rend
+      # joignable que depuis la machine qui héberge le conteneur — pour s'y
+      # connecter avec un client SQL depuis un AUTRE poste du LAN, passer
+      # par un tunnel SSH plutôt que de rouvrir ce port en grand.
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kairos}"]
       interval: 5s

@@ -7,10 +7,37 @@ from flask import Flask, g, redirect, url_for
 from . import db, utils
 from .config import Config
 
+# Valeurs d'exemple connues ("copié-collé du .env.example sans y toucher")
+# à refuser explicitement en plus du simple contrôle de longueur — voir
+# _valider_secret_key() (revue sécurité, PROMPT_CORRECTIONS.md P0 #6).
+_SECRET_KEY_PLACEHOLDERS = {"dev-secret-key-change-me", "change-moi-aussi"}
+_SECRET_KEY_MIN_LEN = 32
+
+
+def _valider_secret_key(app: Flask) -> None:
+    """Refuse de démarrer sans une SECRET_KEY correcte (revue sécurité,
+    PROMPT_CORRECTIONS.md P0 #6) : config.py n'a plus de valeur de repli
+    (voir sa docstring) — sans ce contrôle, une appli lancée sans .env
+    renseigné démarrerait quand même, silencieusement, avec une clé vide
+    ou triviale, et signerait ses cookies de session avec une valeur
+    connue/devinable (donc falsifiable). Ignoré en test : TestConfig
+    utilise volontairement une clé courte ("test-secret")."""
+    if app.testing:
+        return
+    secret = app.config.get("SECRET_KEY") or ""
+    if len(secret) < _SECRET_KEY_MIN_LEN or secret in _SECRET_KEY_PLACEHOLDERS:
+        raise RuntimeError(
+            "SECRET_KEY est manquante, trop courte (32 caractères minimum requis), "
+            "ou a été laissée à une valeur d'exemple. Générez-en une nouvelle avec : "
+            "python3 -c \"import secrets; print(secrets.token_hex(32))\" "
+            "et renseignez-la dans .env (voir .env.example)."
+        )
+
 
 def create_app(config_class=Config) -> Flask:
     app = Flask(__name__)
     app.config.from_object(config_class)
+    _valider_secret_key(app)
 
     # Logs d'erreurs visibles dans `docker compose logs web` (retour revue
     # architecte, 2026-09-20) : avant ça, une exception non gérée en prod

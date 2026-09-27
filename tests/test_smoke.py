@@ -2121,6 +2121,47 @@ class SmokeTestCase(unittest.TestCase):
         mock_update.assert_not_called()
 
 
+class TestSecretKeyValidation(unittest.TestCase):
+    """PROMPT_CORRECTIONS.md P0 #6 : create_app() doit refuser de démarrer
+    sans une SECRET_KEY correcte (config.py n'a plus de valeur de repli).
+    Ignoré en mode TESTING (TestConfig, utilisée par tous les autres
+    tests de ce fichier, garde volontairement une clé courte)."""
+
+    def test_refuse_de_demarrer_sans_secret_key(self):
+        class ConfigSansCle(Config):
+            SECRET_KEY = ""
+            DATABASE_URL = "postgresql://fake/fake"
+
+        with self.assertRaises(RuntimeError):
+            create_app(ConfigSansCle)
+
+    def test_refuse_une_cle_trop_courte(self):
+        class ConfigCleCourte(Config):
+            SECRET_KEY = "trop-courte"
+            DATABASE_URL = "postgresql://fake/fake"
+
+        with self.assertRaises(RuntimeError):
+            create_app(ConfigCleCourte)
+
+    def test_refuse_les_valeurs_dexemple_connues(self):
+        for placeholder in ("dev-secret-key-change-me", "change-moi-aussi"):
+            class ConfigPlaceholder(Config):
+                SECRET_KEY = placeholder
+                DATABASE_URL = "postgresql://fake/fake"
+
+            with self.assertRaises(RuntimeError):
+                create_app(ConfigPlaceholder)
+
+    def test_demarre_avec_une_vraie_cle(self):
+        import secrets as secrets_mod
+
+        class ConfigOk(Config):
+            SECRET_KEY = secrets_mod.token_hex(32)
+            DATABASE_URL = "postgresql://fake/fake"
+
+        create_app(ConfigOk)  # ne doit pas lever
+
+
 class TestVerifierRappelDailylog(unittest.TestCase):
     """_verifier_rappel_dailylog est testée isolément (sans passer par une
     vraie requête HTTP) : logique de décision pure, seules les fonctions de

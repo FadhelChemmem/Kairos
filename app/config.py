@@ -8,7 +8,15 @@ import os
 
 
 class Config:
-    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
+    # Pas de valeur de repli ici (revue sécurité, PROMPT_CORRECTIONS.md
+    # P0 #6) : une appli qui démarrerait avec une clé par défaut connue de
+    # tous ("dev-secret-key-change-me") signerait ses cookies de session
+    # avec cette même valeur partout où le .env n'a pas été renseigné,
+    # permettant de forger une session (se connecter en tant que
+    # n'importe qui) sans rien deviner. app/__init__.py:create_app()
+    # refuse maintenant de démarrer si SECRET_KEY est absente, trop
+    # courte, ou a été laissée à une valeur d'exemple connue.
+    SECRET_KEY = os.environ.get("SECRET_KEY", "")
     DATABASE_URL = os.environ.get(
         "DATABASE_URL",
         "postgresql://kairos:kairos@localhost:5432/kairos",

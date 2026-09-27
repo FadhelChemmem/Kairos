@@ -1,0 +1,43 @@
+# PROMPT_CORRECTIONS.md P0 #6 : sans ce fichier, `COPY . .` dans le
+# Dockerfile embarque TOUT le contenu du dossier de build dans l'image —
+# y compris des fichiers qui ne sont pas dans git (voir .gitignore) mais
+# qui existent bel et bien sur la machine où `docker compose build` est
+# lancé : le vrai .env (secrets en clair), les sauvegardes, les dumps de
+# migration (données personnelles réelles + mots de passe temporaires en
+# clair, voir la note de .gitignore sur l'incident du 2026-09-19), les
+# pièces jointes déjà uploadées, et l'historique git complet. Une image
+# Docker se laisse inspecter (`docker save`/`docker history`/un simple
+# accès au registre si elle y est poussée) : tout ce qui est copié dedans
+# doit être considéré comme potentiellement exposé.
+
+# Secrets / configuration locale
+.env
+.env.*
+!.env.example
+
+# Sauvegardes et exports de migration (données personnelles réelles,
+# mots de passe temporaires en clair — voir .gitignore)
+backups/
+migration_sorties/
+identifiants*NE_PAS_COMMITER*.csv
+chronos_*.sql
+migration.sql
+
+# Pièces jointes déjà uploadées (volume Docker en prod, jamais du contenu
+# à embarquer dans l'image applicative elle-même)
+uploads/
+
+# Contrôle de version / CI — inutile à l'exécution, et l'historique git
+# complet n'a rien à faire dans une image publiée
+.git/
+.github/
+
+# Tests, caches, artefacts Python — inutiles à l'exécution en production
+tests/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# Divers
+.DS_Store
