@@ -142,8 +142,8 @@ def create_tache(
 
         cur.execute(
             """
-            INSERT INTO post (projet_id, tache_id, parent_post_id, auteur_id, type_code, contenu)
-            VALUES (%s, %s, %s, %s, 'envoi', %s)
+            INSERT INTO post (projet_id, tache_id, parent_post_id, auteur_id, type_code, contenu, evenement)
+            VALUES (%s, %s, %s, %s, 'envoi', %s, 'creation_tache')
             """,
             (projet_id, tache_id, parent_post_id, current_user_id, titre),
         )
@@ -170,9 +170,16 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int) -> 
     ça, connaître un tache_id suffisait à le modifier depuis n'importe
     quelle URL de projet, même un projet où l'appelant n'a aucun droit de
     gestion. Retourne False (au lieu de ne rien signaler) si la tâche
-    n'existe pas ou n'appartient pas à ce projet."""
+    n'existe pas ou n'appartient pas à ce projet.
+
+    `date_fin = NULL` (PROMPT_CORRECTIONS.md P1 #9) : `etat` ne peut jamais
+    valoir 'termine' ici (seul close_tache() y mène, voir plus bas), donc
+    tout appel à set_etat() fait forcément SORTIR la tâche de l'état
+    "Terminé" si elle y était — une tâche rouverte (ex. "Vérifié" ->
+    reproblème -> "Bloqué") ne doit plus afficher une date de fin qui ne
+    correspond plus à rien."""
     rowcount = db.execute(
-        "UPDATE tache SET etat = %s WHERE id = %s AND projet_id = %s",
+        "UPDATE tache SET etat = %s, date_fin = NULL WHERE id = %s AND projet_id = %s",
         (etat, tache_id, projet_id),
         user_id=current_user_id,
     )
@@ -243,8 +250,8 @@ def close_tache(
 
         cur.execute(
             """
-            INSERT INTO post (projet_id, tache_id, auteur_id, type_code, contenu)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO post (projet_id, tache_id, auteur_id, type_code, contenu, evenement)
+            VALUES (%s, %s, %s, %s, %s, 'cloture_tache')
             RETURNING id
             """,
             (row["projet_id"], tache_id, current_user_id, type_code, contenu),

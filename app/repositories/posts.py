@@ -7,9 +7,14 @@ _FEED_SELECT = """
            u.id AS auteur_id, u.prenom AS auteur_prenom, u.nom AS auteur_nom,
            u.avatar_chemin AS auteur_avatar_chemin,
            t.titre AS tache_titre, t.etat AS tache_etat,
-           (p.tache_id IS NOT NULL AND p.created_at = t.created_at) AS est_creation_tache,
-           (p.tache_id IS NOT NULL AND t.date_fin IS NOT NULL AND p.created_at = t.updated_at)
-             AS est_cloture_tache,
+           -- PROMPT_CORRECTIONS.md P1 #9 : marqueur explicite (colonne
+           -- post.evenement, migration 0004) au lieu de l'ancienne
+           -- heuristique post.created_at == tache.created_at/updated_at,
+           -- cassée par trg_tache_updated_at qui réécrit updated_at à
+           -- CHAQUE modification de la tâche (pas seulement sa clôture) —
+           -- voir repositories/taches.py.
+           (p.evenement = 'creation_tache') AS est_creation_tache,
+           (p.evenement = 'cloture_tache') AS est_cloture_tache,
            (SELECT count(*) FROM post_reaction r WHERE r.post_id = p.id) AS nb_reactions,
            (SELECT count(*) FROM post_commentaire c WHERE c.post_id = p.id) AS nb_commentaires,
            (SELECT pr.reaction_code FROM post_reaction pr

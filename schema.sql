@@ -418,12 +418,18 @@ CREATE UNIQUE INDEX idx_dailylog_unique
 CREATE TABLE post (
   id             BIGSERIAL PRIMARY KEY,
   projet_id      BIGINT REFERENCES projet(id),
-  tache_id       BIGINT REFERENCES tache(id),      -- renseigné si le post vient de la clôture d'une tâche
+  tache_id       BIGINT REFERENCES tache(id),      -- renseigné si le post vient de la création/clôture d'une tâche
   parent_post_id BIGINT REFERENCES post(id),        -- "rebondir" : ce post répond à un autre post
   auteur_id      BIGINT NOT NULL REFERENCES utilisateur(id),
   type_code      VARCHAR(20) NOT NULL REFERENCES post_type(code),
   contenu        TEXT,
   lien           TEXT,                              -- lien optionnel (ex. vers le NAS interne), demandé 2026-09-18
+  -- Marqueur explicite d'évènement de tâche (migration 0004,
+  -- PROMPT_CORRECTIONS.md P1 #9) : remplace l'ancienne heuristique
+  -- post.created_at == tache.created_at/updated_at, cassée par
+  -- trg_tache_updated_at qui réécrit updated_at à CHAQUE modification de
+  -- la tâche, pas seulement à sa clôture (voir repositories/taches.py).
+  evenement      VARCHAR(20) CHECK (evenement IS NULL OR evenement IN ('creation_tache', 'cloture_tache')),
   updated_by     BIGINT REFERENCES utilisateur(id), -- si le post est modifié après publication
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
