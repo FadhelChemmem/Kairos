@@ -7,6 +7,34 @@ chaque template Jinja2 ou chaque route."""
 from urllib.parse import urlparse
 
 
+# Schémas autorisés pour le champ "lien" du composeur de post (panneau
+# Requête) — voir is_lien_valide() ci-dessous.
+LIENS_SCHEMES_VALIDES = ("http://", "https://", "file:", "smb:")
+
+
+def is_lien_valide(lien: str | None) -> bool:
+    """Vrai si `lien` (champ optionnel du composeur "Nouveau post", panneau
+    Requête — voir routes/posts.py:creer) utilise un schéma autorisé.
+
+    PROMPT_CORRECTIONS.md P0 #4 : post_card.html rend ce lien tel quel
+    dans un `href="{{ post.lien }}"` — l'échappement automatique de Jinja2
+    protège le TEXTE affiché (contre l'injection de balises), mais
+    n'empêche absolument pas un schéma "javascript:..." de s'exécuter au
+    clic. On n'autorise donc que http(s), les URI file:/smb: (partages
+    réseau) et les chemins UNC Windows ("\\\\serveur\\partage\\...", déjà
+    utilisés dans l'appli pour pointer vers les dossiers projet sur le
+    NAS). Utilisée à la fois à la création du post (on rejette le lien
+    plutôt que de l'enregistrer) et au rendu (post_card.html revérifie
+    avant d'afficher un <a href=...>, au cas où une donnée invalide
+    existerait déjà en base — défense en profondeur)."""
+    if not lien:
+        return False
+    lien = lien.strip()
+    if lien.startswith("\\\\"):
+        return True
+    return lien.lower().startswith(LIENS_SCHEMES_VALIDES)
+
+
 def is_safe_next(url: str | None) -> bool:
     """Vrai si `url` est un chemin interne sûr pour une redirection
     post-action (paramètre ?next= de la connexion, formulaires "next" de
@@ -228,5 +256,6 @@ def register(app):
         equipe_choices=EQUIPE_CHOICES,
         date_fr=date_fr,
         notif_categorie_style=notif_categorie_style,
+        is_lien_valide=is_lien_valide,
     )
     app.jinja_env.filters["il_y_a"] = il_y_a

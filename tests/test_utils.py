@@ -3,7 +3,8 @@ import datetime
 import unittest
 
 from app.utils import (
-    avatar_color, build_gantt, il_y_a, initials, is_safe_next, post_type_style, projet_etat_style, tache_etat_style,
+    avatar_color, build_gantt, il_y_a, initials, is_lien_valide, is_safe_next, post_type_style, projet_etat_style,
+    tache_etat_style,
 )
 
 
@@ -143,6 +144,33 @@ class TestIsSafeNext(unittest.TestCase):
     def test_chemin_sans_slash_initial_est_refuse(self):
         self.assertFalse(is_safe_next("evil.tld"))
         self.assertFalse(is_safe_next("javascript:alert(1)"))
+
+
+class TestIsLienValide(unittest.TestCase):
+    """PROMPT_CORRECTIONS.md P0 #4 : le champ "lien" du composeur de post
+    est rendu dans un <a href="..."> — l'échappement Jinja protège le
+    texte affiché, jamais le schéma de l'URL."""
+
+    def test_http_et_https_sont_acceptes(self):
+        self.assertTrue(is_lien_valide("http://exemple.tn/plan.pdf"))
+        self.assertTrue(is_lien_valide("https://exemple.tn/plan.pdf"))
+
+    def test_partage_reseau_est_accepte(self):
+        self.assertTrue(is_lien_valide("file://NAS/Projets/26099X/"))
+        self.assertTrue(is_lien_valide("smb://nas.local/projets"))
+
+    def test_chemin_unc_est_accepte(self):
+        self.assertTrue(is_lien_valide("\\\\NAS\\Projets\\26099X\\"))
+
+    def test_javascript_est_refuse(self):
+        self.assertFalse(is_lien_valide("javascript:alert(document.cookie)"))
+
+    def test_data_uri_est_refusee(self):
+        self.assertFalse(is_lien_valide("data:text/html,<script>alert(1)</script>"))
+
+    def test_vide_ou_absent_est_refuse(self):
+        self.assertFalse(is_lien_valide(""))
+        self.assertFalse(is_lien_valide(None))
 
 
 if __name__ == "__main__":

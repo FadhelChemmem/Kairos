@@ -11,7 +11,7 @@ from ..repositories import notifications as notifications_repo
 from ..repositories import posts as posts_repo
 from ..repositories import projets as projets_repo
 from ..storage import save_upload
-from ..utils import is_safe_next
+from ..utils import is_lien_valide, is_safe_next
 
 bp = Blueprint("posts", __name__, url_prefix="/posts")
 
@@ -49,6 +49,14 @@ def creer():
         contenu = f"{objet}\n\n{contenu}" if contenu else objet
     parent_post_id = request.form.get("parent_post_id", type=int)
     lien = request.form.get("lien", "").strip() or None
+    # Schéma de lien restreint (PROMPT_CORRECTIONS.md P0 #4) : un lien
+    # "javascript:..." s'exécuterait au clic pour quiconque ouvre le post
+    # (post_card.html) — voir is_lien_valide(). On ignore silencieusement
+    # un lien invalide plutôt que de rejeter tout le post : ce champ est
+    # optionnel et l'utilisateur n'a pas besoin de comprendre pourquoi son
+    # message a été refusé pour un détail annexe.
+    if lien and not is_lien_valide(lien):
+        lien = None
     mentionne_ids = [int(v) for v in request.form.getlist("mentions") if v.isdigit()]
 
     if not projet_id or type_code not in TYPES_VALIDES or not contenu:

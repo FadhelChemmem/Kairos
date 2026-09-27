@@ -595,6 +595,57 @@ class SmokeTestCase(unittest.TestCase):
                 p.stop()
         self.assertEqual(resp.status_code, 404)
 
+    def test_posts_creer_ignore_un_lien_javascript(self):
+        """PROMPT_CORRECTIONS.md P0 #4 : un lien "javascript:..." ne doit
+        jamais être enregistré — voir utils.is_lien_valide()."""
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.create_post", return_value=101) as mock_create:
+                resp = self.client.post(
+                    "/posts",
+                    data={
+                        "projet_id": "1", "type_code": "envoi", "contenu": "Test",
+                        "lien": "javascript:alert(document.cookie)",
+                    },
+                )
+            self.assertEqual(resp.status_code, 302)
+            self.assertIsNone(mock_create.call_args.kwargs["lien"])
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_posts_creer_accepte_un_lien_unc(self):
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.create_post", return_value=101) as mock_create:
+                resp = self.client.post(
+                    "/posts",
+                    data={
+                        "projet_id": "1", "type_code": "envoi", "contenu": "Test",
+                        "lien": "\\\\NAS\\Projets\\26099X\\",
+                    },
+                )
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(mock_create.call_args.kwargs["lien"], "\\\\NAS\\Projets\\26099X\\")
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_post_card_ne_rend_pas_un_lien_javascript(self):
+        """Défense en profondeur (PROMPT_CORRECTIONS.md P0 #4) : même si un
+        post existant en base avait un lien invalide, le template ne doit
+        jamais produire un href="javascript:...". """
+        post_avec_lien_invalide = {**FEED_POST_MANUEL, "lien": "javascript:alert(1)"}
+        resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [post_avec_lien_invalide]})
+        self.assertEqual(resp.status_code, 200, resp.data[:2000])
+        self.assertNotIn(b"javascript:alert", resp.data)
+
     def test_posts_reagir_404_si_post_non_visible(self):
         self._login()
         patchers = self._patched(**{"app.repositories.projets.user_can_view": False})

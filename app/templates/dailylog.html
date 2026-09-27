@@ -152,6 +152,22 @@
     return (Math.round(p / 100 * STANDARD_HOURS * 100) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + ' h';
   }
 
+  // Contrôle XSS (PROMPT_CORRECTIONS.md P0 #4) : les lignes ci-dessous
+  // (render(), renderSuggestionRow()) construisent leur markup en
+  // concaténant des chaînes puis en les affectant à innerHTML — nécessaire
+  // ici vu la mise en forme (styles inline, imbrication) — mais toute
+  // valeur qui vient des données (nom de projet/tâche, saisis par un chef
+  // de projet) DOIT passer par escapeHtml() avant d'être insérée : un nom
+  // de projet contenant du HTML/JS s'exécuterait sinon pour TOUS les
+  // utilisateurs qui voient cette ligne ou ce catalogue (« Récemment
+  // travaillés » liste les projets de toute l'entreprise, pas seulement
+  // les siens), admin compris.
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
   function headroom(forLine) {
     var otherLocked = 0;
     lines.forEach(function (l) { if (l !== forLine && l.selected && l.locked) otherLocked += l.pct; });
@@ -290,8 +306,8 @@
              comportement voulu (modifier une ligne ne touche jamais une
              autre ligne déjà ajustée manuellement) reste géré en interne
              par `l.locked`, simplement sans indicateur visuel. #}
-          '<div style="font-size:13px; font-weight:700; line-height:1.3;">' + l.nom + (l.adhoc ? ' <span class="pill" style="background:#f2f4f0; color:#7c8780; font-size:10px; padding:1px 7px;">ponctuel</span>' : '') + '</div>' +
-          '<div style="font-size:11.5px; color:' + (l.tacheTitre ? '#7c8780' : '#b6bdb2') + '; line-height:1.3;' + (l.tacheTitre ? '' : 'font-style:italic;') + '">' + (l.tacheTitre || 'Projet seul (pas de tâche précise)') + '</div>' +
+          '<div style="font-size:13px; font-weight:700; line-height:1.3;">' + escapeHtml(l.nom) + (l.adhoc ? ' <span class="pill" style="background:#f2f4f0; color:#7c8780; font-size:10px; padding:1px 7px;">ponctuel</span>' : '') + '</div>' +
+          '<div style="font-size:11.5px; color:' + (l.tacheTitre ? '#7c8780' : '#b6bdb2') + '; line-height:1.3;' + (l.tacheTitre ? '' : 'font-style:italic;') + '">' + escapeHtml(l.tacheTitre || 'Projet seul (pas de tâche précise)') + '</div>' +
         '</div>' +
         '<div class="lrow-track" style="position:relative; flex:1; height:8px; border-radius:999px; background:#eef0ec; cursor:pointer;">' +
           '<div class="lrow-fill" style="position:absolute; left:0; top:0; bottom:0; border-radius:999px; width:' + (l.selected ? Math.min(l.pct, 100) : 0) + '%; background:' + l.color + '; opacity:' + (l.selected ? 1 : 0.3) + ';"></div>' +
@@ -400,8 +416,8 @@
     row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px;' +
       (pointillee ? 'border:1px dashed #c7cdc4; opacity:' + (deja ? '0.4' : '0.75') + ';' : 'background:#f7f8f6;' + (deja ? 'opacity:0.4;' : ''));
     row.innerHTML =
-      '<span style="font-size:12.5px; font-weight:600;">' + item.nom + '</span>' +
-      '<span style="font-size:11.5px; color:#7c8780;">' + (item.tache_titre ? '— ' + item.tache_titre : '(projet seul, sans tâche)') + '</span>' +
+      '<span style="font-size:12.5px; font-weight:600;">' + escapeHtml(item.nom) + '</span>' +
+      '<span style="font-size:11.5px; color:#7c8780;">' + (item.tache_titre ? '— ' + escapeHtml(item.tache_titre) : '(projet seul, sans tâche)') + '</span>' +
       '<span style="margin-left:auto; font-size:11px; font-weight:700; color:' + (pointillee ? '#b6bdb2' : '#4a7c59') + ';">' + (deja ? 'déjà ajouté' : (pointillee ? '+ ajouter (ponctuel)' : '+ ajouter')) + '</span>';
     if (!deja) {
       if (pointillee) attachTapAndHold(row, function () {}, function () { addLine(item, true); renderSuggestions(); renderRechercheResultats(dernierResultatsRecherche); });

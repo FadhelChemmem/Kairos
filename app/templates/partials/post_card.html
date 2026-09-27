@@ -45,7 +45,12 @@
     </div>
   {% endif %}
 
-  {% if post.lien %}
+  {# Revérifié au rendu (PROMPT_CORRECTIONS.md P0 #4) : l'échappement Jinja
+     protège le texte affiché, jamais le schéma de l'URL — un lien
+     "javascript:..." s'exécuterait au clic si on ne revalidait pas ici,
+     même si la création (routes/posts.py:creer) est censée l'avoir déjà
+     filtré (défense en profondeur pour une donnée existante). #}
+  {% if post.lien and is_lien_valide(post.lien) %}
     <a href="{{ post.lien }}" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:6px; margin:0 0 6px 46px;">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7c8780" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
       <span style="font-size:12px; color:#7c8780; word-break:break-all;">{{ post.lien }}</span>

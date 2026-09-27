@@ -75,14 +75,30 @@
   var timer = null;
 
   function render(items) {
+    // Contrôle XSS (PROMPT_CORRECTIONS.md P0 #4) : `it.label` vient d'un
+    // nom de projet (saisi par un chef de projet) — construire le lien via
+    // innerHTML + concaténation de chaîne l'exécuterait comme du HTML pour
+    // TOUT utilisateur qui tape dans cette recherche, y compris un admin.
+    // On construit donc chaque élément avec le DOM (textContent), jamais
+    // par concaténation de HTML.
+    box.innerHTML = '';
     if (!items.length) {
-      box.innerHTML = '<div style="padding:10px 12px; font-size:12.5px; color:#9aa39c;">Aucun résultat.</div>';
+      var vide = document.createElement('div');
+      vide.style.cssText = 'padding:10px 12px; font-size:12.5px; color:#9aa39c;';
+      vide.textContent = 'Aucun résultat.';
+      box.appendChild(vide);
       box.style.display = 'block';
       return;
     }
-    box.innerHTML = items.map(function (it) {
-      return '<a href="' + it.url + '" style="display:block; padding:9px 12px; border-radius:8px; font-size:13px; color:inherit; text-decoration:none;" onmouseover="this.style.background=\'#f2f4f0\'" onmouseout="this.style.background=\'\'">' + it.label + '</a>';
-    }).join('');
+    items.forEach(function (it) {
+      var a = document.createElement('a');
+      a.href = it.url;
+      a.style.cssText = 'display:block; padding:9px 12px; border-radius:8px; font-size:13px; color:inherit; text-decoration:none;';
+      a.textContent = it.label;
+      a.addEventListener('mouseover', function () { a.style.background = '#f2f4f0'; });
+      a.addEventListener('mouseout', function () { a.style.background = ''; });
+      box.appendChild(a);
+    });
     box.style.display = 'block';
   }
 
