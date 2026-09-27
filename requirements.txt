@@ -4,8 +4,22 @@
 # de templates (Jinja2 est inclus avec Flask) + htmx est du JS servi tel
 # quel (pas une dépendance Python). Aucun ORM : le schéma SQL fait
 # autorité (schema.sql), voir db.py.
-
-Flask==3.0.3
+#
+# Versions à jour (PROMPT_CORRECTIONS.md P2 #19, 2026-09-27) :
+# - Flask 3.0.3 → 3.1.3 : correctifs de sécurité et de bugs cumulés depuis
+#   3.0.3, rien de cassant identifié pour ce projet (pas d'ORM, pas
+#   d'usage des API dépréciées) — la suite de tests (tests/test_smoke.py,
+#   qui exerce la vraie pile Flask + Jinja2) reste entièrement verte avec
+#   cette version.
+# - gunicorn 22.0.0 → 23.0.0 : corrige CVE-2024-6827 (contournement de la
+#   validation Transfer-Encoding, permettant une contrebande de requêtes
+#   HTTP derrière un proxy).
+# - python-dotenv → 1.2.2.
+# - Werkzeug et Jinja2 (dépendances de Flask) épinglées explicitement
+#   plutôt que laissées à une plage implicite, pour un build reproductible.
+Flask==3.1.3
+Werkzeug==3.1.8
+Jinja2==3.1.6
 psycopg2-binary==2.9.9
-python-dotenv==1.0.1
-gunicorn==22.0.0
+python-dotenv==1.2.2
+gunicorn==23.0.0
