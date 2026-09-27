@@ -38,12 +38,22 @@ def liste():
     tous = projets.list_projets(
         user_id=g.user["id"], etats=etats, phases=phases, chef_ids=chef_ids, lots=lots, q=q,
     )
-    utilisateurs_actifs = utilisateurs.list_actifs()
-    return render_template(
-        "projets_liste.html", projets=tous, q=q or "",
+    # Bug corrigé (2026-09-27, retour Fadhel) : le filtre "Chef de projet"
+    # listait tout le monde (Intervenants, Clients...) via
+    # utilisateurs.list_actifs() — voir list_chefs_de_projet().
+    chefs_de_projet = projets.list_chefs_de_projet()
+    contexte = dict(
+        projets=tous, q=q or "",
         etats=etats or [], phases=phases or [], chef_ids=chef_ids or [], lots=lots or [],
-        phases_choices=PHASES, utilisateurs_actifs=utilisateurs_actifs,
+        phases_choices=PHASES, utilisateurs_actifs=chefs_de_projet,
     )
+    # Rafraîchissement AJAX (retour Fadhel, 2026-09-27) : la recherche/les
+    # filtres ne doivent recharger que le tableau, pas toute la page — voir
+    # le script de projets_liste.html, qui appelle cette même route avec cet
+    # en-tête au lieu de faire un submit() classique.
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return render_template("partials/projets_tableau.html", **contexte)
+    return render_template("projets_liste.html", **contexte)
 
 
 @bp.route("/nouveau", methods=["GET", "POST"])

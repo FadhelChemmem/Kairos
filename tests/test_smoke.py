@@ -119,6 +119,18 @@ FEED_POST_REBOND = {
     "parent_auteur_prenom": "Foulen", "parent_auteur_nom": "Chedly", "parent_tache_titre": "Plan ferraillage voile R+2",
 }
 
+# Bug corrigé (2026-09-27, retour Fadhel) : un post de clôture de tâche
+# affichait toujours la pastille "Terminé" (état de la tâche), jamais le
+# tag (Envoi/Réponse/Question/Requête) réellement choisi par l'utilisateur
+# à la clôture — voir partials/post_card.html et taches.close_tache. Ici le
+# tag choisi est "question", volontairement différent de "termine", pour
+# que le test échoue si le gabarit retombe sur l'ancien comportement.
+FEED_POST_CLOTURE_TACHE = {
+    **FEED_POST_MANUEL, "id": 4, "type_code": "question", "contenu": "Point bloquant résolu ?",
+    "tache_id": 5, "tache_titre": "Plan ferraillage voile R+2", "tache_etat": "termine",
+    "est_cloture_tache": True,
+}
+
 FEED = [FEED_POST_MANUEL, FEED_POST_CREATION_TACHE, FEED_POST_REBOND]
 
 PROJET = {
@@ -211,12 +223,27 @@ UTILISATEURS_ACTIFS = [
     {"id": 3, "prenom": "Omar", "nom": "Aziz", "poste": "Technicien"},
 ]
 
+# Bug corrigé (2026-09-27, retour Fadhel) : le filtre "Chef de projet" de
+# /projets listait TOUS les utilisateurs actifs (Intervenants, Clients...)
+# via utilisateurs.list_actifs(), au lieu des seules personnes réellement
+# chef de projet d'un projet — voir projets.list_chefs_de_projet(). Fixture
+# volontairement différente de UTILISATEURS_ACTIFS (id 7 "Sana Trabelsi",
+# absente de UTILISATEURS_ACTIFS ; id 3 "Omar Aziz" absent d'ici) pour que
+# le test distingue clairement les deux sources.
+CHEFS_DE_PROJET = [
+    {"id": 1, "prenom": "Foulen", "nom": "Chedly"},
+    {"id": 7, "prenom": "Sana", "nom": "Trabelsi"},
+]
+
 DAILYLOG_PROJETS = [{"id": 1, "code": "26099X", "nom": "Tour Meridian"}]
 DAILYLOG_ENTREES = [{"id": 1, "projet_id": 1, "tache_id": None, "heures": 5.0, "projet_nom": "Tour Meridian", "tache_titre": None}]
 DAILYLOG_SUGGESTIONS = {
     "mine": [{"projet_id": 1, "code": "26099X", "nom": "Tour Meridian", "tache_id": 5, "tache_titre": "Plan ferraillage voile R+2"},
              {"projet_id": 1, "code": "26099X", "nom": "Tour Meridian", "tache_id": None, "tache_titre": None}],
-    "autres": [{"projet_id": 9, "code": "24001X", "nom": "The Hub", "tache_id": None, "tache_titre": None}],
+    # Palier "Récemment travaillés" (retour Fadhel, 2026-09-27) — a
+    # remplacé l'ancienne clé "autres" (liste statique des 50 premiers
+    # projets de l'entreprise) ; voir dailylog.list_projets_recents.
+    "recentes": [{"projet_id": 9, "code": "24001X", "nom": "The Hub", "tache_id": None, "tache_titre": None}],
 }
 DAILYLOG_JOURS_REMPLIS = [datetime.date(2026, 9, 11), datetime.date(2026, 9, 14)]
 
@@ -264,6 +291,7 @@ class SmokeTestCase(unittest.TestCase):
             "app.auth.get_user_by_id": USER,
             "app.repositories.projets.list_mes_projets": MES_PROJETS,
             "app.repositories.projets.list_projets": [],
+            "app.repositories.projets.list_chefs_de_projet": CHEFS_DE_PROJET,
             "app.repositories.projets.get_projet": PROJET,
             "app.repositories.projets.list_lots": LOTS,
             "app.repositories.projets.list_intervenants": INTERVENANTS,
@@ -280,6 +308,7 @@ class SmokeTestCase(unittest.TestCase):
             "app.repositories.dailylog.list_lignes_suggerees": DAILYLOG_SUGGESTIONS,
             "app.repositories.dailylog.list_jours_remplis_mois": DAILYLOG_JOURS_REMPLIS,
             "app.repositories.dailylog.jours_manques_recents": [],
+            "app.repositories.dailylog.rechercher_projets": [],
             "app.repositories.utilisateurs.list_tous": UTILISATEURS_TOUS,
             "app.repositories.utilisateurs.compter": COMPTE_UTILISATEURS,
             "app.repositories.utilisateurs.rh_deja_attribue": None,
@@ -329,6 +358,24 @@ class SmokeTestCase(unittest.TestCase):
         self.assertIn("Plan ferraillage voile R+2".encode(), resp.data)
         self.assertNotIn("rebond".encode(), resp.data.lower())
 
+    def test_post_cloture_tache_affiche_le_tag_choisi_pas_termine(self):
+        # Bug corrigé (2026-09-27, retour Fadhel) : le post de clôture
+        # affichait toujours la pastille "Terminé" (état de la tâche) au
+        # lieu du tag (Envoi/Réponse/Question/Requête) choisi par
+        # l'utilisateur à la clôture — voir partials/post_card.html.
+        # Rendu via /accueil (fil "Mes projets") : ni les tâches (MES_TACHES,
+        # état "bloque") ni les deadlines (DEADLINES, état "en_cours") de
+        # cette page ne montrent "Terminé", donc son absence ici pointe
+        # précisément vers la pastille du post.
+        resp = self._get(
+            "/accueil",
+            **{"app.repositories.posts.list_feed_mes_projets": [FEED_POST_CLOTURE_TACHE]},
+        )
+        self.assertEqual(resp.status_code, 200, resp.data[:2000])
+        body = resp.data.decode()
+        self.assertIn("Question", body)
+        self.assertNotIn("Terminé", body)
+
     def test_projets_liste_renders_empty(self):
         resp = self._get("/projets")
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
@@ -367,6 +414,25 @@ class SmokeTestCase(unittest.TestCase):
         self.assertIn("Tour Meridian".encode(), resp.data)
         self.assertIn("The Hub".encode(), resp.data)
         self.assertNotIn(b'name="projet_id"', resp.data)
+        # Bug corrigé (2026-09-27, retour Fadhel) : plus d'icône de
+        # cadenas visible sur les lignes DailyLog.
+        self.assertNotIn("\U0001F512".encode(), resp.data)  # 🔒
+        self.assertIn(b'id="sugg-recherche-wrap"', resp.data)
+
+    def test_dailylog_recherche_projets_api(self):
+        resp = self._get(
+            "/dailylog/recherche-projets?q=hub",
+            **{"app.repositories.dailylog.rechercher_projets": [
+                {"projet_id": 9, "code": "24001X", "nom": "The Hub", "tache_id": None, "tache_titre": None}
+            ]},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json()["resultats"][0]["nom"], "The Hub")
+
+    def test_dailylog_recherche_projets_api_ignore_requete_trop_courte(self):
+        resp = self._get("/dailylog/recherche-projets?q=h")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json(), {"resultats": []})
 
     def test_dailylog_with_explicit_date_renders(self):
         resp = self._get("/dailylog?date=2026-09-10")
@@ -899,11 +965,13 @@ class SmokeTestCase(unittest.TestCase):
         resp = self._get("/accueil", **{"app.repositories.taches.list_deadlines": deadlines_multi})
         self.assertEqual(resp.status_code, 200)
         body = resp.data.decode()
-        # On isole la carte "Mes projets" (pas la bannière, ni le widget
-        # Deadlines de la colonne gauche, qui suivent déjà l'ordre des
-        # échéances par construction) pour vérifier spécifiquement son tri.
+        # On isole la carte "Mes projets" (pas la bannière Deadlines pleine
+        # largeur, qui suit déjà l'ordre des échéances par construction)
+        # pour vérifier spécifiquement son tri. La carte "Deadlines" en
+        # colonne gauche a été supprimée (2026-09-27, doublon de la
+        # bannière) — la carte suivante dans la colonne est "Daily log".
         debut = body.index("Mes projets")
-        fin = body.index("Deadlines", debut)
+        fin = body.index("Daily log", debut)
         section_mes_projets = body[debut:fin]
         # Tour Meridian (échéance le 18) doit apparaître avant Résidence Les
         # Oliviers (échéance le 25).
@@ -960,6 +1028,38 @@ class SmokeTestCase(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.data.decode()
         self.assertNotIn('value="en_cours" selected', body)
+
+    def test_projets_liste_filtre_chef_de_projet_utilise_les_vrais_chefs(self):
+        # Bug corrigé (2026-09-27, retour Fadhel) : le filtre listait tout
+        # le monde (UTILISATEURS_ACTIFS) au lieu des seuls chefs de projet
+        # réels (CHEFS_DE_PROJET) — voir projets.list_chefs_de_projet().
+        resp = self._get("/projets", **{"app.repositories.projets.list_projets": [PROJET_LISTE_SANS_HEURES]})
+        self.assertEqual(resp.status_code, 200)
+        body = resp.data.decode()
+        self.assertIn("Sana Trabelsi", body)
+        self.assertNotIn("Omar Aziz", body)
+
+    def test_projets_liste_ajax_ne_renvoie_que_le_tableau(self):
+        # Retour Fadhel (2026-09-27) : la recherche/les filtres sur "Tous
+        # les projets" ne doivent rafraîchir que le tableau, pas toute la
+        # page — voir la branche X-Requested-With de routes/projets.liste
+        # et partials/projets_tableau.html.
+        self._login()
+        patchers = self._patched(**{"app.repositories.projets.list_projets": [PROJET_LISTE_SANS_HEURES]})
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.get("/projets", headers={"X-Requested-With": "XMLHttpRequest"})
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 200)
+        body = resp.data.decode()
+        self.assertIn("Projet de test", body)
+        self.assertIn("1 projet", body)
+        # Ne doit pas contenir la mise en page complète (topbar, filtres…).
+        self.assertNotIn("Tous les projets", body)
+        self.assertNotIn("filtres-projets", body)
 
     def test_mon_profil_affiche_les_infos_et_la_semaine_derniere(self):
         resp = self._get("/utilisateurs/moi")

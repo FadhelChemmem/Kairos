@@ -44,16 +44,13 @@
       label.textContent = opt.textContent;
       chip.appendChild(label);
 
-      var remove = document.createElement('span');
-      remove.className = 'chip-remove';
-      remove.textContent = '×';
-      remove.style.display = opt.selected ? 'inline-flex' : 'none';
-      chip.appendChild(remove);
-
+      // Retour Fadhel (2026-09-27) : plus de croix "×" sur les puces
+      // sélectionnées — la sélection se voit uniquement par la
+      // surbrillance (.chip-selected), comme c'est déjà le cas ailleurs
+      // dans l'appli. On re-clique une puce sélectionnée pour la retirer.
       chip.addEventListener('click', function () {
         opt.selected = !opt.selected;
         chip.classList.toggle('chip-selected', opt.selected);
-        remove.style.display = opt.selected ? 'inline-flex' : 'none';
         select.dispatchEvent(new Event('change', { bubbles: true }));
         if (select.dataset.chipAutosubmit && select.form) {
           select.form.submit();

@@ -92,6 +92,28 @@ def list_projets(
         return [dict(r) for r in cur.fetchall()]
 
 
+def list_chefs_de_projet() -> list[dict]:
+    """Personnes ayant effectivement été chef de projet d'au moins un
+    projet — alimente le filtre "Chef de projet" de /projets.
+
+    Bug corrigé (2026-09-27, retour Fadhel) : ce filtre utilisait
+    `utilisateurs.list_actifs()`, qui renvoie TOUS les utilisateurs actifs
+    non-RH (Intervenants et Clients compris) — pertinent pour choisir QUI
+    devient chef de projet à la création (n'importe qui de non-RH peut se
+    voir confier un projet), mais pas pour un filtre qui ne doit lister que
+    des personnes réellement chef de projet d'un projet existant. On
+    requête donc directement les `chef_projet_id` distincts de la table
+    `projet`, plutôt que de filtrer par rôle (un Admin peut légitimement
+    être chef de projet, ce que `role = 'chef_de_projet'` exclurait)."""
+    sql = """
+        SELECT DISTINCT u.id, u.prenom, u.nom
+        FROM utilisateur u
+        JOIN projet p ON p.chef_projet_id = u.id
+        ORDER BY u.nom, u.prenom
+    """
+    return db.query_all(sql)
+
+
 def search(user_id: int, q: str, limit: int = 8) -> list[dict]:
     """Recherche libre sur "Code_nom", limitée aux projets visibles par
     `user_id` — pour la barre de recherche de la topbar (demandé par

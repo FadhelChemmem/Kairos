@@ -76,17 +76,75 @@ def delete_entree(entree_id: int, current_user_id: int) -> None:
     )
 
 
+def list_projets_recents(user_id: int, exclude_ids: list[int], limit: int = 5) -> list[dict]:
+    """Jusqu'à `limit` projets sur lesquels l'utilisateur a le plus
+    récemment saisi des heures (historique DailyLog), en excluant ceux déjà
+    proposés dans "Vos projets" (`exclude_ids`). Deuxième palier du
+    catalogue "Ajouter une ligne" (retour Fadhel, 2026-09-27) : l'utilisateur
+    n'a pas à voir tous les projets de l'entreprise d'un coup — seulement
+    ceux avec des tâches en cours (`list_projets_pour_dailylog`), puis ceux
+    qu'il a récemment touchés, puis une recherche pour le reste
+    (`rechercher_projets`)."""
+    exclure = list(exclude_ids) or [0]
+    sql = """
+        SELECT p.id AS projet_id, p.code, p.nom, MAX(d.date) AS derniere_saisie
+        FROM dailylog_entree d
+        JOIN projet p ON p.id = d.projet_id
+        WHERE d.utilisateur_id = %s AND p.etat = 'en_cours' AND p.id != ALL(%s)
+        GROUP BY p.id, p.code, p.nom
+        ORDER BY derniere_saisie DESC
+        LIMIT %s
+    """
+    rows = db.query_all(sql, (user_id, exclure, limit))
+    return [
+        {"projet_id": r["projet_id"], "code": r["code"], "nom": r["nom"],
+         "tache_id": None, "tache_titre": None}
+        for r in rows
+    ]
+
+
+def rechercher_projets(q: str, limit: int = 20) -> list[dict]:
+    """Recherche libre par code/nom parmi les projets en cours — troisième
+    palier du catalogue "Ajouter une ligne" (retour Fadhel, 2026-09-27),
+    remplace l'ancienne liste statique des 50 premiers projets de
+    l'entreprise (affichée en permanence, quelle que soit sa pertinence
+    pour l'utilisateur). Utilisée par la recherche live côté route
+    `dailylog.api_recherche_projets`."""
+    q = (q or "").strip()
+    if not q:
+        return []
+    like = f"%{q}%"
+    rows = db.query_all(
+        """
+        SELECT id AS projet_id, code, nom
+        FROM projet
+        WHERE etat = 'en_cours' AND (code ILIKE %s OR nom ILIKE %s)
+        ORDER BY nom
+        LIMIT %s
+        """,
+        (like, like, limit),
+    )
+    return [
+        {"projet_id": r["projet_id"], "code": r["code"], "nom": r["nom"],
+         "tache_id": None, "tache_titre": None}
+        for r in rows
+    ]
+
+
 def list_lignes_suggerees(user_id: int) -> dict:
-    """Catalogue du panneau "Ajouter une ligne" — deux groupes, comme dans
-    le prototype :
+    """Catalogue du panneau "Ajouter une ligne" — trois paliers (retour
+    Fadhel, 2026-09-27 : l'utilisateur ne doit plus voir tous les projets
+    de l'entreprise en bas de page) :
     - `mine` : les tâches en cours où l'utilisateur est intervenant (ligne
       pré-remplie avec la tâche), plus une ligne "projet seul" pour chaque
       projet où il est intervenant ou chef/co-chef (voir
       `list_projets_pour_dailylog`) — ajout direct, pas besoin de
       s'affecter au préalable.
-    - `autres` : le reste des projets en cours de l'entreprise — ajout
-      seulement "ponctuel" côté UI (voir spec), pas de tâche précise
-      proposée puisque l'utilisateur n'y est pas rattaché.
+    - `recentes` : jusqu'à 5 projets récemment travaillés (historique
+      DailyLog, voir `list_projets_recents`), en dehors de `mine`.
+    - le reste (auparavant `autres`, jusqu'à 50 projets affichés en
+      permanence) n'est plus pré-chargé ici : voir `rechercher_projets`,
+      utilisée par la recherche live du catalogue.
     """
     mes_taches = db.query_all(
         """
@@ -115,23 +173,9 @@ def list_lignes_suggerees(user_id: int) -> dict:
     ]
 
     exclure = list({p["id"] for p in mes_projets} | {t["projet_id"] for t in mes_taches}) or [0]
-    autres_projets = db.query_all(
-        """
-        SELECT id AS projet_id, code, nom
-        FROM projet
-        WHERE etat = 'en_cours' AND id != ALL(%s)
-        ORDER BY nom
-        LIMIT 50
-        """,
-        (exclure,),
-    )
-    autres = [
-        {"projet_id": p["projet_id"], "code": p["code"], "nom": p["nom"],
-         "tache_id": None, "tache_titre": None}
-        for p in autres_projets
-    ]
+    recentes = list_projets_recents(user_id, exclude_ids=exclure, limit=5)
 
-    return {"mine": mine, "autres": autres}
+    return {"mine": mine, "recentes": recentes}
 
 
 def list_jours_remplis_mois(user_id: int, annee: int, mois: int) -> list:

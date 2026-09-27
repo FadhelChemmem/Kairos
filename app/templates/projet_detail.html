@@ -1,9 +1,21 @@
 {% extends "base.html" %}
 {% import "partials/avatar.html" as avatarm %}
 {% block title %}{{ projet.code }}_{{ projet.nom }} — Kairos{% endblock %}
-{% block body %}
 
 {% set petat = projet_etat_style(projet.etat) %}
+
+{# Icône du projet actif dans la topbar (retour Fadhel, 2026-09-27) : un
+   petit badge avec la pastille d'état du projet + son code, pour repérer
+   d'un coup d'œil quel projet est ouvert, où qu'on soit sur la page —
+   distinct du fil d'Ariane .subbar ci-dessous, qui défile avec la page. #}
+{% block topbar_projet %}
+  <a href="{{ url_for('projets.detail', projet_id=projet.id) }}" class="topbar-projet-pill" title="{{ projet.code }}_{{ projet.nom }}">
+    <span style="width:7px; height:7px; border-radius:999px; background:{{ petat.dot }}; flex-shrink:0;"></span>
+    <span>{{ projet.code }}</span>
+  </a>
+{% endblock %}
+
+{% block body %}
 
 <!-- Sous-en-tête sticky : le nom du projet reste visible au défilement -->
 <div class="subbar">
@@ -18,7 +30,7 @@
 </div>
 
 <!-- En-tête projet -->
-<div style="max-width:1360px; margin:0 auto; padding:20px 32px 0;">
+<div class="page-wrap" style="padding-top:20px; padding-bottom:0;">
   <div class="card">
     <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:20px; flex-wrap:wrap;">
       <div style="min-width:0;">
@@ -81,7 +93,7 @@
   <!-- Centre : tâches + fil -->
   <div class="col-center">
 
-    <div class="card" style="padding:16px 18px 6px;">
+    <div class="card table-scroll" style="padding:16px 18px 6px;">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; gap:12px; flex-wrap:wrap;">
         <div style="display:flex; align-items:center; gap:10px;">
           <span style="font-size:14px; font-weight:700;">Tâches</span>

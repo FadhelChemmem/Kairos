@@ -63,28 +63,10 @@
       </div>
     </div>
 
-    <div class="card">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-        <span style="font-size:14px; font-weight:700;">Deadlines</span>
-        <a href="{{ url_for('deadlines.liste') }}" style="font-size:12px; font-weight:600;">Tout voir</a>
-      </div>
-      <div style="display:flex; flex-direction:column; gap:12px;">
-        {% for d in deadlines %}
-          <a href="{{ url_for('projets.detail', projet_id=d.projet_id) }}" style="display:flex; gap:10px; color:inherit;">
-            <div style="width:38px; flex-shrink:0; text-align:center; background:#f2f4f0; border-radius:8px; padding:4px 0;">
-              <div style="font-size:15px; font-weight:800; color:#55605a; line-height:1;">{{ d.date_echeance.day }}</div>
-              <div style="font-size:9.5px; color:#55605a; text-transform:uppercase;">{{ d.date_echeance.strftime('%b') }}</div>
-            </div>
-            <div style="min-width:0;">
-              <div style="font-size:12.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ d.projet_code }}_{{ d.projet_nom }}</div>
-              <div style="font-size:11px; color:#7c8780;">{{ d.titre }}</div>
-            </div>
-          </a>
-        {% else %}
-          <div style="font-size:12.5px; color:#7c8780;">Aucune échéance à venir.</div>
-        {% endfor %}
-      </div>
-    </div>
+    {# Bug corrigé (2026-09-27, retour Fadhel) : cette carte "Deadlines" en
+       colonne gauche faisait doublon avec la bannière pleine largeur
+       ci-dessus (même liste d'échéances, deux largeurs différentes). La
+       bannière (mini-Gantt, ajoutée le 2026-09-19) est conservée seule. #}
 
     <div class="card {{ 'card-cta-alert' if dailylog_jours_manques else 'card-cta' }}">
       <div style="font-size:13px; font-weight:700; color:#fff; margin-bottom:4px;">Daily log</div>

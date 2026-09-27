@@ -86,6 +86,15 @@ a:hover { color: #14513b; }
 }
 .topbar-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 
+/* Icône du projet actif dans la topbar (retour Fadhel, 2026-09-27) — voir
+   le bloc topbar_projet de base.html, rempli par projet_detail.html. */
+.topbar-projet-pill {
+  display: flex; align-items: center; gap: 6px; padding: 5px 10px 5px 8px;
+  background: #f2f4f0; border-radius: 999px; color: #33392f; text-decoration: none;
+  font-size: 12px; font-weight: 700; white-space: nowrap; flex-shrink: 0;
+}
+.topbar-projet-pill:hover { background: #e7ebe4; }
+
 /* --- Sous-en-tête sticky (page projet : nom du projet toujours visible) --- */
 .subbar {
   position: sticky; top: 56px; z-index: 40; background: #ffffff;
@@ -100,6 +109,14 @@ a:hover { color: #14513b; }
   max-width: 1360px; margin: 0 auto; padding: 24px 32px 60px;
   display: grid; grid-template-columns: 252px 1fr 272px; gap: 20px; align-items: start;
 }
+
+/* Conteneur générique "page pleine largeur, contenu limité à 1360px" —
+   factorisé (2026-09-27) à partir du même motif répété en style inline sur
+   plusieurs pages (Tous les projets, Deadlines, Utilisateurs, page projet),
+   pour pouvoir réduire son padding horizontal au responsive (voir plus
+   bas) sans dupliquer la media query partout. Chaque page garde son propre
+   padding-top/bottom via son style inline. */
+.page-wrap { max-width: 1360px; margin: 0 auto; padding-left: 32px; padding-right: 32px; }
 .col { display: flex; flex-direction: column; gap: 16px; }
 .col-center { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 
@@ -306,8 +323,12 @@ label { font-size: 12px; color: #7c8780; font-weight: 600; display: block; margi
   font-size: 11.5px; font-weight: 700; color: #ffffff; white-space: nowrap;
   overflow: hidden; transition: width 0.15s ease;
 }
+.lrow { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
 .lrow-dot, .lrow-info { user-select: none; -webkit-user-select: none; touch-action: none; }
+.lrow-info { width: 220px; flex-shrink: 0; }
 .lrow-track { touch-action: none; }
+.lrow-pct { width: 52px; text-align: right; font-size: 12.5px; font-weight: 700; flex-shrink: 0; }
+.lrow-hours { width: 56px; text-align: right; font-size: 11.5px; flex-shrink: 0; }
 .add-suggestion:hover { filter: brightness(0.97); }
 .cal-day {
   display: flex; align-items: center; justify-content: center;
@@ -436,7 +457,8 @@ label { font-size: 12px; color: #7c8780; font-weight: 600; display: block; margi
    multiple> natifs (Lot(s), Intervenant(s), filtres "Tous les projets"),
    retour Fadhel du 2026-09-19 ("comme sur LinkedIn/Facebook") : les
    options déjà sélectionnées sont en surbrillance, un clic bascule la
-   sélection, un "×" apparaît sur la puce sélectionnée pour la retirer.
+   sélection (reclic pour la retirer). Plus de "×" sur la puce sélectionnée
+   depuis le 2026-09-27 (retour Fadhel) — la surbrillance seule suffit.
    Le <select multiple> d'origine est conservé (masqué) : c'est toujours
    lui qui est soumis avec le formulaire, aucun changement côté serveur
    n'est nécessaire pour les cas simples. Voir app/static/js/chip-select.js. */
@@ -455,11 +477,6 @@ label { font-size: 12px; color: #7c8780; font-weight: 600; display: block; margi
 }
 .chip-opt:hover { border-color: #c7cdc4; }
 .chip-opt.chip-selected { background: #eaf3ee; border-color: #4a7c59; color: #14513b; }
-.chip-opt .chip-remove {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 14px; height: 14px; border-radius: 999px; background: rgba(20,81,59,0.16);
-  font-size: 10px; line-height: 1;
-}
 .chip-opt.chip-hidden { display: none; }
 
 /* --- Commentaires sur un post (accueil / page projet) --- */
@@ -469,3 +486,79 @@ label { font-size: 12px; color: #7c8780; font-weight: 600; display: block; margi
   background: #f7f8f6; border-radius: 10px; padding: 7px 11px; font-size:12.5px; flex:1;
 }
 .post-comment-form { display: flex; gap: 6px; margin: 10px 0 0 46px; }
+
+/* Tableaux à colonnes fixes (tâches du projet, utilisateurs, "Tous les
+   projets") : sur un écran étroit, on préfère un défilement horizontal
+   propre à une compression illisible des colonnes — voir la media query
+   responsive plus bas, qui n'active `overflow-x` que sous le point de
+   rupture mobile (au-delà, le tableau tient déjà dans la largeur). */
+.table-scroll { -webkit-overflow-scrolling: touch; }
+
+/* ==========================================================================
+   Responsive smartphone (retour Fadhel, 2026-09-27 : "rend l'appli
+   responsive sur smartphone"). Point de rupture unique à 860px : en dessous,
+   les mises en page à colonnes fixes (topbar, page-body 3 colonnes, tableaux
+   à grille) basculent en une seule colonne fluide / défilement horizontal
+   pour les tableaux, sans toucher au visuel desktop existant au-dessus de
+   ce seuil. ========================================================== */
+@media (max-width: 860px) {
+  .page-wrap, .topbar-inner, .subbar-inner, .deadline-banner {
+    padding-left: 16px; padding-right: 16px;
+  }
+  .deadline-banner { margin-left: 12px; margin-right: 12px; width: auto; }
+
+  /* Colonnes latérales sous le fil central plutôt qu'à côté (l'ordre du
+     DOM — colonne gauche, fil, colonne droite — définit l'ordre empilé). */
+  .page-body {
+    grid-template-columns: 1fr; padding-left: 16px; padding-right: 16px; gap: 16px;
+  }
+
+  /* Barre de recherche globale masquée sur mobile (place limitée, la
+     recherche reste disponible depuis "Tous les projets" / Deadlines) ;
+     l'espace ainsi libéré profite aux icônes d'action, qui restent toutes
+     accessibles. */
+  .topbar-inner { gap: 8px; padding-left: 12px; padding-right: 12px; }
+  .topbar-search { display: none; }
+  .topbar-projet-pill span:last-child { max-width: 72px; overflow: hidden; text-overflow: ellipsis; }
+
+  .subbar-inner { flex-wrap: wrap; gap: 8px 12px; padding-top: 10px; padding-bottom: 10px; }
+
+  /* Tableaux à grille (tâches, utilisateurs, "Tous les projets") : on ne
+     force plus les colonnes à tenir dans la largeur de l'écran (elles
+     deviendraient illisibles) — l'utilisateur défile horizontalement dans
+     la carte, dont l'en-tête (nom du projet/tâche) reste, lui, visible. */
+  .table-scroll { overflow-x: auto; }
+  .table-scroll .thead, .table-scroll .taskrow,
+  .table-scroll .uhead, .table-scroll .urow,
+  .table-scroll > a {
+    min-width: 640px;
+  }
+
+  /* Formulaires en deux colonnes (Nouvel utilisateur, champs perso) : une
+     seule colonne, plus facile à remplir au clavier tactile. */
+  .form-row-2, .cf-row { grid-template-columns: 1fr; }
+
+  /* Boutons rapides "+ Tâche / + Information / + Requête" (page projet) :
+     passent à la ligne proprement plutôt que de déborder. */
+  .quickadd { padding: 6px 9px; font-size: 11.5px; }
+
+  .login-wrap { padding: 16px; }
+  .login-card { padding: 32px 24px 28px; }
+
+  /* DailyLog façon curseur : la ligne (pastille + nom + curseur + % +
+     heures + croix) ne tient pas sur un écran de smartphone avec ses
+     largeurs fixes desktop — on réduit le nom et on masque la colonne
+     "heures" (le %, plus lisible d'un coup d'œil, reste affiché). */
+  .dailylog-wrap { padding-left: 16px; padding-right: 16px; }
+  .lrow { gap: 8px; padding: 12px 10px; }
+  .lrow-info { width: 120px; }
+  .lrow-hours { display: none; }
+}
+
+@media (max-width: 480px) {
+  /* En deçà de ~480px, même l'icône du projet actif dans la topbar est
+     sacrifiée pour laisser la place aux icônes d'action (Accueil, Daily
+     log, Projets, Deadlines, Notifications, profil), qui restent toutes
+     accessibles au pouce sans défilement horizontal. */
+  .topbar-projet-pill { display: none; }
+}

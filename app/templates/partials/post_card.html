@@ -18,7 +18,12 @@
     {% if post.est_creation_tache %}
       <span class="pill" style="background:{{ post_tache_pill.bg }}; color:{{ post_tache_pill.fg }};">{{ post_tache_pill.label }}</span>
     {% elif post.est_cloture_tache %}
-      {% set st = tache_etat_style('termine') %}
+      {# Bug corrigé (2026-09-27, retour Fadhel) : affichait toujours
+         l'état "Terminé" de la tâche, jamais le tag (Envoi/Réponse/
+         Question/Requête) réellement choisi par l'utilisateur à la
+         clôture (voir taches.close_tache / routes/projets.cloturer_tache)
+         — même style que pour un post normal. #}
+      {% set st = post_type_style(post.type_code) %}
       <span class="pill" style="background:{{ st.bg }}; color:{{ st.fg }};">{{ st.label }}</span>
     {% else %}
       {% set st = post_type_style(post.type_code) %}

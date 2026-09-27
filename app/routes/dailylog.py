@@ -96,6 +96,20 @@ def api_jours_remplis():
     return {"jours": [j.isoformat() for j in jours]}
 
 
+@bp.route("/recherche-projets")
+@login_required
+def api_recherche_projets():
+    """Recherche live du catalogue "Ajouter une ligne" (retour Fadhel,
+    2026-09-27) : remplace l'ancienne liste statique des 50 premiers
+    projets de l'entreprise, affichée en permanence — l'utilisateur tape,
+    on cherche par code/nom parmi les projets en cours. Voir
+    dailylog.rechercher_projets."""
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return {"resultats": []}
+    return {"resultats": dailylog.rechercher_projets(q)}
+
+
 @bp.route("", methods=["POST"])
 @login_required
 def enregistrer():

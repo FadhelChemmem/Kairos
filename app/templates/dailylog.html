@@ -9,7 +9,7 @@
   </div>
 </div>
 
-<div style="max-width:720px; margin:24px auto 60px; padding:0 32px;">
+<div class="dailylog-wrap" style="max-width:720px; margin:24px auto 60px; padding:0 32px;">
 
   <!-- Navigation par date -->
   <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; position:relative;">
@@ -83,8 +83,20 @@
       <div style="font-size:10.5px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin:10px 0 4px;">Vos projets (intervenant / chef)</div>
       <div id="sugg-mine" style="display:flex; flex-direction:column; gap:2px;"></div>
 
-      <div style="font-size:10.5px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin:12px 0 4px;">Autres projets de l'entreprise</div>
-      <div id="sugg-others" style="display:flex; flex-direction:column; gap:2px;"></div>
+      {# Retour Fadhel (2026-09-27) : l'utilisateur n'a plus à voir tous
+         les projets de l'entreprise en bas — après "Vos projets"
+         (tâches en cours), jusqu'à 5 projets récemment travaillés, puis
+         une recherche pour le reste (voir dailylog.rechercher_projets /
+         urlRechercheProjets ci-dessous). #}
+      <div id="sugg-recentes-wrap" style="display:none;">
+        <div style="font-size:10.5px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin:12px 0 4px;">Récemment travaillés</div>
+        <div id="sugg-recentes" style="display:flex; flex-direction:column; gap:2px;"></div>
+      </div>
+
+      <div id="sugg-recherche-wrap" style="display:none;">
+        <div style="font-size:10.5px; font-weight:700; color:#9aa39c; text-transform:uppercase; letter-spacing:0.03em; margin:12px 0 4px;">Résultats de recherche</div>
+        <div id="sugg-recherche" style="display:flex; flex-direction:column; gap:2px;"></div>
+      </div>
 
       <div style="font-size:11px; color:#9aa39c; margin-top:8px;">Double-appui (ou appui long) sur un projet grisé pour l'ajouter ponctuellement aujourd'hui.</div>
     </div>
@@ -111,11 +123,12 @@
   "todayIso": aujourdhui.isoformat(),
   "lignesInitiales": lignes_initiales,
   "suggestionsMine": suggestions.mine,
-  "suggestionsAutres": suggestions.autres,
+  "suggestionsRecentes": suggestions.recentes,
   "joursRemplis": jours_remplis,
   "moisAffiche": date.strftime('%Y-%m'),
   "urlFormulaire": url_for('dailylog.formulaire'),
   "urlJoursRemplis": url_for('dailylog.api_jours_remplis'),
+  "urlRechercheProjets": url_for('dailylog.api_recherche_projets'),
 }|tojson }}
 </script>
 
@@ -180,6 +193,12 @@
   }
 
   function addLine(proto, adhoc) {
+    // Bug corrigé (2026-09-27, retour Fadhel) : refuse les doublons — sans
+    // ce garde-fou, un appui long resté actif après le retrait de la page
+    // (voir le correctif d'attachTapAndHold ci-dessous) ajoutait la même
+    // ligne en boucle.
+    var key = proto.projet_id + '-' + (proto.tache_id || 0);
+    if (lines.some(function (l) { return (l.projetId + '-' + (l.tacheId || 0)) === key; })) return;
     lines.push({
       projetId: proto.projet_id, tacheId: proto.tache_id, nom: proto.nom, tacheTitre: proto.tache_titre,
       color: nextColor(), selected: true, locked: false, pct: 0, adhoc: !!adhoc,
@@ -189,6 +208,29 @@
 
   function attachTapAndHold(el, onTap, onHold) {
     var pressTimer = null, held = false, clickTimer = null;
+
+    function cancelPress() {
+      clearTimeout(pressTimer);
+      clearInterval(pressTimer);
+      pressTimer = null;
+      document.removeEventListener('pointerup', onRelease);
+      document.removeEventListener('pointercancel', onRelease);
+    }
+    // Bug corrigé (2026-09-27, retour Fadhel — appui long qui ne s'arrête
+    // jamais, tâches/projets ajoutés en boucle) : le relâchement était
+    // écouté sur `el` lui-même, or `el` est retiré du DOM dès le premier
+    // onHold() (render() reconstruit toute la liste de lignes), donc son
+    // pointerup ne se déclenche plus jamais et l'intervalle tournait à
+    // l'infini. On écoute désormais sur `document`, qui survit au
+    // rafraîchissement, quel que soit l'élément physiquement sous le
+    // doigt/curseur au moment du relâchement.
+    function onRelease() {
+      cancelPress();
+      if (!held) {
+        if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; onHold(); }
+        else { clickTimer = setTimeout(function () { clickTimer = null; onTap(); }, 260); }
+      }
+    }
     el.addEventListener('pointerdown', function (evt) {
       evt.preventDefault();
       held = false;
@@ -197,16 +239,9 @@
         onHold();
         pressTimer = setInterval(onHold, 450);
       }, 500);
+      document.addEventListener('pointerup', onRelease);
+      document.addEventListener('pointercancel', onRelease);
     });
-    function cancelPress() { clearTimeout(pressTimer); clearInterval(pressTimer); }
-    el.addEventListener('pointerup', function () {
-      cancelPress();
-      if (!held) {
-        if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; onHold(); }
-        else { clickTimer = setTimeout(function () { clickTimer = null; onTap(); }, 260); }
-      }
-    });
-    el.addEventListener('pointerleave', cancelPress);
   }
 
   function render() {
@@ -245,19 +280,25 @@
     }
     lines.forEach(function (l, idx) {
       var row = document.createElement('div');
-      row.style.cssText = 'display:flex; align-items:center; gap:12px; padding:14px 16px;' + (idx < lines.length - 1 ? 'border-bottom:1px solid #eef0ec;' : '') + (l.selected ? '' : 'opacity:0.5;');
+      row.className = 'lrow';
+      row.style.cssText = (idx < lines.length - 1 ? 'border-bottom:1px solid #eef0ec;' : '') + (l.selected ? '' : 'opacity:0.5;');
       row.innerHTML =
         '<span class="lrow-dot" style="width:10px; height:10px; border-radius:3px; background:' + l.color + '; flex-shrink:0; cursor:pointer;"></span>' +
-        '<div class="lrow-info" style="width:220px; flex-shrink:0; cursor:pointer;">' +
-          '<div style="font-size:13px; font-weight:700; line-height:1.3;">' + l.nom + (l.locked ? ' <span title="valeur fixée manuellement" style="font-size:10px;">🔒</span>' : '') + (l.adhoc ? ' <span class="pill" style="background:#f2f4f0; color:#7c8780; font-size:10px; padding:1px 7px;">ponctuel</span>' : '') + '</div>' +
+        '<div class="lrow-info" style="cursor:pointer;">' +
+          {# Retour Fadhel (2026-09-27) : plus d'icône "🔒" — aucune ligne
+             ne doit paraître "verrouillée" pour l'utilisateur. Le
+             comportement voulu (modifier une ligne ne touche jamais une
+             autre ligne déjà ajustée manuellement) reste géré en interne
+             par `l.locked`, simplement sans indicateur visuel. #}
+          '<div style="font-size:13px; font-weight:700; line-height:1.3;">' + l.nom + (l.adhoc ? ' <span class="pill" style="background:#f2f4f0; color:#7c8780; font-size:10px; padding:1px 7px;">ponctuel</span>' : '') + '</div>' +
           '<div style="font-size:11.5px; color:' + (l.tacheTitre ? '#7c8780' : '#b6bdb2') + '; line-height:1.3;' + (l.tacheTitre ? '' : 'font-style:italic;') + '">' + (l.tacheTitre || 'Projet seul (pas de tâche précise)') + '</div>' +
         '</div>' +
         '<div class="lrow-track" style="position:relative; flex:1; height:8px; border-radius:999px; background:#eef0ec; cursor:pointer;">' +
           '<div class="lrow-fill" style="position:absolute; left:0; top:0; bottom:0; border-radius:999px; width:' + (l.selected ? Math.min(l.pct, 100) : 0) + '%; background:' + l.color + '; opacity:' + (l.selected ? 1 : 0.3) + ';"></div>' +
           '<div class="lrow-thumb" style="position:absolute; top:50%; left:' + (l.selected ? Math.min(l.pct, 100) : 0) + '%; width:16px; height:16px; border-radius:999px; background:#fff; border:3px solid ' + l.color + '; transform:translate(-50%,-50%); box-shadow:0 1px 3px rgba(20,30,25,0.2); cursor:ew-resize;' + (l.selected ? '' : 'display:none;') + '"></div>' +
         '</div>' +
-        '<div style="width:52px; text-align:right; font-size:12.5px; font-weight:700; flex-shrink:0; color:' + (l.selected ? '#2b2b26' : '#b6bdb2') + ';">' + (l.selected ? fmtPct(l.pct) : '—') + '</div>' +
-        '<div style="width:56px; text-align:right; font-size:11.5px; color:#7c8780; flex-shrink:0;">' + (l.selected ? fmtHours(l.pct) : '') + '</div>' +
+        '<div class="lrow-pct" style="color:' + (l.selected ? '#2b2b26' : '#b6bdb2') + ';">' + (l.selected ? fmtPct(l.pct) : '—') + '</div>' +
+        '<div class="lrow-hours" style="color:#7c8780;">' + (l.selected ? fmtHours(l.pct) : '') + '</div>' +
         '<button type="button" class="iconbtn lrow-remove" style="width:28px; height:28px; color:#b6bdb2;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>';
       container.appendChild(row);
 
@@ -271,28 +312,38 @@
       attachTapAndHold(info, function () { toggleSelect(l); }, function () { bump(l, 5); });
       removeBtn.addEventListener('click', function (evt) { evt.stopPropagation(); removeLine(l); });
 
-      function pctFromEvent(evt) {
-        var rect = track.getBoundingClientRect();
+      function pctFromEvent(evt, rect) {
         var x = evt.clientX - rect.left;
         var raw = Math.max(0, Math.min(1, x / rect.width)) * 100;
         return Math.min(raw, headroom(l));
       }
 
       // Glisser le curseur (thumb) : un simple appui SANS déplacement le
-      // fige à sa valeur actuelle ("verrouillé" — appui long/double sur le
-      // nom fait la même chose), un vrai glisser le repositionne. Avant ce
-      // correctif (retour Fadhel, 2026-09-19), le moindre appui sur le
+      // fige à sa valeur actuelle, un vrai glisser le repositionne. Avant
+      // ce correctif (retour Fadhel, 2026-09-19), le moindre appui sur le
       // curseur le faisait sauter à la position exacte du clic (souvent
       // proche de 100% vu la taille réduite du curseur) au lieu de le
-      // figer — d'où sa remarque "je voulais dire vérouillé, pas bloquer".
+      // figer.
+      //
+      // Bug corrigé (2026-09-27, retour Fadhel — le glisser sautait à 100%
+      // dès le premier déplacement) : `redistribute()` appelle `render()`,
+      // qui reconstruit toute la liste de lignes — la ligne (et sa piste
+      // `track`) qu'on est en train de glisser est donc retirée du DOM dès
+      // le premier mouvement. Recalculer `track.getBoundingClientRect()`
+      // sur un élément détaché renvoie une largeur de 0, et x / 0 = Infini
+      // → la valeur saute à 100%. On capture désormais la position/largeur
+      // de la piste UNE SEULE FOIS, avant tout redistribute(), et on la
+      // réutilise pour tout le geste (la piste ne change pas de place
+      // pendant qu'on la glisse).
       function startDragThumb(evt) {
         evt.preventDefault();
         evt.stopPropagation();
         if (!l.selected) l.selected = true;
+        var rect = track.getBoundingClientRect();
         var startX = evt.clientX, moved = false;
         function onMove(moveEvt) {
           if (!moved && Math.abs(moveEvt.clientX - startX) > 3) moved = true;
-          if (moved) { l.locked = true; l.pct = pctFromEvent(moveEvt); redistribute(); }
+          if (moved) { l.locked = true; l.pct = pctFromEvent(moveEvt, rect); redistribute(); }
         }
         function stopDrag() {
           document.removeEventListener('pointermove', onMove);
@@ -303,12 +354,14 @@
         document.addEventListener('pointerup', stopDrag);
       }
       // Cliquer ailleurs sur la piste (pas sur le curseur lui-même) reste
-      // un vrai "aller à cette position" façon slider classique.
+      // un vrai "aller à cette position" façon slider classique — un seul
+      // calcul, avant tout redistribute(), donc pas concerné par le bug
+      // ci-dessus.
       function seekTrack(evt) {
         evt.preventDefault();
         if (!l.selected) l.selected = true;
         l.locked = true;
-        l.pct = pctFromEvent(evt);
+        l.pct = pctFromEvent(evt, track.getBoundingClientRect());
         redistribute();
       }
       thumb.addEventListener('pointerdown', startDragThumb);
@@ -337,53 +390,99 @@
   }
   function suggestionKey(item) { return item.projet_id + '-' + (item.tache_id || 0); }
 
-  function renderSuggestions() {
-    var mineWrap = document.getElementById('sugg-mine');
-    var othersWrap = document.getElementById('sugg-others');
-    mineWrap.innerHTML = '';
-    othersWrap.innerHTML = '';
+  // Rendu générique d'une ligne du catalogue "Ajouter une ligne" — factorisé
+  // (retour Fadhel, 2026-09-27) car réutilisé par les trois paliers (Vos
+  // projets / Récemment travaillés / Résultats de recherche).
+  function renderSuggestionRow(item, lineKeys, pointillee) {
+    var deja = !!lineKeys[suggestionKey(item)];
+    var row = document.createElement('div');
+    row.className = 'add-suggestion';
+    row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px;' +
+      (pointillee ? 'border:1px dashed #c7cdc4; opacity:' + (deja ? '0.4' : '0.75') + ';' : 'background:#f7f8f6;' + (deja ? 'opacity:0.4;' : ''));
+    row.innerHTML =
+      '<span style="font-size:12.5px; font-weight:600;">' + item.nom + '</span>' +
+      '<span style="font-size:11.5px; color:#7c8780;">' + (item.tache_titre ? '— ' + item.tache_titre : '(projet seul, sans tâche)') + '</span>' +
+      '<span style="margin-left:auto; font-size:11px; font-weight:700; color:' + (pointillee ? '#b6bdb2' : '#4a7c59') + ';">' + (deja ? 'déjà ajouté' : (pointillee ? '+ ajouter (ponctuel)' : '+ ajouter')) + '</span>';
+    if (!deja) {
+      if (pointillee) attachTapAndHold(row, function () {}, function () { addLine(item, true); renderSuggestions(); renderRechercheResultats(dernierResultatsRecherche); });
+      else row.addEventListener('click', function () { addLine(item, false); renderSuggestions(); });
+    }
+    return row;
+  }
 
+  function currentLineKeys() {
     var lineKeys = {};
     lines.forEach(function (l) { lineKeys[l.projetId + '-' + (l.tacheId || 0)] = true; });
+    return lineKeys;
+  }
 
-    DATA.suggestionsMine.filter(matches).forEach(function (item) {
-      var deja = !!lineKeys[suggestionKey(item)];
-      var row = document.createElement('div');
-      row.className = 'add-suggestion';
-      row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; background:#f7f8f6;' + (deja ? 'opacity:0.4;' : '');
-      row.innerHTML =
-        '<span style="font-size:12.5px; font-weight:600;">' + item.nom + '</span>' +
-        '<span style="font-size:11.5px; color:#7c8780;">' + (item.tache_titre ? '— ' + item.tache_titre : '(projet seul, sans tâche)') + '</span>' +
-        '<span style="margin-left:auto; font-size:11px; font-weight:700; color:#4a7c59;">' + (deja ? 'déjà ajouté' : '+ ajouter') + '</span>';
-      if (!deja) row.addEventListener('click', function () { addLine(item, false); renderSuggestions(); });
-      mineWrap.appendChild(row);
-    });
-    if (!DATA.suggestionsMine.filter(matches).length) {
+  function renderSuggestions() {
+    var mineWrap = document.getElementById('sugg-mine');
+    var recentesWrap = document.getElementById('sugg-recentes');
+    var recentesSection = document.getElementById('sugg-recentes-wrap');
+    mineWrap.innerHTML = '';
+    recentesWrap.innerHTML = '';
+
+    var lineKeys = currentLineKeys();
+
+    var mineFiltrees = DATA.suggestionsMine.filter(matches);
+    mineFiltrees.forEach(function (item) { mineWrap.appendChild(renderSuggestionRow(item, lineKeys, false)); });
+    if (!mineFiltrees.length) {
       mineWrap.innerHTML = '<div style="font-size:12px; color:#b6bdb2; padding:4px 10px;">Aucun résultat.</div>';
     }
 
-    DATA.suggestionsAutres.filter(matches).forEach(function (item) {
-      var deja = !!lineKeys[suggestionKey(item)];
-      var row = document.createElement('div');
-      row.className = 'add-suggestion';
-      row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; border:1px dashed #c7cdc4; opacity:' + (deja ? '0.4' : '0.75') + ';';
-      row.innerHTML =
-        '<span style="font-size:12.5px; font-weight:600;">' + item.nom + '</span>' +
-        '<span style="font-size:11.5px; color:#7c8780;">(projet seul, sans tâche)</span>' +
-        '<span style="margin-left:auto; font-size:11px; font-weight:700; color:#b6bdb2;">' + (deja ? 'déjà ajouté' : '+ ajouter (ponctuel)') + '</span>';
-      if (!deja) {
-        attachTapAndHold(row, function () {}, function () { addLine(item, true); renderSuggestions(); });
-      }
-      othersWrap.appendChild(row);
-    });
-    if (!DATA.suggestionsAutres.filter(matches).length) {
-      othersWrap.innerHTML = '<div style="font-size:12px; color:#b6bdb2; padding:4px 10px;">Aucun résultat.</div>';
+    // Retour Fadhel (2026-09-27) : l'utilisateur n'a plus à voir tous les
+    // projets de l'entreprise — juste jusqu'à 5 projets récemment
+    // travaillés (masqué s'il n'y en a aucun), puis une recherche pour le
+    // reste (voir scheduleRechercheServeur ci-dessous).
+    var recentesFiltrees = DATA.suggestionsRecentes.filter(matches);
+    recentesFiltrees.forEach(function (item) { recentesWrap.appendChild(renderSuggestionRow(item, lineKeys, true)); });
+    recentesSection.style.display = DATA.suggestionsRecentes.length ? '' : 'none';
+    if (DATA.suggestionsRecentes.length && !recentesFiltrees.length) {
+      recentesWrap.innerHTML = '<div style="font-size:12px; color:#b6bdb2; padding:4px 10px;">Aucun résultat.</div>';
     }
   }
 
+  // ---- Recherche live pour "Autre chose ?" (retour Fadhel, 2026-09-27) :
+  // remplace l'ancienne liste statique des 50 premiers projets de
+  // l'entreprise, affichée en permanence — on cherche uniquement quand
+  // l'utilisateur tape, et seulement au-delà de "Vos projets"/"Récemment
+  // travaillés" ci-dessus.
+  var rechercheTimer = null;
+  var dernierResultatsRecherche = [];
+
+  function renderRechercheResultats(items) {
+    dernierResultatsRecherche = items || [];
+    var wrap = document.getElementById('sugg-recherche-wrap');
+    var box = document.getElementById('sugg-recherche');
+    box.innerHTML = '';
+    if (!dernierResultatsRecherche.length) {
+      box.innerHTML = '<div style="font-size:12px; color:#b6bdb2; padding:4px 10px;">Aucun résultat.</div>';
+      wrap.style.display = '';
+      return;
+    }
+    var lineKeys = currentLineKeys();
+    dernierResultatsRecherche.forEach(function (item) { box.appendChild(renderSuggestionRow(item, lineKeys, true)); });
+    wrap.style.display = '';
+  }
+
+  function scheduleRechercheServeur(q) {
+    clearTimeout(rechercheTimer);
+    var wrap = document.getElementById('sugg-recherche-wrap');
+    if (q.length < 2) { wrap.style.display = 'none'; dernierResultatsRecherche = []; return; }
+    rechercheTimer = setTimeout(function () {
+      fetch(DATA.urlRechercheProjets + '?q=' + encodeURIComponent(q))
+        .then(function (r) { return r.json(); })
+        .then(function (data) { renderRechercheResultats(data.resultats || []); })
+        .catch(function () { wrap.style.display = 'none'; });
+    }, 250);
+  }
+
   document.getElementById('add-search').addEventListener('input', function (evt) {
-    searchTerm = evt.target.value.trim().toLowerCase();
+    var brut = evt.target.value.trim();
+    searchTerm = brut.toLowerCase();
     renderSuggestions();
+    scheduleRechercheServeur(brut);
   });
 
   // ---- Calendrier (navigation de mois en JS, sélection = vraie navigation de page) ----
