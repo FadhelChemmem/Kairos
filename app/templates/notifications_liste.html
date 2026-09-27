@@ -5,11 +5,11 @@
 <div class="subbar">
   <div class="subbar-inner">
     <span style="font-size:14px; font-weight:700;">Notifications</span>
-    <span style="font-size:12.5px; color:#646e67;">{{ notifications|selectattr('lu', 'equalto', false)|list|length }} non lue{{ 's' if notifications|selectattr('lu', 'equalto', false)|list|length != 1 }}</span>
+    <span style="font-size:12.5px; color:var(--text-muted);">{{ notifications|selectattr('lu', 'equalto', false)|list|length }} non lue{{ 's' if notifications|selectattr('lu', 'equalto', false)|list|length != 1 }}</span>
     {% if notifications %}
     <form method="post" action="{{ url_for('notifications.marquer_toutes_lues') }}" style="margin-left:auto;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="linkbtn" style="width:auto; padding:6px 12px; font-size:12.5px; font-weight:600; color:#4a7c59;">Tout marquer comme lu</button>
+      <button type="submit" class="linkbtn" style="width:auto; padding:6px 12px; font-size:12.5px; font-weight:600; color:var(--brand-text);">Tout marquer comme lu</button>
     </form>
     {% endif %}
   </div>
@@ -26,14 +26,14 @@
           <div style="display:flex; align-items:center; gap:8px; margin-bottom:3px;">
             {% set cs = notif_categorie_style(n.categorie) %}
             <span class="pill pill-sm" style="background:{{ cs.bg }}; color:{{ cs.fg }};">{{ cs.label }}</span>
-            <span style="font-size:11px; color:#6c766f;">{{ n.created_at|il_y_a }}</span>
+            <span style="font-size:11px; color:var(--text-faint);">{{ n.created_at|il_y_a }}</span>
           </div>
-          <div style="font-size:13px; {{ 'font-weight:600;' if not n.lu }} color:#2b2b26;">{{ n.message }}</div>
+          <div style="font-size:13px; {{ 'font-weight:600;' if not n.lu }} color:var(--text);">{{ n.message }}</div>
         </div>
       </button>
       </form>
     {% else %}
-      <div style="padding:28px 4px; font-size:13px; color:#646e67; text-align:center;">Aucune notification pour le moment.</div>
+      <div style="padding:28px 4px; font-size:13px; color:var(--text-muted); text-align:center;">Aucune notification pour le moment.</div>
     {% endfor %}
   </div>
 </div>

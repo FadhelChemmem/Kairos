@@ -11,6 +11,20 @@
  *                             (utile pour de longues listes, ex. Intervenant(s))
  *   data-chip-autosubmit="1" -> soumet le formulaire à chaque bascule
  *                                (utilisé pour les filtres de liste)
+ *   data-chip-avatar="1"   -> puces rondes (avatar + initiales, ou photo)
+ *                             au lieu de puces texte avec le nom complet —
+ *                             utilisé pour "Chef de projet" (retour Fadhel,
+ *                             2026-09-27 : la liste des noms complets
+ *                             prenait toute la largeur du filtre). Chaque
+ *                             <option> doit porter data-prenom/data-nom
+ *                             (initiales + tooltip/aria-label) et
+ *                             data-couleur ou data-photo (avatar_color(u.id)
+ *                             ou l'URL de la photo de profil, voir
+ *                             projets_liste.html). Le nom complet reste
+ *                             consultable au survol (title natif du
+ *                             navigateur) et est exposé aux lecteurs d'écran
+ *                             (aria-label) puisque le contenu visible de la
+ *                             puce n'est que la photo ou deux initiales.
  */
 (function () {
   function buildChipSelect(select) {
@@ -44,6 +58,8 @@
     if (libelle) cloud.setAttribute('aria-label', libelle.textContent.trim());
     wrap.appendChild(cloud);
 
+    var avatarMode = !!select.dataset.chipAvatar;
+
     var chips = [];
     Array.prototype.forEach.call(select.options, function (opt) {
       // Vrai bouton (et non <span>) : atteignable au clavier (Tab) et
@@ -51,13 +67,30 @@
       // n°2 — les puces n'étaient utilisables qu'à la souris).
       var chip = document.createElement('button');
       chip.type = 'button';
-      chip.className = 'chip-opt' + (opt.selected ? ' chip-selected' : '');
+      chip.className = 'chip-opt' + (avatarMode ? ' chip-avatar' : '') + (opt.selected ? ' chip-selected' : '');
       chip.setAttribute('aria-pressed', opt.selected ? 'true' : 'false');
       chip.dataset.label = opt.textContent.trim().toLowerCase();
 
-      var label = document.createElement('span');
-      label.textContent = opt.textContent;
-      chip.appendChild(label);
+      if (avatarMode) {
+        var nomComplet = (opt.dataset.prenom + ' ' + opt.dataset.nom).trim();
+        chip.title = nomComplet;
+        chip.setAttribute('aria-label', nomComplet);
+        if (opt.dataset.photo) {
+          var img = document.createElement('img');
+          img.src = opt.dataset.photo;
+          img.alt = '';
+          chip.appendChild(img);
+        } else {
+          var initiales = document.createElement('span');
+          initiales.textContent = ((opt.dataset.prenom || '').charAt(0) + (opt.dataset.nom || '').charAt(0)).toUpperCase();
+          chip.style.background = opt.dataset.couleur || '';
+          chip.appendChild(initiales);
+        }
+      } else {
+        var label = document.createElement('span');
+        label.textContent = opt.textContent;
+        chip.appendChild(label);
+      }
 
       // Retour Fadhel (2026-09-27) : plus de croix "×" sur les puces
       // sélectionnées — la sélection se voit uniquement par la

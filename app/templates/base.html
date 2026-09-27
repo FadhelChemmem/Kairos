@@ -6,6 +6,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <script>
+    // Thème clair/sombre (demande Fadhel, 2026-09-27) : appliqué ici, dans
+    // le <head>, avant tout rendu — sinon la page flasherait en clair une
+    // fraction de seconde avant de basculer en sombre. Mémorisé par
+    // navigateur dans localStorage ; à défaut, suit la préférence système.
+    // Voir #theme-toggle plus bas (bascule manuelle, visible une fois
+    // connecté) et app/static/css/app.css (variables :root /
+    // :root[data-theme="dark"]).
+    (function () {
+      try {
+        var enregistre = localStorage.getItem('kairos-theme');
+        var theme = enregistre || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+      } catch (e) {
+        // localStorage indisponible (navigation privée, etc.) : thème clair
+        // par défaut, la bascule reste utilisable pour la session en cours
+        // (juste non mémorisée d'une visite à l'autre).
+      }
+    })();
+  </script>
+  <script>
     // Protection CSRF (PROMPT_CORRECTIONS.md P2 #25) : les formulaires POST
     // portent un champ caché csrf_token ; pour les appels fetch() qui
     // écrivent (POST/PUT/PATCH/DELETE) vers l'appli, le jeton est ajouté
@@ -57,9 +77,9 @@
 
   <div class="topbar-search" style="position:relative;">
     <div class="topbar-search-box" style="position:relative;">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8b968f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="text" id="recherche-globale" aria-label="Rechercher un projet" autocomplete="off" placeholder="Rechercher un projet, une personne…" style="border:none; outline:none; background:none; font-size:14px; color:#33392f; width:100%; font-family:inherit;">
-      <div id="recherche-globale-resultats" style="display:none; position:absolute; top:calc(100% + 6px); left:0; right:0; background:#fff; border:1px solid #e7e9e4; border-radius:12px; box-shadow:0 8px 24px rgba(20,30,25,0.12); padding:6px; z-index:200; max-height:360px; overflow-y:auto;"></div>
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="recherche-globale" aria-label="Rechercher un projet" autocomplete="off" placeholder="Rechercher un projet, une personne…" style="border:none; outline:none; background:none; font-size:14px; color:var(--text-strong); width:100%; font-family:inherit;">
+      <div id="recherche-globale-resultats" style="display:none; position:absolute; top:calc(100% + 6px); left:0; right:0; background:var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow:0 8px 24px rgba(20,30,25,0.12); padding:6px; z-index:200; max-height:360px; overflow-y:auto;"></div>
     </div>
   </div>
 
@@ -89,6 +109,10 @@
         <span class="iconbtn-badge">{{ g.notifications_non_lues if g.notifications_non_lues < 10 else '9+' }}</span>
       {% endif %}
     </a>
+    <button type="button" class="iconbtn" id="theme-toggle" title="Changer de thème">
+      <svg class="theme-icon-sun" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      <svg class="theme-icon-moon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
+    </button>
     {# Déconnexion en POST (PROMPT_CORRECTIONS.md P2 #25) — display:contents
        garde le bouton aligné dans la barre exactement comme l'ancien lien. #}
     <form method="post" action="{{ url_for('auth.logout') }}" style="display:contents;">
@@ -124,7 +148,7 @@
     box.innerHTML = '';
     if (!items.length) {
       var vide = document.createElement('div');
-      vide.style.cssText = 'padding:10px 12px; font-size:12.5px; color:#6c766f;';
+      vide.style.cssText = 'padding:10px 12px; font-size:12.5px; color:var(--text-faint);';
       vide.textContent = 'Aucun résultat.';
       box.appendChild(vide);
       box.style.display = 'block';
@@ -135,7 +159,7 @@
       a.href = it.url;
       a.style.cssText = 'display:block; padding:9px 12px; border-radius:8px; font-size:13px; color:inherit; text-decoration:none;';
       a.textContent = it.label;
-      a.addEventListener('mouseover', function () { a.style.background = '#f2f4f0'; });
+      a.addEventListener('mouseover', function () { a.style.background = 'var(--hover-bg)'; });
       a.addEventListener('mouseout', function () { a.style.background = ''; });
       box.appendChild(a);
     });
@@ -156,6 +180,21 @@
 
   document.addEventListener('click', function (e) {
     if (!box.contains(e.target) && e.target !== input) box.style.display = 'none';
+  });
+})();
+
+// Bascule manuelle du thème clair/sombre — voir le script dans <head> qui
+// applique le thème mémorisé/système avant le premier rendu.
+(function () {
+  var bouton = document.getElementById('theme-toggle');
+  if (!bouton) return;
+  bouton.addEventListener('click', function () {
+    var actuel = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+    var suivant = actuel === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = suivant;
+    try { localStorage.setItem('kairos-theme', suivant); } catch (e) {
+      // Session en cours seulement, voir la note dans <head>.
+    }
   });
 })();
 </script>

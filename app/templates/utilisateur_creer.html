@@ -4,7 +4,7 @@
 
 <div class="subbar">
   <div class="subbar-inner" style="max-width:600px;">
-    <a href="{{ url_for('utilisateurs.liste') }}" style="font-size:12.5px; color:#646e67; font-weight:600;">← Utilisateurs</a>
+    <a href="{{ url_for('utilisateurs.liste') }}" style="font-size:12.5px; color:var(--text-muted); font-weight:600;">← Utilisateurs</a>
     <span style="font-size:14px; font-weight:700;">Nouvel utilisateur</span>
   </div>
 </div>
@@ -28,11 +28,11 @@
       </div>
     </div>
     <div class="form-row">
-      <label for="avatar">Photo de profil <span style="font-weight:400; color:#6c766f;">— optionnel, remplace les initiales</span></label>
+      <label for="avatar">Photo de profil <span style="font-weight:400; color:var(--text-faint);">— optionnel, remplace les initiales</span></label>
       <input type="file" id="avatar" name="avatar" accept=".png,.jpg,.jpeg,.gif,.webp,image/*">
     </div>
     <div class="form-row">
-      <label for="email">Email <span style="font-weight:400; color:#6c766f;">— identifiant de connexion</span></label>
+      <label for="email">Email <span style="font-weight:400; color:var(--text-faint);">— identifiant de connexion</span></label>
       <input type="email" id="email" name="email" value="{{ f.get('email', '') }}" placeholder="foulen@gmail.com" required>
     </div>
     <div class="form-row">
@@ -74,7 +74,7 @@
         </select>
       </div>
       <div class="form-row">
-        <label for="role">Rôle <span style="font-weight:400; color:#6c766f;">— un seul par personne</span></label>
+        <label for="role">Rôle <span style="font-weight:400; color:var(--text-faint);">— un seul par personne</span></label>
         <select id="role" name="role">
           <option value="intervenant" {{ 'selected' if f.get('role') == 'intervenant' }}>Intervenant</option>
           <option value="chef_de_projet" {{ 'selected' if f.get('role') == 'chef_de_projet' }}>Chef de projet</option>
@@ -85,12 +85,12 @@
         </select>
       </div>
     </div>
-    <div style="font-size:11px; color:#6c766f; margin:-8px 0 4px;">RH est un rôle unique : un seul compte actif peut l'avoir à la fois. Désactivez le titulaire actuel pour le réattribuer ailleurs.</div>
+    <div style="font-size:11px; color:var(--text-faint); margin:-8px 0 4px;">RH est un rôle unique : un seul compte actif peut l'avoir à la fois. Désactivez le titulaire actuel pour le réattribuer ailleurs.</div>
 
     <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 2px;">
       <div>
         <div style="font-size:13px; font-weight:600;">Compte actif</div>
-        <div style="font-size:11px; color:#6c766f;">Désactivé, le compte disparaît des listes d'affectation sans rien supprimer</div>
+        <div style="font-size:11px; color:var(--text-faint);">Désactivé, le compte disparaît des listes d'affectation sans rien supprimer</div>
       </div>
       <input type="checkbox" id="actif" name="actif" class="actif-toggle-input" aria-label="Compte actif" {{ 'checked' if request.method != 'POST' or f.get('actif') }}>
       <label for="actif" class="toggle" aria-hidden="true"><span class="toggle-knob"></span></label>
@@ -105,7 +105,7 @@
       </div>
     </div>
 
-    <div class="section-title">Champs personnalisés <span style="font-weight:400; color:#c7cdc4; text-transform:none; letter-spacing:0;">(optionnel, extensible)</span></div>
+    <div class="section-title">Champs personnalisés <span style="font-weight:400; color:var(--border-hover); text-transform:none; letter-spacing:0;">(optionnel, extensible)</span></div>
     <div id="cf-list">
       {% for n, v in zip(f.getlist('champ_perso_nom'), f.getlist('champ_perso_valeur')) if n.strip() %}
         <div class="cf-row">
@@ -115,7 +115,7 @@
         </div>
       {% endfor %}
     </div>
-    <button type="button" id="cf-add" style="display:flex; align-items:center; gap:6px; background:none; border:1px dashed #c7cdc4; border-radius:9px; padding:8px 12px; font-size:12.5px; color:#55605a; cursor:pointer; width:100%; font-family:inherit;">+ Ajouter un champ</button>
+    <button type="button" id="cf-add" style="display:flex; align-items:center; gap:6px; background:none; border:1px dashed var(--border-hover); border-radius:9px; padding:8px 12px; font-size:12.5px; color:var(--text-secondary); cursor:pointer; width:100%; font-family:inherit;">+ Ajouter un champ</button>
 
     <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
       <a href="{{ url_for('utilisateurs.liste') }}" class="btn-secondary" style="width:auto; padding:10px 18px; text-decoration:none; display:inline-flex; align-items:center;">Annuler</a>

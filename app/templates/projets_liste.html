@@ -15,42 +15,57 @@
   <form method="get" id="filtres-projets">
     <input type="hidden" name="filtres_actifs" value="1">
     <div class="search-mini" style="margin-bottom:12px;">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b968f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input type="text" name="q" value="{{ q }}" placeholder="Rechercher un projet (code ou nom)…" style="flex:1; border:none; outline:none; background:none; font-size:13.5px; font-family:inherit;">
     </div>
 
-    <div class="card" style="padding:14px 18px; margin-bottom:14px; display:flex; flex-direction:column; gap:12px;">
-      <div>
-        <div style="font-size:11px; font-weight:700; color:#6c766f; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:6px;">État</div>
-        <select name="etat" multiple data-chip-select>
-          <option value="en_cours" {{ 'selected' if 'en_cours' in etats }}>En cours</option>
-          <option value="bloque" {{ 'selected' if 'bloque' in etats }}>Bloqué</option>
-          <option value="termine" {{ 'selected' if 'termine' in etats }}>Terminé</option>
-          <option value="abandonne" {{ 'selected' if 'abandonne' in etats }}>Abandonné</option>
-        </select>
-      </div>
-      <div>
-        <div style="font-size:11px; font-weight:700; color:#6c766f; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:6px;">Phase</div>
-        <select name="phase" multiple data-chip-select>
-          {% for ph in phases_choices %}
-            <option value="{{ ph }}" {{ 'selected' if ph in phases }}>{{ ph }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div>
-        <div style="font-size:11px; font-weight:700; color:#6c766f; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:6px;">Lots</div>
-        <select name="lot" multiple data-chip-select>
-          <option value="CM" {{ 'selected' if 'CM' in lots }}>CM — Charpente Métallique</option>
-          <option value="GO" {{ 'selected' if 'GO' in lots }}>GO — Gros Œuvre</option>
-        </select>
-      </div>
-      <div>
-        <div style="font-size:11px; font-weight:700; color:#6c766f; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:6px;">Chef de projet</div>
-        <select name="chef_id" multiple data-chip-select data-chip-filter="1" data-chip-filter-placeholder="Rechercher une personne…">
-          {% for u in utilisateurs_actifs %}
-            <option value="{{ u.id }}" {{ 'selected' if u.id in chef_ids }}>{{ u.prenom }} {{ u.nom }}</option>
-          {% endfor %}
-        </select>
+    {# Les quatre filtres tiennent sur une seule ligne (retour Fadhel,
+       2026-09-27) — voir .filtres-ligne/.filtre-groupe dans app.css. Chef
+       de projet utilise des puces avatar (data-chip-avatar, voir
+       chip-select.js) plutôt que le nom complet en toutes lettres : ça
+       libère la place nécessaire pour que les 4 groupes tiennent côte à
+       côte, et le nom complet reste consultable en survolant l'avatar
+       (title natif du navigateur). Plus de champ "Rechercher une
+       personne…" pour ce filtre : avec des puces aussi compactes, l'équipe
+       Midgard (une quinzaine de personnes) tient déjà d'un coup d'œil. #}
+    <div class="card" style="padding:14px 18px; margin-bottom:14px;">
+      <div class="filtres-ligne">
+        <div class="filtre-groupe">
+          <div style="font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em;">État</div>
+          <select name="etat" multiple data-chip-select>
+            <option value="en_cours" {{ 'selected' if 'en_cours' in etats }}>En cours</option>
+            <option value="bloque" {{ 'selected' if 'bloque' in etats }}>Bloqué</option>
+            <option value="termine" {{ 'selected' if 'termine' in etats }}>Terminé</option>
+            <option value="abandonne" {{ 'selected' if 'abandonne' in etats }}>Abandonné</option>
+          </select>
+        </div>
+        <div class="filtre-groupe">
+          <div style="font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em;">Phase</div>
+          <select name="phase" multiple data-chip-select>
+            {% for ph in phases_choices %}
+              <option value="{{ ph }}" {{ 'selected' if ph in phases }}>{{ ph }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="filtre-groupe">
+          <div style="font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em;">Lots</div>
+          <select name="lot" multiple data-chip-select>
+            <option value="CM" {{ 'selected' if 'CM' in lots }}>CM — Charpente Métallique</option>
+            <option value="GO" {{ 'selected' if 'GO' in lots }}>GO — Gros Œuvre</option>
+          </select>
+        </div>
+        <div class="filtre-groupe">
+          <div style="font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em;">Chef de projet</div>
+          <select name="chef_id" multiple data-chip-select data-chip-avatar="1">
+            {% for u in utilisateurs_actifs %}
+              <option value="{{ u.id }}" {{ 'selected' if u.id in chef_ids }}
+                data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}"
+                data-couleur="{{ avatar_color(u.id) }}"
+                data-photo="{{ url_for('fichiers.avatar', user_id=u.id) if u.avatar_chemin else '' }}"
+                >{{ u.prenom }} {{ u.nom }}</option>
+            {% endfor %}
+          </select>
+        </div>
       </div>
     </div>
   </form>

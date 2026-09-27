@@ -5,19 +5,96 @@
 
 * { box-sizing: border-box; }
 
-body {
-  margin: 0;
-  background: #f5f6f3;
-  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-  color: #2b2b26;
+/* --- Thème clair/sombre (demande Fadhel, 2026-09-27) -------------------
+   Toutes les couleurs neutres (fonds, bordures, textes gris) passent par
+   ces variables ; les couleurs de marque (vert Kairos), d'accent (orange)
+   et les couleurs catégorielles (avatars, pastilles d'état/rôle — voir
+   app/utils.py, ROLE_STYLE/TACHE_ETAT_STYLE/etc.) restent volontairement
+   identiques dans les deux thèmes, comme des badges colorés classiques
+   (GitHub, Linear) — seules les couleurs "neutres" (chrome de l'appli)
+   s'adaptent. `--brand-text`/`--brand-text-strong` sont l'exception : ce
+   sont les mêmes verts utilisés comme TEXTE (liens, "Aujourd'hui"...) —
+   trop sombres pour rester lisibles sur fond sombre, ils s'éclaircissent
+   en thème sombre ; utilisés comme fond de bouton/pastille (toujours avec
+   du texte blanc dessus), les verts d'origine restent inchangés partout
+   ailleurs (voir base.html pour le bouton de bascule + le script qui lit
+   la préférence enregistrée avant le premier rendu, pour éviter un flash
+   du mauvais thème). `--text-muted`/`--text-faint` reprennent comme valeur
+   claire par défaut le contraste durci par l'audit n°2 (#646e67/#6c766f,
+   à la place des #7c8780/#9aa39c d'origine). */
+:root {
+  --bg: #f5f6f3;
+  --surface: #ffffff;
+  --bg-subtle-1: #f7f8f6;
+  --bg-subtle-2: #f8faf7;
+  --bg-subtle-3: #f5faf7;
+  --bg-subtle-4: #fafbf9;
+  --bg-subtle-5: #fbfcfa;
+  --hover-bg: #f2f4f0;
+  --hover-bg-strong: #e7ebe4;
+  --border: #e7e9e4;
+  --border-soft: #eef0ec;
+  --border-soft-2: #f0f2ee;
+  --border-2: #e2e6e0;
+  --border-3: #d8dcd3;
+  --border-hover: #c7cdc4;
+  --text: #2b2b26;
+  --text-strong: #33392f;
+  --text-secondary: #55605a;
+  --text-muted: #646e67;
+  --text-muted-2: #8b968f;
+  --text-faint: #6c766f;
+  --text-disabled: #b6bdb2;
+  --brand-bg-soft: #eaf3ee;
+  --brand-text: #4a7c59;
+  --brand-text-strong: #14513b;
+  --error-bg: #fdeae4;
+  --error-text: #c23a1a;
 }
 
-a { color: #4a7c59; text-decoration: none; }
-a:hover { color: #14513b; }
+:root[data-theme="dark"] {
+  --bg: #16180f;
+  --surface: #20241a;
+  --bg-subtle-1: #262b1f;
+  --bg-subtle-2: #262b1f;
+  --bg-subtle-3: #262b1f;
+  --bg-subtle-4: #262b1f;
+  --bg-subtle-5: #262b1f;
+  --hover-bg: #2a3023;
+  --hover-bg-strong: #333a2a;
+  --border: #333a2a;
+  --border-soft: #2a3023;
+  --border-soft-2: #2a3023;
+  --border-2: #333a2a;
+  --border-3: #3c4432;
+  --border-hover: #4c5642;
+  --text: #e9ece3;
+  --text-strong: #f1f3ec;
+  --text-secondary: #b7c0af;
+  --text-muted: #94a08a;
+  --text-muted-2: #94a08a;
+  --text-faint: #7c8873;
+  --text-disabled: #5c6552;
+  --brand-bg-soft: #1c3327;
+  --brand-text: #7fbb92;
+  --brand-text-strong: #a9dcbb;
+  --error-bg: #3a1f18;
+  --error-text: #f0917a;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  color: var(--text);
+}
+
+a { color: var(--brand-text); text-decoration: none; }
+a:hover { color: var(--brand-text-strong); }
 
 .card {
-  background: #ffffff;
-  border: 1px solid #e7e9e4;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 18px;
   box-shadow: 0 1px 2px rgba(20, 30, 25, 0.04);
@@ -35,7 +112,7 @@ a:hover { color: #14513b; }
 }
 .avatar-lg { width: 36px; height: 36px; font-size: 13px; }
 .avatar-md { width: 28px; height: 28px; font-size: 11px; }
-.avatar-sm { width: 24px; height: 24px; font-size: 10px; border: 2px solid #fff; }
+.avatar-sm { width: 24px; height: 24px; font-size: 10px; border: 2px solid var(--surface); }
 .avatar-stack .avatar-sm { margin-left: -6px; }
 .avatar-stack .avatar-sm:first-child { margin-left: 0; }
 
@@ -47,18 +124,26 @@ a:hover { color: #14513b; }
 
 .iconbtn {
   display: flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; border-radius: 9px; color: #55605a;
+  width: 34px; height: 34px; border-radius: 9px; color: var(--text-secondary);
   background: transparent; border: none; cursor: pointer; position: relative;
   text-decoration: none;
 }
-.iconbtn:hover { background: #f2f4f0; }
+.iconbtn:hover { background: var(--hover-bg); }
+
+/* Bouton de bascule clair/sombre (topbar) : une seule des deux icônes est
+   affichée selon le thème actif — voir base.html (#theme-toggle) pour la
+   bascule au clic, et le <script> en tête de <head> pour la valeur
+   appliquée avant le premier rendu (localStorage, sinon préférence système). */
+#theme-toggle .theme-icon-moon { display: none; }
+:root[data-theme="dark"] #theme-toggle .theme-icon-sun { display: none; }
+:root[data-theme="dark"] #theme-toggle .theme-icon-moon { display: block; }
 
 .linkbtn {
   display: flex; align-items: center; justify-content: center;
   width: 30px; height: 30px; background: transparent; border: none;
-  border-radius: 8px; color: #646e67; cursor: pointer;
+  border-radius: 8px; color: var(--text-muted); cursor: pointer;
 }
-.linkbtn:hover { background: #f2f4f0; }
+.linkbtn:hover { background: var(--hover-bg); }
 
 /* --- Top bar (sticky, identique sur toutes les pages connectées) ---
    Condensée le 2026-09-19 (retour Fadhel, comparaison avec LinkedIn) :
@@ -66,7 +151,7 @@ a:hover { color: #14513b; }
    premier resserrement, pas une refonte complète du visuel. */
 .topbar {
   position: sticky; top: 0; z-index: 50; height: 56px;
-  background: #ffffff; border-bottom: 1px solid #e7e9e4;
+  background: var(--surface); border-bottom: 1px solid var(--border);
 }
 /* Aligné sur .page-body / .subbar-inner (2026-09-19, retour Fadhel) : la
    barre elle-même reste pleine largeur (fond blanc jusqu'aux bords), mais
@@ -82,7 +167,7 @@ a:hover { color: #14513b; }
 }
 .topbar-search-box {
   width: 100%; max-width: 420px; display: flex; align-items: center; gap: 8px;
-  background: #f2f4f0; border-radius: 10px; padding: 7px 13px;
+  background: var(--hover-bg); border-radius: 10px; padding: 7px 13px;
 }
 .topbar-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 
@@ -90,15 +175,15 @@ a:hover { color: #14513b; }
    le bloc topbar_projet de base.html, rempli par projet_detail.html. */
 .topbar-projet-pill {
   display: flex; align-items: center; gap: 6px; padding: 5px 10px 5px 8px;
-  background: #f2f4f0; border-radius: 999px; color: #33392f; text-decoration: none;
+  background: var(--hover-bg); border-radius: 999px; color: var(--text-strong); text-decoration: none;
   font-size: 12px; font-weight: 700; white-space: nowrap; flex-shrink: 0;
 }
-.topbar-projet-pill:hover { background: #e7ebe4; }
+.topbar-projet-pill:hover { background: var(--hover-bg-strong); }
 
 /* --- Sous-en-tête sticky (page projet : nom du projet toujours visible) --- */
 .subbar {
-  position: sticky; top: 56px; z-index: 40; background: #ffffff;
-  border-bottom: 1px solid #e7e9e4; box-shadow: 0 2px 6px rgba(20, 30, 25, 0.03);
+  position: sticky; top: 56px; z-index: 40; background: var(--surface);
+  border-bottom: 1px solid var(--border); box-shadow: 0 2px 6px rgba(20, 30, 25, 0.03);
 }
 .subbar-inner {
   max-width: 1360px; margin: 0 auto; padding: 12px 32px;
@@ -127,24 +212,24 @@ a:hover { color: #14513b; }
 .col-center { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 
 .search-mini {
-  display: flex; align-items: center; gap: 8px; background: #ffffff;
-  border: 1px solid #e7e9e4; border-radius: 11px; padding: 9px 14px;
+  display: flex; align-items: center; gap: 8px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 11px; padding: 9px 14px;
 }
-.search-mini span { font-size: 13.5px; color: #8b968f; }
+.search-mini span { font-size: 13.5px; color: var(--text-muted-2); }
 
 .taskrow, .thead {
   display: grid;
   grid-template-columns: 1fr 96px 108px 118px 56px 34px;
   align-items: center; gap: 10px;
 }
-.taskrow { padding: 11px 4px; border-bottom: 1px solid #eef0ec; }
+.taskrow { padding: 11px 4px; border-bottom: 1px solid var(--border-soft); }
 .taskrow:last-child { border-bottom: none; }
 .thead {
-  padding: 0 4px 8px; font-size: 11px; font-weight: 700; color: #6c766f;
+  padding: 0 4px 8px; font-size: 11px; font-weight: 700; color: var(--text-faint);
   text-transform: uppercase; letter-spacing: 0.03em;
 }
 
-.divider { height: 1px; background: #eef0ec; margin: 0 0 10px 46px; }
+.divider { height: 1px; background: var(--border-soft); margin: 0 0 10px 46px; }
 
 /* Flottant, hors du flux du document (2026-09-19, retour Fadhel : la
    notification "DailyLog enregistré" poussait toute la page vers le bas —
@@ -163,22 +248,25 @@ a:hover { color: #14513b; }
   animation: flash-in 0.18s ease-out;
 }
 @keyframes flash-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
-.flash-error { background: #fdeae4; color: #c23a1a; }
-.flash-success { background: #eaf3ee; color: #14513b; }
+.flash-error { background: var(--error-bg); color: var(--error-text); }
+.flash-success { background: var(--brand-bg-soft); color: var(--brand-text-strong); }
 
 .btn-primary {
-  background: #ffffff; color: #14513b; border: none; border-radius: 9px;
+  background: var(--surface); color: var(--brand-text-strong); border: none; border-radius: 9px;
   padding: 9px 0; font-size: 13px; font-weight: 700; cursor: pointer; width: 100%;
 }
 .btn-secondary {
-  background: #f2f4f0; color: #55605a; border: none; border-radius: 9px;
+  background: var(--hover-bg); color: var(--text-secondary); border: none; border-radius: 9px;
   padding: 8px 0; font-size: 12.5px; font-weight: 700; cursor: pointer; width: 100%;
 }
 input, select, textarea {
   font-family: inherit; font-size: 13px; padding: 8px 10px;
-  border: 1px solid #e7e9e4; border-radius: 8px; width: 100%;
+  border: 1px solid var(--border); border-radius: 8px; width: 100%;
+  /* Sans ça, un <input>/<select> garde le fond blanc par défaut du
+     navigateur en thème sombre (retour Fadhel, 2026-09-27). */
+  background: var(--surface); color: var(--text);
 }
-label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margin-bottom: 4px; }
+label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px; }
 .form-row { margin-bottom: 10px; }
 
 .login-wrap {
@@ -202,10 +290,10 @@ label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margi
   box-shadow: 0 30px 60px rgba(20,30,25,0.10), 0 6px 16px rgba(20,30,25,0.05);
 }
 .login-card .form-row input {
-  padding: 11px 14px; border: 1px solid #e2e6e0; border-radius: 10px;
-  font-size: 14px; background: #fbfcfa; transition: border-color 0.12s, background 0.12s;
+  padding: 11px 14px; border: 1px solid var(--border-2); border-radius: 10px;
+  font-size: 14px; background: var(--bg-subtle-5); transition: border-color 0.12s, background 0.12s;
 }
-.login-card .form-row input:focus { outline: none; border-color: #4a7c59; background: #ffffff; }
+.login-card .form-row input:focus { outline: none; border-color: #4a7c59; background: var(--surface); }
 .btn-login {
   width: 100%; background: #4a7c59; color: #ffffff; border: none; border-radius: 12px;
   padding: 13px 0; font-size: 14.5px; font-weight: 700; font-family: inherit; cursor: pointer;
@@ -213,17 +301,17 @@ label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margi
 }
 .btn-login:hover { background: #14513b; }
 .btn-login:active { transform: translateY(1px); }
-.forgot-link { color: #4a7c59; font-size: 12.5px; font-weight: 600; text-decoration: none; }
+.forgot-link { color: var(--brand-text); font-size: 12.5px; font-weight: 600; text-decoration: none; }
 .forgot-link:hover { text-decoration: underline; }
 
 /* --- Boutons rapides "+ Tâche / + Information / + Requête" (page projet) --- */
 .quickadd {
   display: flex; align-items: center; gap: 5px;
-  border: 1px solid #e7e9e4; border-radius: 8px; background: #ffffff;
-  padding: 6px 11px; font-size: 12px; font-weight: 700; color: #55605a;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+  padding: 6px 11px; font-size: 12px; font-weight: 700; color: var(--text-secondary);
   cursor: pointer; font-family: inherit; white-space: nowrap; text-decoration: none;
 }
-.quickadd:hover { background: #f7f8f6; color: #55605a; }
+.quickadd:hover { background: var(--bg-subtle-1); color: var(--text-secondary); }
 .quickadd-primary { background: #4a7c59; border-color: #4a7c59; color: #ffffff; }
 .quickadd-primary:hover { background: #14513b; color: #ffffff; }
 
@@ -232,17 +320,17 @@ label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margi
    le changement de panneau — cohérent avec le reste de l'appli (peu de
    JS, principalement des formulaires serveur classiques). --- */
 .composer-radio { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
-.seg { display: flex; background: #f2f4f0; border-radius: 10px; padding: 3px; gap: 3px; margin-bottom: 18px; }
+.seg { display: flex; background: var(--hover-bg); border-radius: 10px; padding: 3px; gap: 3px; margin-bottom: 18px; }
 .seg label {
   flex: 1; text-align: center; padding: 8px 0; border-radius: 8px; cursor: pointer;
-  font-size: 13px; font-weight: 700; color: #646e67;
+  font-size: 13px; font-weight: 700; color: var(--text-muted);
   display: flex; align-items: center; justify-content: center; gap: 6px;
 }
 .intent-panel { display: none; }
 #intent-tache:checked ~ .seg label[for="intent-tache"],
 #intent-information:checked ~ .seg label[for="intent-information"],
 #intent-requete:checked ~ .seg label[for="intent-requete"] {
-  background: #ffffff; color: #2b2b26; box-shadow: 0 1px 2px rgba(20, 30, 25, 0.08);
+  background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(20, 30, 25, 0.08);
 }
 #intent-tache:checked ~ .intent-panels .panel-tache,
 #intent-information:checked ~ .intent-panels .panel-information,
@@ -254,16 +342,16 @@ label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margi
    <input type=file> couvre toute la zone (opacité 0), donc le clic ET le
    glisser-déposer fonctionnent tous les deux nativement. --- */
 .dropzone {
-  position: relative; border: 1.5px dashed #d8dcd3; border-radius: 12px;
-  padding: 16px 14px; text-align: center; background: #fafbf9; cursor: pointer;
+  position: relative; border: 1.5px dashed var(--border-3); border-radius: 12px;
+  padding: 16px 14px; text-align: center; background: var(--bg-subtle-4); cursor: pointer;
   transition: border-color 0.12s, background 0.12s; display: flex; align-items: center;
   justify-content: center; gap: 8px;
 }
-.dropzone.dragover { border-color: #4a7c59; background: #eaf3ee; }
-.dropzone.has-file { border-style: solid; border-color: #4a7c59; background: #eaf3ee; }
+.dropzone.dragover { border-color: #4a7c59; background: var(--brand-bg-soft); }
+.dropzone.has-file { border-style: solid; border-color: #4a7c59; background: var(--brand-bg-soft); }
 .dropzone-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-.dropzone-label { font-size: 12.5px; color: #646e67; font-weight: 600; pointer-events: none; }
-.dropzone.has-file .dropzone-label { color: #4a7c59; }
+.dropzone-label { font-size: 12.5px; color: var(--text-muted); font-weight: 600; pointer-events: none; }
+.dropzone.has-file .dropzone-label { color: var(--brand-text); }
 
 /* --- Fenêtre flottante "Nouveau post" (retour Fadhel, 2026-09-19) : un
    <dialog> natif réutilisé pour "+ Nouveau post" (page projet / accueil)
@@ -273,6 +361,9 @@ label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margi
   border: none; border-radius: 16px; padding: 20px;
   width: 92vw; max-width: 560px; max-height: 88vh; overflow-y: auto;
   box-shadow: 0 20px 50px rgba(20, 30, 25, 0.22);
+  /* <dialog> est blanc par défaut dans tous les navigateurs — sans ça, la
+     fenêtre "Nouveau post" resterait blanche en thème sombre. */
+  background: var(--surface); color: var(--text);
 }
 .post-dialog::backdrop { background: rgba(20, 30, 25, 0.45); }
 
@@ -282,8 +373,8 @@ label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margi
   grid-template-columns: 1.5fr 100px 140px 120px 1.2fr 96px 70px;
   align-items: center; gap: 12px;
 }
-.uhead { padding: 0 4px 8px; font-size: 11px; font-weight: 700; color: #6c766f; text-transform: uppercase; letter-spacing: 0.03em; }
-.urow { padding: 13px 4px; border-bottom: 1px solid #eef0ec; }
+.uhead { padding: 0 4px 8px; font-size: 11px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.03em; }
+.urow { padding: 13px 4px; border-bottom: 1px solid var(--border-soft); }
 .urow:last-child { border-bottom: none; }
 .urow.inactif { opacity: 0.55; }
 
@@ -291,39 +382,42 @@ label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margi
   display: inline-flex; align-items: center; width: 36px; height: 20px;
   border-radius: 999px; padding: 2px; cursor: pointer; flex-shrink: 0; border: none;
 }
+/* Toujours blanc, quel que soit le thème (comme un vrai interrupteur iOS) :
+   le bouton se déplace sur une piste tantôt verte tantôt grise/sombre, un
+   bouton "couleur de surface" y perdrait tout contraste en thème sombre. */
 .toggle-knob { width: 16px; height: 16px; border-radius: 999px; background: #ffffff; box-shadow: 0 1px 2px rgba(20, 30, 25, 0.25); }
 
 /* --- Formulaire "Nouvel utilisateur", voir Utilisateur-creer.dc.html --- */
 .section-title {
-  font-size: 11px; font-weight: 700; color: #6c766f; text-transform: uppercase;
-  letter-spacing: 0.03em; margin: 22px 0 12px; padding-top: 14px; border-top: 1px solid #eef0ec;
+  font-size: 11px; font-weight: 700; color: var(--text-faint); text-transform: uppercase;
+  letter-spacing: 0.03em; margin: 22px 0 12px; padding-top: 14px; border-top: 1px solid var(--border-soft);
 }
 .section-title:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
 .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px; }
 .radio-opt {
   display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px;
-  border: 1px solid #e7e9e4; border-radius: 10px; cursor: pointer; margin-bottom: 8px;
+  border: 1px solid var(--border); border-radius: 10px; cursor: pointer; margin-bottom: 8px;
 }
-.radio-opt.selected { border-color: #4a7c59; background: #eaf3ee; }
-.radio-opt.disabled { cursor: not-allowed; color: #b6bdb2; }
-.radio-opt.disabled .radio-opt-title { color: #b6bdb2; }
+.radio-opt.selected { border-color: #4a7c59; background: var(--brand-bg-soft); }
+.radio-opt.disabled { cursor: not-allowed; color: var(--text-disabled); }
+.radio-opt.disabled .radio-opt-title { color: var(--text-disabled); }
 .radio-opt-title { font-size: 13px; font-weight: 600; }
-.radio-opt-note { font-size: 11.5px; color: #646e67; margin-top: 2px; }
+.radio-opt-note { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
 .cf-row { display: grid; grid-template-columns: 1fr 1fr 32px; gap: 8px; margin-bottom: 8px; align-items: center; }
 
 /* Bascule "Compte actif" en CSS pur (case à cocher cachée + label stylé),
    même logique que .composer-radio (pas de JS nécessaire). */
 .actif-toggle-input { position: absolute; opacity: 0; width: 0; height: 0; }
-.actif-toggle-input + .toggle { background: #e7e9e4; justify-content: flex-start; }
+.actif-toggle-input + .toggle { background: var(--border); justify-content: flex-start; }
 .actif-toggle-input:checked + .toggle { background: #4a7c59; justify-content: flex-end; }
 
 /* --- DailyLog façon curseur, voir DailyLog.dc.html --- */
 .daynav-btn {
   display: flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; border-radius: 9px; color: #55605a;
-  background: #ffffff; border: 1px solid #e7e9e4; cursor: pointer; text-decoration: none;
+  width: 32px; height: 32px; border-radius: 9px; color: var(--text-secondary);
+  background: var(--surface); border: 1px solid var(--border); cursor: pointer; text-decoration: none;
 }
-.daynav-btn:hover { background: #f7f8f6; }
+.daynav-btn:hover { background: var(--bg-subtle-1); }
 .dayseg {
   height: 34px; display: flex; align-items: center; justify-content: center;
   font-size: 11.5px; font-weight: 700; color: #ffffff; white-space: nowrap;
@@ -345,9 +439,9 @@ label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margi
 .cal-day {
   display: flex; align-items: center; justify-content: center;
   position: relative; width: 32px; height: 32px; border-radius: 8px;
-  font-size: 12px; cursor: pointer; color: #2b2b26; text-decoration: none;
+  font-size: 12px; cursor: pointer; color: var(--text); text-decoration: none;
 }
-.cal-day:hover { background: #eef0ec; }
+.cal-day:hover { background: var(--border-soft); }
 .cal-dot { position: absolute; bottom: 3px; width: 4px; height: 4px; border-radius: 999px; }
 
 /* --- Vue Deadlines (calendrier/Gantt à défilement horizontal) --- */
@@ -358,15 +452,15 @@ label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margi
 }
 .g-label {
   position: sticky; left: 0; z-index: 5;
-  background: #ffffff;
+  background: var(--surface);
   padding: 10px 14px;
-  border-right: 1px solid #e7e9e4;
-  border-bottom: 1px solid #eef0ec;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-soft);
   display: flex; flex-direction: column; justify-content: center;
 }
 .g-daycell {
-  border-bottom: 1px solid #eef0ec;
-  border-right: 1px solid #f2f4f0;
+  border-bottom: 1px solid var(--border-soft);
+  border-right: 1px solid var(--hover-bg);
   display: flex; align-items: center; justify-content: center;
   flex-direction: column; padding: 6px 0;
 }
@@ -374,7 +468,7 @@ label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margi
   grid-column: 2 / span var(--gantt-days, 21);
   display: grid;
   grid-template-columns: repeat(var(--gantt-days, 21), 58px);
-  border-bottom: 1px solid #eef0ec;
+  border-bottom: 1px solid var(--border-soft);
   position: relative;
   min-height: 54px;
 }
@@ -394,7 +488,7 @@ label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margi
   padding: 0 3px; border-radius: 999px; background: #e3512c; color: #ffffff;
   font-size: 9.5px; font-weight: 700; line-height: 1;
   display: flex; align-items: center; justify-content: center;
-  border: 2px solid #ffffff;
+  border: 2px solid var(--surface);
 }
 
 .notif-list { display: flex; flex-direction: column; }
@@ -402,13 +496,13 @@ label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margi
    audit n°2) : on neutralise le style natif du bouton. */
 .notif-item {
   display: flex; align-items: flex-start; gap: 12px; width: 100%;
-  padding: 14px 6px; border: none; border-bottom: 1px solid #f0f2ee;
+  padding: 14px 6px; border: none; border-bottom: 1px solid var(--border-soft-2);
   background: none; font: inherit; text-align: left; cursor: pointer;
   text-decoration: none; color: inherit;
 }
 .notif-list form:last-child .notif-item { border-bottom: none; }
-.notif-item:hover { background: #f8faf7; }
-.notif-item.non-lu { background: #f5faf7; }
+.notif-item:hover { background: var(--bg-subtle-2); }
+.notif-item.non-lu { background: var(--bg-subtle-3); }
 .notif-dot { width: 8px; height: 8px; border-radius: 999px; background: #4a7c59; margin-top: 6px; flex-shrink: 0; }
 .notif-dot.vide { background: transparent; }
 
@@ -423,12 +517,12 @@ label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margi
    trois colonnes — retour Fadhel, 2026-09-19). --- */
 .deadline-banner {
   text-decoration: none; color: inherit;
-  background: #ffffff; border: 1px solid #e7e9e4; border-radius: 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
   max-width: 1360px; margin: 18px auto 0; padding: 14px 32px;
   box-sizing: border-box;
   display: block; overflow: hidden;
 }
-.deadline-banner:hover { border-color: #c7cdc4; }
+.deadline-banner:hover { border-color: var(--border-hover); }
 .deadline-banner-title {
   display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700;
   flex-shrink: 0;
@@ -436,7 +530,7 @@ label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margi
 .deadline-banner-head {
   display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
 }
-.deadline-banner-empty { font-size: 12.5px; color: #646e67; }
+.deadline-banner-empty { font-size: 12.5px; color: var(--text-muted); }
 
 /* Mini-Gantt de la bannière d'accueil (retour Fadhel, 2026-09-19) : version
    simplifiée du Gantt de /deadlines — mêmes couleurs de barre, mais sans
@@ -451,10 +545,10 @@ label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margi
 }
 .mini-gantt-daycell {
   font-size: 10px; font-weight: 700; text-align: center; padding-bottom: 4px;
-  border-bottom: 1px solid #eef0ec; white-space: nowrap; overflow: hidden;
+  border-bottom: 1px solid var(--border-soft); white-space: nowrap; overflow: hidden;
 }
 .mini-gantt-label {
-  font-size: 12px; color: #55605a; line-height: 24px;
+  font-size: 12px; color: var(--text-secondary); line-height: 24px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px 0 0;
 }
 .mini-gantt-track {
@@ -479,27 +573,53 @@ label { font-size: 12px; color: #646e67; font-weight: 600; display: block; margi
    n'est nécessaire pour les cas simples. Voir app/static/js/chip-select.js. */
 .chip-select-wrap { display: flex; flex-direction: column; gap: 8px; }
 .chip-select-filter {
-  width: 100%; border: 1px solid #e7e9e4; border-radius: 9px; padding: 7px 11px;
-  font-size: 12.5px; font-family: inherit; color: #33392f;
+  width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 7px 11px;
+  font-size: 12.5px; font-family: inherit; color: var(--text-strong);
 }
 .chip-select-filter:focus { outline: none; border-color: #4a7c59; }
 .chip-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip-opt {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 6px 12px; border-radius: 999px; border: 1px solid #e7e9e4;
-  background: #ffffff; color: #55605a; font-size: 12.5px; font-weight: 600;
+  padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-secondary); font-size: 12.5px; font-weight: 600;
   font: inherit; font-size: 12.5px; font-weight: 600;
   cursor: pointer; user-select: none; transition: background 0.1s ease, border-color 0.1s ease;
 }
-.chip-opt:hover { border-color: #c7cdc4; }
-.chip-opt.chip-selected { background: #eaf3ee; border-color: #4a7c59; color: #14513b; }
+.chip-opt:hover { border-color: var(--border-hover); }
+.chip-opt.chip-selected { background: var(--brand-bg-soft); border-color: #4a7c59; color: var(--brand-text-strong); }
 .chip-opt.chip-hidden { display: none; }
+
+/* Variante "avatar" du sélecteur à puces (data-chip-avatar, voir
+   chip-select.js) : puces rondes (initiales colorées ou photo) au lieu de
+   texte — utilisée pour "Chef de projet" (retour Fadhel, 2026-09-27) pour
+   ne plus prendre toute la largeur du filtre avec des noms complets. Le nom
+   complet reste consultable au survol (title natif, posé par le JS). Les
+   puces non sélectionnées sont estompées pour que la sélection se voie
+   d'un coup d'œil, comme les filtres "par personne" de Slack/Linear. */
+.chip-opt.chip-avatar {
+  width: 32px; height: 32px; padding: 0; border-radius: 999px;
+  border: 2px solid transparent; background: var(--hover-bg);
+  color: #ffffff; font-size: 11px; font-weight: 700;
+  align-items: center; justify-content: center; overflow: hidden;
+  opacity: 0.55; transition: opacity 0.12s ease, border-color 0.12s ease;
+}
+.chip-opt.chip-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.chip-opt.chip-avatar:hover { opacity: 0.85; border-color: transparent; }
+.chip-opt.chip-avatar.chip-selected { opacity: 1; border-color: #4a7c59; background: var(--hover-bg); }
+
+/* --- Filtres "Tous les projets" sur une seule ligne (retour Fadhel,
+   2026-09-27) : État / Phase / Lots / Chef de projet côte à côte plutôt
+   qu'empilés — passe à la ligne proprement (flex-wrap) si l'écran est trop
+   étroit pour tout tenir plutôt que de déborder. */
+.filtres-ligne { display: flex; flex-wrap: wrap; gap: 22px 28px; }
+.filtre-groupe { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.filtre-groupe .chip-cloud { row-gap: 8px; }
 
 /* --- Commentaires sur un post (accueil / page projet) --- */
 .post-comments { margin: 10px 0 0 46px; display: flex; flex-direction: column; gap: 8px; }
 .post-comment { display: flex; gap: 8px; }
 .post-comment-body {
-  background: #f7f8f6; border-radius: 10px; padding: 7px 11px; font-size:12.5px; flex:1;
+  background: var(--bg-subtle-1); border-radius: 10px; padding: 7px 11px; font-size:12.5px; flex:1;
 }
 .post-comment-form { display: flex; gap: 6px; margin: 10px 0 0 46px; }
 

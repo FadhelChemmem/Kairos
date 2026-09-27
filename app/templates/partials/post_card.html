@@ -11,7 +11,7 @@
       {% else %}
         <div style="font-size:13.5px; font-weight:700;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</div>
       {% endif %}
-      <div style="font-size:11.5px; color:#646e67;">
+      <div style="font-size:11.5px; color:var(--text-muted);">
         {% if show_projet %}{{ post.projet_code }}_{{ post.projet_nom }} · {% endif %}{{ post.created_at|il_y_a }}
       </div>
     </div>
@@ -40,7 +40,7 @@
   {% if post.mentions %}
     <div style="display:flex; flex-wrap:wrap; gap:6px; margin:0 0 8px 46px;">
       {% for m in post.mentions %}
-        <span class="pill pill-sm" style="background:#f2f4f0; color:#55605a;">@{{ m.prenom }} {{ m.nom }}</span>
+        <span class="pill pill-sm" style="background:var(--hover-bg); color:var(--text-secondary);">@{{ m.prenom }} {{ m.nom }}</span>
       {% endfor %}
     </div>
   {% endif %}
@@ -52,23 +52,23 @@
      filtré (défense en profondeur pour une donnée existante). #}
   {% if post.lien and is_lien_valide(post.lien) %}
     <a href="{{ post.lien }}" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:6px; margin:0 0 6px 46px;">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#646e67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
-      <span style="font-size:12px; color:#646e67; word-break:break-all;">{{ post.lien }}</span>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
+      <span style="font-size:12px; color:var(--text-muted); word-break:break-all;">{{ post.lien }}</span>
     </a>
   {% endif %}
 
   {% for pj in post.pieces_jointes %}
     <a href="{{ url_for('fichiers.download_post', piece_id=pj.id) }}" style="display:flex; align-items:center; gap:6px; margin:0 0 6px 46px;">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#646e67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
-      <span style="font-size:12px; color:#646e67;">{{ pj.nom_fichier }}</span>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+      <span style="font-size:12px; color:var(--text-muted);">{{ pj.nom_fichier }}</span>
     </a>
   {% endfor %}
 
   {% if post.parent_post_id %}
-    <div style="margin:0 0 12px 46px; background:#f7f8f6; border:1px solid #eef0ec; border-radius:12px; padding:12px 14px;">
+    <div style="margin:0 0 12px 46px; background:var(--bg-subtle-1); border:1px solid var(--border-soft); border-radius:12px; padding:12px 14px;">
       <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#646e67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h6a3 3 0 0 1 3 3v3"/><path d="M13 7l3 3-3 3"/><path d="M7 17h4"/></svg>
-        <span style="font-size:11.5px; color:#646e67;">{{ post.parent_auteur_prenom }} {{ post.parent_auteur_nom }}</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h6a3 3 0 0 1 3 3v3"/><path d="M13 7l3 3-3 3"/><path d="M7 17h4"/></svg>
+        <span style="font-size:11.5px; color:var(--text-muted);">{{ post.parent_auteur_prenom }} {{ post.parent_auteur_nom }}</span>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
         {% if post.parent_tache_titre %}
@@ -94,12 +94,12 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="next" value="{{ next_url }}">
       {% if not post.ma_reaction %}<input type="hidden" name="reaction_code" value="pouce">{% endif %}
-      <button type="submit" aria-pressed="{{ 'true' if post.ma_reaction else 'false' }}" aria-label="{{ 'Retirer ma validation' if post.ma_reaction else 'Valider ce post' }} ({{ post.nb_reactions }})" {% if post.reacteurs %}title="{% for r in post.reacteurs %}{{ r.prenom }} {{ r.nom }}{% if not loop.last %}, {% endif %}{% endfor %}"{% endif %} style="display:flex; align-items:center; gap:5px; background:{{ '#f2f4f0' if post.ma_reaction else 'transparent' }}; border:none; border-radius:8px; padding:6px 10px; font-size:12px; font-weight:600; color:#55605a; cursor:pointer;">
+      <button type="submit" aria-pressed="{{ 'true' if post.ma_reaction else 'false' }}" aria-label="{{ 'Retirer ma validation' if post.ma_reaction else 'Valider ce post' }} ({{ post.nb_reactions }})" {% if post.reacteurs %}title="{% for r in post.reacteurs %}{{ r.prenom }} {{ r.nom }}{% if not loop.last %}, {% endif %}{% endfor %}"{% endif %} style="display:flex; align-items:center; gap:5px; background:{{ 'var(--hover-bg)' if post.ma_reaction else 'transparent' }}; border:none; border-radius:8px; padding:6px 10px; font-size:12px; font-weight:600; color:var(--text-secondary); cursor:pointer;">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> {{ post.nb_reactions }}
       </button>
     </form>
     <details style="display:inline;">
-      <summary style="list-style:none; cursor:pointer; display:flex; align-items:center; gap:5px; padding:6px 10px; font-size:12px; font-weight:600; color:#646e67;">
+      <summary style="list-style:none; cursor:pointer; display:flex; align-items:center; gap:5px; padding:6px 10px; font-size:12px; font-weight:600; color:var(--text-muted);">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="4"/><path d="M8.5 17 6.5 20v-3"/></svg> {{ post.nb_commentaires }} commentaire{{ 's' if post.nb_commentaires != 1 else '' }}
       </summary>
       <div class="post-comments">
@@ -111,7 +111,7 @@
             </div>
           </div>
         {% else %}
-          <div style="font-size:12px; color:#6c766f;">Aucun commentaire pour l'instant.</div>
+          <div style="font-size:12px; color:var(--text-faint);">Aucun commentaire pour l'instant.</div>
         {% endfor %}
       </div>
       <form method="post" action="{{ url_for('posts.commenter', post_id=post.id) }}" class="post-comment-form">
@@ -141,7 +141,7 @@
          texte libre (retour Fadhel, 2026-09-19). Ouvre la fenêtre flottante
          partagée (voir partials/post_dialog.html) préremplie avec le
          projet et le post d'origine, sans quitter la page. #}
-      <div style="position:absolute; right:0; top:calc(100% + 4px); background:#fff; border:1px solid #e7e9e4; border-radius:10px; padding:10px; min-width:220px; box-shadow:0 4px 12px rgba(20,30,25,0.08); z-index:10;">
+      <div style="position:absolute; right:0; top:calc(100% + 4px); background: var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px; min-width:220px; box-shadow:0 4px 12px rgba(20,30,25,0.08); z-index:10;">
         {# "+ Tâche" seulement pour le chef/co-chef du projet (seuls eux
            peuvent créer une tâche) ; "+ Info" retiré tant que les posts
            Information ne sont pas publiables (étape 2) — audit n°2. #}

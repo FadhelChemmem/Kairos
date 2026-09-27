@@ -4,7 +4,7 @@
 
 <div class="subbar">
   <div class="subbar-inner" style="max-width:600px;">
-    <a href="{{ url_for('utilisateurs.liste') }}" style="font-size:12.5px; color:#646e67; font-weight:600;">← Utilisateurs</a>
+    <a href="{{ url_for('utilisateurs.liste') }}" style="font-size:12.5px; color:var(--text-muted); font-weight:600;">← Utilisateurs</a>
     <span style="font-size:14px; font-weight:700;">{{ utilisateur.prenom }} {{ utilisateur.nom }}</span>
   </div>
 </div>
@@ -25,11 +25,11 @@
       </div>
     </div>
     <div class="form-row">
-      <label for="avatar">Photo de profil <span style="font-weight:400; color:#6c766f;">— optionnel, remplace les initiales</span></label>
+      <label for="avatar">Photo de profil <span style="font-weight:400; color:var(--text-faint);">— optionnel, remplace les initiales</span></label>
       <input type="file" id="avatar" name="avatar" accept=".png,.jpg,.jpeg,.gif,.webp,image/*">
     </div>
     <div class="form-row">
-      <label for="email">Email <span style="font-weight:400; color:#6c766f;">— identifiant de connexion</span></label>
+      <label for="email">Email <span style="font-weight:400; color:var(--text-faint);">— identifiant de connexion</span></label>
       <input type="email" id="email" name="email" value="{{ utilisateur.email }}" required>
     </div>
     <div class="form-row">
@@ -73,9 +73,9 @@
         {% set role_hors_liste = utilisateur.role not in roles_creables %}
         <label for="role">Rôle
           {% if utilisateur.id == g.user.id %}
-            <span style="font-weight:400; color:#6c766f;">— non modifiable sur votre propre compte</span>
+            <span style="font-weight:400; color:var(--text-faint);">— non modifiable sur votre propre compte</span>
           {% elif role_hors_liste %}
-            <span style="font-weight:400; color:#6c766f;">— non modifiable depuis cet écran</span>
+            <span style="font-weight:400; color:var(--text-faint);">— non modifiable depuis cet écran</span>
           {% endif %}
         </label>
         {# Rôle hors ROLES_CREABLES (PROMPT_CORRECTIONS.md P1 #12) : "client"
@@ -107,11 +107,11 @@
 
     <div class="section-title">Mot de passe</div>
     <div class="form-row">
-      <label for="nouveau_mot_de_passe">Nouveau mot de passe <span style="font-weight:400; color:#6c766f;">— laisser vide pour ne pas le changer</span></label>
+      <label for="nouveau_mot_de_passe">Nouveau mot de passe <span style="font-weight:400; color:var(--text-faint);">— laisser vide pour ne pas le changer</span></label>
       <input type="password" id="nouveau_mot_de_passe" name="nouveau_mot_de_passe" placeholder="••••••••" minlength="8">
     </div>
 
-    <div class="section-title">Champs personnalisés <span style="font-weight:400; color:#c7cdc4; text-transform:none; letter-spacing:0;">(optionnel, extensible)</span></div>
+    <div class="section-title">Champs personnalisés <span style="font-weight:400; color:var(--border-hover); text-transform:none; letter-spacing:0;">(optionnel, extensible)</span></div>
     <div id="cf-list">
       {% for cle, valeur in (utilisateur.champs_perso or {}).items() %}
         <div class="cf-row">
@@ -121,7 +121,7 @@
         </div>
       {% endfor %}
     </div>
-    <button type="button" id="cf-add" style="display:flex; align-items:center; gap:6px; background:none; border:1px dashed #c7cdc4; border-radius:9px; padding:8px 12px; font-size:12.5px; color:#55605a; cursor:pointer; width:100%; font-family:inherit;">+ Ajouter un champ</button>
+    <button type="button" id="cf-add" style="display:flex; align-items:center; gap:6px; background:none; border:1px dashed var(--border-hover); border-radius:9px; padding:8px 12px; font-size:12.5px; color:var(--text-secondary); cursor:pointer; width:100%; font-family:inherit;">+ Ajouter un champ</button>
 
     <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
       <a href="{{ url_for('utilisateurs.liste') }}" class="btn-secondary" style="width:auto; padding:10px 18px; text-decoration:none; display:inline-flex; align-items:center;">Annuler</a>
