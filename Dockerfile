@@ -41,9 +41,9 @@ EXPOSE 8000
 #   logs web` (utile pour reconstituer un incident).
 # - --worker-tmp-dir /dev/shm : évite les blocages de heartbeat gunicorn
 #   sur un disque lent (NAS).
-# - --forwarded-allow-ips : gunicorn accepte les en-têtes X-Forwarded-*
-#   de n'importe quelle IP ; c'est l'appli (ProxyFix, TRUSTED_PROXY_COUNT)
-#   qui décide seule de les croire ou non.
+# Les en-têtes X-Forwarded-* d'un reverse proxy sont interprétés par
+# l'appli elle-même (ProxyFix, TRUSTED_PROXY_COUNT dans .env), pas par
+# gunicorn.
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--threads", "4", \
      "--worker-class", "gthread", "--timeout", "60", "--worker-tmp-dir", "/dev/shm", \
-     "--access-logfile", "-", "--forwarded-allow-ips", "*", "wsgi:app"]
+     "--access-logfile", "-", "wsgi:app"]
