@@ -617,6 +617,53 @@ class SmokeTestCase(unittest.TestCase):
             for p in patchers:
                 p.stop()
 
+    def _poster_dailylog(self, heures, **overrides):
+        self._login()
+        patchers = self._patched(**overrides)
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
+                resp = self.client.post("/dailylog", data={
+                    "date": "2026-09-15",
+                    "ligne_projet_id": ["1"] * len(heures),
+                    "ligne_tache_id": [""] * len(heures),
+                    "ligne_heures": heures,
+                })
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        return mock_remplacer
+
+    def test_dailylog_refuse_nan_et_infini(self):
+        """Audit n°2 : `nan` passait les bornes (toute comparaison avec NaN
+        est fausse) et rendait les totaux d'heures du projet égaux à NaN."""
+        for valeur in ("nan", "NaN", "inf", "-inf"):
+            with self.subTest(valeur=valeur):
+                mock_remplacer = self._poster_dailylog([valeur])
+                self.assertEqual(mock_remplacer.call_args.args[2], [])
+
+    def test_dailylog_bornes_24h_exactes(self):
+        self.assertEqual(
+            self._poster_dailylog(["24"]).call_args.args[2],
+            [{"projet_id": 1, "tache_id": None, "heures": 24.0}],
+        )
+        self.assertEqual(self._poster_dailylog(["24.01"]).call_args.args[2], [])
+
+    def test_dailylog_ligne_refusee_conservee_et_signalee(self):
+        """Audit n°2 : une ligne refusée (ici, projet devenu invisible) ne
+        doit plus être supprimée en silence — sa clé est transmise à
+        remplacer_jour pour conserver la valeur déjà enregistrée, et
+        l'utilisateur est prévenu."""
+        mock_remplacer = self._poster_dailylog(
+            ["4"], **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(mock_remplacer.call_args.kwargs["conserver"], {(1, 0)})
+        with self.client.session_transaction() as sess:
+            flashes = sess.get("_flashes", [])
+        self.assertTrue(any("valeur précédente a été conservée" in msg for _, msg in flashes))
+
     def test_dailylog_enregistrer_date_invalide_repliee_sur_aujourdhui(self):
         self._login()
         patchers = self._patched()
@@ -772,6 +819,60 @@ class SmokeTestCase(unittest.TestCase):
             for p in patchers:
                 p.stop()
         self.assertEqual(resp.status_code, 404)
+
+    def test_creer_tache_refuse_un_parent_dun_autre_projet(self):
+        """Audit n°2 : parent_post_id n'était pas vérifié ici — le fil du
+        projet affichait alors le contenu d'un post de n'importe quel
+        autre projet (fuite inter-projets)."""
+        self._login()
+        patchers = self._patched(**{
+            "app.repositories.posts.get_post": {**POST_POUR_ACCES, "projet_id": 99},
+        }) + [patch("app.repositories.taches.create_tache", return_value=99)]
+        mock_create = patchers[-1]
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post("/projets/1/taches", data={"titre": "T", "parent_post_id": "7"})
+            self.assertEqual(resp.status_code, 404)
+            self.assertFalse(mock_create.target.create_tache.called)
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_creer_tache_accepte_un_parent_du_meme_projet(self):
+        self._login()
+        patchers = self._patched(**{
+            "app.repositories.posts.get_post": {**POST_POUR_ACCES, "projet_id": 1},
+        })
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.taches.create_tache", return_value=99) as mock_create:
+                resp = self.client.post("/projets/1/taches", data={"titre": "T", "parent_post_id": "7"})
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(mock_create.call_args.kwargs["parent_post_id"], 7)
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_creer_tache_erreur_inattendue_na_pas_le_message_rh(self):
+        """Audit n°2 : toute erreur base était présentée comme "un RH ne
+        peut pas être intervenant"."""
+        self._login()
+        patchers = self._patched() + [
+            patch("app.repositories.taches.create_tache", side_effect=Exception("connexion perdue")),
+        ]
+        for p in patchers:
+            p.start()
+        try:
+            self.client.post("/projets/1/taches", data={"titre": "T"})
+        finally:
+            for p in patchers:
+                p.stop()
+        with self.client.session_transaction() as sess:
+            messages = [msg for _, msg in sess.get("_flashes", [])]
+        self.assertFalse(any("RH" in m for m in messages), messages)
+        self.assertTrue(any("erreur inattendue" in m for m in messages), messages)
 
     # --- Autres 500 qui devraient être des messages flash
     # (PROMPT_CORRECTIONS.md P1 #11) : creer_tache prenait type_deadline et
@@ -1585,6 +1686,51 @@ class SmokeTestCase(unittest.TestCase):
         with self.client.session_transaction() as sess:
             flashes = sess.get("_flashes", [])
         self.assertTrue(any("compte RH actif" in msg for _, msg in flashes))
+
+    def test_toggle_actif_ne_recopie_pas_le_jeton_csrf_dans_lurl(self):
+        """Audit n°2 : la redirection recopiait tout request.form, donc
+        aussi csrf_token, dans l'URL de la liste."""
+        self._login()
+        patchers = self._patched() + [patch("app.repositories.utilisateurs.toggle_actif")]
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post("/utilisateurs/2/toggle-actif", data={
+                "csrf_token": "secret", "q": "wael", "equipe_code": "", "role": "intervenant",
+            })
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        self.assertNotIn("csrf_token", resp.headers["Location"])
+        self.assertIn("q=wael", resp.headers["Location"])
+        self.assertIn("role=intervenant", resp.headers["Location"])
+
+    def test_fiche_changer_son_propre_mot_de_passe_garde_la_session(self):
+        """Audit n°2 : un admin qui change son propre mot de passe depuis
+        sa fiche était déconnecté (empreinte de session non rafraîchie)."""
+        self._login()
+        patchers = self._patched(**{
+            "app.repositories.utilisateurs.get_utilisateur": {**UTILISATEUR_PROFIL, "id": 1},
+        }) + [
+            patch("app.repositories.utilisateurs.update_utilisateur_complet"),
+            patch("app.repositories.utilisateurs.set_password"),
+            patch("app.routes.utilisateurs.hash_password", return_value="nouveau-hash"),
+        ]
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post("/utilisateurs/1", data={
+                "prenom": "Foulen", "nom": "Chedly", "email": "fadhel@midgard.tn",
+                "role": "admin", "equipe_code": "MIDGARD",
+                "nouveau_mot_de_passe": "un-nouveau-mot-de-passe-solide",
+            })
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302, resp.data[:1500])
+        with self.client.session_transaction() as sess:
+            self.assertEqual(sess.get("pw_fingerprint"), password_fingerprint("nouveau-hash"))
 
     def test_mon_profil_post_avec_photo_appelle_set_avatar(self):
         self._login()

@@ -8,6 +8,7 @@ l'état initial réel (lignes déjà enregistrées, catalogue de suggestions)
 et encaisser la sauvegarde finale.
 """
 import datetime
+import math
 
 from flask import Blueprint, flash, g, redirect, render_template, request, url_for
 
@@ -143,6 +144,13 @@ def enregistrer():
     heures_list = request.form.getlist("ligne_heures")
 
     lignes = []
+    # Lignes refusées par la validation ci-dessous (projet devenu
+    # invisible, tâche déplacée, heures hors bornes...) : leur éventuelle
+    # valeur DÉJÀ enregistrée doit être conservée telle quelle. Avant ce
+    # correctif, remplacer_jour supprimait toute ligne existante absente
+    # de la soumission — une ligne refusée disparaissait donc en silence
+    # alors que la page affichait "enregistré" (audit n°2).
+    refusees = set()
     for pid, tid, h in zip(projet_ids, tache_ids, heures_list):
         # Ids non numériques (PROMPT_CORRECTIONS.md P1 #10) : `int(pid)`
         # sur une valeur trafiquée plantait auparavant en 500 (ValueError
@@ -154,10 +162,19 @@ def enregistrer():
             continue
         projet_id = int(pid)
         tache_id = int(tid) if tid else None
+        cle = (projet_id, tache_id or 0)
 
         try:
             heures = round(float(h), 2)
         except (TypeError, ValueError):
+            refusees.add(cle)
+            continue
+        # NaN/infini (audit n°2) : `nan <= 0` et `nan > 24` sont tous deux
+        # faux, NaN passait donc les bornes ci-dessous — et PostgreSQL
+        # l'accepte dans NUMERIC (CHECK heures > 0 compris), ce qui
+        # rendait les totaux d'heures du projet égaux à "NaN" pour de bon.
+        if not math.isfinite(heures):
+            refusees.add(cle)
             continue
         # Bornes des heures (PROMPT_CORRECTIONS.md P1 #10) : ni négatives/
         # nulles (déjà le cas), ni au-delà d'une journée raisonnable —
@@ -166,6 +183,7 @@ def enregistrer():
         # à 100 % de la journée type, mais ne protège pas contre une
         # requête forgée à la main).
         if heures <= 0 or heures > MAX_HEURES_PAR_LIGNE:
+            refusees.add(cle)
             continue
 
         # Visibilité du projet (PROMPT_CORRECTIONS.md P1 #10) : sans ce
@@ -173,6 +191,7 @@ def enregistrer():
         # des heures sur n'importe quel projet de l'entreprise, pas
         # seulement ceux de son équipe/ses affectations.
         if not projets_repo.user_can_view(projet_id, g.user["id"]):
+            refusees.add(cle)
             continue
 
         # La tâche doit appartenir au projet indiqué sur la MÊME ligne —
@@ -181,6 +200,7 @@ def enregistrer():
         if tache_id is not None:
             tache = taches_repo.get_tache(tache_id)
             if tache is None or tache["projet_id"] != projet_id:
+                refusees.add(cle)
                 continue
 
         lignes.append({
@@ -189,6 +209,16 @@ def enregistrer():
             "heures": heures,
         })
 
-    dailylog.remplacer_jour(g.user["id"], date_str, lignes, current_user_id=g.user["id"])
-    flash("Daily log enregistré.", "success")
+    dailylog.remplacer_jour(
+        g.user["id"], date_str, lignes, current_user_id=g.user["id"],
+        conserver=refusees,
+    )
+    if refusees:
+        flash(
+            f"Daily log enregistré, sauf {len(refusees)} ligne(s) invalide(s) "
+            "ou sur un projet auquel vous n'avez plus accès : leur valeur "
+            "précédente a été conservée.", "error",
+        )
+    else:
+        flash("Daily log enregistré.", "success")
     return redirect(url_for("dailylog.formulaire", date=date_str))

@@ -3,7 +3,7 @@ et les actions sur les tâches d'un projet (création, clôture, changement
 d'état)."""
 import datetime
 
-from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, url_for
 
 from ..auth import login_required
 from ..repositories import notifications as notifications_repo
@@ -23,6 +23,19 @@ TYPES_CLOTURE_VALIDES = {"envoi", "reponse", "question", "requete"}
 # une valeur hors de cette liste faisait planter creer_tache en 500
 # (violation de l'ENUM Postgres), voir PROMPT_CORRECTIONS.md P1 #11.
 TYPE_DEADLINE_VALIDES = {"rendu_client", "interne"}
+
+
+def _message_erreur_intervenant(exc: Exception, action: str) -> str:
+    """Message d'erreur à afficher quand l'ajout d'intervenant(s) échoue en
+    base. Seul le garde-fou RH (trg_check_*_intervenant_role, qui lève
+    "Un utilisateur avec le rôle RH ne peut pas être ...") justifie le
+    message RH ; toute autre erreur (clé étrangère, connexion perdue...)
+    était auparavant présentée à tort comme un problème de RH — elle est
+    maintenant journalisée et signalée comme une erreur générique."""
+    if "rôle RH" in str(exc):
+        return f"Impossible {action} : un RH ne peut pas être intervenant."
+    current_app.logger.exception("Échec inattendu (%s)", action)
+    return f"Impossible {action} (erreur inattendue, réessayez)."
 
 
 def _parser_date_tache(date_str: str | None):
@@ -236,8 +249,23 @@ def creer_tache(projet_id: int):
         flash("Date de début ou d'échéance invalide.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
 
-    intervenant_ids = [int(v) for v in request.form.getlist("intervenants") if v.isdigit()]
+    # Seules des personnes qui voient déjà le projet peuvent y être
+    # affectées (même règle que les mentions dans routes/posts.py) — un id
+    # inexistant est ainsi écarté ici au lieu de faire échouer l'INSERT.
+    intervenant_ids = [
+        int(v) for v in request.form.getlist("intervenants")
+        if v.isdigit() and projets.user_can_view(projet_id, int(v))
+    ]
+
+    # Un rebond doit pointer vers un post du MÊME projet (même contrôle que
+    # routes/posts.py:creer) : sinon le fil de ce projet afficherait le
+    # contenu, l'auteur et la tâche d'un post de n'importe quel autre
+    # projet — fuite de données inter-projets (revue sécurité, audit n°2).
     parent_post_id = request.form.get("parent_post_id", type=int)
+    if parent_post_id:
+        parent = posts.get_post(parent_post_id)
+        if parent is None or parent["projet_id"] != projet_id:
+            abort(404)
 
     try:
         tache_id = taches.create_tache(
@@ -250,7 +278,7 @@ def creer_tache(projet_id: int):
             intervenant_ids=intervenant_ids,
             parent_post_id=parent_post_id,
         )
-    except Exception:
+    except Exception as exc:
         # Garde-fou base de données (trg_check_tache_intervenant_role, même
         # contrainte que trg_check_projet_intervenant_role côté projet — voir
         # ajouter_intervenant ci-dessous) : un RH ne peut pas être
@@ -258,7 +286,7 @@ def creer_tache(projet_id: int):
         # (list_actifs exclut déjà le RH des listes), mais une requête
         # forgée à la main plantait auparavant en 500
         # (PROMPT_CORRECTIONS.md P1 #11).
-        flash("Impossible de créer cette tâche (un RH ne peut pas être intervenant).", "error")
+        flash(_message_erreur_intervenant(exc, "de créer cette tâche"), "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
 
     if intervenant_ids:
@@ -344,6 +372,8 @@ def cloturer_tache(projet_id: int, tache_id: int):
 @bp.route("/<int:projet_id>/intervenants", methods=["POST"])
 @login_required
 def ajouter_intervenant(projet_id: int):
+    if not projets.user_can_view(projet_id, g.user["id"]):
+        abort(404)
     if not projets.user_can_manage(projet_id, g.user["id"]):
         flash("Seul le chef de projet ou un co-chef peut ajouter un intervenant.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
@@ -355,12 +385,12 @@ def ajouter_intervenant(projet_id: int):
 
     try:
         projets.add_intervenant(projet_id, utilisateur_id, g.user["id"])
-    except Exception:
+    except Exception as exc:
         # Garde-fou base de données (trg_check_projet_intervenant_role) :
         # un RH ne peut pas être intervenant. Ne devrait pas arriver via
         # l'UI normale (list_actifs exclut déjà le RH des listes), mais on
         # évite une page d'erreur brute si ça arrive quand même.
-        flash("Impossible d'ajouter cet utilisateur comme intervenant (le RH ne peut pas être intervenant).", "error")
+        flash(_message_erreur_intervenant(exc, "d'ajouter cet intervenant"), "error")
     else:
         if utilisateur_id != g.user["id"]:
             projet = projets.get_projet(projet_id)

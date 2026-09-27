@@ -377,6 +377,8 @@ CREATE TABLE dailylog_entree (
   projet_id      BIGINT NOT NULL REFERENCES projet(id),
   tache_id       BIGINT REFERENCES tache(id),  -- NULL = temps passé sur le projet sans tâche précise
   heures         NUMERIC(4,2) NOT NULL CHECK (heures > 0),
+  -- Ni NaN (accepté par NUMERIC et par heures > 0), ni plus de 24 h (migration 0005).
+  CONSTRAINT dailylog_entree_heures_valides CHECK (heures <> 'NaN' AND heures <= 24),
   updated_by     BIGINT REFERENCES utilisateur(id), -- normalement = utilisateur_id, sauf correction faite par un admin
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -442,6 +444,7 @@ CREATE INDEX idx_post_projet_date ON post(projet_id, created_at DESC);
 CREATE INDEX idx_post_tache ON post(tache_id);
 CREATE INDEX idx_post_parent ON post(parent_post_id);
 CREATE INDEX idx_post_type ON post(type_code);
+CREATE INDEX idx_post_created_at ON post(created_at DESC); -- fil d'accueil (migration 0005)
 
 -- Pièces jointes d'un post (ex. le dossier envoyé dans un post "Envoi")
 CREATE TABLE post_piece_jointe (
@@ -502,6 +505,7 @@ CREATE TABLE notification (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_notification_user_lu ON notification(utilisateur_id, lu);
+CREATE INDEX idx_notification_user_date ON notification(utilisateur_id, created_at DESC); -- migration 0005
 
 
 -- =====================================================================
@@ -642,3 +646,58 @@ WHERE u.actif = true
       WHERE t.projet_id = p.id AND ti.utilisateur_id = u.id
     )
   );
+
+
+-- ---------------------------------------------------------------------
+-- Règle "un RH n'est ni chef, ni co-chef, ni intervenant" aussi lors d'un
+-- CHANGEMENT de rôle (migration 0005) — les triggers plus haut ne
+-- couvrent que l'ajout d'une personne à un projet/une tâche.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_check_passage_role_rh()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.role = 'rh' AND OLD.role IS DISTINCT FROM 'rh' AND (
+       EXISTS (SELECT 1 FROM projet WHERE chef_projet_id = NEW.id)
+    OR EXISTS (SELECT 1 FROM projet_co_chef WHERE utilisateur_id = NEW.id)
+    OR EXISTS (SELECT 1 FROM projet_intervenant WHERE utilisateur_id = NEW.id)
+    OR EXISTS (SELECT 1 FROM tache_intervenant WHERE utilisateur_id = NEW.id)
+  ) THEN
+    RAISE EXCEPTION 'Un utilisateur avec le rôle RH ne peut pas être chef de projet, co-chef ou intervenant (utilisateur id=%) : retirez-le d''abord de ses projets et tâches.', NEW.id;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_check_passage_role_rh ON utilisateur;
+CREATE TRIGGER trg_check_passage_role_rh
+  BEFORE UPDATE OF role ON utilisateur
+  FOR EACH ROW EXECUTE FUNCTION fn_check_passage_role_rh();
+
+
+-- ---------------------------------------------------------------------
+-- Fuseau horaire de la base (migration 0005) : CURRENT_DATE et
+-- created_at::date doivent suivre l'heure de Tunis, pas UTC.
+-- ---------------------------------------------------------------------
+DO $$
+BEGIN
+  EXECUTE format('ALTER DATABASE %I SET timezone = %L', current_database(), 'Africa/Tunis');
+END $$;
+
+
+-- ---------------------------------------------------------------------
+-- Migrations déjà intégrées à ce fichier : une base créée depuis
+-- schema.sql les marque comme appliquées, pour que le premier
+-- `flask migrer` ne les rejoue pas (voir app/__init__.py). À compléter à
+-- chaque nouvelle migration reportée ici.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version     VARCHAR(255) PRIMARY KEY,
+  applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO schema_migrations (version) VALUES
+  ('0001_equipe_urbs_ipco'),
+  ('0002_avatar_chemin'),
+  ('0003_reset_password_et_securite'),
+  ('0004_post_evenement_tache'),
+  ('0005_integrite_et_performance')
+ON CONFLICT (version) DO NOTHING;

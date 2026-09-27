@@ -336,9 +336,14 @@ def fiche(user_id: int):
                             "changé.", "error",
                         )
                         return redirect(url_for("utilisateurs.fiche", user_id=user_id))
-                    utilisateurs_repo.set_password(
-                        user_id, hash_password(nouveau_mot_de_passe), g.user["id"]
-                    )
+                    nouveau_hash = hash_password(nouveau_mot_de_passe)
+                    utilisateurs_repo.set_password(user_id, nouveau_hash, g.user["id"])
+                    # Un admin/RH qui change SON PROPRE mot de passe depuis
+                    # sa fiche garde sa session (comme depuis "Infos
+                    # perso") — sans ça, l'empreinte ne correspondait plus
+                    # et il était déconnecté à la requête suivante (P2 #17).
+                    if user_id == g.user["id"]:
+                        session["pw_fingerprint"] = password_fingerprint(nouveau_hash)
             except Exception as exc:
                 if "idx_utilisateur_rh_singleton" in str(exc):
                     flash(
@@ -347,6 +352,13 @@ def fiche(user_id: int):
                     )
                 elif "idx_utilisateur_email_lower" in str(exc):
                     flash(f"Un compte existe déjà avec l'email {email}.", "error")
+                elif "rôle RH" in str(exc):
+                    # trg_check_passage_role_rh (migration 0005).
+                    flash(
+                        "Impossible de passer cette personne au rôle RH : elle est "
+                        "encore chef de projet, co-chef ou intervenant. Retirez-la "
+                        "d'abord de ses projets et tâches.", "error",
+                    )
                 else:
                     flash("Impossible de mettre à jour ce compte.", "error")
             else:
@@ -384,4 +396,12 @@ def toggle_actif(user_id: int):
                 flash("Impossible de mettre à jour le statut de ce compte.", "error")
         else:
             flash("Statut du compte mis à jour.", "success")
-    return redirect(url_for("utilisateurs.liste", **request.form.to_dict(flat=True)))
+    # Filtres de la liste à conserver après l'action — liste explicite :
+    # renvoyer tout request.form recopiait aussi le jeton csrf_token dans
+    # l'URL (historique, journaux, Referer), voir audit n°2.
+    filtres = {
+        cle: request.form[cle]
+        for cle in ("q", "equipe_code", "role", "actif")
+        if request.form.get(cle)
+    }
+    return redirect(url_for("utilisateurs.liste", **filtres))

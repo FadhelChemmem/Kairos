@@ -264,6 +264,7 @@ def consommer_reset_token(token_hash: str, mot_de_passe_hash: str) -> dict | Non
         SET mot_de_passe_hash = %s, reset_token_hash = NULL, reset_token_expires_at = NULL,
             verifie = true
         WHERE reset_token_hash = %s AND reset_token_expires_at > now()
+          AND actif = true  -- compte désactivé entre l'ouverture du lien et l'envoi
         RETURNING id, email, prenom, nom
         """,
         (mot_de_passe_hash, token_hash),

@@ -1,15 +1,11 @@
 """Requêtes SQL liées aux tâches.
 
-Convention utilisée pour distinguer, dans le fil de posts, un post
-« système » de création/clôture de tâche d'un post écrit à la main
-(voir posts.py `annoter_evenement_tache`) : à l'intérieur d'une même
-transaction, tous les appels à now() renvoient exactement la même
-valeur (comportement documenté de PostgreSQL — l'horloge de transaction,
-pas l'horloge de l'instruction). En créant le post système dans LA MÊME
-transaction que l'INSERT/UPDATE sur `tache`, on obtient :
-  - post.created_at == tache.created_at  →  post de création de tâche
-  - post.created_at == tache.updated_at  →  post de clôture de tâche
-Aucune colonne supplémentaire n'était nécessaire pour ça.
+Les posts « système » de création et de clôture d'une tâche sont marqués
+explicitement par la colonne `post.evenement` ('creation_tache' /
+'cloture_tache', migrations 0004-0005), écrite ici dans la même
+transaction que l'INSERT/UPDATE sur `tache`. L'ancienne heuristique
+(post.created_at == tache.created_at / updated_at) n'est plus utilisée :
+elle cassait dès que la tâche était modifiée après sa clôture.
 """
 from .. import db
 
@@ -178,15 +174,20 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int) -> 
     gestion. Retourne False (au lieu de ne rien signaler) si la tâche
     n'existe pas ou n'appartient pas à ce projet.
 
-    `date_fin = NULL` (PROMPT_CORRECTIONS.md P1 #9) : `etat` ne peut jamais
-    valoir 'termine' ici (seul close_tache() y mène, voir plus bas), donc
-    tout appel à set_etat() fait forcément SORTIR la tâche de l'état
-    "Terminé" si elle y était — une tâche rouverte (ex. "Vérifié" ->
-    reproblème -> "Bloqué") ne doit plus afficher une date de fin qui ne
-    correspond plus à rien."""
+    `date_fin` (PROMPT_CORRECTIONS.md P1 #9) : effacée seulement quand la
+    tâche est ROUVERTE (En cours / Bloqué / Arrêt) — une tâche rouverte ne
+    doit plus afficher une date de fin qui ne correspond plus à rien. Le
+    passage à "Vérifié" (étape normale APRÈS la clôture) ou "Abandonné"
+    garde en revanche la date de clôture (audit n°2 : elle était effacée
+    à tort dès qu'une tâche terminée était vérifiée)."""
     rowcount = db.execute(
-        "UPDATE tache SET etat = %s, date_fin = NULL WHERE id = %s AND projet_id = %s",
-        (etat, tache_id, projet_id),
+        """
+        UPDATE tache
+        SET etat = %s,
+            date_fin = CASE WHEN %s IN ('en_cours', 'bloque', 'arret') THEN NULL ELSE date_fin END
+        WHERE id = %s AND projet_id = %s
+        """,
+        (etat, etat, tache_id, projet_id),
         user_id=current_user_id,
     )
     return rowcount > 0
@@ -234,7 +235,8 @@ def close_tache(
 
     `projet_id` (PROMPT_CORRECTIONS.md P0 #2) : même garde-fou que
     set_etat(), on n'agit que sur une tâche appartenant bien à ce projet.
-    `AND etat <> 'termine'` empêche de clôturer deux fois la même tâche —
+    `AND etat NOT IN ('termine', 'verifie')` empêche de clôturer deux fois
+    la même tâche (y compris une tâche déjà clôturée puis vérifiée) —
     une reclôture écraserait date_fin et créerait un second post de
     clôture, en plus de casser le marqueur post.created_at==tache.updated_at
     utilisé pour l'affichage (voir la note en tête de fichier). Retourne
@@ -245,7 +247,7 @@ def close_tache(
         cur.execute(
             """
             UPDATE tache SET etat = 'termine', date_fin = CURRENT_DATE
-            WHERE id = %s AND projet_id = %s AND etat <> 'termine'
+            WHERE id = %s AND projet_id = %s AND etat NOT IN ('termine', 'verifie')
             RETURNING id, projet_id, titre
             """,
             (tache_id, projet_id),
