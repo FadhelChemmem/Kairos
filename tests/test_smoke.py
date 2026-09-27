@@ -15,6 +15,8 @@ PostgreSQL local (voir schema.sql et les notes de conception).
 """
 import datetime
 import io
+import pathlib
+import re
 import sys
 import types
 import unittest
@@ -80,6 +82,10 @@ class TestConfig(Config):
     DATABASE_URL = "postgresql://fake/fake"  # jamais utilisé, get_cursor n'est pas appelé
     SECRET_KEY = "test-secret"
     TESTING = True
+    # La protection CSRF est désactivée pour les tests de routes (qui
+    # postent directement sans passer par un formulaire rendu) — elle est
+    # testée à part, activée, dans TestProtectionCSRF.
+    WTF_CSRF_ENABLED = False
 
 
 # --- Fixtures : formes de lignes telles que les repositories les renvoient ---
@@ -2655,7 +2661,11 @@ class SmokeTestCase(unittest.TestCase):
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         self.assertIn(b"Wael", resp.data)
         self.assertIn("Lecture seule".encode(), resp.data)
-        self.assertNotIn(b"<form", resp.data)
+        # Seul formulaire autorisé : la déconnexion de la barre du haut
+        # (base.html, en POST depuis PROMPT_CORRECTIONS.md P2 #25) — la
+        # fiche elle-même ne doit en contenir aucun.
+        contenu_page = resp.data.split(b'<div class="page-body"', 1)[1]
+        self.assertNotIn(b"<form", contenu_page)
 
     def test_fiche_chef_de_projet_ne_peut_rien_modifier(self):
         """Un POST forgé vers la fiche par un chef de projet ne doit rien
@@ -2682,6 +2692,117 @@ class SmokeTestCase(unittest.TestCase):
                 p.stop()
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         mock_update.assert_not_called()
+
+
+class CsrfTestConfig(TestConfig):
+    WTF_CSRF_ENABLED = True
+
+
+class TestProtectionCSRF(unittest.TestCase):
+    """PROMPT_CORRECTIONS.md P2 #25 : protection CSRF (Flask-WTF) réellement
+    active — un POST sans jeton est refusé, avec le jeton (champ caché ou
+    en-tête X-CSRFToken) il passe, et /deconnexion n'accepte plus le GET."""
+
+    _login = SmokeTestCase._login
+    _patched = SmokeTestCase._patched
+
+    def setUp(self):
+        self.app = create_app(CsrfTestConfig)
+        self.client = self.app.test_client()
+        self._login()
+        self.patchers = self._patched()
+        for p in self.patchers:
+            p.start()
+        self.addCleanup(lambda: [p.stop() for p in self.patchers])
+
+    def _jeton(self):
+        """Jeton tel qu'un navigateur le reçoit : rendu dans la page (le
+        GET enregistre aussi sa version signée dans la session)."""
+        resp = self.client.get("/notifications")
+        self.assertEqual(resp.status_code, 200)
+        m = re.search(rb'name="csrf_token" value="([^"]+)"', resp.data)
+        self.assertIsNotNone(m, "champ caché csrf_token absent de la page")
+        return m.group(1).decode()
+
+    def test_post_sans_jeton_est_refuse(self):
+        with patch("app.repositories.notifications.marquer_toutes_lues") as mock_marquer:
+            resp = self.client.post("/notifications/marquer-toutes-lues")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/accueil", resp.headers["Location"])
+        mock_marquer.assert_not_called()
+
+    def test_post_avec_jeton_invalide_est_refuse(self):
+        self._jeton()
+        with patch("app.repositories.notifications.marquer_toutes_lues") as mock_marquer:
+            resp = self.client.post("/notifications/marquer-toutes-lues",
+                                    data={"csrf_token": "faux-jeton"})
+        self.assertEqual(resp.status_code, 302)
+        mock_marquer.assert_not_called()
+
+    def test_refus_renvoie_vers_la_page_dorigine(self):
+        resp = self.client.post("/notifications/marquer-toutes-lues",
+                                headers={"Referer": "http://localhost/projets/1"})
+        self.assertEqual(resp.headers["Location"], "/projets/1")
+
+    def test_refus_ne_redirige_jamais_hors_du_site(self):
+        resp = self.client.post("/notifications/marquer-toutes-lues",
+                                headers={"Referer": "http://evil.tld/projets/1"})
+        self.assertNotIn("evil.tld", resp.headers["Location"])
+
+    def test_post_avec_jeton_dans_le_formulaire_passe(self):
+        jeton = self._jeton()
+        with patch("app.repositories.notifications.marquer_toutes_lues") as mock_marquer:
+            resp = self.client.post("/notifications/marquer-toutes-lues",
+                                    data={"csrf_token": jeton})
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/notifications", resp.headers["Location"])
+        mock_marquer.assert_called_once()
+
+    def test_post_avec_jeton_en_entete_passe(self):
+        """Chemin utilisé par les appels fetch() (en-tête ajouté par base.html)."""
+        jeton = self._jeton()
+        with patch("app.repositories.notifications.marquer_toutes_lues") as mock_marquer:
+            resp = self.client.post("/notifications/marquer-toutes-lues",
+                                    headers={"X-CSRFToken": jeton})
+        self.assertEqual(resp.status_code, 302)
+        mock_marquer.assert_called_once()
+
+    def test_page_expose_le_jeton_pour_fetch(self):
+        resp = self.client.get("/notifications")
+        self.assertIn(b'<meta name="csrf-token" content="', resp.data)
+        self.assertIn(b"X-CSRFToken", resp.data)
+
+    def test_tous_les_formulaires_post_portent_le_jeton(self):
+        """Garde-fou statique : chaque <form method="post"> des templates
+        doit contenir le champ caché csrf_token."""
+        racine = pathlib.Path(__file__).resolve().parent.parent / "app" / "templates"
+        form_re = re.compile(r'<form\b[^>]*method="post"[^>]*>(.*?)</form>', re.I | re.S)
+        manquants = []
+        for tpl in sorted(racine.rglob("*.html")):
+            for m in form_re.finditer(tpl.read_text()):
+                if "csrf_token()" not in m.group(1):
+                    manquants.append(tpl.name)
+        self.assertEqual(manquants, [])
+
+    def test_deconnexion_en_get_nest_plus_acceptee(self):
+        resp = self.client.get("/deconnexion")
+        self.assertEqual(resp.status_code, 405)
+        with self.client.session_transaction() as sess:
+            self.assertEqual(sess.get("user_id"), 1)
+
+    def test_deconnexion_en_post_sans_jeton_est_refusee(self):
+        resp = self.client.post("/deconnexion")
+        self.assertEqual(resp.status_code, 302)
+        with self.client.session_transaction() as sess:
+            self.assertEqual(sess.get("user_id"), 1)
+
+    def test_deconnexion_en_post_avec_jeton(self):
+        jeton = self._jeton()
+        resp = self.client.post("/deconnexion", data={"csrf_token": jeton})
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/connexion", resp.headers["Location"])
+        with self.client.session_transaction() as sess:
+            self.assertNotIn("user_id", sess)
 
 
 class TestSecretKeyValidation(unittest.TestCase):

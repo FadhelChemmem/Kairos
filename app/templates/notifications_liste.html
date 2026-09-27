@@ -8,6 +8,7 @@
     <span style="font-size:12.5px; color:#7c8780;">{{ notifications|selectattr('lu', 'equalto', false)|list|length }} non lue{{ 's' if notifications|selectattr('lu', 'equalto', false)|list|length != 1 }}</span>
     {% if notifications %}
     <form method="post" action="{{ url_for('notifications.marquer_toutes_lues') }}" style="margin-left:auto;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="linkbtn" style="width:auto; padding:6px 12px; font-size:12.5px; font-weight:600; color:#4a7c59;">Tout marquer comme lu</button>
     </form>
     {% endif %}

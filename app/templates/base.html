@@ -4,6 +4,29 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <script>
+    // Protection CSRF (PROMPT_CORRECTIONS.md P2 #25) : les formulaires POST
+    // portent un champ caché csrf_token ; pour les appels fetch() qui
+    // écrivent (POST/PUT/PATCH/DELETE) vers l'appli, le jeton est ajouté
+    // automatiquement dans l'en-tête X-CSRFToken attendu par Flask-WTF —
+    // aucun appel fetch() n'a donc à s'en soucier individuellement.
+    (function () {
+      var jeton = document.querySelector('meta[name="csrf-token"]').content;
+      var fetchOrigine = window.fetch;
+      window.fetch = function (ressource, options) {
+        options = options || {};
+        var methode = (options.method || (ressource && ressource.method) || 'GET').toUpperCase();
+        var url = new URL(typeof ressource === 'string' ? ressource : ressource.url, window.location.href);
+        if (['GET', 'HEAD', 'OPTIONS', 'TRACE'].indexOf(methode) === -1 && url.origin === window.location.origin) {
+          var entetes = new Headers(options.headers || (ressource && ressource.headers) || {});
+          if (!entetes.has('X-CSRFToken')) entetes.set('X-CSRFToken', jeton);
+          options = Object.assign({}, options, { headers: entetes });
+        }
+        return fetchOrigine.call(this, ressource, options);
+      };
+    })();
+  </script>
   <title>{% block title %}Kairos{% endblock %}</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
@@ -54,9 +77,14 @@
         <span class="iconbtn-badge">{{ g.notifications_non_lues if g.notifications_non_lues < 10 else '9+' }}</span>
       {% endif %}
     </a>
-    <a class="iconbtn" href="{{ url_for('auth.logout') }}" title="Déconnexion">
-      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
-    </a>
+    {# Déconnexion en POST (PROMPT_CORRECTIONS.md P2 #25) — display:contents
+       garde le bouton aligné dans la barre exactement comme l'ancien lien. #}
+    <form method="post" action="{{ url_for('auth.logout') }}" style="display:contents;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="iconbtn" title="Déconnexion">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+      </button>
+    </form>
     <a href="{{ url_for('utilisateurs.mon_profil') }}" style="display:inline-block; margin-left:6px;" title="{{ g.user.prenom }} {{ g.user.nom }}">
       {{ avatarm.avatar(g.user.id, g.user.prenom, g.user.nom, g.user.avatar_chemin, css_class='avatar avatar-lg') }}
     </a>

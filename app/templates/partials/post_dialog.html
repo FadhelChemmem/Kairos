@@ -63,6 +63,7 @@
     <div class="intent-panel panel-tache">
       <form method="post"
             {% if projet_id is not none %}action="{{ url_for('projets.creer_tache', projet_id=projet_id) }}"{% else %}data-action-template="{{ url_for('projets.creer_tache', projet_id=999999999) }}"{% endif %}>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="parent_post_id" value="">
         <div class="form-row">
           <label for="dialog-titre-tache">Titre de la tâche</label>
@@ -121,6 +122,7 @@
     <!-- Panneau Requête -->
     <div class="intent-panel panel-requete">
       <form method="post" action="{{ url_for('posts.creer') }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="next" value="{{ next_url }}">
         <input type="hidden" name="projet_id" value="{{ projet_id or '' }}">
         <input type="hidden" name="type_code" value="requete">

@@ -80,6 +80,7 @@
         <span style="font-size:12px; color:#55605a;">{{ u.date_embauche.strftime('%m/%Y') if u.date_embauche else '—' }}</span>
         {% if peut_gerer %}
           <form method="post" action="{{ url_for('utilisateurs.toggle_actif', user_id=u.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="q" value="{{ q }}">
             <input type="hidden" name="equipe_code" value="{{ equipe_code or '' }}">
             <input type="hidden" name="role" value="{{ role or '' }}">

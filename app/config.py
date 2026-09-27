@@ -65,6 +65,17 @@ class Config:
     # ce réglage est vide.
     APP_BASE_URL = os.environ.get("APP_BASE_URL", "").rstrip("/")
 
+    # Protection CSRF (Flask-WTF CSRFProtect, PROMPT_CORRECTIONS.md P2 #25) :
+    # chaque POST doit porter le jeton de session, soit dans le champ caché
+    # csrf_token des formulaires, soit dans l'en-tête X-CSRFToken pour un
+    # fetch() (voir base.html). SameSite=Lax (plus haut) ne suffisait pas
+    # seul : il ne protège ni d'une page du même site ni des vieux
+    # navigateurs. Pas de durée de vie propre au jeton (défaut Flask-WTF :
+    # 1 heure) : il est déjà lié à la session, et une page DailyLog ou un
+    # formulaire laissé ouvert plus d'une heure ne doit pas échouer à
+    # l'enregistrement.
+    WTF_CSRF_TIME_LIMIT = None
+
     # Dossier où sont stockées les pièces jointes (tâches/posts). Dans
     # Docker Compose, ce chemin est un volume monté (voir docker-compose.yml).
     UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/app/uploads")

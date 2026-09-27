@@ -91,6 +91,7 @@
        upsert (voir posts_repo.react) — impossible de retirer sa réaction
        une fois posée, le seul bouton ne pouvait que la reconfirmer. #}
     <form method="post" action="{{ url_for('posts.retirer_reaction' if post.ma_reaction else 'posts.reagir', post_id=post.id) }}" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="next" value="{{ next_url }}">
       {% if not post.ma_reaction %}<input type="hidden" name="reaction_code" value="pouce">{% endif %}
       <button type="submit" {% if post.reacteurs %}title="{% for r in post.reacteurs %}{{ r.prenom }} {{ r.nom }}{% if not loop.last %}, {% endif %}{% endfor %}"{% endif %} style="display:flex; align-items:center; gap:5px; background:{{ '#f2f4f0' if post.ma_reaction else 'transparent' }}; border:none; border-radius:8px; padding:6px 10px; font-size:12px; font-weight:600; color:#55605a; cursor:pointer;">
@@ -114,6 +115,7 @@
         {% endfor %}
       </div>
       <form method="post" action="{{ url_for('posts.commenter', post_id=post.id) }}" class="post-comment-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="next" value="{{ next_url }}">
         <input type="text" name="contenu" placeholder="Écrire un commentaire…" required style="flex:1;">
         <button type="submit" class="btn-secondary" style="width:auto; padding:7px 12px;">Envoyer</button>
@@ -124,6 +126,7 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
       </summary>
       <form method="post" action="{{ url_for('fichiers.upload_post', post_id=post.id) }}" enctype="multipart/form-data" style="display:flex; gap:6px; margin-top:8px; min-width:200px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="next" value="{{ next_url }}">
         <input type="file" name="fichier" style="flex:1; font-size:11px;">
         <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">+</button>

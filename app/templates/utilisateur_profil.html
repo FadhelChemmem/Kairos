@@ -30,6 +30,7 @@
       <div style="font-size:11px; color:#9aa39c; margin-bottom:14px;">Le prénom, le nom, l'email et le rôle sont gérés par l'administrateur ou le RH. Vous pouvez modifier les champs ci-dessous.</div>
 
       <form method="post" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-row">
           <label for="avatar">Photo de profil <span style="font-weight:400; color:#9aa39c;">— remplace les initiales</span></label>
           <input type="file" id="avatar" name="avatar" accept=".png,.jpg,.jpeg,.gif,.webp,image/*">
@@ -53,6 +54,7 @@
     <div class="card" style="margin-top:16px;">
       <div style="font-size:13px; font-weight:700; margin-bottom:14px;">Changer mon mot de passe</div>
       <form method="post" action="{{ url_for('utilisateurs.mon_mot_de_passe') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-row">
           <label for="mot_de_passe_actuel">Mot de passe actuel</label>
           <input type="password" id="mot_de_passe_actuel" name="mot_de_passe_actuel" placeholder="••••••••" required>

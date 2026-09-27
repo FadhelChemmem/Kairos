@@ -48,6 +48,7 @@ class StorageTestCase(unittest.TestCase):
             DATABASE_URL = "postgresql://fake/fake"
             SECRET_KEY = "test-secret"
             TESTING = True
+            WTF_CSRF_ENABLED = False
             UPLOAD_DIR = self._tmpdir.name
 
         self.app = create_app(TestConfig)

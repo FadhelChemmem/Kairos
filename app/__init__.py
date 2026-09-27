@@ -2,7 +2,8 @@
 import logging
 import os
 
-from flask import Flask, g, redirect, url_for
+from flask import Flask, flash, g, redirect, request, url_for
+from flask_wtf.csrf import CSRFError, CSRFProtect
 
 from . import db, utils
 from .config import Config
@@ -12,6 +13,10 @@ from .config import Config
 # _valider_secret_key() (revue sécurité, PROMPT_CORRECTIONS.md P0 #6).
 _SECRET_KEY_PLACEHOLDERS = {"dev-secret-key-change-me", "change-moi-aussi"}
 _SECRET_KEY_MIN_LEN = 32
+
+# Protection CSRF sur tous les POST (PROMPT_CORRECTIONS.md P2 #25) — voir
+# config.py (WTF_CSRF_TIME_LIMIT) et base.html (jeton pour fetch()).
+csrf = CSRFProtect()
 
 
 def _valider_secret_key(app: Flask) -> None:
@@ -32,6 +37,19 @@ def _valider_secret_key(app: Flask) -> None:
             "python3 -c \"import secrets; print(secrets.token_hex(32))\" "
             "et renseignez-la dans .env (voir .env.example)."
         )
+
+
+def _chemin_interne(url: str | None) -> str | None:
+    """Réduit un Referer absolu ("http://hote/projets/3?x=1") à son chemin
+    interne ("/projets/3?x=1"), pour le valider avec utils.is_safe_next
+    avant d'y rediriger (jamais vers un autre hôte)."""
+    if not url:
+        return None
+    from urllib.parse import urlsplit
+    parts = urlsplit(url)
+    if parts.netloc and parts.netloc != request.host:
+        return None
+    return parts.path + (f"?{parts.query}" if parts.query else "")
 
 
 def create_app(config_class=Config) -> Flask:
@@ -58,6 +76,20 @@ def create_app(config_class=Config) -> Flask:
     db.init_pool(app.config["DATABASE_URL"])
     utils.register(app)
 
+    @app.errorhandler(CSRFError)
+    def _csrf_error(exc):
+        # Jeton absent/invalide (session expirée, page ouverte avant une
+        # reconnexion...) : message clair et retour à la page d'origine
+        # plutôt que la page d'erreur 400 brute de Flask-WTF.
+        app.logger.warning("Requête refusée (CSRF) : %s %s — %s",
+                           request.method, request.path, exc.description)
+        flash("Votre session a expiré ou le formulaire n'est plus valide. "
+              "Veuillez réessayer.", "error")
+        retour = _chemin_interne(request.referrer)
+        if not utils.is_safe_next(retour):
+            retour = url_for("auth.login") if g.get("user") is None else url_for("main.accueil")
+        return redirect(retour)
+
     os.makedirs(app.config["UPLOAD_DIR"], exist_ok=True)
 
     from . import auth
@@ -67,6 +99,11 @@ def create_app(config_class=Config) -> Flask:
     @app.before_request
     def _load_user():
         auth.load_logged_in_user()
+
+    # Après _load_user (les before_request s'exécutent dans l'ordre
+    # d'enregistrement) : ainsi g.user est déjà connu quand un jeton CSRF
+    # est refusé, et _csrf_error renvoie vers la bonne page.
+    csrf.init_app(app)
 
     from .routes.main import bp as main_bp
     from .routes.projets import bp as projets_bp

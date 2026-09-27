@@ -59,6 +59,7 @@
   {% endif %}
 
   <form method="post" action="{{ url_for('dailylog.enregistrer') }}" id="dailylog-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="date" value="{{ date.isoformat() }}">
     <div id="lignes-hidden"></div>
 

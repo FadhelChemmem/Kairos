@@ -42,6 +42,7 @@
       <!-- Panneau Tâche -->
       <div class="intent-panel panel-tache">
         <form method="post" action="{{ url_for('projets.creer_tache', projet_id=projet.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           {% if parent_post_id %}<input type="hidden" name="parent_post_id" value="{{ parent_post_id }}">{% endif %}
           <div class="form-row">
             <label for="titre-tache">Titre de la tâche</label>
@@ -100,6 +101,7 @@
       <!-- Panneau Requête -->
       <div class="intent-panel panel-requete">
         <form method="post" action="{{ url_for('posts.creer') }}" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="next" value="{{ url_for('projets.detail', projet_id=projet.id) }}">
           <input type="hidden" name="projet_id" value="{{ projet.id }}">
           <input type="hidden" name="type_code" value="requete">

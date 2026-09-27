@@ -144,6 +144,7 @@
               <div style="position:absolute; right:0; top:4px; background:#fff; border:1px solid #e7e9e4; border-radius:10px; padding:10px; width:220px; box-shadow:0 4px 12px rgba(20,30,25,0.08); z-index:10;">
                 {% if t.etat != 'termine' %}
                 <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" style="display:flex; gap:6px; margin-bottom:8px;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <select name="etat" style="flex:1;">
                     <option value="en_cours" {{ 'selected' if t.etat == 'en_cours' }}>En cours</option>
                     <option value="bloque" {{ 'selected' if t.etat == 'bloque' }}>Bloqué</option>
@@ -154,6 +155,7 @@
                   <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">OK</button>
                 </form>
                 <form method="post" action="{{ url_for('projets.cloturer_tache', projet_id=projet.id, tache_id=t.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <label>Clôturer avec le tag</label>
                   <select name="type_code" style="margin-bottom:6px;">
                     <option value="envoi">Envoi</option>
@@ -178,6 +180,7 @@
                   <div style="font-size:11.5px; color:#9aa39c; margin-bottom:6px;">Aucune.</div>
                 {% endfor %}
                 <form method="post" action="{{ url_for('fichiers.upload_tache', tache_id=t.id) }}" enctype="multipart/form-data" style="display:flex; gap:6px;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="next" value="{{ request.path }}">
                   <input type="file" name="fichier" style="flex:1; font-size:11px;">
                   <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">+</button>
@@ -232,6 +235,7 @@
       <details>
         <summary class="btn-secondary" style="list-style:none; cursor:pointer; text-align:center;">+ Ajouter un intervenant</summary>
         <form method="post" action="{{ url_for('projets.ajouter_intervenant', projet_id=projet.id) }}" style="margin-top:10px; display:flex; gap:6px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <select name="utilisateur_id" style="flex:1;">
             {% for u in utilisateurs_actifs %}
               <option value="{{ u.id }}">{{ u.prenom }} {{ u.nom }}</option>

@@ -5,6 +5,7 @@
   <div style="font-size:18px; font-weight:800; margin-bottom:16px;">Nouveau projet</div>
 
   <form method="post" class="card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-row">
       <label for="nom">Nom du projet</label>
       <input type="text" id="nom" name="nom" required autofocus>

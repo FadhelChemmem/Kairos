@@ -281,8 +281,11 @@ def login():
     return render_template("login.html")
 
 
-@bp.route("/deconnexion")
+@bp.route("/deconnexion", methods=["POST"])
 def logout():
+    """POST uniquement (PROMPT_CORRECTIONS.md P2 #25) : en GET, un simple
+    <img src="/deconnexion"> sur n'importe quelle page suffisait à
+    déconnecter l'utilisateur. Le formulaire est dans base.html."""
     session.clear()
     return redirect(url_for("auth.login"))
 

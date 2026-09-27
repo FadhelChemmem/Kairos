@@ -6,6 +6,7 @@
   <div class="login-blob login-blob-b"></div>
 
   <form method="post" class="card login-card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div style="display:flex; flex-direction:column; align-items:center; margin-bottom:32px;">
       <img src="{{ url_for('static', filename='img/kairos-logo.png') }}" alt="Kairos" style="height:40px; width:auto; display:block; margin-bottom:4px;">
     </div>

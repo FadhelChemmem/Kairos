@@ -11,6 +11,7 @@
 
 <div style="max-width:600px; margin:24px auto 60px; padding:0 32px;">
   <form method="post" class="card" style="padding:22px 22px 24px;" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="section-title">Identité</div>
     <div class="form-row-2">
