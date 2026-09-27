@@ -14,6 +14,10 @@ on:
     branches: [master]
   pull_request:
 
+# Jeton GitHub en lecture seule : ce workflow ne fait que lire le code.
+permissions:
+  contents: read
+
 jobs:
   tests:
     runs-on: ubuntu-latest

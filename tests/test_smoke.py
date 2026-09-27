@@ -18,6 +18,7 @@ import io
 import pathlib
 import re
 import sys
+import tempfile
 import types
 import unittest
 from unittest.mock import patch
@@ -78,8 +79,16 @@ from app.config import Config  # noqa: E402
 MOT_DE_PASSE_HASH_PAR_DEFAUT = "hash-bidon"
 
 
+# Dossier d'upload jetable pour toute la suite : create_app() crée
+# UPLOAD_DIR au démarrage, et la valeur par défaut (/app/uploads) n'est
+# pas inscriptible sur un runner GitHub Actions (utilisateur non root) —
+# c'est ce qui faisait échouer la CI (159 erreurs PermissionError).
+_UPLOAD_DIR_TESTS = tempfile.mkdtemp(prefix="kairos-tests-uploads-")
+
+
 class TestConfig(Config):
     DATABASE_URL = "postgresql://fake/fake"  # jamais utilisé, get_cursor n'est pas appelé
+    UPLOAD_DIR = _UPLOAD_DIR_TESTS
     SECRET_KEY = "test-secret"
     TESTING = True
     # La protection CSRF est désactivée pour les tests de routes (qui
@@ -2842,6 +2851,7 @@ class TestSecretKeyValidation(unittest.TestCase):
         class ConfigOk(Config):
             SECRET_KEY = secrets_mod.token_hex(32)
             DATABASE_URL = "postgresql://fake/fake"
+            UPLOAD_DIR = _UPLOAD_DIR_TESTS
 
         create_app(ConfigOk)  # ne doit pas lever
 
