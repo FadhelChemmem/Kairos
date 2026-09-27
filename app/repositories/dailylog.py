@@ -91,11 +91,21 @@ def list_projets_recents(user_id: int, exclude_ids: list[int], limit: int = 5) -
         FROM dailylog_entree d
         JOIN projet p ON p.id = d.projet_id
         WHERE d.utilisateur_id = %s AND p.etat = 'en_cours' AND p.id != ALL(%s)
+          -- PROMPT_CORRECTIONS.md P1 #10 : filtre de visibilité (déjà
+          -- utilisé par list_projets/search en 2026-09-27) — un projet où
+          -- l'utilisateur a saisi des heures par le passé, mais dont il a
+          -- depuis été retiré (changement d'équipe, retrait comme
+          -- intervenant), ne doit plus réapparaître dans "Récemment
+          -- travaillés".
+          AND EXISTS (
+                SELECT 1 FROM v_projet_visibilite vv
+                WHERE vv.projet_id = p.id AND vv.utilisateur_id = %s
+              )
         GROUP BY p.id, p.code, p.nom
         ORDER BY derniere_saisie DESC
         LIMIT %s
     """
-    rows = db.query_all(sql, (user_id, exclure, limit))
+    rows = db.query_all(sql, (user_id, exclure, user_id, limit))
     return [
         {"projet_id": r["projet_id"], "code": r["code"], "nom": r["nom"],
          "tache_id": None, "tache_titre": None}
@@ -103,13 +113,19 @@ def list_projets_recents(user_id: int, exclude_ids: list[int], limit: int = 5) -
     ]
 
 
-def rechercher_projets(q: str, limit: int = 20) -> list[dict]:
+def rechercher_projets(q: str, user_id: int, limit: int = 20) -> list[dict]:
     """Recherche libre par code/nom parmi les projets en cours — troisième
     palier du catalogue "Ajouter une ligne" (retour Fadhel, 2026-09-27),
     remplace l'ancienne liste statique des 50 premiers projets de
     l'entreprise (affichée en permanence, quelle que soit sa pertinence
     pour l'utilisateur). Utilisée par la recherche live côté route
-    `dailylog.api_recherche_projets`."""
+    `dailylog.api_recherche_projets`.
+
+    `user_id` (PROMPT_CORRECTIONS.md P1 #10) : sans filtre de visibilité,
+    n'importe quel utilisateur connecté pouvait rechercher et découvrir
+    (puis y saisir des heures) N'IMPORTE QUEL projet en cours de
+    l'entreprise, pas seulement ceux de son équipe/ses affectations —
+    même filtre que list_projets/search (v_projet_visibilite)."""
     q = (q or "").strip()
     if not q:
         return []
@@ -119,10 +135,14 @@ def rechercher_projets(q: str, limit: int = 20) -> list[dict]:
         SELECT id AS projet_id, code, nom
         FROM projet
         WHERE etat = 'en_cours' AND (code ILIKE %s OR nom ILIKE %s)
+          AND EXISTS (
+                SELECT 1 FROM v_projet_visibilite vv
+                WHERE vv.projet_id = projet.id AND vv.utilisateur_id = %s
+              )
         ORDER BY nom
         LIMIT %s
         """,
-        (like, like, limit),
+        (like, like, user_id, limit),
     )
     return [
         {"projet_id": r["projet_id"], "code": r["code"], "nom": r["nom"],

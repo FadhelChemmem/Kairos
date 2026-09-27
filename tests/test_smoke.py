@@ -473,6 +473,145 @@ class SmokeTestCase(unittest.TestCase):
         self.assertNotIn(("date=" + demain).encode(), resp.data)
         self.assertIn(b"Pas de saisie pour un jour futur", resp.data)
 
+    # --- Validation des lignes DailyLog à l'enregistrement (POST) —
+    # PROMPT_CORRECTIONS.md P1 #10 : avant ce correctif, rien de tout ceci
+    # n'était vérifié côté serveur (le curseur JS protège l'usage normal,
+    # pas une requête forgée à la main). ---
+
+    def test_dailylog_enregistrer_ignore_les_ids_non_numeriques(self):
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
+                resp = self.client.post("/dailylog", data={
+                    "date": "2026-09-15",
+                    "ligne_projet_id": ["abc"],
+                    "ligne_tache_id": [""],
+                    "ligne_heures": ["4"],
+                })
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(mock_remplacer.call_args.args[2], [])
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_dailylog_enregistrer_ignore_les_heures_hors_bornes(self):
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
+                resp = self.client.post("/dailylog", data={
+                    "date": "2026-09-15",
+                    "ligne_projet_id": ["1", "1"],
+                    "ligne_tache_id": ["", ""],
+                    "ligne_heures": ["30", "-5"],
+                })
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(mock_remplacer.call_args.args[2], [])
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_dailylog_enregistrer_ignore_un_projet_non_visible(self):
+        self._login()
+        patchers = self._patched(**{"app.repositories.projets.user_can_view": False})
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
+                resp = self.client.post("/dailylog", data={
+                    "date": "2026-09-15",
+                    "ligne_projet_id": ["1"],
+                    "ligne_tache_id": [""],
+                    "ligne_heures": ["4"],
+                })
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(mock_remplacer.call_args.args[2], [])
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_dailylog_enregistrer_ignore_une_tache_dun_autre_projet(self):
+        """La tâche indiquée sur une ligne doit appartenir au projet
+        indiqué sur cette MÊME ligne."""
+        self._login()
+        patchers = self._patched(**{
+            "app.repositories.taches.get_tache": {**TACHE_POUR_FICHIERS, "projet_id": 99},
+        })
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
+                resp = self.client.post("/dailylog", data={
+                    "date": "2026-09-15",
+                    "ligne_projet_id": ["1"],
+                    "ligne_tache_id": ["5"],
+                    "ligne_heures": ["4"],
+                })
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(mock_remplacer.call_args.args[2], [])
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_dailylog_enregistrer_accepte_une_ligne_valide(self):
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
+                resp = self.client.post("/dailylog", data={
+                    "date": "2026-09-15",
+                    "ligne_projet_id": ["1"],
+                    "ligne_tache_id": ["5"],
+                    "ligne_heures": ["4"],
+                })
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(
+                mock_remplacer.call_args.args[2],
+                [{"projet_id": 1, "tache_id": 5, "heures": 4.0}],
+            )
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_dailylog_enregistrer_date_invalide_repliee_sur_aujourdhui(self):
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
+                resp = self.client.post("/dailylog", data={
+                    "date": "n-importe-quoi",
+                    "ligne_projet_id": [], "ligne_tache_id": [], "ligne_heures": [],
+                })
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(mock_remplacer.call_args.args[1], datetime.date.today().isoformat())
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_dailylog_recherche_projets_filtre_par_visibilite(self):
+        """PROMPT_CORRECTIONS.md P1 #10 : rechercher_projets() doit
+        maintenant recevoir l'utilisateur courant (filtre de visibilité)."""
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.dailylog.rechercher_projets", return_value=[]) as mock_recherche:
+                self.client.get("/dailylog/recherche-projets?q=hub")
+            mock_recherche.assert_called_once_with("hub", user_id=1)
+        finally:
+            for p in patchers:
+                p.stop()
+
     def test_dailylog_jours_remplis_api(self):
         self._login()
         patchers = self._patched()
