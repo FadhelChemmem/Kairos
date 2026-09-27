@@ -118,14 +118,26 @@ def _split_tuples(values_blob):
     return tuples
 
 def parse_inserts(sql_text, table_columns):
-    """Retourne {table_name: [ {col: val, ...}, ... ]}"""
+    """Retourne {table_name: [ {col: val, ...}, ... ]}
+
+    Gère aussi bien `mysqldump --extended-insert` (par défaut, "INSERT INTO
+    `t` VALUES (...)") que `mysqldump --complete-insert` (PROMPT_CORRECTIONS.md
+    P1 #14 : "INSERT INTO `t` (`col1`, `col2`, ...) VALUES (...)") — l'ancienne
+    regex n'acceptait que le premier format ; sur un dump --complete-insert,
+    aucun INSERT ne matchait, et le script tournait jusqu'au bout sans la
+    moindre erreur en produisant un résultat vide (aucune table migrée),
+    silencieusement. Quand la liste de colonnes est explicite dans le dump,
+    on l'utilise telle quelle plutôt que l'ordre de CREATE TABLE : rien ne
+    garantit qu'un --complete-insert respecte cet ordre."""
     data = {t: [] for t in table_columns}
-    for m in re.finditer(r'INSERT INTO `(\w+)` VALUES\s*(.*?);\n', sql_text, re.DOTALL):
+    insert_re = re.compile(r'INSERT INTO `(\w+)`\s*(?:\(([^)]*)\)\s*)?VALUES\s*(.*?);\n', re.DOTALL)
+    for m in insert_re.finditer(sql_text):
         name = m.group(1)
         if name not in table_columns:
             continue
-        cols = table_columns[name]
-        blob = m.group(2)
+        cols_declarees = m.group(2)
+        cols = [c.strip().strip('`') for c in cols_declarees.split(',')] if cols_declarees else table_columns[name]
+        blob = m.group(3)
         for tup in _split_tuples(blob):
             vals = _tokenize_values(tup)
             if len(vals) != len(cols):
