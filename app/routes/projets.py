@@ -13,6 +13,12 @@ bp = Blueprint("projets", __name__, url_prefix="/projets")
 
 PHASES = ["APS", "APD", "DCE", "EXE", "DOE"]
 
+# Tags de clôture valides (mêmes codes actifs que post_type, voir
+# routes/posts.py:TYPES_VALIDES) — un type_code hors de cette liste faisait
+# planter la clôture en 500 (violation de contrainte FK sur post.type_code),
+# voir PROMPT_CORRECTIONS.md P0 #2.
+TYPES_CLOTURE_VALIDES = {"envoi", "reponse", "question", "requete"}
+
 
 @bp.route("")
 @login_required
@@ -211,14 +217,33 @@ def creer_tache(projet_id: int):
 @login_required
 def changer_etat_tache(projet_id: int, tache_id: int):
     """Changement d'état simple (pas de clôture) — voir cloturer_tache
-    pour "Terminé", qui exige un tag de post."""
+    pour "Terminé", qui exige un tag de post.
+
+    Autorisation (PROMPT_CORRECTIONS.md P0 #2) : chef de projet, co-chef,
+    OU intervenant affecté à CETTE tâche — le menu d'action de la tâche
+    était affiché à tout le monde dans projet_detail.html, sans aucun
+    contrôle côté serveur, ce qui permettait à n'importe quel utilisateur
+    connecté de changer l'état de n'importe quelle tâche."""
+    if not projets.user_can_view(projet_id, g.user["id"]):
+        abort(404)
+    autorise = (
+        projets.user_can_manage(projet_id, g.user["id"])
+        or taches.user_est_intervenant(tache_id, g.user["id"])
+    )
+    if not autorise:
+        flash("Seul le chef de projet, un co-chef ou un intervenant de cette tâche peut changer son état.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+
     etat = request.form.get("etat")
     etats_valides = {"en_cours", "bloque", "verifie", "arret", "abandonne"}
     if etat not in etats_valides:
         flash("État invalide.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
 
-    taches.set_etat(tache_id, etat, g.user["id"])
+    if not taches.set_etat(tache_id, projet_id, etat, g.user["id"]):
+        flash("Tâche introuvable sur ce projet.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+
     flash("État de la tâche mis à jour.", "success")
     return redirect(url_for("projets.detail", projet_id=projet_id))
 
@@ -228,11 +253,31 @@ def changer_etat_tache(projet_id: int, tache_id: int):
 def cloturer_tache(projet_id: int, tache_id: int):
     """Toute tâche terminée génère toujours un post automatique ; le tag
     (Envoi/Réponse/Question/Requête) est choisi ici par l'utilisateur au
-    moment de la clôture (voir spec)."""
+    moment de la clôture (voir spec).
+
+    Même autorisation que changer_etat_tache (PROMPT_CORRECTIONS.md P0 #2),
+    plus une validation du tag choisi (un type_code invalide faisait
+    planter la clôture en 500 via une violation de contrainte FK)."""
+    if not projets.user_can_view(projet_id, g.user["id"]):
+        abort(404)
+    autorise = (
+        projets.user_can_manage(projet_id, g.user["id"])
+        or taches.user_est_intervenant(tache_id, g.user["id"])
+    )
+    if not autorise:
+        flash("Seul le chef de projet, un co-chef ou un intervenant de cette tâche peut la clôturer.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+
     type_code = request.form.get("type_code", "envoi")
+    if type_code not in TYPES_CLOTURE_VALIDES:
+        flash("Tag de clôture invalide.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
     contenu = request.form.get("contenu") or None
 
-    taches.close_tache(tache_id, g.user["id"], type_code, contenu)
+    if taches.close_tache(tache_id, projet_id, g.user["id"], type_code, contenu) is None:
+        flash("Impossible de clôturer cette tâche (introuvable sur ce projet, ou déjà clôturée).", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+
     flash("Tâche clôturée.", "success")
     return redirect(url_for("projets.detail", projet_id=projet_id))
 

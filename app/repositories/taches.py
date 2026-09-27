@@ -150,15 +150,33 @@ def create_tache(
         return tache_id
 
 
-def set_etat(tache_id: int, etat: str, current_user_id: int) -> None:
+def user_est_intervenant(tache_id: int, user_id: int) -> bool:
+    """Vrai si `user_id` est affecté comme intervenant sur cette tâche —
+    en plus du chef de projet et des co-chefs (voir projets.user_can_manage),
+    un intervenant de la tâche peut changer son état ou la clôturer
+    (PROMPT_CORRECTIONS.md P0 #2)."""
+    sql = "SELECT 1 FROM tache_intervenant WHERE tache_id = %s AND utilisateur_id = %s"
+    with db.get_cursor() as cur:
+        cur.execute(sql, (tache_id, user_id))
+        return cur.fetchone() is not None
+
+
+def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int) -> bool:
     """Changement d'état simple (En cours / Bloqué / Vérifié / Arrêt /
     Abandonné) — pas de post automatique, contrairement à la clôture
-    ("Terminé", voir close_tache)."""
-    db.execute(
-        "UPDATE tache SET etat = %s WHERE id = %s",
-        (etat, tache_id),
+    ("Terminé", voir close_tache).
+
+    `projet_id` est ajouté au WHERE (PROMPT_CORRECTIONS.md P0 #2) : sans
+    ça, connaître un tache_id suffisait à le modifier depuis n'importe
+    quelle URL de projet, même un projet où l'appelant n'a aucun droit de
+    gestion. Retourne False (au lieu de ne rien signaler) si la tâche
+    n'existe pas ou n'appartient pas à ce projet."""
+    rowcount = db.execute(
+        "UPDATE tache SET etat = %s WHERE id = %s AND projet_id = %s",
+        (etat, tache_id, projet_id),
         user_id=current_user_id,
     )
+    return rowcount > 0
 
 
 def add_piece_jointe(tache_id: int, nom_fichier: str, chemin: str, uploaded_by: int) -> int:
@@ -190,7 +208,9 @@ def get_piece_jointe(piece_id: int) -> dict | None:
     )
 
 
-def close_tache(tache_id: int, current_user_id: int, type_code: str, contenu: str | None = None) -> int:
+def close_tache(
+    tache_id: int, projet_id: int, current_user_id: int, type_code: str, contenu: str | None = None,
+) -> int | None:
     """Clôture une tâche (etat='termine', date_fin=aujourd'hui) et génère
     toujours le post automatique associé, avec le tag choisi par
     l'utilisateur au moment de la clôture (voir spec : "son tag est
@@ -198,19 +218,28 @@ def close_tache(tache_id: int, current_user_id: int, type_code: str, contenu: st
     'Envoi'"). Les deux écritures sont dans la même transaction pour que
     post.created_at == tache.updated_at (marqueur d'évènement de clôture,
     voir la note en tête de fichier).
-    """
+
+    `projet_id` (PROMPT_CORRECTIONS.md P0 #2) : même garde-fou que
+    set_etat(), on n'agit que sur une tâche appartenant bien à ce projet.
+    `AND etat <> 'termine'` empêche de clôturer deux fois la même tâche —
+    une reclôture écraserait date_fin et créerait un second post de
+    clôture, en plus de casser le marqueur post.created_at==tache.updated_at
+    utilisé pour l'affichage (voir la note en tête de fichier). Retourne
+    None (jamais d'exception) si la tâche n'existe pas, n'appartient pas à
+    ce projet, ou est déjà clôturée — la route transforme ça en message
+    flash plutôt qu'en erreur 500."""
     with db.get_cursor(user_id=current_user_id) as cur:
         cur.execute(
             """
             UPDATE tache SET etat = 'termine', date_fin = CURRENT_DATE
-            WHERE id = %s
+            WHERE id = %s AND projet_id = %s AND etat <> 'termine'
             RETURNING id, projet_id, titre
             """,
-            (tache_id,),
+            (tache_id, projet_id),
         )
         row = cur.fetchone()
         if row is None:
-            raise ValueError(f"Tâche {tache_id} introuvable")
+            return None
 
         cur.execute(
             """

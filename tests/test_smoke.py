@@ -311,6 +311,9 @@ class SmokeTestCase(unittest.TestCase):
             "app.repositories.taches.list_taches_projet": TACHES_PROJET,
             "app.repositories.taches.get_tache": TACHE_POUR_FICHIERS,
             "app.repositories.taches.get_piece_jointe": PIECE_JOINTE_TACHE,
+            "app.repositories.taches.user_est_intervenant": False,
+            "app.repositories.taches.set_etat": True,
+            "app.repositories.taches.close_tache": 100,
             "app.repositories.posts.list_feed_mes_projets": FEED,
             "app.repositories.posts.list_feed_projet": FEED,
             "app.repositories.posts.get_post": POST_POUR_ACCES,
@@ -685,6 +688,95 @@ class SmokeTestCase(unittest.TestCase):
             for p in patchers:
                 p.stop()
         self.assertEqual(resp.status_code, 404)
+
+    # --- Autorisation sur les actions de tâche (PROMPT_CORRECTIONS.md
+    # P0 #2) : avant ce correctif, le menu d'action de la tâche était
+    # affiché à tout le monde dans projet_detail.html sans aucun contrôle
+    # côté serveur — n'importe quel utilisateur connecté pouvait changer
+    # l'état ou clôturer n'importe quelle tâche. ---
+
+    def test_changer_etat_tache_refuse_si_ni_gestionnaire_ni_intervenant(self):
+        self._login()
+        patchers = self._patched(**{
+            "app.repositories.projets.user_can_manage": False,
+            "app.repositories.taches.user_est_intervenant": False,
+        })
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post("/projets/1/taches/5/etat", data={"etat": "verifie"}, follow_redirects=False)
+        finally:
+            for p in patchers:
+                p.stop()
+        # Redirection (pas de crash), avec un message d'erreur — jamais
+        # l'état effectivement modifié.
+        self.assertEqual(resp.status_code, 302)
+
+    def test_changer_etat_tache_autorise_un_intervenant_de_la_tache(self):
+        """Un intervenant affecté à la tâche (mais ni chef ni co-chef) doit
+        pouvoir changer son état — pas seulement le chef/co-chef."""
+        self._login()
+        patchers = self._patched(**{
+            "app.repositories.projets.user_can_manage": False,
+            "app.repositories.taches.user_est_intervenant": True,
+        }) + [patch("app.repositories.taches.set_etat", return_value=True)]
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post("/projets/1/taches/5/etat", data={"etat": "verifie"}, follow_redirects=False)
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/projets/1", resp.headers["Location"])
+
+    def test_changer_etat_tache_introuvable_ne_plante_pas(self):
+        """set_etat() renvoie False quand la tâche n'appartient pas à ce
+        projet (ou n'existe pas) — la route doit rediriger avec un message,
+        jamais planter."""
+        self._login()
+        patchers = self._patched(**{"app.repositories.taches.set_etat": False})
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post("/projets/1/taches/999/etat", data={"etat": "verifie"}, follow_redirects=False)
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+
+    def test_cloturer_tache_type_code_invalide_ne_plante_pas(self):
+        """Un type_code hors de la liste valide faisait planter la clôture
+        en 500 (violation de contrainte FK sur post.type_code) — doit
+        maintenant juste afficher un message et rediriger."""
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post(
+                "/projets/1/taches/5/cloturer", data={"type_code": "n-importe-quoi"}, follow_redirects=False,
+            )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+
+    def test_cloturer_tache_deja_cloturee_ne_plante_pas(self):
+        """close_tache() renvoie None quand la tâche est déjà clôturée (ou
+        introuvable sur ce projet) — jamais d'exception non gérée."""
+        self._login()
+        patchers = self._patched(**{"app.repositories.taches.close_tache": None})
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post(
+                "/projets/1/taches/5/cloturer", data={"type_code": "envoi"}, follow_redirects=False,
+            )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
 
     def test_utilisateurs_liste_renders(self):
         resp = self._get("/utilisateurs")
