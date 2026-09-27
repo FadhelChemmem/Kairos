@@ -1,8 +1,31 @@
-"""Petits helpers d'affichage partagés par les templates (avatars, pills).
+"""Petits helpers d'affichage partagés par les templates (avatars, pills),
+plus quelques fonctions utilitaires pures (voir is_safe_next ci-dessous).
 
-Rien ici ne touche à la base de données — uniquement de la présentation,
-pour éviter de dupliquer ces règles dans chaque template Jinja2.
-"""
+Rien ici ne touche à la base de données — uniquement de la présentation
+et de la logique de validation, pour éviter de dupliquer ces règles dans
+chaque template Jinja2 ou chaque route."""
+from urllib.parse import urlparse
+
+
+def is_safe_next(url: str | None) -> bool:
+    """Vrai si `url` est un chemin interne sûr pour une redirection
+    post-action (paramètre ?next= de la connexion, formulaires "next" de
+    routes/posts.py et routes/fichiers.py) — PROMPT_CORRECTIONS.md P0 #5.
+
+    Le contrôle `url.startswith("/")` utilisé auparavant accepte encore
+    "//evil.tld" et "/\\evil.tld" : la plupart des navigateurs traitent
+    ces deux formes comme des URLs ABSOLUES (respectivement "URL relative
+    au protocole" et un antislash interprété comme un slash), donc une
+    redirection a bien lieu hors du site — un lien "connexion" envoyé par
+    un attaquant avec ?next=//evil.tld renverrait la victime, une fois
+    connectée, vers son site. On exige donc un chemin qui commence par un
+    seul "/" (jamais "//" ni "/\\") ET dont l'analyse par urlparse ne
+    révèle ni schéma ni netloc (protège aussi contre des variantes moins
+    connues, ex. "/\t/evil.tld" selon le navigateur)."""
+    if not url or not url.startswith("/") or url.startswith("//") or url.startswith("/\\"):
+        return False
+    parsed = urlparse(url)
+    return not parsed.scheme and not parsed.netloc
 
 # Palette reprise telle quelle des maquettes (Main.dc.html / Projet.dc.html).
 _AVATAR_PALETTE = ["#4a7c59", "#ea6c1a", "#3b7de0", "#7c6ff0", "#e3512c", "#2fa876"]

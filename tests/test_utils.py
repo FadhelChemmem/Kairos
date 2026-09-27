@@ -2,7 +2,9 @@
 import datetime
 import unittest
 
-from app.utils import avatar_color, build_gantt, il_y_a, initials, post_type_style, projet_etat_style, tache_etat_style
+from app.utils import (
+    avatar_color, build_gantt, il_y_a, initials, is_safe_next, post_type_style, projet_etat_style, tache_etat_style,
+)
 
 
 class TestInitials(unittest.TestCase):
@@ -105,6 +107,42 @@ class TestBuildGantt(unittest.TestCase):
         taches = [{"titre": "Sans échéance", "date_echeance": None}]
         g = build_gantt(taches, self.TODAY)
         self.assertEqual(g["rows"], [])
+
+
+class TestIsSafeNext(unittest.TestCase):
+    """PROMPT_CORRECTIONS.md P0 #5 : startswith("/") seul acceptait encore
+    des formes que les navigateurs traitent comme des URLs absolues."""
+
+    def test_chemin_interne_simple_est_accepte(self):
+        self.assertTrue(is_safe_next("/projets/1"))
+        self.assertTrue(is_safe_next("/accueil"))
+
+    def test_chemin_interne_avec_query_string_est_accepte(self):
+        self.assertTrue(is_safe_next("/dailylog?date=2026-09-10"))
+
+    def test_vide_ou_absent_est_refuse(self):
+        self.assertFalse(is_safe_next(""))
+        self.assertFalse(is_safe_next(None))
+
+    def test_url_absolue_est_refusee(self):
+        self.assertFalse(is_safe_next("https://evil.tld/phishing"))
+        self.assertFalse(is_safe_next("http://evil.tld"))
+
+    def test_protocol_relative_est_refuse(self):
+        # "//evil.tld" est traité par la plupart des navigateurs comme une
+        # URL absolue (même protocole que la page courante, autre hôte).
+        self.assertFalse(is_safe_next("//evil.tld"))
+        self.assertFalse(is_safe_next("///evil.tld"))
+
+    def test_backslash_est_refuse(self):
+        # "/\evil.tld" : certains navigateurs traitent le antislash comme
+        # un slash, ce qui en fait aussi une redirection hors site.
+        self.assertFalse(is_safe_next("/\\evil.tld"))
+        self.assertFalse(is_safe_next("/\\/evil.tld"))
+
+    def test_chemin_sans_slash_initial_est_refuse(self):
+        self.assertFalse(is_safe_next("evil.tld"))
+        self.assertFalse(is_safe_next("javascript:alert(1)"))
 
 
 if __name__ == "__main__":

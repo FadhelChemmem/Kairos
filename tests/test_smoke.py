@@ -1001,6 +1001,84 @@ class SmokeTestCase(unittest.TestCase):
         self.assertEqual(resp.status_code, 302, resp.data[:2000])
         mock_rappel.assert_called_once_with(1)
 
+    def test_login_next_ouverture_de_redirection_refusee(self):
+        """PROMPT_CORRECTIONS.md P0 #5 : ?next=//evil.tld ne doit jamais
+        rediriger hors du site après une connexion réussie."""
+        user_row = {**USER, "mot_de_passe_hash": "hash-bidon"}
+        with patch("app.auth.get_user_by_email", return_value=user_row), \
+             patch("app.auth.verify_password", return_value=True), \
+             patch("app.auth._verifier_rappel_dailylog"), \
+             patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
+             patch("app.repositories.notifications.compter_non_lues", return_value=0):
+            resp = self.client.post(
+                "/connexion?next=//evil.tld",
+                data={"email": "fadhel@midgard.tn", "password": "peu-importe"},
+                follow_redirects=False,
+            )
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/accueil", resp.headers["Location"])
+        self.assertNotIn("evil.tld", resp.headers["Location"])
+
+    def test_login_next_chemin_interne_est_respecte(self):
+        user_row = {**USER, "mot_de_passe_hash": "hash-bidon"}
+        with patch("app.auth.get_user_by_email", return_value=user_row), \
+             patch("app.auth.verify_password", return_value=True), \
+             patch("app.auth._verifier_rappel_dailylog"), \
+             patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
+             patch("app.repositories.notifications.compter_non_lues", return_value=0):
+            resp = self.client.post(
+                "/connexion?next=/projets/1",
+                data={"email": "fadhel@midgard.tn", "password": "peu-importe"},
+                follow_redirects=False,
+            )
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/projets/1", resp.headers["Location"])
+
+    def test_posts_safe_redirect_refuse_une_ouverture_de_redirection(self):
+        self._login()
+        patchers = self._patched(**{
+            "app.repositories.posts.create_post": 101,
+        })
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post(
+                "/posts",
+                data={
+                    "projet_id": "1", "type_code": "envoi", "contenu": "Test",
+                    "next": "//evil.tld",
+                },
+                follow_redirects=False,
+            )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        self.assertNotIn("evil.tld", resp.headers["Location"])
+
+    def test_fichiers_safe_redirect_refuse_une_ouverture_de_redirection(self):
+        self._login()
+        patchers = self._patched(**{
+            "app.repositories.taches.add_piece_jointe": 1,
+        }) + [patch("app.routes.fichiers.save_upload", return_value=("note.pdf", "taches/5/xyz.pdf"))]
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post(
+                "/fichiers/taches/5/upload",
+                data={
+                    "fichier": (io.BytesIO(b"contenu bidon"), "note.pdf"),
+                    "next": "/\\evil.tld",
+                },
+                content_type="multipart/form-data",
+                follow_redirects=False,
+            )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        self.assertNotIn("evil.tld", resp.headers["Location"])
+
     def test_login_echoue_conserve_email_saisi(self):
         """Retour Fadhel (2026-09-20) : après un mot de passe incorrect, le
         champ e-mail ne doit plus être vidé — on renvoie la valeur saisie

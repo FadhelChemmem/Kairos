@@ -16,6 +16,7 @@ from .repositories import dailylog as dailylog_repo
 from .repositories import notifications as notifications_repo
 from .repositories import securite as securite_repo
 from .repositories import utilisateurs as utilisateurs_repo
+from .utils import is_safe_next
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +200,12 @@ def login():
             session.permanent = True
             session["user_id"] = user["id"]
             _verifier_rappel_dailylog(user["id"])
-            next_url = request.args.get("next") or url_for("main.accueil")
+            # Ouverture de redirection (PROMPT_CORRECTIONS.md P0 #5) : ?next=
+            # n'est jamais fiable tel quel (lien envoyé par un tiers) — voir
+            # is_safe_next() dans utils.py.
+            next_url = request.args.get("next")
+            if not is_safe_next(next_url):
+                next_url = url_for("main.accueil")
             return redirect(next_url)
 
         flash(error, "error")
