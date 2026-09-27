@@ -10,12 +10,25 @@ import os
 import uuid
 
 from flask import current_app
-from werkzeug.utils import secure_filename
 
 # Photos de profil (retour Fadhel, 2026-09-20) : mêmes contraintes de
 # format que n'importe quel avatar web classique — on ne veut pas qu'un
 # utilisateur envoie un .pdf ou un .exe en photo de profil.
 AVATAR_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
+# Pièces jointes (tâches/posts) : liste blanche d'extensions couvrant les
+# usages réels du métier (plans, devis, photos de chantier...). PROMPT_
+# CORRECTIONS.md P2 #21 : on ne peut plus utiliser secure_filename() pour
+# détecter l'extension (voir plus bas) — un nom de fichier arbitraire doit
+# donc être validé contre cette liste avant d'être conservé, sous peine de
+# stocker un fichier sans aucune extension reconnaissable côté serveur.
+PIECE_JOINTE_EXTENSIONS = {
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".ods", ".odp",
+    ".dwg", ".dxf", ".ifc", ".rvt",
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".svg",
+    ".zip", ".rar", ".7z",
+    ".txt", ".csv",
+}
 
 
 def is_image_filename(filename: str) -> bool:
@@ -25,9 +38,21 @@ def is_image_filename(filename: str) -> bool:
 def save_upload(file_storage, subdir: str) -> tuple[str, str]:
     """Enregistre un fichier uploadé sous UPLOAD_DIR/<subdir>/<uuid>.<ext>.
     Retourne (nom_fichier_original, chemin_relatif) à stocker en base.
+
+    PROMPT_CORRECTIONS.md P2 #21 : secure_filename() translittère/supprime
+    les caractères non-ASCII — un nom comme "مخطط.pdf" devenait "pdf" (sans
+    point, donc SANS extension), ce qui faisait perdre l'extension réelle du
+    fichier (et donc, entre autres, le bon Content-Type au téléchargement).
+    On ne s'en sert plus : le nom d'origine (non modifié) est conservé tel
+    quel pour l'affichage (Jinja2 l'échappe automatiquement dans les
+    templates), et l'extension est prise sur ce nom brut puis validée
+    contre PIECE_JOINTE_EXTENSIONS avant d'être utilisée pour le nom stocké
+    sur disque (qui reste un UUID — aucun risque de traversée de chemin).
     """
-    original = secure_filename(file_storage.filename) or "fichier"
-    ext = os.path.splitext(original)[1]
+    nom_brut = file_storage.filename or "fichier"
+    ext = os.path.splitext(nom_brut)[1].lower()
+    if ext not in PIECE_JOINTE_EXTENSIONS:
+        ext = ""
     stored_name = f"{uuid.uuid4().hex}{ext}"
     rel_path = os.path.join(subdir, stored_name)
 
@@ -35,4 +60,4 @@ def save_upload(file_storage, subdir: str) -> tuple[str, str]:
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
     file_storage.save(abs_path)
 
-    return original, rel_path
+    return nom_brut, rel_path
