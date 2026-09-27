@@ -59,13 +59,17 @@ def list_projets(
                   FROM projet_lot pl WHERE pl.projet_id = p.id),
                  ''
                ) AS lots,
-               vh.heures_cumulees,
+               -- Sous-requête plutôt que LEFT JOIN v_projet_heures (audit
+               -- n°2) : la vue agrégeait TOUT dailylog_entree à chaque
+               -- appel ; ici la somme n'est calculée que pour les lignes
+               -- retenues par le LIMIT (index idx_dailylog_projet).
+               (SELECT sum(de.heures) FROM dailylog_entree de
+                 WHERE de.projet_id = p.id) AS heures_cumulees,
                (SELECT min(t.date_echeance) FROM tache t
                  WHERE t.projet_id = p.id AND t.etat NOT IN ('termine', 'abandonne')
                    AND t.date_echeance IS NOT NULL) AS prochaine_echeance
         FROM projet p
         JOIN utilisateur u ON u.id = p.chef_projet_id
-        LEFT JOIN v_projet_heures vh ON vh.projet_id = p.id
         WHERE (%(etats)s IS NULL OR p.etat::text = ANY(%(etats)s))
           AND (%(phases)s IS NULL OR p.phase::text = ANY(%(phases)s))
           AND (%(chef_ids)s IS NULL OR p.chef_projet_id = ANY(%(chef_ids)s))

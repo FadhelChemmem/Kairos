@@ -18,7 +18,9 @@
 <div style="max-width:760px; margin:0 auto; padding:20px 32px 60px;">
   <div class="card notif-list" style="padding:4px 12px;">
     {% for n in notifications %}
-      <a href="{{ url_for('notifications.ouvrir', notification_id=n.id) }}" class="notif-item {{ '' if n.lu else 'non-lu' }}">
+      <form method="post" action="{{ url_for('notifications.ouvrir', notification_id=n.id) }}" style="margin:0;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="notif-item {{ '' if n.lu else 'non-lu' }}">
         <span class="notif-dot {{ 'vide' if n.lu }}"></span>
         <div style="flex:1; min-width:0;">
           <div style="display:flex; align-items:center; gap:8px; margin-bottom:3px;">
@@ -28,7 +30,8 @@
           </div>
           <div style="font-size:13px; {{ 'font-weight:600;' if not n.lu }} color:#2b2b26;">{{ n.message }}</div>
         </div>
-      </a>
+      </button>
+      </form>
     {% else %}
       <div style="padding:28px 4px; font-size:13px; color:#7c8780; text-align:center;">Aucune notification pour le moment.</div>
     {% endfor %}

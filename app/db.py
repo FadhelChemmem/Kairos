@@ -89,12 +89,24 @@ def get_cursor(user_id: int | None = None, commit: bool = True):
         else:
             conn.rollback()
     except Exception:
-        conn.rollback()
+        # Après un redémarrage de PostgreSQL, la connexion du pool est morte :
+        # rollback() lèverait alors sa propre InterfaceError et masquerait
+        # l'erreur d'origine dans les journaux (audit n°2).
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         raise
     finally:
         if cur is not None:
-            cur.close()
-        _pool.putconn(conn)
+            try:
+                cur.close()
+            except Exception:
+                pass
+        # Une connexion fermée n'est pas remise dans le pool (close=True) :
+        # la requête suivante en obtiendra une neuve au lieu d'échouer à son
+        # tour.
+        _pool.putconn(conn, close=bool(conn.closed))
 
 
 def query_all(sql: str, params: tuple = (), user_id: int | None = None) -> list[dict]:

@@ -61,6 +61,9 @@ MAX_TENTATIVES_IP = 30
 # email inconnu, ce qui permettrait de deviner quels emails sont des
 # comptes réels rien qu'en chronométrant les réponses.
 _HASH_FACTICE = generate_password_hash(secrets.token_urlsafe(32))
+# Préfixe de la méthode de hachage actuelle ("scrypt:..."), pour repérer les
+# hashes anciens (pbkdf2 importés de Chronos) à re-hacher à la connexion.
+_METHODE_HASH_ACTUELLE = _HASH_FACTICE.split("$", 1)[0].split(":", 1)[0] + ":"
 
 
 def get_user_by_email(email: str) -> dict | None:
@@ -111,6 +114,12 @@ def load_logged_in_user() -> None:
     """Appelé avant chaque requête (voir app/__init__.py) pour peupler g.user
     et, dans la foulée, le compteur de notifications non lues affiché dans
     la cloche de la barre du haut (base.html)."""
+    if request.endpoint == "static":
+        # Fichiers CSS/JS/images : pas besoin de l'utilisateur, et ça
+        # évitait 3 requêtes SQL par fichier statique servi (audit n°2).
+        g.user = None
+        g.notifications_non_lues = 0
+        return
     user_id = session.get("user_id")
     g.user = get_user_by_id(user_id) if user_id else None
 
@@ -228,8 +237,18 @@ def login():
         # bourrinage automatisé/distribué sur plusieurs comptes depuis une
         # même source — ip toujours vérifiée, même sans email saisi.
         ip = request.remote_addr or "ip-inconnue"
+        # Compteur par email ET par IP (audit n°2) : compté par email seul,
+        # n'importe qui connaissant l'adresse d'un compte (l'admin par
+        # exemple) pouvait le verrouiller pour tout le monde, à répétition.
+        # Lié à l'IP, un attaquant ne verrouille plus que ses propres
+        # tentatives ; le vrai propriétaire, depuis son poste, se connecte
+        # toujours. Derrière un reverse proxy, remote_addr n'est la vraie IP
+        # du client que si TRUSTED_PROXY_COUNT est renseigné (voir
+        # app/__init__.py, ProxyFix) — sinon tout le monde partagerait
+        # l'IP du proxy.
+        cle_email_ip = f"{email}|{ip}"
         trop_de_tentatives_email = email and securite_repo.compter_tentatives_recentes(
-            "connexion", email, FENETRE_TENTATIVES_MINUTES
+            "connexion", cle_email_ip, FENETRE_TENTATIVES_MINUTES
         ) >= MAX_TENTATIVES
         trop_de_tentatives_ip = securite_repo.compter_tentatives_recentes(
             "connexion_ip", ip, FENETRE_TENTATIVES_MINUTES
@@ -247,14 +266,28 @@ def login():
                 verify_password(password, _HASH_FACTICE)
                 error = "Email ou mot de passe incorrect."
                 if email:
-                    securite_repo.enregistrer_tentative("connexion", email)
+                    securite_repo.enregistrer_tentative("connexion", cle_email_ip)
                 securite_repo.enregistrer_tentative("connexion_ip", ip)
             elif not verify_password(password, user["mot_de_passe_hash"]):
                 error = "Email ou mot de passe incorrect."
-                securite_repo.enregistrer_tentative("connexion", email)
+                securite_repo.enregistrer_tentative("connexion", cle_email_ip)
                 securite_repo.enregistrer_tentative("connexion_ip", ip)
             elif not user["actif"]:
                 error = "Ce compte a été désactivé."
+
+        if error is None and not user["mot_de_passe_hash"].startswith(_METHODE_HASH_ACTUELLE):
+            # Comptes importés de Chronos (pbkdf2) : re-hachés avec la
+            # méthode actuelle dès la première connexion réussie. Sinon leur
+            # vérification, deux fois plus lente que celle du hash factice,
+            # laissait deviner par chronométrage quels emails venaient de
+            # Chronos (audit n°2).
+            nouveau_hash = hash_password(password)
+            try:
+                utilisateurs_repo.set_password(user["id"], nouveau_hash, user["id"])
+                user["mot_de_passe_hash"] = nouveau_hash
+            except Exception:
+                # Jamais bloquant : la connexion reste valide avec l'ancien hash.
+                current_app.logger.exception("Re-hachage du mot de passe impossible (id=%s)", user["id"])
 
         if error is None:
             session.clear()
@@ -312,7 +345,10 @@ def mot_de_passe_oublie():
                 user = get_user_by_email(email)
                 if user is not None and user["actif"]:
                     lien = generer_lien_reset(user["id"])
-                    mailer.envoyer(
+                    # En arrière-plan (audit n°2) : un envoi SMTP synchrone
+                    # rendait la réponse nettement plus lente quand l'email
+                    # existe, ce qui permettait de deviner les comptes réels.
+                    mailer.envoyer_en_arriere_plan(
                         user["email"],
                         "Kairos — réinitialisation de votre mot de passe",
                         "Bonjour,\n\n"

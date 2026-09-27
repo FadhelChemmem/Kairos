@@ -1405,7 +1405,7 @@ class SmokeTestCase(unittest.TestCase):
             p.start()
         try:
             with patch("app.repositories.notifications.marquer_lu") as mock_marquer:
-                resp = self.client.get("/notifications/10/ouvrir", follow_redirects=False)
+                resp = self.client.post("/notifications/10/ouvrir", follow_redirects=False)
                 mock_marquer.assert_called_once_with(10, 1)
         finally:
             for p in patchers:
@@ -1421,7 +1421,7 @@ class SmokeTestCase(unittest.TestCase):
         for p in patchers:
             p.start()
         try:
-            resp = self.client.get("/notifications/999/ouvrir")
+            resp = self.client.post("/notifications/999/ouvrir")
         finally:
             for p in patchers:
                 p.stop()
@@ -2143,10 +2143,86 @@ class SmokeTestCase(unittest.TestCase):
                 data={"email": "fadhel@midgard.tn", "password": "mauvais"},
             )
         # PROMPT_CORRECTIONS.md P2 #24 : une tentative échouée est
-        # maintenant enregistrée à la fois par email ET par IP.
-        mock_enregistrer.assert_any_call("connexion", "fadhel@midgard.tn")
+        # maintenant enregistrée à la fois par email ET par IP — le
+        # compteur "email" est lié à l'IP (audit n°2), pour qu'un tiers ne
+        # puisse plus verrouiller le compte de quelqu'un d'autre.
+        mock_enregistrer.assert_any_call("connexion", "fadhel@midgard.tn|127.0.0.1")
         mock_enregistrer.assert_any_call("connexion_ip", "127.0.0.1")
         self.assertEqual(mock_enregistrer.call_count, 2)
+
+    def test_login_verrouillage_email_limite_a_lip_de_lattaquant(self):
+        """Audit n°2 : 5 échecs depuis une autre IP ne doivent plus
+        empêcher le vrai propriétaire de se connecter depuis son poste."""
+        def compter(type_, cle, fenetre):
+            # 5 échecs enregistrés pour cet email, mais depuis une autre IP.
+            return 5 if cle == "fadhel@midgard.tn|10.0.0.99" else 0
+
+        user_row = {**USER, "mot_de_passe_hash": "scrypt:bidon"}
+        with patch("app.repositories.securite.compter_tentatives_recentes", side_effect=compter), \
+             patch("app.auth.get_user_by_email", return_value=user_row), \
+             patch("app.auth.verify_password", return_value=True), \
+             patch("app.auth._verifier_rappel_dailylog"), \
+             patch("app.repositories.notifications.compter_non_lues", return_value=0):
+            resp = self.client.post(
+                "/connexion", data={"email": "fadhel@midgard.tn", "password": "bon"},
+            )
+        self.assertEqual(resp.status_code, 302)
+        with self.client.session_transaction() as sess:
+            self.assertEqual(sess.get("user_id"), 1)
+
+    def test_login_rehache_un_ancien_hash_pbkdf2(self):
+        """Audit n°2 : les comptes importés de Chronos (pbkdf2) sont
+        re-hachés à la première connexion réussie."""
+        user_row = {**USER, "mot_de_passe_hash": "pbkdf2:sha256:600000$sel$abc"}
+        with patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
+             patch("app.auth.get_user_by_email", return_value=user_row), \
+             patch("app.auth.verify_password", return_value=True), \
+             patch("app.auth._verifier_rappel_dailylog"), \
+             patch("app.repositories.notifications.compter_non_lues", return_value=0), \
+             patch("app.repositories.utilisateurs.set_password") as mock_set:
+            self.client.post("/connexion", data={"email": "fadhel@midgard.tn", "password": "bon"})
+        mock_set.assert_called_once()
+        self.assertTrue(mock_set.call_args.args[1].startswith("scrypt:"))
+
+    def test_login_ne_rehache_pas_un_hash_actuel(self):
+        user_row = {**USER, "mot_de_passe_hash": "scrypt:32768:8:1$sel$abc"}
+        with patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
+             patch("app.auth.get_user_by_email", return_value=user_row), \
+             patch("app.auth.verify_password", return_value=True), \
+             patch("app.auth._verifier_rappel_dailylog"), \
+             patch("app.repositories.notifications.compter_non_lues", return_value=0), \
+             patch("app.repositories.utilisateurs.set_password") as mock_set:
+            self.client.post("/connexion", data={"email": "fadhel@midgard.tn", "password": "bon"})
+        mock_set.assert_not_called()
+
+    def test_notification_ouvrir_nest_plus_accessible_en_get(self):
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.get("/notifications/10/ouvrir")
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 405)
+
+    def test_entetes_de_securite(self):
+        resp = self.client.get("/connexion")
+        self.assertEqual(resp.headers.get("X-Frame-Options"), "DENY")
+        self.assertEqual(resp.headers.get("X-Content-Type-Options"), "nosniff")
+        self.assertIn("frame-ancestors 'none'", resp.headers.get("Content-Security-Policy", ""))
+
+    def test_fichier_statique_sans_requete_sql(self):
+        """Audit n°2 : chaque fichier CSS/JS coûtait 3 requêtes SQL."""
+        self._login()
+        with patch("app.auth.get_user_by_id") as mock_user, \
+             patch("app.repositories.notifications.compter_non_lues") as mock_notifs:
+            resp = self.client.get("/static/css/app.css")
+            resp.close()
+        self.assertEqual(resp.status_code, 200)
+        mock_user.assert_not_called()
+        mock_notifs.assert_not_called()
 
     def test_login_bloque_apres_trop_de_tentatives_par_ip(self):
         """PROMPT_CORRECTIONS.md P2 #24 : au-delà de MAX_TENTATIVES_IP
@@ -2958,6 +3034,32 @@ class TestProtectionCSRF(unittest.TestCase):
         self.assertIn("/connexion", resp.headers["Location"])
         with self.client.session_transaction() as sess:
             self.assertNotIn("user_id", sess)
+
+
+class TestReverseProxy(unittest.TestCase):
+    """Audit n°2 : derrière un reverse proxy, sans ProxyFix, tout le monde
+    avait l'IP du proxy (limite de connexions par IP partagée). Les
+    en-têtes X-Forwarded-* ne sont crus que si TRUSTED_PROXY_COUNT > 0."""
+
+    def _ip_vue_par_la_connexion(self, nb_proxys):
+        class ConfigProxy(TestConfig):
+            TRUSTED_PROXY_COUNT = nb_proxys
+
+        client = create_app(ConfigProxy).test_client()
+        with patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
+             patch("app.auth.get_user_by_email", return_value=None), \
+             patch("app.repositories.securite.enregistrer_tentative") as mock_enregistrer:
+            client.post(
+                "/connexion", data={"email": "x@y.tn", "password": "z"},
+                headers={"X-Forwarded-For": "203.0.113.7"},
+            )
+        return [c.args[1] for c in mock_enregistrer.call_args_list if c.args[0] == "connexion_ip"]
+
+    def test_ip_reelle_derriere_un_proxy_de_confiance(self):
+        self.assertEqual(self._ip_vue_par_la_connexion(1), ["203.0.113.7"])
+
+    def test_en_tete_ignore_sans_proxy_de_confiance(self):
+        self.assertEqual(self._ip_vue_par_la_connexion(0), ["127.0.0.1"])
 
 
 class TestSecretKeyValidation(unittest.TestCase):

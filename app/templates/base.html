@@ -17,7 +17,17 @@
       window.fetch = function (ressource, options) {
         options = options || {};
         var methode = (options.method || (ressource && ressource.method) || 'GET').toUpperCase();
-        var url = new URL(typeof ressource === 'string' ? ressource : ressource.url, window.location.href);
+        // Request -> son .url ; chaîne ou objet URL -> String(...). Avec un
+        // objet URL, `ressource.url` valait undefined, qui se résolvait vers
+        // CE site : le jeton partait alors vers n'importe quel autre site
+        // (audit n°2). Une URL invalide laisse le fetch d'origine renvoyer
+        // sa promesse rejetée habituelle au lieu de lever ici.
+        var url;
+        try {
+          url = new URL(ressource instanceof Request ? ressource.url : String(ressource), window.location.href);
+        } catch (e) {
+          return fetchOrigine.call(this, ressource, options);
+        }
         if (['GET', 'HEAD', 'OPTIONS', 'TRACE'].indexOf(methode) === -1 && url.origin === window.location.origin) {
           var entetes = new Headers(options.headers || (ressource && ressource.headers) || {});
           if (!entetes.has('X-CSRFToken')) entetes.set('X-CSRFToken', jeton);

@@ -65,6 +65,11 @@ class Config:
     # ce réglage est vide.
     APP_BASE_URL = os.environ.get("APP_BASE_URL", "").rstrip("/")
 
+    # Nombre de reverse proxys de confiance devant l'appli (ex. 1 pour un
+    # nginx/Synology en HTTPS devant gunicorn). 0 = accès direct : les
+    # en-têtes X-Forwarded-* sont alors ignorés. Voir app/__init__.py.
+    TRUSTED_PROXY_COUNT = int(os.environ.get("TRUSTED_PROXY_COUNT", "0") or 0)
+
     # Protection CSRF (Flask-WTF CSRFProtect, PROMPT_CORRECTIONS.md P2 #25) :
     # chaque POST doit porter le jeton de session, soit dans le champ caché
     # csrf_token des formulaires, soit dans l'en-tête X-CSRFToken pour un

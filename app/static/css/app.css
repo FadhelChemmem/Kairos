@@ -386,12 +386,15 @@ label { font-size: 12px; color: #7c8780; font-weight: 600; display: block; margi
 }
 
 .notif-list { display: flex; flex-direction: column; }
+/* Chaque notification est un bouton de formulaire (ouverture en POST,
+   audit n°2) : on neutralise le style natif du bouton. */
 .notif-item {
-  display: flex; align-items: flex-start; gap: 12px;
-  padding: 14px 6px; border-bottom: 1px solid #f0f2ee;
+  display: flex; align-items: flex-start; gap: 12px; width: 100%;
+  padding: 14px 6px; border: none; border-bottom: 1px solid #f0f2ee;
+  background: none; font: inherit; text-align: left; cursor: pointer;
   text-decoration: none; color: inherit;
 }
-.notif-item:last-child { border-bottom: none; }
+.notif-list form:last-child .notif-item { border-bottom: none; }
 .notif-item:hover { background: #f8faf7; }
 .notif-item.non-lu { background: #f5faf7; }
 .notif-dot { width: 8px; height: 8px; border-radius: 999px; background: #4a7c59; margin-top: 6px; flex-shrink: 0; }
