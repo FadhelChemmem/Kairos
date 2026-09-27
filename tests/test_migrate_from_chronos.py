@@ -81,6 +81,19 @@ class TestLotsCodesInvalides(unittest.TestCase):
         self.assertEqual(projet_lots, [(1, "GO")])
         self.assertEqual(report["lots_non_reconnus"], [])
 
+    def test_code_court_deja_present_est_conserve_tel_quel(self):
+        """Le nom du lot dans l'ancien Kairos peut déjà être un code court
+        ("GO") plutôt que le libellé complet — les deux formes doivent être
+        reconnues."""
+        data = self._data_minimale(
+            lots=[{"id": 5, "name": "go"}],
+            project_lots=[{"projectID": 1, "lotID": 5}],
+        )
+        report = defaultdict(list)
+        _projets, projet_lots, _liens, _ids = build_projets(data, {1}, report)
+        self.assertEqual(projet_lots, [(1, "GO")])
+        self.assertEqual(report["lots_non_reconnus"], [])
+
     def test_libelle_non_reconnu_est_ignore_et_signale(self):
         data = self._data_minimale(
             lots=[{"id": 5, "name": "Plomberie"}],

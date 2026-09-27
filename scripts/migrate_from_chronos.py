@@ -32,14 +32,22 @@ Usage :
         --email-domain kairos.tn
 
 Le fichier .sql généré s'applique ensuite avec, par exemple :
-    docker compose exec -T db psql -v ON_ERROR_STOP=1 -U kairos -d kairos -f /chemin/migration.sql
+    docker compose exec -T db psql -v ON_ERROR_STOP=1 -U kairos -d kairos \\
+        < migration_sorties/.../migration.sql
 
-    (`-v ON_ERROR_STOP=1` est nécessaire : tout est dans une seule
-    transaction BEGIN/COMMIT — sans cette option, psql continue après une
-    erreur au lieu de s'arrêter, or une fois la transaction "avortée" côté
-    Postgres, TOUTES les instructions suivantes échouent silencieusement,
-    y compris le COMMIT final. Sans ON_ERROR_STOP=1, un import qui a
-    réellement échoué peut donner l'impression d'avoir réussi.)
+    (PROMPT_CORRECTIONS.md P1 #13 — deux corrections sur cette commande :
+    - `< migration_sorties/.../migration.sql` (entrée standard) au lieu de
+      `-f /chemin/migration.sql` : `-f` désigne un chemin À L'INTÉRIEUR du
+      conteneur `db`, où ce fichier généré sur la machine hôte n'existe pas
+      (il faudrait le copier dans le conteneur au préalable) — `-T` avec
+      `<` redirige le fichier local vers l'entrée standard de `psql` dans le
+      conteneur, sans rien copier nulle part.
+    - `-v ON_ERROR_STOP=1` est nécessaire : tout est dans une seule
+      transaction BEGIN/COMMIT — sans cette option, psql continue après une
+      erreur au lieu de s'arrêter, or une fois la transaction "avortée" côté
+      Postgres, TOUTES les instructions suivantes échouent silencieusement,
+      y compris le COMMIT final. Sans ON_ERROR_STOP=1, un import qui a
+      réellement échoué peut donner l'impression d'avoir réussi.)
 
 Le script part du principe que la base cible est FRAÎCHE (schema.sql tout
 juste appliqué, aucune donnée métier dedans à part les tables de référence
@@ -358,20 +366,30 @@ def build_projets(data, valid_user_ids, report):
 
     valid_projet_ids = {p["id"] for p in projets}
 
-    # Correspondance ancien libellé de lot -> code court du nouveau schéma
-    # (PROMPT_CORRECTIONS.md P1 #13) : `lots_by_id` ne donne que le LIBELLÉ
-    # complet de l'ancien Kairos (ex. "Gros Œuvre"), alors que
+    # Correspondance ancien lot -> code court du nouveau schéma
+    # (PROMPT_CORRECTIONS.md P1 #13) : `lots_by_id` donne le nom du lot tel
+    # qu'écrit dans l'ancien Kairos, qui peut être soit déjà un code court
+    # ("GO"), soit le libellé complet ("Gros Œuvre") — dans les deux cas,
     # projet_lot.lot_code (nouveau schéma) est une clé étrangère vers
-    # lot.code, un code COURT ("GO") — inséré tel quel, le libellé complet
-    # violait systématiquement cette contrainte FK à l'import. Comparaison
-    # normalisée (slug_part) pour tolérer les variations d'accents/casse
-    # entre les deux bases.
+    # lot.code, un code court parmi seulement {"CM", "GO"} (schema.sql) :
+    # inséré tel quel sans cette correspondance, un libellé complet violait
+    # systématiquement cette contrainte FK à l'import. Un nom qui ne
+    # correspond à AUCUNE des deux formes est ignoré et signalé dans le
+    # rapport plutôt que de planter l'import.
     lot_code_par_libelle = {slug_part(libelle): code for code, libelle in LOTS_CIBLE.items()}
+
+    def _lot_code(nom_ancien):
+        if not nom_ancien:
+            return None
+        candidat = nom_ancien.strip().upper()
+        if candidat in LOTS_CIBLE:  # déjà un code court ("CM", "GO")
+            return candidat
+        return lot_code_par_libelle.get(slug_part(nom_ancien))  # ou le libellé complet
 
     for pl in data["projectLots"]:
         if pl["projectID"] in valid_projet_ids:
             nom_ancien = lots_by_id.get(pl["lotID"])
-            lot_code = lot_code_par_libelle.get(slug_part(nom_ancien)) if nom_ancien else None
+            lot_code = _lot_code(nom_ancien)
             if lot_code:
                 projet_lots.append((pl["projectID"], lot_code))
             else:
@@ -730,8 +748,12 @@ def emit_rapport(path, report, counts, args):
       "```\n"
       "Puis, sur une base FRAÎCHE (schema.sql tout juste appliqué, aucune donnée dedans) :\n"
       "```\n"
-      "docker compose exec -T db psql -v ON_ERROR_STOP=1 -U kairos -d kairos -f /chemin/vers/migration.sql\n"
+      "docker compose exec -T db psql -v ON_ERROR_STOP=1 -U kairos -d kairos < /chemin/vers/migration.sql\n"
       "```\n"
+      "`< /chemin/vers/migration.sql` (entrée standard) plutôt que `-f /chemin/...` : `-f` désigne "
+      "un chemin À L'INTÉRIEUR du conteneur `db`, où ce fichier généré sur la machine hôte "
+      "n'existe pas ; `-T` avec `<` redirige le fichier local vers l'entrée standard de `psql` "
+      "dans le conteneur, sans rien copier nulle part.\n\n"
       "`-v ON_ERROR_STOP=1` est indispensable : tout est dans une seule transaction "
       "BEGIN/COMMIT, donc sans cette option, une erreur au milieu du fichier avorte "
       "silencieusement la transaction jusqu'au COMMIT final — psql continue et rend la "
