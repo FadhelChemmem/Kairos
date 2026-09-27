@@ -68,7 +68,15 @@
 <div class="topbar">
   <div class="topbar-inner">
   <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
-    <a href="{{ url_for('main.accueil') }}"><img src="{{ url_for('static', filename='img/kairos-logo.png') }}" alt="Kairos"></a>
+    {# Logo en deux versions (retour Fadhel, 2026-09-27) : le PNG d'origine a
+       le mot "KAIROS" en noir plein, invisible sur fond sombre — une
+       variante avec ce texte repassé en blanc (O orange, trait et pastille
+       inchangés) est basculée en thème sombre exactement comme les icônes
+       soleil/lune de #theme-toggle ci-dessous (voir app.css). #}
+    <a href="{{ url_for('main.accueil') }}">
+      <img class="logo-light" src="{{ url_for('static', filename='img/kairos-logo.png') }}" alt="Kairos">
+      <img class="logo-dark" src="{{ url_for('static', filename='img/kairos-logo-dark.png') }}" alt="Kairos">
+    </a>
     {# Icône du projet actif dans la topbar (retour Fadhel, 2026-09-27) —
        rempli par projet_detail.html quand on consulte un projet ; vide
        partout ailleurs. Distinct du fil d'Ariane .subbar existant. #}

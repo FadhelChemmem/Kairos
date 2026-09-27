@@ -162,6 +162,20 @@ a:hover { color: var(--brand-text-strong); }
   display: flex; align-items: center; gap: 18px; padding: 0 32px;
 }
 .topbar img { height: 24px; width: auto; display: block; }
+
+/* Logo Kairos en thème sombre (retour Fadhel, 2026-09-27) : kairos-logo.png
+   a le mot "KAIROS" en noir plein, invisible sur fond sombre — une seconde
+   image (kairos-logo-dark.png, même texte repassé en blanc, O orange et
+   trait/pastille inchangés) est basculée exactement comme les icônes
+   soleil/lune de #theme-toggle ci-dessous. Sélecteur qualifié par
+   .topbar-inner pour l'emporter sur ".topbar img { display: block; }"
+   ci-dessus (même mécanisme réutilisé pour les pages de connexion, où
+   .logo-light/.logo-dark n'ont pas ce conflit de spécificité). */
+.topbar-inner .logo-dark, .logo-dark { display: none; }
+:root[data-theme="dark"] .topbar-inner .logo-light,
+:root[data-theme="dark"] .logo-light { display: none; }
+:root[data-theme="dark"] .topbar-inner .logo-dark { display: block; }
+:root[data-theme="dark"] .logo-dark { display: block; }
 .topbar-search {
   flex: 1; display: flex; justify-content: center;
 }
@@ -514,11 +528,20 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
 }
 
 /* --- Bannière Deadlines pleine largeur (accueil, entre la topbar et les
-   trois colonnes — retour Fadhel, 2026-09-19). --- */
+   trois colonnes — retour Fadhel, 2026-09-19). ---
+   Largeur corrigée (retour Fadhel, 2026-09-27) : la carte débordait de 32px
+   de chaque côté par rapport aux cartes de .page-body / au contenu de
+   .topbar-inner en dessous. Ces derniers ont tous max-width:1360px PUIS
+   32px de padding interne avant leur contenu (donc un contenu qui commence
+   à (largeur-1360)/2 + 32) ; .deadline-banner, elle, a son padding de 32px
+   à l'intérieur d'une bordure posée directement sur les 1360px (donc une
+   bordure à (largeur-1360)/2, 32px plus à l'extérieur). Pour que sa bordure
+   s'aligne avec les cartes du dessous, sa boîte doit faire 1360-2×32=1296px
+   plutôt que 1360px. */
 .deadline-banner {
   text-decoration: none; color: inherit;
   background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-  max-width: 1360px; margin: 18px auto 0; padding: 14px 32px;
+  max-width: 1296px; margin: 18px auto 0; padding: 14px 32px;
   box-sizing: border-box;
   display: block; overflow: hidden;
 }
