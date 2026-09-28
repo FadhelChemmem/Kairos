@@ -12,7 +12,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from migrate_from_chronos import (  # noqa: E402
-    build_intervenants, build_projets, build_utilisateurs, mysql_date_only, mysql_dt_to_pg, sql_str,
+    RawSQL, build_dailylog, build_intervenants, build_projets, build_utilisateurs, mysql_date_only,
+    mysql_dt_to_pg, sql_str, sql_val,
 )
 
 
@@ -103,6 +104,59 @@ class TestLotsCodesInvalides(unittest.TestCase):
         _projets, projet_lots, _liens, _ids = build_projets(data, {1}, report)
         self.assertEqual(projet_lots, [])
         self.assertEqual(report["lots_non_reconnus"], [(1, "Plomberie")])
+
+
+class TestSqlValRawSQL(unittest.TestCase):
+    """Audit sécurité/qualité externe, 2026-09-28, item P0-1 : `sql_val()`
+    quotait `"now()"` comme n'importe quelle chaîne (`'now()'`, un littéral
+    de timestamp invalide en Postgres) au lieu d'émettre l'expression SQL
+    now(). RawSQL est le marqueur qui distingue les deux cas."""
+
+    def test_rawsql_est_emis_sans_guillemets(self):
+        self.assertEqual(sql_val(RawSQL("now()")), "now()")
+
+    def test_chaine_normale_reste_quotee(self):
+        # Non-régression : une vraie chaîne (même valant littéralement
+        # "now()") doit rester quotée — seul le marqueur RawSQL change de
+        # comportement.
+        self.assertEqual(sql_val("now()"), "'now()'")
+
+    def test_date_manquante_devient_rawsql_now(self):
+        """Les quatre points d'émission (utilisateurs, projets, tâches,
+        requêtes) partagent le motif `mysql_dt_to_pg(...) or RawSQL("now()")`."""
+        created_at = mysql_dt_to_pg(None) or RawSQL("now()")
+        self.assertIsInstance(created_at, RawSQL)
+        self.assertEqual(sql_val(created_at), "now()")
+
+
+class TestDailyLogHeuresPlafonnees(unittest.TestCase):
+    """Audit sécurité/qualité externe, 2026-09-28, item P0-2 : au-delà de
+    99.99 (borne NUMERIC(4,2), l'ancien plafond), la valeur violait déjà la
+    vraie contrainte métier (`dailylog_entree_heures_valides : heures <= 24`,
+    schema.sql) bien avant d'atteindre 99.99 — le plafond doit être 24."""
+
+    def _data(self, heures_par_jour):
+        return {
+            "intervenants": [{"id": 1, "intervenantID": 7, "taskID": None, "projectID": 1}],
+            "interventionHours": [
+                {"interventionID": 1, "date": "2026-09-01", "hours": h} for h in heures_par_jour
+            ],
+        }
+
+    def test_total_sous_24h_non_plafonne(self):
+        report = defaultdict(list)
+        lignes = build_dailylog(self._data([10, 5]), {7}, {1}, set(), report)
+        self.assertEqual(lignes[0]["heures"], 15)
+        self.assertEqual(report["dailylog_heures_plafonnees"], [])
+
+    def test_total_au_dela_de_24h_plafonne_a_24_et_signale(self):
+        report = defaultdict(list)
+        lignes = build_dailylog(self._data([20, 10]), {7}, {1}, set(), report)
+        self.assertEqual(lignes[0]["heures"], 24)
+        self.assertEqual(len(report["dailylog_heures_plafonnees"]), 1)
+        uid, date, projet_id, tache_id, heures_avant = report["dailylog_heures_plafonnees"][0]
+        self.assertEqual((uid, date, projet_id, tache_id), (7, "2026-09-01", 1, None))
+        self.assertEqual(heures_avant, 30)
 
 
 class TestComptesRH(unittest.TestCase):

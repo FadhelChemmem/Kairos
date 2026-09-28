@@ -182,9 +182,23 @@ def sql_str(v) -> str:
     return "'" + str(v).replace("'", "''") + "'"
 
 
+class RawSQL(str):
+    """Marqueur pour une expression SQL brute, ex. RawSQL("now()") : émise
+    telle quelle par sql_val(), jamais entre guillemets comme une chaîne
+    littérale.
+
+    Avant ce correctif, `mysql_dt_to_pg(...) or "now()"` produisait la
+    chaîne Python "now()", que sql_val() quotait comme n'importe quelle
+    autre chaîne (`'now()'`) — un littéral invalide pour une colonne
+    timestamp, qui faisait échouer l'INSERT au lieu d'appeler la fonction
+    SQL now() (audit sécurité/qualité externe, 2026-09-28, item P0-1)."""
+
+
 def sql_val(v) -> str:
     if v is None:
         return "NULL"
+    if isinstance(v, RawSQL):
+        return str(v)
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, (int, float)):
@@ -299,7 +313,7 @@ def build_utilisateurs(data, email_domain, report):
         adresse = clean_text(profile["address"]) if profile else None
         date_embauche = us_date_to_iso(profile["hireDate"]) if profile else None
 
-        created_at = mysql_dt_to_pg(u["createdAt"]) or "now()"
+        created_at = mysql_dt_to_pg(u["createdAt"]) or RawSQL("now()")
         updated_at = mysql_dt_to_pg(u["updatedAt"]) or created_at
 
         utilisateurs.append(dict(
@@ -369,7 +383,7 @@ def build_projets(data, valid_user_ids, report, rh_ids=frozenset()):
         date_fin = mysql_date_only(p["dueDate"]) if p["state"] == "done" else None
 
         created_by = p["createdBy"] if p["createdBy"] in valid_user_ids else None
-        created_at = mysql_dt_to_pg(p["createdAt"]) or "now()"
+        created_at = mysql_dt_to_pg(p["createdAt"]) or RawSQL("now()")
         updated_at = mysql_dt_to_pg(p["updatedAt"]) or created_at
 
         projets.append(dict(
@@ -448,7 +462,7 @@ def build_taches(data, valid_projet_ids, report):
         if t["isVerified"]:
             etat = "verifie"
 
-        created_at = mysql_dt_to_pg(t["createdAt"]) or "now()"
+        created_at = mysql_dt_to_pg(t["createdAt"]) or RawSQL("now()")
         updated_at = mysql_dt_to_pg(t["updatedAt"]) or created_at
 
         taches.append(dict(
@@ -532,8 +546,20 @@ def build_dailylog(data, valid_user_ids, valid_projet_ids, valid_tache_ids, repo
         heures = round(heures, 2)
         if heures <= 0:
             continue
-        if heures > 99.99:
-            heures = 99.99  # borne NUMERIC(4,2), cas extrême improbable
+        if heures > 24:
+            # Borne réelle (schema.sql, contrainte
+            # dailylog_entree_heures_valides : heures <= 24) — PAS 99.99
+            # (max représentable par la colonne NUMERIC(4,2)) : au-delà de
+            # 24, l'agrégation de plusieurs interventions du même jour
+            # dépasse ce qui est physiquement possible (24h/jour), signe
+            # de données source à vérifier ; on plafonne à 24 pour ne pas
+            # faire échouer tout le chargement, et on le signale dans le
+            # rapport pour vérification manuelle (audit sécurité/qualité
+            # externe, 2026-09-28, item P0-2 — la version précédente
+            # plafonnait à 99.99, qui viole quand même la contrainte et
+            # faisait échouer l'INSERT).
+            report["dailylog_heures_plafonnees"].append((uid, date, projet_id, tache_id0 or None, heures))
+            heures = 24
         lignes.append(dict(
             utilisateur_id=uid, date=date, projet_id=projet_id,
             tache_id=(tache_id0 or None), heures=heures,
@@ -557,7 +583,7 @@ def build_requetes_posts(data, valid_user_ids, valid_projet_ids, projets_by_id, 
         if auteur_id not in valid_user_ids:
             auteur_id = projets_by_id[projet_id]["chef_projet_id"]
             fallback_auteur += 1
-        created_at = mysql_dt_to_pg(r["createdAt"]) or "now()"
+        created_at = mysql_dt_to_pg(r["createdAt"]) or RawSQL("now()")
         updated_at = mysql_dt_to_pg(r["updatedAt"]) or created_at
         posts.append(dict(
             projet_id=projet_id, auteur_id=auteur_id,
@@ -743,6 +769,11 @@ def emit_rapport(path, report, counts, args):
       "total pour 807 projets).")
     a(f"- {report['dailylog_ignore_invalide']} ligne(s) `interventionHours` avec des données "
       "incohérentes (heures nulles/négatives, projet ou utilisateur introuvable) — ignorée(s).")
+    if report["dailylog_heures_plafonnees"]:
+        a(f"- {len(report['dailylog_heures_plafonnees'])} ligne(s) DailyLog dont le total "
+          "agrégé (même jour/projet/tâche/personne) dépassait 24h — plafonnée(s) à 24, "
+          "**à vérifier manuellement** (données source probablement incorrectes) : "
+          f"{report['dailylog_heures_plafonnees']}")
     if report["lots_non_reconnus"]:
         a(f"- {len(report['lots_non_reconnus'])} rattachement(s) projet/lot non reconnu(s) "
           f"(libellé absent de LOTS_CIBLE dans le script) — ignoré(s), à assigner à la main "
