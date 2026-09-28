@@ -109,6 +109,22 @@ def list_projets(
                -- retenues par le LIMIT (index idx_dailylog_projet).
                (SELECT sum(de.heures) FROM dailylog_entree de
                  WHERE de.projet_id = p.id) AS heures_cumulees,
+               -- Répartition par rôle (retour Fadhel, 2026-09-28, Lot 5) —
+               -- même choix "sous-requête plutôt que vue" que ci-dessus,
+               -- et même définition du rôle que v_projet_heures_par_role
+               -- (schema.sql) : chef titulaire ou co-chef du projet.
+               (SELECT sum(de.heures) FROM dailylog_entree de
+                 WHERE de.projet_id = p.id
+                   AND (de.utilisateur_id = p.chef_projet_id
+                        OR EXISTS (SELECT 1 FROM projet_co_chef pc
+                                   WHERE pc.projet_id = p.id AND pc.utilisateur_id = de.utilisateur_id))
+               ) AS heures_chef,
+               (SELECT sum(de.heures) FROM dailylog_entree de
+                 WHERE de.projet_id = p.id
+                   AND NOT (de.utilisateur_id = p.chef_projet_id
+                        OR EXISTS (SELECT 1 FROM projet_co_chef pc
+                                   WHERE pc.projet_id = p.id AND pc.utilisateur_id = de.utilisateur_id))
+               ) AS heures_intervenant,
                (SELECT min(t.date_echeance) FROM tache t
                  WHERE t.projet_id = p.id AND t.etat NOT IN ('termine', 'abandonne')
                    AND t.date_echeance IS NOT NULL) AS prochaine_echeance
@@ -220,11 +236,13 @@ def get_projet(projet_id: int) -> dict | None:
                u.prenom AS chef_prenom, u.nom AS chef_nom,
                u.avatar_chemin AS chef_avatar_chemin,
                pl.code AS phase_liee_code, pl.nom AS phase_liee_nom,
-               vh.heures_cumulees
+               vh.heures_cumulees,
+               vhr.heures_chef, vhr.heures_intervenant
         FROM projet p
         JOIN utilisateur u ON u.id = p.chef_projet_id
         LEFT JOIN projet pl ON pl.id = p.phase_liee_id
         LEFT JOIN v_projet_heures vh ON vh.projet_id = p.id
+        LEFT JOIN v_projet_heures_par_role vhr ON vhr.projet_id = p.id
         WHERE p.id = %s
     """
     return db.query_one(sql, (projet_id,))

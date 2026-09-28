@@ -621,6 +621,58 @@ SELECT projet_id, SUM(heures) AS heures_cumulees
 FROM dailylog_entree
 GROUP BY projet_id;
 
+-- Répartition des heures par rôle (retour Fadhel, 2026-09-28, Lot 5 —
+-- "répartition des heures par rôle (8h intervenant/5h chef) affichée
+-- dans Informations/liste projets/lignes de tâches" ; voir
+-- workflowbook-spec.md). v_projet_heures/v_tache_heures ci-dessus
+-- donnent un TOTAL, sans distinguer qui a logué ces heures : ces deux
+-- vues ajoutent la répartition demandée, en deux catégories (le
+-- parenthétage "8h/5h" de la demande est un exemple de résultat affiché,
+-- pas un ratio ou une conversion à appliquer) :
+--   - heures_chef : heures loguées par le chef de projet titulaire ou un
+--     co-chef du projet concerné (rôle défini au niveau PROJET, voir
+--     projet_co_chef — pas un rôle par tâche) ;
+--   - heures_intervenant : toutes les autres heures loguées sur ce
+--     projet/cette tâche (intervenant déclaré, ou toute personne ayant
+--     simplement logué du temps dessus).
+-- Rôle évalué à la date de lecture (chef_projet_id/projet_co_chef
+-- actuels), pas un instantané historique — même choix que
+-- v_projet_visibilite juste en dessous, qui ne fige pas non plus le
+-- rôle au moment de l'action.
+CREATE VIEW v_projet_heures_par_role AS
+SELECT
+  de.projet_id,
+  SUM(CASE WHEN de.utilisateur_id = p.chef_projet_id
+             OR EXISTS (SELECT 1 FROM projet_co_chef pc
+                        WHERE pc.projet_id = de.projet_id AND pc.utilisateur_id = de.utilisateur_id)
+           THEN de.heures ELSE 0 END) AS heures_chef,
+  SUM(CASE WHEN de.utilisateur_id = p.chef_projet_id
+             OR EXISTS (SELECT 1 FROM projet_co_chef pc
+                        WHERE pc.projet_id = de.projet_id AND pc.utilisateur_id = de.utilisateur_id)
+           THEN 0 ELSE de.heures END) AS heures_intervenant
+FROM dailylog_entree de
+JOIN projet p ON p.id = de.projet_id
+GROUP BY de.projet_id;
+
+-- Même répartition, au niveau tâche (rôle toujours évalué sur le PROJET
+-- de la tâche : une tâche elle-même n'a pas de "chef" propre).
+CREATE VIEW v_tache_heures_par_role AS
+SELECT
+  de.tache_id,
+  SUM(CASE WHEN de.utilisateur_id = p.chef_projet_id
+             OR EXISTS (SELECT 1 FROM projet_co_chef pc
+                        WHERE pc.projet_id = t.projet_id AND pc.utilisateur_id = de.utilisateur_id)
+           THEN de.heures ELSE 0 END) AS heures_chef,
+  SUM(CASE WHEN de.utilisateur_id = p.chef_projet_id
+             OR EXISTS (SELECT 1 FROM projet_co_chef pc
+                        WHERE pc.projet_id = t.projet_id AND pc.utilisateur_id = de.utilisateur_id)
+           THEN 0 ELSE de.heures END) AS heures_intervenant
+FROM dailylog_entree de
+JOIN tache t ON t.id = de.tache_id
+JOIN projet p ON p.id = t.projet_id
+WHERE de.tache_id IS NOT NULL
+GROUP BY de.tache_id;
+
 -- Visibilité des projets par équipe (2026-09-16, voir la doc) : un
 -- utilisateur voit un projet s'il appartient à la même équipe que le
 -- projet, OU s'il y est explicitement rattaché (chef, co-chef,

@@ -59,6 +59,10 @@
         <div style="text-align:right;">
           <div style="font-size:20px; font-weight:800; line-height:1;">{{ projet.heures_cumulees|default(0, true)|round(1) }} h</div>
           <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">cumulées</div>
+          {# Répartition par rôle (retour Fadhel, 2026-09-28, Lot 5) — voir
+             v_projet_heures_par_role (schema.sql) : heures loguées par le
+             chef/co-chef vs par les autres (intervenants). #}
+          <div style="font-size:10.5px; color:var(--text-faint); margin-top:3px;" title="Réparties par rôle sur ce projet">{{ projet.heures_chef|default(0, true)|round(1) }}h chef · {{ projet.heures_intervenant|default(0, true)|round(1) }}h interv.</div>
         </div>
         <div style="width:1px; height:32px; background:var(--border-soft);"></div>
         <div>
@@ -151,7 +155,10 @@
             {% if t.date_echeance %}{{ t.date_echeance|date_courte }}{% endif %}
             {% if t.type_deadline == 'interne' %}<span style="color:var(--text-faint);">#interne</span>{% endif %}
           </span>
-          <span style="font-size:12px; color:var(--text-muted);">{{ t.heures_cumulees|default(0, true)|round(1) }} h</span>
+          {# Répartition par rôle en infobulle (retour Fadhel, 2026-09-28,
+             Lot 5) — pas assez de place dans la ligne pour l'afficher en
+             clair, voir v_tache_heures_par_role (schema.sql). #}
+          <span style="font-size:12px; color:var(--text-muted);" title="{{ t.heures_chef|default(0, true)|round(1) }}h chef · {{ t.heures_intervenant|default(0, true)|round(1) }}h interv.">{{ t.heures_cumulees|default(0, true)|round(1) }} h</span>
           {# Changer l'état / clôturer : seulement le chef, un co-chef ou un
              intervenant de la tâche (même règle que le serveur, audit n°2 —
              le menu était montré à tous puis refusé à l'envoi). Les pièces

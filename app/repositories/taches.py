@@ -16,6 +16,7 @@ def list_taches_projet(projet_id: int) -> list[dict]:
                t.date_debut, t.date_echeance, t.date_fin, t.dossier_lien,
                t.created_at, t.updated_at,
                vh.heures_cumulees,
+               vhr.heures_chef, vhr.heures_intervenant,
                COALESCE(
                  (SELECT json_agg(json_build_object('id', u.id, 'prenom', u.prenom, 'nom', u.nom,
                                                      'avatar_chemin', u.avatar_chemin)
@@ -34,6 +35,7 @@ def list_taches_projet(projet_id: int) -> list[dict]:
                ) AS pieces_jointes
         FROM tache t
         LEFT JOIN v_tache_heures vh ON vh.tache_id = t.id
+        LEFT JOIN v_tache_heures_par_role vhr ON vhr.tache_id = t.id
         WHERE t.projet_id = %s
         ORDER BY (t.etat NOT IN ('termine', 'abandonne')) DESC,
                  t.date_echeance NULLS LAST,
@@ -45,10 +47,12 @@ def list_taches_projet(projet_id: int) -> list[dict]:
 def get_tache(tache_id: int) -> dict | None:
     sql = """
         SELECT t.*, p.nom AS projet_nom, p.code AS projet_code,
-               vh.heures_cumulees
+               vh.heures_cumulees,
+               vhr.heures_chef, vhr.heures_intervenant
         FROM tache t
         JOIN projet p ON p.id = t.projet_id
         LEFT JOIN v_tache_heures vh ON vh.tache_id = t.id
+        LEFT JOIN v_tache_heures_par_role vhr ON vhr.tache_id = t.id
         WHERE t.id = %s
     """
     return db.query_one(sql, (tache_id,))

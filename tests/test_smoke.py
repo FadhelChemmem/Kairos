@@ -161,6 +161,9 @@ PROJET = {
     "date_debut": datetime.date(2025, 2, 3), "date_fin": None, "honoraires": None,
     "chef_projet_id": 1, "phase_liee_id": None, "chef_prenom": "Foulen", "chef_nom": "Chedly",
     "phase_liee_code": None, "phase_liee_nom": None, "heures_cumulees": 482.0,
+    # Répartition par rôle (retour Fadhel, 2026-09-28, Lot 5) — voir
+    # v_projet_heures_par_role (schema.sql).
+    "heures_chef": 180.0, "heures_intervenant": 302.0,
 }
 
 # Projet fraîchement créé, sans aucune ligne DailyLog : v_projet_heures ne
@@ -178,6 +181,7 @@ PROJET_SANS_HEURES = {
     "date_debut": datetime.date(2026, 9, 19), "date_fin": None, "honoraires": None,
     "chef_projet_id": 1, "phase_liee_id": None, "chef_prenom": "Fadhel", "chef_nom": "Chemmem",
     "phase_liee_code": None, "phase_liee_nom": None, "heures_cumulees": None,
+    "heures_chef": None, "heures_intervenant": None,
 }
 
 PROJET_LISTE_SANS_HEURES = {
@@ -185,6 +189,7 @@ PROJET_LISTE_SANS_HEURES = {
     "date_debut": datetime.date(2026, 9, 19), "date_fin": None,
     "chef_prenom": "Fadhel", "chef_nom": "Chemmem", "chef_id": 1, "lots": "GO",
     "heures_cumulees": None, "prochaine_echeance": None,
+    "heures_chef": None, "heures_intervenant": None,
 }
 
 UTILISATEUR_PROFIL = {
@@ -224,7 +229,8 @@ TACHE_SANS_HEURES = {
     "type_deadline": "rendu_client", "date_debut": None, "date_echeance": None,
     "date_fin": None, "dossier_lien": None,
     "created_at": datetime.datetime(2026, 9, 19), "updated_at": datetime.datetime(2026, 9, 19),
-    "heures_cumulees": None, "intervenants": [], "pieces_jointes": [],
+    "heures_cumulees": None, "heures_chef": None, "heures_intervenant": None,
+    "intervenants": [], "pieces_jointes": [],
 }
 
 # Fixtures pour les contrôles d'accès (IDOR, PROMPT_CORRECTIONS.md P0 #1) :
@@ -248,7 +254,7 @@ TACHES_PROJET = [
         "type_deadline": "interne", "date_debut": None, "date_echeance": datetime.date(2026, 9, 20),
         "date_fin": None, "dossier_lien": None,
         "created_at": datetime.datetime(2026, 9, 10), "updated_at": datetime.datetime(2026, 9, 10),
-        "heures_cumulees": 12.0,
+        "heures_cumulees": 12.0, "heures_chef": 4.0, "heures_intervenant": 8.0,
         "intervenants": [{"id": 1, "prenom": "Foulen", "nom": "Chedly"}, {"id": 4, "prenom": "Sana", "nom": "Trabelsi"}],
         "pieces_jointes": [{"id": 1, "nom_fichier": "note_calcul.pdf"}],
     },
@@ -257,7 +263,8 @@ TACHES_PROJET = [
         "type_deadline": "rendu_client", "date_debut": None, "date_echeance": datetime.date(2026, 9, 10),
         "date_fin": datetime.date(2026, 9, 12), "dossier_lien": None,
         "created_at": datetime.datetime(2026, 9, 1), "updated_at": datetime.datetime(2026, 9, 12),
-        "heures_cumulees": 18.0, "intervenants": [], "pieces_jointes": [],
+        "heures_cumulees": 18.0, "heures_chef": 0.0, "heures_intervenant": 18.0,
+        "intervenants": [], "pieces_jointes": [],
     },
 ]
 
@@ -2205,6 +2212,59 @@ class SmokeTestCase(unittest.TestCase):
         self.assertIn("array_length(%(lots)s::text[], 1)", source)
         self.assertIn("(%(lots)s::text[])[1]", source)
         self.assertIn("ANY(%(lots)s::text[])", source)
+
+    def test_repartition_heures_par_role_branchee_partout(self):
+        """Lot 5 (2026-09-28, retour Fadhel) : "répartition des heures par
+        rôle (8h intervenant/5h chef) affichée dans Informations/liste
+        projets/lignes de tâches" — verrouille que les 4 requêtes
+        concernées lisent bien heures_chef/heures_intervenant (vues
+        v_projet_heures_par_role/v_tache_heures_par_role, schema.sql —
+        vérifiées séparément en vrai sur Postgres, voir migrations/
+        0006_heures_par_role.sql)."""
+        import inspect
+
+        from app.repositories import projets as projets_repo
+        from app.repositories import taches as taches_repo
+
+        self.assertIn("heures_chef", inspect.getsource(projets_repo.list_projets))
+        self.assertIn("heures_intervenant", inspect.getsource(projets_repo.list_projets))
+        self.assertIn("v_projet_heures_par_role", inspect.getsource(projets_repo.get_projet))
+        self.assertIn("v_tache_heures_par_role", inspect.getsource(taches_repo.list_taches_projet))
+        self.assertIn("v_tache_heures_par_role", inspect.getsource(taches_repo.get_tache))
+
+    def test_repartition_heures_affichee_sur_la_page_projet(self):
+        """Rendu réel (pas juste la requête) : la répartition par rôle
+        apparaît bien dans l'en-tête (près du bouton Informations) et en
+        infobulle sur chaque ligne de tâche."""
+        resp = self._get("/projets/1")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"180.0h chef", resp.data)
+        self.assertIn(b"302.0h interv.", resp.data)
+        self.assertIn(b'title="4.0h chef', resp.data)
+
+    def test_repartition_heures_affichee_sur_la_liste_projets(self):
+        resp = self._get("/projets", **{
+            "app.repositories.projets.list_projets": [{
+                "id": 1, "code": "26099X", "nom": "Tour Meridian", "phase": "EXE",
+                "date_debut": None, "date_fin": None,
+                "chef_prenom": "Foulen", "chef_nom": "Chedly", "chef_id": 1, "lots": "GO",
+                "heures_cumulees": 28.0, "heures_chef": 13.0, "heures_intervenant": 15.0,
+                "prochaine_echeance": None, "etat": "en_cours",
+            }],
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'title="13.0h chef', resp.data)
+
+    def test_repartition_heures_aucune_ligne_ne_plante_pas(self):
+        """Même précaution que PROJET_SANS_HEURES/TACHE_SANS_HEURES pour
+        heures_cumulees : un projet/une tâche sans aucune ligne DailyLog
+        donne heures_chef/heures_intervenant = None (LEFT JOIN sur une vue
+        vide), pas 0 — `default(0, true)` doit absorber ça sans 500."""
+        resp = self._get("/projets/1", **{
+            "app.repositories.projets.get_projet": PROJET_SANS_HEURES,
+            "app.repositories.taches.list_taches_projet": [TACHE_SANS_HEURES],
+        })
+        self.assertEqual(resp.status_code, 200)
 
     def test_list_deadlines_exclut_les_projets_termines_ou_abandonnes(self):
         """PROMPT_CORRECTIONS.md P2 #23 : une tâche restée "en_cours" ou
