@@ -2509,6 +2509,25 @@ class SmokeTestCase(unittest.TestCase):
         self.assertEqual(resp.headers.get("X-Content-Type-Options"), "nosniff")
         self.assertIn("frame-ancestors 'none'", resp.headers.get("Content-Security-Policy", ""))
 
+    def test_csp_renforcee(self):
+        """Audit sécurité/qualité externe, 2026-09-28, item P0-6 : la CSP ne
+        posait auparavant que frame-ancestors — vérifie que les directives
+        ajoutées sont bien présentes, et que la page de connexion (aucun
+        script/style externe non prévu) n'en dépend pas pour s'afficher."""
+        resp = self.client.get("/connexion")
+        csp = resp.headers.get("Content-Security-Policy", "")
+        for directive in (
+            "default-src 'self'",
+            "object-src 'none'",
+            "base-uri 'self'",
+            "connect-src 'self'",
+            "img-src 'self' data: blob:",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+            "font-src 'self' https://fonts.gstatic.com",
+        ):
+            self.assertIn(directive, csp)
+        self.assertEqual(resp.status_code, 200)
+
     def test_fichier_statique_sans_requete_sql(self):
         """Audit n°2 : chaque fichier CSS/JS coûtait 3 requêtes SQL."""
         self._login()

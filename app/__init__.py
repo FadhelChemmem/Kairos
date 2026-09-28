@@ -108,7 +108,31 @@ def create_app(config_class=Config) -> Flask:
         # l'appli dans une iframe d'un autre site (clickjacking), le
         # "reniflage" de type MIME, et limite le Referer envoyé hors site.
         response.headers.setdefault("X-Frame-Options", "DENY")
-        response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+        # CSP renforcée (audit sécurité/qualité externe, 2026-09-28, item
+        # P0-6) : la version précédente ne posait que frame-ancestors.
+        # script-src et style-src gardent 'unsafe-inline' — l'appli utilise
+        # largement des <script> et des attributs style="..." inline (dont
+        # le script anti-flash du thème clair/sombre dans <head>, qui DOIT
+        # s'exécuter avant le premier rendu, avant tout script externe
+        # differé) ainsi que quelques attributs onclick=/onchange=. Les
+        # supprimer proprement demanderait de nonce-r ou d'externaliser
+        # une dizaine de blocs à travers l'appli — un chantier à part,
+        # plus risqué, qu'on ne fait pas "en passant" ici. Le reste
+        # (default-src, object-src, base-uri, connect-src, img-src,
+        # font-src) est en revanche restreint à ce que l'appli utilise
+        # réellement, ce qui bloque déjà l'exfiltration/l'exécution de
+        # ressources tierces (le risque principal visé par l'audit).
+        response.headers.setdefault("Content-Security-Policy", (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data: blob:; "
+            "connect-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none';"
+        ))
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "same-origin")
         if app.config.get("SESSION_COOKIE_SECURE"):
