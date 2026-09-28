@@ -6,7 +6,7 @@ from ..repositories import posts as posts_repo
 from ..repositories import projets as projets_repo
 from ..repositories import taches as taches_repo
 from ..repositories import utilisateurs as utilisateurs_repo
-from ..storage import save_upload
+from ..storage import is_image_filename, save_upload
 from ..utils import redirect_vers_next
 
 bp = Blueprint("fichiers", __name__, url_prefix="/fichiers")
@@ -76,6 +76,44 @@ def download_post(piece_id: int):
     piece = posts_repo.get_piece_jointe(piece_id)
     if piece is None or not projets_repo.user_can_view(piece["projet_id"], g.user["id"]):
         abort(404)
+    return send_from_directory(
+        current_app.config["UPLOAD_DIR"], piece["chemin"],
+        as_attachment=True, download_name=piece["nom_fichier"],
+    )
+
+
+@bp.route("/posts/commentaires/<int:commentaire_id>/upload", methods=["POST"])
+@login_required
+def upload_commentaire(commentaire_id: int):
+    """Séparée de posts.commenter() (qui accepte déjà une pièce jointe à
+    la création) : utilisée seulement si post-comments.js retente l'envoi
+    du fichier après coup (jamais appelée dans le flux normal, gardée pour
+    la même raison que upload_tache/upload_post — cohérence de l'API)."""
+    commentaire = posts_repo.get_commentaire(commentaire_id)
+    if commentaire is None or not projets_repo.user_can_view(commentaire["projet_id"], g.user["id"]):
+        abort(404)
+    fichier = request.files.get("fichier")
+    if not fichier or not fichier.filename:
+        flash("Aucun fichier sélectionné.", "error")
+        return _safe_redirect()
+    nom_fichier, chemin = save_upload(fichier, f"posts/commentaires/{commentaire_id}")
+    posts_repo.add_piece_jointe_commentaire(commentaire_id, nom_fichier, chemin, g.user["id"])
+    flash("Pièce jointe ajoutée.", "success")
+    return _safe_redirect()
+
+
+@bp.route("/posts/commentaires/<int:piece_id>", methods=["GET"])
+@login_required
+def commentaire_piece_jointe(piece_id: int):
+    """Sert la pièce jointe d'un commentaire (Lot 5, retour Fadhel,
+    2026-09-28 : "aperçu image") — EN LIGNE (pas as_attachment) quand
+    c'est une image, pour l'aperçu direct dans le fil ; en téléchargement
+    sinon, comme les autres pièces jointes de l'appli."""
+    piece = posts_repo.get_piece_jointe_commentaire(piece_id)
+    if piece is None or not projets_repo.user_can_view(piece["projet_id"], g.user["id"]):
+        abort(404)
+    if is_image_filename(piece["nom_fichier"]):
+        return send_from_directory(current_app.config["UPLOAD_DIR"], piece["chemin"])
     return send_from_directory(
         current_app.config["UPLOAD_DIR"], piece["chemin"],
         as_attachment=True, download_name=piece["nom_fichier"],

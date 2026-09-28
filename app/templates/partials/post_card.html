@@ -1,5 +1,60 @@
-{# Attend dans le contexte : post, show_projet (bool), next_url #}
+{# Attend dans le contexte : post, show_projet (bool), next_url,
+   utilisateurs_actifs (Lot 5, retour Fadhel, 2026-09-28 — "@ Taguer" dans
+   le composeur de commentaire ; voir main.accueil / projets.detail /
+   utilisateurs.profil_personne, les trois routes qui incluent ce partial). #}
 {% import "partials/avatar.html" as avatarm %}
+
+{# --- Pièce jointe de commentaire : image affichée en ligne (aperçu),
+   tout autre fichier en lien de téléchargement (Lot 5, "aperçu image"). #}
+{% macro piece_jointe_commentaire(pj) %}
+  {% if is_image_filename(pj.nom_fichier) %}
+    <a href="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" target="_blank" rel="noopener">
+      <img src="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" alt="{{ pj.nom_fichier }}" class="post-comment-attachment-img">
+    </a>
+  {% else %}
+    <a href="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" class="post-comment-attachment-file">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+      <span>{{ pj.nom_fichier }}</span>
+    </a>
+  {% endif %}
+{% endmacro %}
+
+{# --- Composeur de commentaire, réutilisé tel quel pour "écrire un
+   commentaire" (parent_commentaire_id vide) ET pour "répondre" à un
+   commentaire de premier niveau (parent_commentaire_id renseigné) — un
+   seul formulaire multipart (texte + tag + pièce jointe optionnelle en un
+   seul envoi), voir routes/posts.py:commenter. #}
+{% macro composer_commentaire(post, next_url, utilisateurs_actifs, current_user_id, parent_commentaire_id=none, placeholder='Écrire un commentaire…') %}
+  <form method="post" action="{{ url_for('posts.commenter', post_id=post.id) }}" enctype="multipart/form-data" class="post-comment-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ next_url }}">
+    {% if parent_commentaire_id %}<input type="hidden" name="parent_commentaire_id" value="{{ parent_commentaire_id }}">{% endif %}
+    <div class="post-comment-form-row">
+      <input type="text" name="contenu" placeholder="{{ placeholder }}" aria-label="Commentaire" required>
+      {# "@ Taguer" (Lot 5) : mentionne_user_id était déjà entièrement câblé
+         côté serveur (add_comment/commenter) — seul ce champ manquait.
+         Réutilise search-combobox.js tel quel (aucun changement JS requis) :
+         un <select> normal, cette fois à sélection unique et optionnelle. #}
+      <div class="post-comment-tag-wrap">
+        <select name="mentionne_user_id" data-search-combobox data-search-placeholder="Taguer une personne…" aria-label="Taguer une personne dans ce commentaire">
+          <option value="">@ Taguer…</option>
+          {% for u in utilisateurs_actifs %}
+            {% if u.id != current_user_id %}<option value="{{ u.id }}">{{ u.prenom }} {{ u.nom }}</option>{% endif %}
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn-secondary" style="width:auto; padding:7px 12px;">Envoyer</button>
+    </div>
+    {# Glisser-déposer + aperçu image (Lot 5) — voir app/static/js/dropzone.js
+       (générique, s'initialise seul) et .dropzone/.dropzone-sm dans app.css. #}
+    <div class="dropzone dropzone-sm" data-dropzone>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+      <span class="dropzone-label" data-dropzone-label>Glisser une image ou un fichier, ou cliquer</span>
+      <input type="file" name="fichier" class="dropzone-input">
+    </div>
+  </form>
+{% endmacro %}
+
 <div class="card">
   <div style="display:flex; align-items:center; gap:10px;">
     {# Pastille + nom du posteur, et nom du projet, cliquables (retour
@@ -16,6 +71,12 @@
         <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a créé une tâche</div>
       {% elif post.est_cloture_tache %}
         <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a terminé une tâche</div>
+      {% elif post.est_repost %}
+        {# "Reposter" (Lot 5, retour Fadhel, 2026-09-28) : distinct du rebond
+           normal — voir posts_repo.repost(). Le post d'origine cité
+           s'affiche automatiquement plus bas via le bloc parent_post_id,
+           déjà générique (même bloc que pour un rebond). #}
+        <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a reposté</div>
       {% else %}
         <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a></div>
       {% endif %}
@@ -126,19 +187,66 @@
           <div class="post-comment">
             {{ avatarm.avatar(c.auteur_id, c.auteur_prenom, c.auteur_nom, c.auteur_avatar_chemin, css_class='avatar avatar-sm', style='flex-shrink:0;') }}
             <div class="post-comment-body">
-              <span style="font-weight:700;">{{ c.auteur_prenom }} {{ c.auteur_nom }}</span> {{ c.contenu }}
+              <div>
+                <span style="font-weight:700;">{{ c.auteur_prenom }} {{ c.auteur_nom }}</span>
+                {% if c.mentionne_prenom %}<span class="post-comment-mention">@{{ c.mentionne_prenom }} {{ c.mentionne_nom }}</span>{% endif %}
+                {{ c.contenu }}
+              </div>
+              {# `|default([])` : les commentaires passés par les fixtures de
+                 tests (constitués à la main, pas via _structurer_commentaires)
+                 n'ont pas forcément ces clés — itérer sur Undefined lève une
+                 UndefinedError en Jinja (contrairement à un simple {% if %}). #}
+              {% for pj in c.pieces_jointes|default([]) %}{{ piece_jointe_commentaire(pj) }}{% endfor %}
+
+              {# "Répondre" — réponse en ligne, UN SEUL niveau (imposé côté
+                 serveur, voir routes/posts.py:commenter) : pas de "Répondre"
+                 sur une réponse elle-même (c.replies ci-dessous n'en a pas). #}
+              <details class="post-comment-reply-toggle">
+                <summary>Répondre</summary>
+                {{ composer_commentaire(post, next_url, utilisateurs_actifs, g.user.id, parent_commentaire_id=c.id, placeholder='Répondre à ' ~ c.auteur_prenom ~ '…') }}
+              </details>
+
+              {% if c.replies %}
+                <div class="post-comment-replies">
+                  {% for r in c.replies|default([]) %}
+                    <div class="post-comment">
+                      {{ avatarm.avatar(r.auteur_id, r.auteur_prenom, r.auteur_nom, r.auteur_avatar_chemin, css_class='avatar avatar-sm', style='flex-shrink:0;') }}
+                      <div class="post-comment-body">
+                        <div>
+                          <span style="font-weight:700;">{{ r.auteur_prenom }} {{ r.auteur_nom }}</span>
+                          {% if r.mentionne_prenom %}<span class="post-comment-mention">@{{ r.mentionne_prenom }} {{ r.mentionne_nom }}</span>{% endif %}
+                          {{ r.contenu }}
+                        </div>
+                        {% for pj in r.pieces_jointes|default([]) %}{{ piece_jointe_commentaire(pj) }}{% endfor %}
+                      </div>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% endif %}
             </div>
           </div>
         {% else %}
           <div style="font-size:12px; color:var(--text-faint);">Aucun commentaire pour l'instant.</div>
         {% endfor %}
       </div>
-      <form method="post" action="{{ url_for('posts.commenter', post_id=post.id) }}" class="post-comment-form">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="next" value="{{ next_url }}">
-        <input type="text" name="contenu" placeholder="Écrire un commentaire…" aria-label="Commentaire" required style="flex:1;">
-        <button type="submit" class="btn-secondary" style="width:auto; padding:7px 12px;">Envoyer</button>
-      </form>
+      {{ composer_commentaire(post, next_url, utilisateurs_actifs, g.user.id) }}
+    </details>
+    {# "Reposter" (Lot 5, retour Fadhel, 2026-09-28) : un clic, pas de
+       fenêtre — un commentaire court est optionnel (façon "citer"), voir
+       posts_repo.repost()/routes/posts.py:reposter. Distinct du rebond
+       ("Créer un post lié" ci-dessous), qui ouvre le composeur complet. #}
+    <details style="position:relative;">
+      <summary class="linkbtn" title="Reposter" aria-label="Reposter" style="list-style:none; cursor:pointer;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+      </summary>
+      <div style="position:absolute; left:0; top:calc(100% + 4px); background: var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px; min-width:220px; box-shadow:0 4px 12px rgba(20,30,25,0.08); z-index:10;">
+        <form method="post" action="{{ url_for('posts.reposter', post_id=post.id) }}" style="display:flex; flex-direction:column; gap:6px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ next_url }}">
+          <input type="text" name="contenu" placeholder="Ajouter un commentaire (optionnel)…" aria-label="Commentaire de repost" style="font-size:11.5px;">
+          <button type="submit" class="btn-secondary" style="width:auto; align-self:flex-end; padding:6px 12px; font-size:11.5px;">Reposter</button>
+        </form>
+      </div>
     </details>
     <details style="margin-left:auto;">
       <summary class="linkbtn" title="Joindre un fichier" aria-label="Joindre un fichier" style="list-style:none; cursor:pointer;">

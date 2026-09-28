@@ -432,7 +432,10 @@ CREATE TABLE post (
   -- post.created_at == tache.created_at/updated_at, cassée par
   -- trg_tache_updated_at qui réécrit updated_at à CHAQUE modification de
   -- la tâche, pas seulement à sa clôture (voir repositories/taches.py).
-  evenement      VARCHAR(20) CHECK (evenement IS NULL OR evenement IN ('creation_tache', 'cloture_tache')),
+  -- 'repost' ajouté en migration 0007 (Lot 5, retour Fadhel, 2026-09-28) :
+  -- un post créé par posts.repost(), toujours avec parent_post_id renseigné
+  -- (le post reposté) — même colonne que "rebondir", évènement différent.
+  evenement      VARCHAR(20) CHECK (evenement IS NULL OR evenement IN ('creation_tache', 'cloture_tache', 'repost')),
   updated_by     BIGINT REFERENCES utilisateur(id), -- si le post est modifié après publication
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -479,14 +482,36 @@ CREATE TABLE post_reaction (
 
 -- Commentaires (façon réseau social), avec possibilité de taguer une personne
 CREATE TABLE post_commentaire (
-  id                BIGSERIAL PRIMARY KEY,
-  post_id           BIGINT NOT NULL REFERENCES post(id) ON DELETE CASCADE,
-  auteur_id         BIGINT NOT NULL REFERENCES utilisateur(id),
-  contenu           TEXT NOT NULL,
-  mentionne_user_id BIGINT REFERENCES utilisateur(id),
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+  id                    BIGSERIAL PRIMARY KEY,
+  post_id               BIGINT NOT NULL REFERENCES post(id) ON DELETE CASCADE,
+  auteur_id             BIGINT NOT NULL REFERENCES utilisateur(id),
+  contenu               TEXT NOT NULL,
+  mentionne_user_id     BIGINT REFERENCES utilisateur(id),
+  -- Réponse en ligne (migration 0007, Lot 5, retour Fadhel, 2026-09-28) :
+  -- un commentaire peut répondre à un AUTRE commentaire du même post,
+  -- affiché en retrait sous lui. Un seul niveau de profondeur, imposé
+  -- côté application (routes/posts.py:commenter) plutôt qu'en base : le
+  -- commentaire visé par parent_commentaire_id doit lui-même être de
+  -- premier niveau (parent_commentaire_id IS NULL), pour garder un rendu
+  -- simple (façon Facebook/Twitter, pas de fil imbriqué à l'infini).
+  parent_commentaire_id BIGINT REFERENCES post_commentaire(id) ON DELETE CASCADE,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_post_commentaire_post ON post_commentaire(post_id);
+CREATE INDEX idx_post_commentaire_parent ON post_commentaire(parent_commentaire_id);
+
+-- Pièces jointes d'un commentaire (migration 0007, Lot 5, retour Fadhel,
+-- 2026-09-28 : "glisser-déposer, aperçu image") — même structure que
+-- post_piece_jointe/tache_piece_jointe, au niveau du commentaire.
+CREATE TABLE post_commentaire_piece_jointe (
+  id             BIGSERIAL PRIMARY KEY,
+  commentaire_id BIGINT NOT NULL REFERENCES post_commentaire(id) ON DELETE CASCADE,
+  nom_fichier    VARCHAR(255) NOT NULL,
+  chemin         TEXT NOT NULL,
+  uploaded_by    BIGINT REFERENCES utilisateur(id),
+  uploaded_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_post_commentaire_pj_commentaire ON post_commentaire_piece_jointe(commentaire_id);
 
 
 -- =====================================================================
@@ -599,6 +624,7 @@ CREATE TRIGGER trg_audit_post AFTER INSERT OR UPDATE OR DELETE ON post FOR EACH 
 CREATE TRIGGER trg_audit_post_piece_jointe AFTER INSERT OR UPDATE OR DELETE ON post_piece_jointe FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
 CREATE TRIGGER trg_audit_post_mention AFTER INSERT OR UPDATE OR DELETE ON post_mention FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
 CREATE TRIGGER trg_audit_post_commentaire AFTER INSERT OR UPDATE OR DELETE ON post_commentaire FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
+CREATE TRIGGER trg_audit_post_commentaire_piece_jointe AFTER INSERT OR UPDATE OR DELETE ON post_commentaire_piece_jointe FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
 -- post_reaction est volontairement exclue par défaut (très haute fréquence,
 -- faible valeur de débogage) — à activer de la même façon si tu la veux :
 -- CREATE TRIGGER trg_audit_post_reaction AFTER INSERT OR UPDATE OR DELETE ON post_reaction FOR EACH ROW EXECUTE FUNCTION fn_audit_log();

@@ -138,6 +138,12 @@ def retirer_reaction(post_id: int):
 @bp.route("/<int:post_id>/commenter", methods=["POST"])
 @login_required
 def commenter(post_id: int):
+    """Commentaire, avec réponse en ligne/tag/pièce jointe (Lot 5, retour
+    Fadhel, 2026-09-28 : "façon réseau social") — un seul formulaire
+    multipart (texte + pièce jointe optionnelle en un seul envoi, pas deux
+    étapes comme pour un post), utilisé aussi bien pour "écrire un
+    commentaire" que pour "répondre à un commentaire" (voir
+    post-comments.js/post_card.html)."""
     post = posts_repo.get_post(post_id)
     if post is None or not projets_repo.user_can_view(post["projet_id"], g.user["id"]):
         abort(404)
@@ -149,7 +155,25 @@ def commenter(post_id: int):
     mentionne_user_id = request.form.get("mentionne_user_id", type=int)
     if mentionne_user_id and not projets_repo.user_can_view(post["projet_id"], mentionne_user_id):
         mentionne_user_id = None
-    posts_repo.add_comment(post_id, g.user["id"], contenu, mentionne_user_id)
+
+    # Réponse en ligne (IDOR, PROMPT_CORRECTIONS.md P0 #1) : le commentaire
+    # visé DOIT appartenir à CE post (pas un id deviné d'un autre post/
+    # projet), et être lui-même de premier niveau — un seul niveau de
+    # profondeur, imposé ici plutôt qu'en base (voir schema.sql).
+    parent_commentaire_id = request.form.get("parent_commentaire_id", type=int)
+    if parent_commentaire_id:
+        parent_commentaire = posts_repo.get_commentaire(parent_commentaire_id)
+        if (parent_commentaire is None
+                or parent_commentaire["post_id"] != post_id
+                or parent_commentaire["parent_commentaire_id"] is not None):
+            parent_commentaire_id = None
+
+    commentaire_id = posts_repo.add_comment(post_id, g.user["id"], contenu, mentionne_user_id, parent_commentaire_id)
+
+    fichier = request.files.get("fichier")
+    if fichier and fichier.filename:
+        nom_fichier, chemin = save_upload(fichier, f"posts/{post_id}/commentaires/{commentaire_id}")
+        posts_repo.add_piece_jointe_commentaire(commentaire_id, nom_fichier, chemin, g.user["id"])
 
     if mentionne_user_id and mentionne_user_id != g.user["id"]:
         auteur = f"{g.user['prenom']} {g.user['nom']}"
@@ -159,4 +183,19 @@ def commenter(post_id: int):
             post_id=post_id,
         )
 
+    return _safe_redirect()
+
+
+@bp.route("/<int:post_id>/reposter", methods=["POST"])
+@login_required
+def reposter(post_id: int):
+    """"Reposter" (Lot 5, retour Fadhel, 2026-09-28) — un clic, sans
+    composeur, voir posts_repo.repost(). Un commentaire court est optionnel
+    (façon "citer")."""
+    post = posts_repo.get_post(post_id)
+    if post is None or not projets_repo.user_can_view(post["projet_id"], g.user["id"]):
+        abort(404)
+    contenu = request.form.get("contenu", "").strip() or None
+    posts_repo.repost(post_id, g.user["id"], contenu)
+    flash("Reposté.", "success")
     return _safe_redirect()

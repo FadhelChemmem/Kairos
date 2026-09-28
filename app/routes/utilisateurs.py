@@ -128,6 +128,11 @@ def profil_personne(user_id: int):
         jours=_fenetre_7_jours(user_id, projets_visibles_ids),
         taches_en_cours=taches_repo.list_en_cours_pour_profil(user_id, viewer_id, limit=8),
         posts_recents=posts_repo.list_feed_auteur(user_id, viewer_id, limit=8),
+        # Lot 5 (retour Fadhel, 2026-09-28) : "@ Taguer" dans le
+        # composeur de commentaire de post_card.html a besoin de la même
+        # liste que sur l'accueil/la page projet (voir main.accueil /
+        # projets.detail) — sinon le champ de tag serait vide ici.
+        utilisateurs_actifs=utilisateurs_repo.list_actifs(),
     )
 
 

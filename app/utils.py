@@ -7,6 +7,8 @@ chaque template Jinja2 ou chaque route."""
 import datetime
 from urllib.parse import urlparse
 
+from .storage import is_image_filename
+
 
 # Schémas autorisés pour le champ "lien" du composeur de post (panneau
 # Requête) — voir is_lien_valide() ci-dessous.
@@ -281,6 +283,7 @@ def register(app):
         date_fr=date_fr,
         notif_categorie_style=notif_categorie_style,
         is_lien_valide=is_lien_valide,
+        is_image_filename=is_image_filename,
         zip=zip,
         # Date du jour côté serveur (retour Fadhel, 2026-09-28) — appelée
         # dans les templates comme today() pour préremplir l'échéance de

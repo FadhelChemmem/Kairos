@@ -686,13 +686,46 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
 .filtre-groupe { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .filtre-groupe .chip-cloud { row-gap: 8px; }
 
-/* --- Commentaires sur un post (accueil / page projet) --- */
+/* --- Commentaires sur un post (accueil / page projet) — refonte "façon
+   réseau social" (Lot 5, retour Fadhel, 2026-09-28) : réponse en ligne (un
+   seul niveau, imposé côté serveur — voir routes/posts.py:commenter),
+   tag, pièce jointe glisser-déposer avec aperçu image, "Reposter". --- */
 .post-comments { margin: 10px 0 0 46px; display: flex; flex-direction: column; gap: 8px; }
 .post-comment { display: flex; gap: 8px; }
 .post-comment-body {
   background: var(--bg-subtle-1); border-radius: 10px; padding: 7px 11px; font-size:12.5px; flex:1;
 }
-.post-comment-form { display: flex; gap: 6px; margin: 10px 0 0 46px; }
+.post-comment-mention { color: var(--brand-text-strong, #2f5d3e); font-weight: 600; }
+.post-comment-attachment-img {
+  display: block; max-width: 180px; max-height: 180px; border-radius: 8px;
+  margin-top: 6px; object-fit: cover;
+}
+.post-comment-attachment-file {
+  display: flex; align-items: center; gap: 6px; margin-top: 6px;
+  font-size: 11.5px; color: var(--text-muted);
+}
+/* Réponses imbriquées : simple filet vertical, pas d'avatar plus petit —
+   un seul niveau de profondeur, donc pas besoin d'indentation récursive. */
+.post-comment-replies {
+  margin: 8px 0 0 0; padding-left: 18px; border-left: 2px solid var(--border-soft);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.post-comment-reply-toggle { margin-top: 4px; }
+.post-comment-reply-toggle > summary {
+  cursor: pointer; list-style: none; font-size: 11px; font-weight: 700;
+  color: var(--text-muted);
+}
+.post-comment-reply-toggle > summary:hover { color: var(--text-secondary); }
+.post-comment-reply-toggle > summary::-webkit-details-marker { display: none; }
+
+.post-comment-form { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 0 46px; }
+.post-comment-reply-toggle .post-comment-form { margin: 8px 0 0 0; }
+.post-comment-form-row { display: flex; gap: 6px; align-items: center; }
+.post-comment-form-row input[type="text"] { flex: 1; min-width: 0; }
+.post-comment-tag-wrap { width: 150px; flex-shrink: 0; }
+.post-comment-tag-wrap select[data-search-combobox] { display: none; }
+.dropzone-sm { padding: 7px 10px; font-size: 11px; gap: 6px; }
+.dropzone-preview { max-width: 56px; max-height: 56px; border-radius: 6px; object-fit: cover; }
 
 /* Tableaux à colonnes fixes (tâches du projet, utilisateurs, "Tous les
    projets") : sur un écran étroit, on préfère un défilement horizontal

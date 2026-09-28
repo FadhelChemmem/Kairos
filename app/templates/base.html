@@ -63,6 +63,11 @@
   <script src="{{ url_for('static', filename='js/chip-select.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/search-combobox.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/post-reaction.js') }}" defer></script>
+  {# Glisser-déposer générique (Lot 5, retour Fadhel, 2026-09-28) — voir
+     app/static/js/dropzone.js ; s'initialise sur tout le document (pièce
+     jointe de post, de tâche, de commentaire…), pas seulement le dialog
+     "Nouveau post" (d'où le chargement ici plutôt que dans post_dialog.html). #}
+  <script src="{{ url_for('static', filename='js/dropzone.js') }}" defer></script>
   {# Chargé ici (dans le <head>, avec defer) pour s'exécuter AVANT
      post-dialog.js — inclus plus bas, dans partials/post_dialog.html — qui
      s'appuie dessus ; l'ordre d'exécution des scripts defer suit l'ordre

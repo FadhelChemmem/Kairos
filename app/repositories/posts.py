@@ -15,6 +15,11 @@ _FEED_SELECT = """
            -- voir repositories/taches.py.
            (p.evenement = 'creation_tache') AS est_creation_tache,
            (p.evenement = 'cloture_tache') AS est_cloture_tache,
+           -- "Reposter" (Lot 5, retour Fadhel, 2026-09-28) : distingue au
+           -- rendu un repost (post.evenement = 'repost') d'un rebond normal
+           -- (parent_post_id renseigné mais evenement NULL) — voir
+           -- posts.repost() / post_card.html.
+           (p.evenement = 'repost') AS est_repost,
            -- L'utilisateur gère-t-il le projet du post (chef ou co-chef) ?
            -- Sert à n'afficher "+ Tâche" (rebond) qu'à ceux qui pourront
            -- effectivement la créer (audit n°2 : le bouton était montré à
@@ -34,13 +39,30 @@ _FEED_SELECT = """
               WHERE pr2.post_id = p.id),
              '[]'
            ) AS reacteurs,
+           -- Commentaires façon réseau social (Lot 5, retour Fadhel,
+           -- 2026-09-28) : renvoyés à plat ici (comme avant), restructurés
+           -- en (premier niveau + réponses imbriquées) juste après la
+           -- lecture — voir _structurer_commentaires ci-dessous, appliqué
+           -- par chaque fonction list_feed_*.
            COALESCE(
              (SELECT json_agg(json_build_object(
                                 'id', c.id, 'contenu', c.contenu, 'created_at', c.created_at,
+                                'parent_commentaire_id', c.parent_commentaire_id,
                                 'auteur_id', cu.id, 'auteur_prenom', cu.prenom, 'auteur_nom', cu.nom,
-                                'auteur_avatar_chemin', cu.avatar_chemin)
+                                'auteur_avatar_chemin', cu.avatar_chemin,
+                                'mentionne_user_id', c.mentionne_user_id,
+                                'mentionne_prenom', mu2.prenom, 'mentionne_nom', mu2.nom,
+                                'pieces_jointes', COALESCE(
+                                  (SELECT json_agg(json_build_object('id', cpj.id, 'nom_fichier', cpj.nom_fichier)
+                                                    ORDER BY cpj.uploaded_at)
+                                   FROM post_commentaire_piece_jointe cpj
+                                   WHERE cpj.commentaire_id = c.id),
+                                  '[]'
+                                ))
                                ORDER BY c.created_at)
-              FROM post_commentaire c JOIN utilisateur cu ON cu.id = c.auteur_id
+              FROM post_commentaire c
+              JOIN utilisateur cu ON cu.id = c.auteur_id
+              LEFT JOIN utilisateur mu2 ON mu2.id = c.mentionne_user_id
               WHERE c.post_id = p.id),
              '[]'
            ) AS commentaires,
@@ -70,6 +92,27 @@ _FEED_SELECT = """
 """
 
 
+def _structurer_commentaires(rows: list[dict]) -> list[dict]:
+    """Restructure, pour chaque post, sa liste PLATE de commentaires
+    (celle renvoyée par _FEED_SELECT) en (commentaires de premier niveau
+    + réponses imbriquées sous `replies`) — Lot 5, retour Fadhel,
+    2026-09-28 : "réponse en ligne". Fait en Python plutôt qu'en SQL
+    (json_agg récursif serait nettement moins lisible) ; le volume par
+    post reste petit, donc le coût est négligeable."""
+    for post in rows:
+        plats = post["commentaires"]
+        par_id = {c["id"]: {**c, "replies": []} for c in plats}
+        racine = []
+        for c in plats:
+            noeud = par_id[c["id"]]
+            if c["parent_commentaire_id"] and c["parent_commentaire_id"] in par_id:
+                par_id[c["parent_commentaire_id"]]["replies"].append(noeud)
+            else:
+                racine.append(noeud)
+        post["commentaires"] = racine
+    return rows
+
+
 def list_feed_projet(projet_id: int, current_user_id: int, limit: int = 30) -> list[dict]:
     sql = _FEED_SELECT + """
         WHERE p.projet_id = %(pid)s
@@ -78,7 +121,7 @@ def list_feed_projet(projet_id: int, current_user_id: int, limit: int = 30) -> l
     """
     with db.get_cursor() as cur:
         cur.execute(sql, {"uid": current_user_id, "pid": projet_id, "limit": limit})
-        return [dict(r) for r in cur.fetchall()]
+        return _structurer_commentaires([dict(r) for r in cur.fetchall()])
 
 
 def list_feed_mes_projets(current_user_id: int, limit: int = 30) -> list[dict]:
@@ -98,7 +141,7 @@ def list_feed_mes_projets(current_user_id: int, limit: int = 30) -> list[dict]:
     """
     with db.get_cursor() as cur:
         cur.execute(sql, {"uid": current_user_id, "limit": limit})
-        return [dict(r) for r in cur.fetchall()]
+        return _structurer_commentaires([dict(r) for r in cur.fetchall()])
 
 
 def list_feed_auteur(auteur_id: int, viewer_id: int, limit: int = 8) -> list[dict]:
@@ -120,7 +163,7 @@ def list_feed_auteur(auteur_id: int, viewer_id: int, limit: int = 8) -> list[dic
     """
     with db.get_cursor() as cur:
         cur.execute(sql, {"uid": viewer_id, "auteur_id": auteur_id, "limit": limit})
-        return [dict(r) for r in cur.fetchall()]
+        return _structurer_commentaires([dict(r) for r in cur.fetchall()])
 
 
 def get_post(post_id: int) -> dict | None:
@@ -192,15 +235,93 @@ def remove_reaction(post_id: int, user_id: int) -> None:
     )
 
 
-def add_comment(post_id: int, auteur_id: int, contenu: str, mentionne_user_id: int | None = None) -> int:
+def add_comment(
+    post_id: int, auteur_id: int, contenu: str,
+    mentionne_user_id: int | None = None, parent_commentaire_id: int | None = None,
+) -> int:
+    """`parent_commentaire_id` (Lot 5, retour Fadhel, 2026-09-28 : "réponse
+    en ligne") DOIT déjà avoir été validé par l'appelant — voir
+    routes/posts.py:commenter — comme référençant un commentaire du MÊME
+    post_id et lui-même de premier niveau (pas de fil imbriqué à
+    l'infini)."""
     with db.get_cursor(user_id=auteur_id) as cur:
         cur.execute(
             """
-            INSERT INTO post_commentaire (post_id, auteur_id, contenu, mentionne_user_id)
+            INSERT INTO post_commentaire (post_id, auteur_id, contenu, mentionne_user_id, parent_commentaire_id)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (post_id, auteur_id, contenu, mentionne_user_id, parent_commentaire_id),
+        )
+        return cur.fetchone()["id"]
+
+
+def get_commentaire(commentaire_id: int) -> dict | None:
+    """Inclut `post_id`/`projet_id` (contrôle d'accès, IDOR) et
+    `parent_commentaire_id` (pour vérifier qu'on ne répond pas à une
+    réponse — voir add_comment/routes/posts.py:commenter)."""
+    return db.query_one(
+        """
+        SELECT c.id, c.post_id, c.parent_commentaire_id, p.projet_id
+        FROM post_commentaire c
+        JOIN post p ON p.id = c.post_id
+        WHERE c.id = %s
+        """,
+        (commentaire_id,),
+    )
+
+
+def add_piece_jointe_commentaire(commentaire_id: int, nom_fichier: str, chemin: str, uploaded_by: int) -> int:
+    with db.get_cursor(user_id=uploaded_by) as cur:
+        cur.execute(
+            """
+            INSERT INTO post_commentaire_piece_jointe (commentaire_id, nom_fichier, chemin, uploaded_by)
             VALUES (%s, %s, %s, %s)
             RETURNING id
             """,
-            (post_id, auteur_id, contenu, mentionne_user_id),
+            (commentaire_id, nom_fichier, chemin, uploaded_by),
+        )
+        return cur.fetchone()["id"]
+
+
+def get_piece_jointe_commentaire(piece_id: int) -> dict | None:
+    """Inclut `projet_id` (double jointure jusqu'à `post`) pour le
+    contrôle d'accès (IDOR, PROMPT_CORRECTIONS.md P0 #1), même principe
+    que get_piece_jointe ci-dessous."""
+    return db.query_one(
+        """
+        SELECT cpj.id, cpj.commentaire_id, cpj.nom_fichier, cpj.chemin, p.projet_id
+        FROM post_commentaire_piece_jointe cpj
+        JOIN post_commentaire c ON c.id = cpj.commentaire_id
+        JOIN post p ON p.id = c.post_id
+        WHERE cpj.id = %s
+        """,
+        (piece_id,),
+    )
+
+
+def repost(post_id: int, auteur_id: int, contenu: str | None = None) -> int:
+    """"Reposter" (Lot 5, retour Fadhel, 2026-09-28) — distinct du
+    "rebond" (parent_post_id + composeur, une nouvelle Tâche/Requête/etc.
+    liée) : ici, un clic partage À NOUVEAU le post d'origine dans le même
+    projet, avec le même type, et un commentaire court optionnel ajouté
+    par le reposteur (façon "citer" un retweet) — jamais le contenu
+    d'origine dupliqué en clair, le rendu (voir post_card.html) va
+    chercher le post d'origine via parent_post_id, comme pour un rebond.
+    `evenement='repost'` (migration 0007) distingue ce cas d'un rebond
+    normal (evenement NULL) au rendu."""
+    original = get_post(post_id)
+    if original is None:
+        raise ValueError(f"Post {post_id} introuvable")
+    with db.get_cursor(user_id=auteur_id) as cur:
+        cur.execute(
+            """
+            INSERT INTO post (projet_id, parent_post_id, auteur_id, type_code, contenu, evenement)
+            SELECT projet_id, id, %(auteur_id)s, type_code, %(contenu)s, 'repost'
+            FROM post WHERE id = %(post_id)s
+            RETURNING id
+            """,
+            {"auteur_id": auteur_id, "contenu": contenu, "post_id": post_id},
         )
         return cur.fetchone()["id"]
 

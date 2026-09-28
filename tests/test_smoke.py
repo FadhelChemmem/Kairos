@@ -3911,6 +3911,260 @@ class TestProfilPersonne(unittest.TestCase):
         self.assertNotIn(b'/utilisateurs/2"', resp.data)
 
 
+class TestFilCommentairesReseauSocial(unittest.TestCase):
+    """Lot 5 (retour Fadhel, 2026-09-28) : "refonte du fil de commentaires
+    façon réseau social" (réponse en ligne, tag, pièce jointe glisser-
+    déposer avec aperçu image, "reposter"). La logique SQL (structuration
+    premier niveau/réponses, mentionne_user_id, pièces jointes de
+    commentaire, post.evenement='repost') a été vérifiée séparément sur un
+    vrai PostgreSQL — voir migrations/0007_commentaires_reseau_social.sql
+    et les notes de conception. Ici : rendu du template, et surtout les
+    contrôles d'accès (IDOR) et le verrou "un seul niveau de profondeur"."""
+
+    _login = SmokeTestCase._login
+    _patched = SmokeTestCase._patched
+    _get = SmokeTestCase._get
+
+    def setUp(self):
+        self.app = create_app(TestConfig)
+        self.client = self.app.test_client()
+        self._login()
+
+    # --- Rendu : réponse en ligne, tag, pièces jointes ---
+
+    def test_commentaires_imbriques_tag_et_pieces_jointes_saffichent(self):
+        post = {
+            **FEED_POST_MANUEL,
+            "commentaires": [{
+                "id": 1, "contenu": "Bien reçu, merci !",
+                "created_at": datetime.datetime(2026, 9, 15, 11, 0),
+                "auteur_id": 3, "auteur_prenom": "Omar", "auteur_nom": "Aziz",
+                "mentionne_user_id": 2, "mentionne_prenom": "Foulen", "mentionne_nom": "Ben Foulen",
+                "pieces_jointes": [{"id": 1, "nom_fichier": "photo.jpg"}],
+                "replies": [{
+                    "id": 2, "contenu": "Avec plaisir, dis-moi si besoin.",
+                    "created_at": datetime.datetime(2026, 9, 15, 11, 5),
+                    "auteur_id": 2, "auteur_prenom": "Foulen", "auteur_nom": "Ben Foulen",
+                    "mentionne_user_id": None, "mentionne_prenom": None, "mentionne_nom": None,
+                    "pieces_jointes": [{"id": 2, "nom_fichier": "plan.pdf"}],
+                }],
+            }],
+        }
+        resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [post]})
+        self.assertEqual(resp.status_code, 200, resp.data[:2000])
+        body = resp.data.decode()
+        self.assertIn("Bien reçu, merci !", body)
+        self.assertIn("@Foulen Ben Foulen", body)
+        self.assertIn("Avec plaisir, dis-moi si besoin.", body)
+        self.assertIn("post-comment-replies", body)
+        self.assertIn('src="/fichiers/posts/commentaires/1"', body)
+        self.assertIn('href="/fichiers/posts/commentaires/2"', body)
+        self.assertIn("plan.pdf", body)
+        self.assertIn("Répondre", body)
+        self.assertIn("Reposter", body)
+
+    def test_composeur_commentaire_exclut_lutilisateur_courant_du_tag(self):
+        """"@ Taguer" ne doit pas proposer de se taguer soi-même (USER, id=1)."""
+        resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [FEED_POST_MANUEL]})
+        self.assertEqual(resp.status_code, 200)
+        body = resp.data.decode()
+        m = re.search(r'name="mentionne_user_id".*?</select>', body, re.S)
+        self.assertIsNotNone(m)
+        select_html = m.group(0)
+        self.assertNotIn('value="1"', select_html)
+        self.assertIn('value="3"', select_html)
+
+    # --- Réponse en ligne : un seul niveau, imposé côté serveur (IDOR,
+    #     PROMPT_CORRECTIONS.md P0 #1) — verrou de non-régression. ---
+
+    def test_repondre_a_un_commentaire_de_premier_niveau_est_accepte(self):
+        commentaire_valide = {"id": 3, "post_id": 1, "parent_commentaire_id": None}
+        patchers = self._patched(**{"app.repositories.posts.get_commentaire": commentaire_valide})
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.add_comment", return_value=99) as mock_add:
+                resp = self.client.post("/posts/1/commenter", data={
+                    "contenu": "Réponse", "parent_commentaire_id": "3",
+                })
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        mock_add.assert_called_once_with(1, 1, "Réponse", None, 3)
+
+    def test_repondre_a_une_reponse_est_ignore(self):
+        """Verrou de non-régression : pas de 3e niveau — répondre à un
+        commentaire qui a LUI-MÊME un parent doit silencieusement omettre
+        parent_commentaire_id (le commentaire est créé de premier niveau),
+        jamais imbriquer plus profond."""
+        commentaire_deja_reponse = {"id": 2, "post_id": 1, "parent_commentaire_id": 1}
+        patchers = self._patched(**{"app.repositories.posts.get_commentaire": commentaire_deja_reponse})
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.add_comment", return_value=99) as mock_add:
+                resp = self.client.post("/posts/1/commenter", data={
+                    "contenu": "x", "parent_commentaire_id": "2",
+                })
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        mock_add.assert_called_once_with(1, 1, "x", None, None)
+
+    def test_repondre_a_un_commentaire_dun_autre_post_est_ignore(self):
+        """IDOR (PROMPT_CORRECTIONS.md P0 #1) : un id de commentaire deviné
+        appartenant à un AUTRE post ne doit jamais être accepté comme
+        parent — sinon on pourrait relier deux fils de posts différents."""
+        commentaire_autre_post = {"id": 5, "post_id": 999, "parent_commentaire_id": None}
+        patchers = self._patched(**{"app.repositories.posts.get_commentaire": commentaire_autre_post})
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.add_comment", return_value=99) as mock_add:
+                resp = self.client.post("/posts/1/commenter", data={
+                    "contenu": "x", "parent_commentaire_id": "5",
+                })
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        mock_add.assert_called_once_with(1, 1, "x", None, None)
+
+    # --- Pièce jointe de commentaire (glisser-déposer + aperçu image) ---
+
+    def test_commenter_avec_piece_jointe_est_associee_au_commentaire(self):
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.add_comment", return_value=42) as mock_add, \
+                 patch("app.routes.posts.save_upload",
+                       return_value=("photo.jpg", "posts/1/commentaires/42/xyz.jpg")) as mock_save, \
+                 patch("app.repositories.posts.add_piece_jointe_commentaire", return_value=1) as mock_pj:
+                resp = self.client.post(
+                    "/posts/1/commenter",
+                    data={"contenu": "Voici", "fichier": (io.BytesIO(b"contenu bidon"), "photo.jpg")},
+                    content_type="multipart/form-data",
+                )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302, resp.data[:2000])
+        mock_add.assert_called_once()
+        mock_save.assert_called_once()
+        mock_pj.assert_called_once_with(42, "photo.jpg", "posts/1/commentaires/42/xyz.jpg", 1)
+
+    def test_fichiers_commentaire_piece_jointe_image_servie_en_ligne(self):
+        """"Aperçu image" : une image est servie EN LIGNE (pas de
+        as_attachment), pour l'aperçu direct dans le fil."""
+        piece_image = {"id": 1, "commentaire_id": 1, "nom_fichier": "photo.jpg",
+                        "chemin": "posts/1/commentaires/1/x.jpg", "projet_id": 1}
+        patchers = self._patched(**{"app.repositories.posts.get_piece_jointe_commentaire": piece_image})
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.routes.fichiers.send_from_directory", return_value="ok") as mock_send:
+                resp = self.client.get("/fichiers/posts/commentaires/1")
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 200)
+        mock_send.assert_called_once()
+        self.assertNotIn("as_attachment", mock_send.call_args.kwargs)
+
+    def test_fichiers_commentaire_piece_jointe_fichier_servi_en_telechargement(self):
+        piece_pdf = {"id": 2, "commentaire_id": 1, "nom_fichier": "plan.pdf",
+                     "chemin": "posts/1/commentaires/1/y.pdf", "projet_id": 1}
+        patchers = self._patched(**{"app.repositories.posts.get_piece_jointe_commentaire": piece_pdf})
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.routes.fichiers.send_from_directory", return_value="ok") as mock_send:
+                resp = self.client.get("/fichiers/posts/commentaires/2")
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 200)
+        mock_send.assert_called_once()
+        self.assertTrue(mock_send.call_args.kwargs.get("as_attachment"))
+        self.assertEqual(mock_send.call_args.kwargs.get("download_name"), "plan.pdf")
+
+    def test_fichiers_commentaire_piece_jointe_404_si_projet_non_visible(self):
+        piece = {"id": 3, "commentaire_id": 1, "nom_fichier": "x.jpg", "chemin": "y", "projet_id": 1}
+        patchers = self._patched(**{
+            "app.repositories.posts.get_piece_jointe_commentaire": piece,
+            "app.repositories.projets.user_can_view": False,
+        })
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.get("/fichiers/posts/commentaires/3")
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 404)
+
+    # --- "Reposter" ---
+
+    def test_reposter_cree_le_repost_avec_commentaire_optionnel(self):
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.repost", return_value=55) as mock_repost:
+                resp = self.client.post("/posts/1/reposter", data={"contenu": "À suivre de près."})
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        mock_repost.assert_called_once_with(1, 1, "À suivre de près.")
+
+    def test_reposter_sans_commentaire_passe_none(self):
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.repost", return_value=55) as mock_repost:
+                resp = self.client.post("/posts/1/reposter", data={})
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        mock_repost.assert_called_once_with(1, 1, None)
+
+    def test_reposter_404_si_projet_non_visible(self):
+        patchers = self._patched(**{"app.repositories.projets.user_can_view": False})
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.repost", return_value=55) as mock_repost:
+                resp = self.client.post("/posts/1/reposter", data={})
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 404)
+        mock_repost.assert_not_called()
+
+    def test_post_reposte_affiche_le_libelle_et_cite_le_post_dorigine(self):
+        """post.est_repost (migration 0007) distingue le rendu d'un rebond
+        normal — voir posts_repo.repost() : le post d'origine cité
+        réutilise le bloc parent_post_id déjà générique."""
+        repost = {
+            **FEED_POST_MANUEL, "id": 6, "auteur_id": 3, "auteur_prenom": "Omar", "auteur_nom": "Aziz",
+            "est_repost": True, "parent_post_id": 1,
+            "parent_auteur_prenom": "Foulen", "parent_auteur_nom": "Ben Foulen",
+            "parent_contenu": "Envoi du dossier EXE lot GO.", "parent_type_code": "envoi",
+            "contenu": "À suivre.",
+        }
+        resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [repost]})
+        self.assertEqual(resp.status_code, 200)
+        body = resp.data.decode()
+        self.assertIn("a reposté", body)
+        self.assertIn("Envoi du dossier EXE lot GO.", body)
+
+
 class TestProposeCode(unittest.TestCase):
     """PROMPT_CORRECTIONS.md P2 #22 : tests unitaires directs de
     projets_repo.propose_code(), sans passer par Flask — seul db.query_all

@@ -93,43 +93,7 @@
   window.KairosFloatingWindow.attacherFermetureAuFond(dialog);
 
   // Retour visuel du glisser-déposer pour la pièce jointe (panneau Requête) —
-  // le vrai <input type=file> couvre toute la zone, donc clic et glisser-
-  // déposer fonctionnent tous les deux nativement ; ce script se contente
-  // d'afficher le nom du fichier choisi/déposé.
-  dialog.querySelectorAll('[data-dropzone]').forEach(function (dz) {
-    var input = dz.querySelector('input[type="file"]');
-    var label = dz.querySelector('[data-dropzone-label]');
-    var original = label.textContent;
-
-    function showFile(name) {
-      label.textContent = name;
-      dz.classList.add('has-file');
-    }
-
-    input.addEventListener('change', function () {
-      if (input.files && input.files[0]) {
-        showFile(input.files[0].name);
-      } else {
-        dz.classList.remove('has-file');
-        label.textContent = original;
-      }
-    });
-
-    dz.addEventListener('dragover', function (e) {
-      e.preventDefault();
-      dz.classList.add('dragover');
-    });
-    dz.addEventListener('dragleave', function () {
-      dz.classList.remove('dragover');
-    });
-    dz.addEventListener('drop', function (e) {
-      e.preventDefault();
-      dz.classList.remove('dragover');
-      var files = e.dataTransfer && e.dataTransfer.files;
-      if (files && files[0]) {
-        input.files = files;
-        showFile(files[0].name);
-      }
-    });
-  });
+  // géré par app/static/js/dropzone.js (extrait d'ici le 2026-09-28, Lot 5,
+  // pour être réutilisé par le composeur de commentaire de post_card.html ;
+  // s'initialise seul sur tout le document, rien à appeler ici).
 })();
