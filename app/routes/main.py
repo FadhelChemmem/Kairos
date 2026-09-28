@@ -33,7 +33,8 @@ def accueil():
     # (jours + barres, sans les filtres/légende de la page Deadlines) sur une
     # fenêtre courte pour ne jamais déborder de la largeur des 3 colonnes.
     deadlines_gantt = build_gantt(deadlines, datetime.date.today(), window_days=14)
-    mes_taches = taches.list_mes_taches(user_id, limit=6)
+    # Limité à 5 (retour Fadhel, 2026-09-28) : pour ne pas encombrer la colonne.
+    mes_taches = taches.list_mes_taches(user_id, limit=5)
     fil = posts.list_feed_mes_projets(user_id, limit=20)
     dailylog_jours_manques = dailylog_repo.jours_manques_recents(user_id)
 
@@ -45,9 +46,15 @@ def accueil():
     projets_postables = [p for p in mes_projets if p["etat"] in ("en_cours", "bloque")]
     gere_un_projet = any(p["mon_role"] in ("chef_de_projet", "co_chef") for p in projets_postables)
 
+    # Carte "Mes projets" (retour Fadhel, 2026-09-28) : 5 projets triés par
+    # MA dernière action dessus (pas l'activité de tout le monde), projets
+    # terminés exclus — distinct de `mes_projets` ci-dessus, qui reste
+    # l'ordre par échéance et sert au sélecteur de "+ Nouveau post".
+    mes_projets_recents = projets.list_mes_projets_recents(user_id, limit=5)
+
     return render_template(
         "accueil.html",
-        mes_projets=mes_projets,
+        mes_projets=mes_projets_recents,
         projets_postables=projets_postables,
         intent_par_defaut="tache" if gere_un_projet else "requete",
         utilisateurs_actifs=utilisateurs.list_actifs(),

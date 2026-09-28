@@ -72,7 +72,9 @@
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
           <div class="form-row">
             <label for="dialog-echeance-tache">Échéance</label>
-            <input type="date" id="dialog-echeance-tache" name="date_echeance">
+            {# Préremplie à aujourd'hui (retour Fadhel, 2026-09-28) — l'utilisateur
+               reste libre de la changer ou de la vider. #}
+            <input type="date" id="dialog-echeance-tache" name="date_echeance" value="{{ today().isoformat() }}">
           </div>
           <div class="form-row">
             <label for="dialog-type-deadline-tache">Type de deadline</label>

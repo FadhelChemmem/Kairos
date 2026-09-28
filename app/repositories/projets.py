@@ -33,6 +33,50 @@ def list_mes_projets(user_id: int) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def list_mes_projets_recents(user_id: int, limit: int = 5) -> list[dict]:
+    """5 projets parmi "mes projets" (même périmètre que list_mes_projets)
+    triés par ma dernière action dessus — pas l'activité de tout le monde,
+    la MIENNE (retour Fadhel, 2026-09-28) : création du projet, création/
+    modification d'une tâche par moi, poste/commentaire de moi, ou saisie
+    DailyLog de moi sur ce projet. Les projets terminés sont exclus (sinon
+    "liste à n'en pas finir" — ceux bloqués/à l'arrêt restent, eux, un
+    signal d'activité pertinent)."""
+    sql = """
+        SELECT p.id, p.code, p.nom, p.phase, p.etat,
+               CASE
+                 WHEN p.chef_projet_id = %(user_id)s THEN 'chef_de_projet'
+                 WHEN cc.utilisateur_id IS NOT NULL THEN 'co_chef'
+                 ELSE 'intervenant'
+               END AS mon_role,
+               GREATEST(
+                 CASE WHEN p.created_by = %(user_id)s THEN p.created_at END,
+                 (SELECT MAX(t.updated_at) FROM tache t
+                   WHERE t.projet_id = p.id
+                     AND (t.created_by = %(user_id)s OR t.updated_by = %(user_id)s)),
+                 (SELECT MAX(po.created_at) FROM post po
+                   WHERE po.projet_id = p.id AND po.auteur_id = %(user_id)s),
+                 (SELECT MAX(de.created_at) FROM dailylog_entree de
+                   WHERE de.projet_id = p.id AND de.utilisateur_id = %(user_id)s)
+               ) AS ma_derniere_action
+        FROM projet p
+        LEFT JOIN projet_co_chef cc
+               ON cc.projet_id = p.id AND cc.utilisateur_id = %(user_id)s
+        LEFT JOIN projet_intervenant pi
+               ON pi.projet_id = p.id AND pi.utilisateur_id = %(user_id)s
+        WHERE (
+                p.chef_projet_id = %(user_id)s
+                OR cc.utilisateur_id IS NOT NULL
+                OR pi.utilisateur_id IS NOT NULL
+              )
+          AND p.etat <> 'termine'
+        ORDER BY ma_derniere_action DESC NULLS LAST
+        LIMIT %(limit)s
+    """
+    with db.get_cursor() as cur:
+        cur.execute(sql, {"user_id": user_id, "limit": limit})
+        return [dict(r) for r in cur.fetchall()]
+
+
 def list_projets(
     user_id: int, limit: int = 200,
     etats: list[str] | None = None, phases: list[str] | None = None,
@@ -73,10 +117,30 @@ def list_projets(
         WHERE (%(etats)s IS NULL OR p.etat::text = ANY(%(etats)s))
           AND (%(phases)s IS NULL OR p.phase::text = ANY(%(phases)s))
           AND (%(chef_ids)s IS NULL OR p.chef_projet_id = ANY(%(chef_ids)s))
-          AND (%(lots)s IS NULL OR EXISTS (
-                SELECT 1 FROM projet_lot pl2
-                WHERE pl2.projet_id = p.id AND pl2.lot_code = ANY(%(lots)s)
-              ))
+          -- Filtre lots (retour Fadhel, 2026-09-28) : quand UN SEUL lot est
+          -- sélectionné, exclusif — seulement les projets qui N'ONT QUE ce
+          -- lot (pas ceux qui l'ont parmi d'autres). Avec plusieurs lots
+          -- sélectionnés, on garde le comportement "contient au moins un
+          -- de ces lots" (comme avant), le cas exclusif n'ayant été demandé
+          -- que pour la sélection à un seul lot.
+          AND (
+                %(lots)s IS NULL
+                OR (
+                     array_length(%(lots)s, 1) = 1
+                     AND EXISTS (
+                           SELECT 1 FROM projet_lot pl2
+                           WHERE pl2.projet_id = p.id AND pl2.lot_code = %(lots)s[1]
+                         )
+                     AND (SELECT count(*) FROM projet_lot pl3 WHERE pl3.projet_id = p.id) = 1
+                   )
+                OR (
+                     array_length(%(lots)s, 1) > 1
+                     AND EXISTS (
+                           SELECT 1 FROM projet_lot pl2
+                           WHERE pl2.projet_id = p.id AND pl2.lot_code = ANY(%(lots)s)
+                         )
+                   )
+              )
           AND (%(q)s IS NULL OR lower(p.code || '_' || p.nom) LIKE %(q)s)
           AND EXISTS (
                 SELECT 1 FROM v_projet_visibilite vv
@@ -166,28 +230,52 @@ def list_lots(projet_id: int) -> list[dict]:
 
 
 def list_intervenants(projet_id: int) -> list[dict]:
-    """Chef de projet + co-chefs + intervenants, avec un libellé de rôle —
-    alimente le panneau "Intervenants" de la page projet.
-    """
+    """Toutes les personnes ayant travaillé sur le projet — chef de projet,
+    co-chefs, intervenants du projet ET intervenants d'une de ses tâches
+    (retour Fadhel, 2026-09-28 : ces derniers manquaient entièrement du
+    panneau "Intervenants" jusqu'ici) —, dédupliquées et triées : le chef
+    de projet d'abord, puis les AUTRES personnes dont le rôle global est
+    "chef_de_projet" (qu'elles soient ici co-chef ou simple intervenant),
+    puis le reste des intervenants."""
     sql = """
-        SELECT u.id, u.prenom, u.nom, u.poste, u.avatar_chemin, 'Chef de projet' AS role_label, 1 AS ord
-        FROM projet p JOIN utilisateur u ON u.id = p.chef_projet_id
-        WHERE p.id = %(pid)s
+        WITH gens AS (
+            SELECT p.chef_projet_id AS utilisateur_id, 'Chef de projet' AS role_label, 1 AS label_ord
+            FROM projet p WHERE p.id = %(pid)s
 
-        UNION ALL
+            UNION ALL
 
-        SELECT u.id, u.prenom, u.nom, u.poste, u.avatar_chemin, 'Co-chef' AS role_label, 2 AS ord
-        FROM projet_co_chef cc JOIN utilisateur u ON u.id = cc.utilisateur_id
-        WHERE cc.projet_id = %(pid)s
+            SELECT cc.utilisateur_id, 'Co-chef', 2
+            FROM projet_co_chef cc WHERE cc.projet_id = %(pid)s
 
-        UNION ALL
+            UNION ALL
 
+            SELECT pi.utilisateur_id, NULL, 3
+            FROM projet_intervenant pi WHERE pi.projet_id = %(pid)s
+
+            UNION ALL
+
+            SELECT ti.utilisateur_id, NULL, 3
+            FROM tache_intervenant ti JOIN tache t ON t.id = ti.tache_id
+            WHERE t.projet_id = %(pid)s
+        ),
+        dedup AS (
+            -- Une personne peut apparaître via plusieurs sources (co-chef ET
+            -- intervenant d'une tâche, par ex.) : on garde son meilleur
+            -- libellé d'affichage (label_ord le plus petit).
+            SELECT DISTINCT ON (utilisateur_id) utilisateur_id, role_label, label_ord
+            FROM gens
+            ORDER BY utilisateur_id, label_ord
+        )
         SELECT u.id, u.prenom, u.nom, u.poste, u.avatar_chemin,
-               COALESCE(u.poste, 'Intervenant') AS role_label, 3 AS ord
-        FROM projet_intervenant pi JOIN utilisateur u ON u.id = pi.utilisateur_id
-        WHERE pi.projet_id = %(pid)s
-
-        ORDER BY ord, nom
+               COALESCE(d.role_label, u.poste, 'Intervenant') AS role_label,
+               CASE
+                 WHEN d.label_ord = 1 THEN 1
+                 WHEN u.role = 'chef_de_projet' THEN 2
+                 ELSE 3
+               END AS ord
+        FROM dedup d
+        JOIN utilisateur u ON u.id = d.utilisateur_id
+        ORDER BY ord, u.nom
     """
     with db.get_cursor() as cur:
         cur.execute(sql, {"pid": projet_id})

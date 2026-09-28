@@ -334,6 +334,7 @@ class SmokeTestCase(unittest.TestCase):
         defaults = {
             "app.auth.get_user_by_id": USER,
             "app.repositories.projets.list_mes_projets": MES_PROJETS,
+            "app.repositories.projets.list_mes_projets_recents": MES_PROJETS,
             "app.repositories.projets.list_projets": [],
             "app.repositories.projets.list_chefs_de_projet": CHEFS_DE_PROJET,
             "app.repositories.projets.get_projet": PROJET,
@@ -1004,10 +1005,17 @@ class SmokeTestCase(unittest.TestCase):
         self.assertIn(f'action="/posts/{post_avec_reaction["id"]}/reagir/supprimer"'.encode(), resp.data)
 
     def test_post_card_reaction_pointe_vers_ajouter_quand_pas_encore_reagi(self):
+        """L'action réellement soumise (sans JS, ou si post-reaction.js
+        échoue) pointe vers "ajouter" tant qu'on n'a pas encore réagi — les
+        deux URLs (reagir/supprimer) sont désormais TOUTES LES DEUX présentes
+        en data-* sur le formulaire (retour Fadhel, 2026-09-28, bouton "(V)")
+        pour que post-reaction.js puisse basculer de l'une à l'autre sans
+        recharger la page ; seule `action=` doit rester celle qu'on soumet
+        réellement pour l'instant."""
         resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [FEED_POST_MANUEL]})
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         self.assertIn(f'action="/posts/{FEED_POST_MANUEL["id"]}/reagir"'.encode(), resp.data)
-        self.assertNotIn(f'/posts/{FEED_POST_MANUEL["id"]}/reagir/supprimer'.encode(), resp.data)
+        self.assertNotIn(f'action="/posts/{FEED_POST_MANUEL["id"]}/reagir/supprimer"'.encode(), resp.data)
 
     def test_posts_reagir_404_si_post_non_visible(self):
         self._login()
@@ -1820,29 +1828,29 @@ class SmokeTestCase(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"card-cta-alert", resp.data)
 
-    def test_accueil_trie_mes_projets_par_echeance_la_plus_proche(self):
-        deadlines_multi = [
-            {"id": 1, "titre": "Rendu tardif", "etat": "en_cours", "date_echeance": datetime.date(2026, 9, 25),
-             "type_deadline": "rendu_client", "projet_id": 2, "projet_code": "25014X", "projet_nom": "Résidence Les Oliviers"},
-            {"id": 2, "titre": "Rendu proche", "etat": "en_cours", "date_echeance": datetime.date(2026, 9, 18),
-             "type_deadline": "rendu_client", "projet_id": 1, "projet_code": "26099X", "projet_nom": "Tour Meridian"},
+    def test_accueil_mes_projets_suit_lordre_de_list_mes_projets_recents(self):
+        """La carte "Mes projets" n'est plus triée par échéance la plus
+        proche (retour Fadhel, 2026-09-28) : elle suit désormais l'ordre de
+        `projets.list_mes_projets_recents` (ma dernière action perso sur
+        chaque projet, projets terminés exclus) — voir cette fonction dans
+        app/repositories/projets.py. Ancien test renommé : il ne testait
+        plus la vraie logique de tri depuis ce changement, seulement un
+        ordre de fixture qui coïncidait par hasard."""
+        projets_recents = [
+            {"id": 2, "code": "25014X", "nom": "Résidence Les Oliviers", "phase": "EXE",
+             "etat": "en_cours", "mon_role": "intervenant"},
+            {"id": 1, "code": "26099X", "nom": "Tour Meridian", "phase": "EXE",
+             "etat": "bloque", "mon_role": "chef_de_projet"},
         ]
-        resp = self._get("/accueil", **{"app.repositories.taches.list_deadlines": deadlines_multi})
+        resp = self._get("/accueil", **{"app.repositories.projets.list_mes_projets_recents": projets_recents})
         self.assertEqual(resp.status_code, 200)
         body = resp.data.decode()
-        # On isole la carte "Mes projets" (pas la bannière Deadlines pleine
-        # largeur, qui suit déjà l'ordre des échéances par construction)
-        # pour vérifier spécifiquement son tri. La carte "Deadlines" en
-        # colonne gauche a été supprimée (2026-09-27, doublon de la
-        # bannière) — la carte suivante dans la colonne est "Daily log".
         debut = body.index("Mes projets")
         fin = body.index("Daily log", debut)
         section_mes_projets = body[debut:fin]
-        # Tour Meridian (échéance le 18) doit apparaître avant Résidence Les
-        # Oliviers (échéance le 25).
-        pos_meridian = section_mes_projets.index("Tour Meridian")
         pos_oliviers = section_mes_projets.index("Résidence Les Oliviers")
-        self.assertLess(pos_meridian, pos_oliviers)
+        pos_meridian = section_mes_projets.index("Tour Meridian")
+        self.assertLess(pos_oliviers, pos_meridian)
 
     def test_post_card_affiche_et_permet_dajouter_des_commentaires(self):
         post_avec_commentaire = {
@@ -2011,6 +2019,48 @@ class SmokeTestCase(unittest.TestCase):
         # Pas de champ de filtre ni de légende de couleurs dans la bannière.
         self.assertNotIn('id="filtre-deadlines"', body)
         self.assertNotIn("En retard / imminent", body)
+
+    def test_accueil_bandeau_deadlines_nom_projet_cliquable(self):
+        """Retour Fadhel, 2026-09-28 : "Aller vers le projet en cliquant sur
+        le projet en question" — le nom du projet, dans chaque ligne du
+        mini-Gantt, doit mener directement au projet (le reste de la
+        bannière continue de mener à /deadlines)."""
+        resp = self._get("/accueil", **{"app.repositories.taches.list_deadlines": DEADLINES})
+        body = resp.data.decode()
+        self.assertIn('<a href="/projets/1" style="font-weight:600; color:inherit;">26099X_Tour Meridian</a>', body)
+
+    def test_accueil_fil_filtrable_par_code_projet(self):
+        """Retour Fadhel, 2026-09-28 : le filtre du fil d'activité doit
+        aussi matcher un code de projet ("24102X"), pas seulement son nom —
+        vérifié directement dans l'attribut data-fil-texte utilisé par le
+        filtre JS (pas juste une présence de texte ailleurs sur la page)."""
+        resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [FEED_POST_MANUEL]})
+        body = resp.data.decode()
+        debut = body.index('data-fil-texte="')
+        fin = body.index('"', debut + len('data-fil-texte="'))
+        self.assertIn(FEED_POST_MANUEL["projet_code"].lower(), body[debut:fin])
+
+    def test_post_dialog_echeance_preremplie_a_aujourdhui(self):
+        """Retour Fadhel, 2026-09-28 : "Dans écheance mettre par défaut la
+        date d'ajd." """
+        resp = self._get("/accueil")
+        body = resp.data.decode()
+        self.assertIn(f'id="dialog-echeance-tache" name="date_echeance" value="{datetime.date.today().isoformat()}"', body)
+
+    def test_post_card_auteur_et_projet_cliquables_pour_chef_de_projet(self):
+        """Retour Fadhel, 2026-09-28 : "Rendre le champ des personnes qui
+        poste (pastille et nom) et le nom des projets cliquable." — USER
+        (fixture par défaut de _login) a le rôle admin, qui voit la fiche
+        utilisateur existante (comme admin/rh/chef_de_projet, voir
+        utilisateurs.fiche)."""
+        resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [FEED_POST_MANUEL]})
+        body = resp.data.decode()
+        self.assertIn(f'<a href="/utilisateurs/{FEED_POST_MANUEL["auteur_id"]}"', body)
+        self.assertIn(
+            f'<a href="/projets/{FEED_POST_MANUEL["projet_id"]}" style="color:inherit;">'
+            f'{FEED_POST_MANUEL["projet_code"]}_{FEED_POST_MANUEL["projet_nom"]}</a>',
+            body,
+        )
 
     def test_login_rend_la_session_permanente(self):
         """"Reste connecté" (retour Fadhel) : sans session.permanent = True,

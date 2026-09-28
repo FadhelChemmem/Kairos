@@ -4,6 +4,7 @@ plus quelques fonctions utilitaires pures (voir is_safe_next ci-dessous).
 Rien ici ne touche à la base de données — uniquement de la présentation
 et de la logique de validation, pour éviter de dupliquer ces règles dans
 chaque template Jinja2 ou chaque route."""
+import datetime
 from urllib.parse import urlparse
 
 
@@ -281,6 +282,11 @@ def register(app):
         notif_categorie_style=notif_categorie_style,
         is_lien_valide=is_lien_valide,
         zip=zip,
+        # Date du jour côté serveur (retour Fadhel, 2026-09-28) — appelée
+        # dans les templates comme today() pour préremplir l'échéance de
+        # "nouveau poste" ; une fonction (pas une valeur figée au démarrage
+        # de l'appli) pour rester juste après minuit.
+        today=datetime.date.today,
     )
     app.jinja_env.filters["il_y_a"] = il_y_a
     app.jinja_env.filters["date_courte"] = date_courte

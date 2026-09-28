@@ -8,14 +8,19 @@
      aperçu ; on y va en cliquant, comme avant). Fenêtre courte (8 jours) +
      colonnes en largeur flexible (1fr) pour ne jamais déborder de la
      largeur des 3 colonnes, quelle que soit la taille de l'écran. -->
-<a href="{{ url_for('deadlines.liste') }}" class="deadline-banner">
-  <div class="deadline-banner-head">
+{# Div (pas <a>) depuis le retour Fadhel du 2026-09-28 : le nom du projet
+   doit mener directement au projet, alors que le reste de la bannière
+   (titre, "Voir tout", chaque ligne) mène toujours à /deadlines — un <a>
+   ne peut pas en contenir un autre, il fallait donc arrêter d'envelopper
+   toute la bannière dans un unique lien. #}
+<div class="deadline-banner">
+  <a href="{{ url_for('deadlines.liste') }}" class="deadline-banner-head" style="color:inherit; text-decoration:none;">
     <span class="deadline-banner-title">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>
       Deadlines
     </span>
     <span style="font-size:11.5px; color:var(--text-faint);">Voir tout →</span>
-  </div>
+  </a>
   {% if deadlines_gantt.rows %}
     <div class="mini-gantt" style="--mg-days:{{ deadlines_gantt.window_days }};">
       <div class="mini-gantt-label" style="visibility:hidden;"></div>
@@ -24,17 +29,17 @@
       {% endfor %}
       {% for t in deadlines_gantt.rows %}
         <div class="mini-gantt-label">
-          <span style="font-weight:600;">{{ t.projet_code }}_{{ t.projet_nom }}</span> · {{ t.titre }}
+          <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" style="font-weight:600; color:inherit;">{{ t.projet_code }}_{{ t.projet_nom }}</a> · {{ t.titre }}
         </div>
-        <div class="mini-gantt-track" style="grid-column: 2 / span {{ deadlines_gantt.window_days }};">
+        <a href="{{ url_for('deadlines.liste') }}" class="mini-gantt-track" style="grid-column: 2 / span {{ deadlines_gantt.window_days }};">
           <span class="mini-gantt-bar" style="grid-column: 1 / span {{ t.span }}; background:{{ t.couleur }};">{{ t.label_barre }}</span>
-        </div>
+        </a>
       {% endfor %}
     </div>
   {% else %}
-    <span class="deadline-banner-empty">Aucune échéance à venir.</span>
+    <a href="{{ url_for('deadlines.liste') }}" class="deadline-banner-empty" style="color:inherit; text-decoration:none;">Aucune échéance à venir.</a>
   {% endif %}
-</a>
+</div>
 
 <div class="page-body">
 
@@ -96,7 +101,10 @@
 
     <div id="fil-liste">
       {% for post in fil %}
-        <div class="fil-item" data-fil-texte="{{ (post.auteur_prenom ~ ' ' ~ post.auteur_nom ~ ' ' ~ post.projet_nom ~ ' ' ~ (post.contenu or ''))|lower }}">
+        {# projet_code ajouté au texte filtrable (retour Fadhel, 2026-09-28) :
+           on peut désormais taper un code de projet ("24102X") dans le
+           filtre, pas seulement son nom. #}
+        <div class="fil-item" data-fil-texte="{{ (post.auteur_prenom ~ ' ' ~ post.auteur_nom ~ ' ' ~ post.projet_code ~ ' ' ~ post.projet_nom ~ ' ' ~ (post.contenu or ''))|lower }}">
           {% with post=post, show_projet=true, next_url=url_for('main.accueil') %}
             {% include "partials/post_card.html" %}
           {% endwith %}

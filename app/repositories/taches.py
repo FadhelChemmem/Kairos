@@ -61,7 +61,10 @@ def list_mes_taches(user_id: int, limit: int = 10) -> list[dict]:
         SELECT t.id, t.titre, t.etat, t.date_echeance, p.id AS projet_id, p.nom AS projet_nom
         FROM tache t
         JOIN projet p ON p.id = t.projet_id
-        WHERE t.etat NOT IN ('termine', 'abandonne')
+        WHERE t.etat NOT IN ('termine', 'abandonne', 'bloque')
+          -- Une tâche bloquée est traitée comme terminée/abandonnée dans
+          -- ce widget (retour Fadhel, 2026-09-28) : elle n'avance plus,
+          -- pas la peine de continuer à encombrer "Mes tâches" avec.
           -- Projets terminés/abandonnés exclus, comme pour les échéances
           -- (PROMPT_CORRECTIONS.md P2 #23, étendu à "Mes tâches" — audit n°2).
           AND p.etat IN ('en_cours', 'bloque')
@@ -91,13 +94,15 @@ def list_deadlines(user_id: int, limit: int = 20) -> list[dict]:
         LEFT JOIN projet_co_chef cc ON cc.projet_id = p.id AND cc.utilisateur_id = %(uid)s
         LEFT JOIN projet_intervenant pi ON pi.projet_id = p.id AND pi.utilisateur_id = %(uid)s
         LEFT JOIN tache_intervenant ti ON ti.tache_id = t.id AND ti.utilisateur_id = %(uid)s
-        WHERE t.etat NOT IN ('termine', 'abandonne')
+        WHERE t.etat NOT IN ('termine', 'abandonne', 'bloque')
+          -- Une tâche bloquée n'apparaît plus dans les deadlines non plus
+          -- (retour Fadhel, 2026-09-28) : traitée comme terminée/abandonnée,
+          -- puisqu'elle n'avance plus tant qu'elle est bloquée.
           AND t.date_echeance IS NOT NULL
           -- PROMPT_CORRECTIONS.md P2 #23 : sans ce filtre, une tâche
-          -- restée "en_cours"/"bloque" sur un projet déjà terminé ou
-          -- abandonné continuait d'apparaître dans les échéances — le
-          -- projet, lui, ne bouge plus, donc cette deadline ne sera
-          -- jamais traitée.
+          -- restée "en_cours" sur un projet déjà terminé ou abandonné
+          -- continuait d'apparaître dans les échéances — le projet, lui,
+          -- ne bouge plus, donc cette deadline ne sera jamais traitée.
           AND p.etat IN ('en_cours', 'bloque')
           AND (
                 p.chef_projet_id = %(uid)s
