@@ -25,7 +25,12 @@
   {% if projet_id is none %}
     <div class="form-row" data-post-dialog-projet-row>
       <label for="dialog-post-projet">Projet</label>
-      <select id="dialog-post-projet">
+      {# Champ recherche (retour Fadhel, 2026-09-28) : la liste des
+         projets s'allonge, un <select> natif devenait pénible à
+         parcourir — voir app/static/js/search-combobox.js. Le <select>
+         d'origine reste la source de vérité (masqué), post-dialog.js
+         n'a rien à changer. #}
+      <select id="dialog-post-projet" data-search-combobox data-search-placeholder="Rechercher un projet…">
         {% for p in projets_choix %}
           <option value="{{ p.id }}">{{ p.code }}_{{ p.nom }}</option>
         {% endfor %}

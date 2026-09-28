@@ -2141,6 +2141,17 @@ class SmokeTestCase(unittest.TestCase):
         self.assertIn('id="dialog-post-projet"', body)
         self.assertIn("26099X_Tour Meridian", body)
 
+    def test_accueil_champ_projet_est_un_combobox_de_recherche(self):
+        """Retour Fadhel (2026-09-28) : le champ "Projet" du composeur
+        listait tous les projets dans un <select> natif, pénible à
+        parcourir à mesure que leur nombre grandit — remplacé par un
+        champ recherche (voir app/static/js/search-combobox.js), sur le
+        même principe que le filtre d'Intervenant(s) (data-chip-filter)."""
+        resp = self._get("/accueil")
+        body = resp.data.decode()
+        self.assertIn('data-search-combobox', body)
+        self.assertIn('data-search-placeholder="Rechercher un projet…"', body)
+
     def test_list_projets_caste_etat_et_phase_en_text_pour_any(self):
         """Régression (2026-09-19) : etat/phase sont des ENUM Postgres
         (projet_etat_enum / phase_enum). psycopg2 envoie une liste Python de
