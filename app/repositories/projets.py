@@ -318,6 +318,26 @@ def user_can_manage(projet_id: int, user_id: int) -> bool:
         return cur.fetchone() is not None
 
 
+def user_est_rattache(projet_id: int, user_id: int) -> bool:
+    """Vrai si `user_id` est déjà chef de projet, co-chef, ou intervenant
+    (niveau projet) de `projet_id` — utilisé pour savoir si le bouton
+    « Rejoindre ce projet » doit être proposé (retour Fadhel, 2026-09-28) :
+    seules les personnes qui voient déjà le projet (même équipe, voir
+    user_can_view) mais n'y sont pas encore formellement rattachées
+    doivent pouvoir le rejoindre en un clic."""
+    sql = """
+        SELECT 1
+        FROM projet p
+        LEFT JOIN projet_co_chef cc ON cc.projet_id = p.id AND cc.utilisateur_id = %(uid)s
+        LEFT JOIN projet_intervenant pi ON pi.projet_id = p.id AND pi.utilisateur_id = %(uid)s
+        WHERE p.id = %(pid)s
+          AND (p.chef_projet_id = %(uid)s OR cc.utilisateur_id IS NOT NULL OR pi.utilisateur_id IS NOT NULL)
+    """
+    with db.get_cursor() as cur:
+        cur.execute(sql, {"pid": projet_id, "uid": user_id})
+        return cur.fetchone() is not None
+
+
 def add_intervenant(projet_id: int, utilisateur_id: int, current_user_id: int) -> None:
     db.execute(
         """

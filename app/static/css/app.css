@@ -243,6 +243,18 @@ a:hover { color: var(--brand-text-strong); }
   text-transform: uppercase; letter-spacing: 0.03em;
 }
 
+/* "Rejoindre cette tâche" (retour Fadhel, 2026-09-28) : icône discrète,
+   révélée seulement au survol de la ligne — voir projet_detail.html. */
+.taskrow-intervenants { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.task-join-form { opacity: 0; transition: opacity 0.12s; flex-shrink: 0; }
+.taskrow:hover .task-join-form, .task-join-form:focus-within { opacity: 1; }
+.task-join-btn {
+  width: 20px; height: 20px; border-radius: 999px; padding: 0; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  border: 1px dashed var(--border-hover); background: var(--surface); color: var(--text-muted);
+}
+.task-join-btn:hover { background: var(--hover-bg); color: var(--text-strong); }
+
 .divider { height: 1px; background: var(--border-soft); margin: 0 0 10px 46px; }
 
 /* Flottant, hors du flux du document (2026-09-19, retour Fadhel : la

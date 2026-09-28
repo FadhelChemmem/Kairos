@@ -171,6 +171,30 @@ def user_est_intervenant(tache_id: int, user_id: int) -> bool:
         return cur.fetchone() is not None
 
 
+def add_intervenant(tache_id: int, projet_id: int, utilisateur_id: int, current_user_id: int) -> bool:
+    """Ajoute `utilisateur_id` comme intervenant de la tâche `tache_id` —
+    bouton « rejoindre cette tâche » (retour Fadhel, 2026-09-28), ajout
+    immédiat sans validation, même principe que projets.add_intervenant.
+
+    `projet_id` au WHERE : même garde-fou que set_etat/close_tache
+    (PROMPT_CORRECTIONS.md P0 #2) — la tâche doit bien appartenir à ce
+    projet. Retourne False (au lieu de planter) si la tâche n'existe pas
+    ou n'appartient pas à ce projet."""
+    with db.get_cursor(user_id=current_user_id) as cur:
+        cur.execute("SELECT 1 FROM tache WHERE id = %s AND projet_id = %s", (tache_id, projet_id))
+        if cur.fetchone() is None:
+            return False
+        cur.execute(
+            """
+            INSERT INTO tache_intervenant (tache_id, utilisateur_id)
+            VALUES (%s, %s)
+            ON CONFLICT DO NOTHING
+            """,
+            (tache_id, utilisateur_id),
+        )
+        return True
+
+
 def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int) -> bool:
     """Changement d'état simple (En cours / Bloqué / Vérifié / Arrêt /
     Abandonné) — pas de post automatique, contrairement à la clôture

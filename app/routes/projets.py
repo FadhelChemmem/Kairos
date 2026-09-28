@@ -98,6 +98,22 @@ def liste():
     # en-tête au lieu de faire un submit() classique.
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return render_template("partials/projets_tableau.html", **contexte)
+
+    # Contexte de la fenêtre flottante "+ Nouveau projet" (retour Fadhel,
+    # 2026-09-28, voir partials/projet_dialog.html) — calculé seulement
+    # pour qui peut créer un projet (même règle que projets.creer) : pas la
+    # peine d'interroger utilisateurs.list_actifs() pour tout le monde.
+    # Note : utilisateurs_actifs ci-dessus est déjà pris par la liste des
+    # CHEFS DE PROJET EXISTANTS (filtre) — le sélecteur "Chef de projet" de
+    # ce formulaire de création doit lister TOUS les actifs (n'importe qui
+    # de non-RH peut se voir confier un nouveau projet), d'où un nom dédié.
+    if g.user["role"] in ("admin", "chef_de_projet"):
+        contexte["utilisateurs_creation_projet"] = utilisateurs.list_actifs()
+        contexte["phases_creation"] = PHASES
+        contexte["phase_initiale_dialog"] = "EXE"
+        contexte["code_propose_dialog"] = projets.propose_code("EXE")
+        contexte["date_du_jour"] = datetime.date.today().isoformat()
+
     return render_template("projets_liste.html", **contexte)
 
 
@@ -216,6 +232,14 @@ def detail(projet_id: int):
     nb_en_cours = sum(1 for t in liste_taches if t["etat"] == "en_cours")
     utilisateurs_actifs = utilisateurs.list_actifs()
 
+    # "Rejoindre ce projet" (retour Fadhel, 2026-09-28) : proposé seulement
+    # à qui voit déjà le projet (garanti ici, voir plus haut) mais n'y est
+    # pas encore formellement rattaché, et jamais à un compte RH (qui ne
+    # peut pas être intervenant — contrainte déjà en base, voir schema.sql).
+    peut_rejoindre_projet = (
+        g.user["role"] != "rh" and not projets.user_est_rattache(projet_id, g.user["id"])
+    )
+
     return render_template(
         "projet_detail.html",
         projet=projet,
@@ -224,6 +248,7 @@ def detail(projet_id: int):
         taches=liste_taches,
         fil=fil,
         peut_gerer=peut_gerer,
+        peut_rejoindre_projet=peut_rejoindre_projet,
         nb_taches=nb_taches,
         nb_en_cours=nb_en_cours,
         utilisateurs_actifs=utilisateurs_actifs,
@@ -407,4 +432,59 @@ def ajouter_intervenant(projet_id: int):
                 f"Vous avez été ajouté comme intervenant sur le projet « {nom_projet} ».",
             )
         flash("Intervenant ajouté.", "success")
+    return redirect(url_for("projets.detail", projet_id=projet_id))
+
+
+@bp.route("/<int:projet_id>/rejoindre", methods=["POST"])
+@login_required
+def rejoindre(projet_id: int):
+    """Bouton « + Rejoindre ce projet » (retour Fadhel, 2026-09-28) :
+    ajout immédiat de l'utilisateur connecté comme intervenant, sans
+    validation d'un chef/co-chef — à la différence de ajouter_intervenant
+    ci-dessus (qui ajoute QUELQU'UN D'AUTRE et exige user_can_manage), ici
+    on ne s'ajoute que SOI-MÊME, donc aucune notification n'est nécessaire."""
+    if not projets.user_can_view(projet_id, g.user["id"]):
+        abort(404)
+    if g.user["role"] == "rh":
+        flash("Un RH ne peut pas être intervenant sur un projet.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+    if projets.user_est_rattache(projet_id, g.user["id"]):
+        flash("Vous êtes déjà rattaché à ce projet.", "success")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+
+    try:
+        projets.add_intervenant(projet_id, g.user["id"], g.user["id"])
+    except Exception as exc:
+        flash(_message_erreur_intervenant(exc, "de rejoindre ce projet"), "error")
+    else:
+        flash("Vous avez rejoint le projet.", "success")
+    return redirect(url_for("projets.detail", projet_id=projet_id))
+
+
+@bp.route("/<int:projet_id>/taches/<int:tache_id>/rejoindre", methods=["POST"])
+@login_required
+def rejoindre_tache(projet_id: int, tache_id: int):
+    """Bouton « rejoindre cette tâche » (retour Fadhel, 2026-09-28),
+    révélé au survol de la ligne — même principe que rejoindre() ci-dessus
+    mais au niveau tâche : ajout immédiat de l'utilisateur connecté comme
+    intervenant de la tâche, sans validation."""
+    if not projets.user_can_view(projet_id, g.user["id"]):
+        abort(404)
+    if g.user["role"] == "rh":
+        flash("Un RH ne peut pas être intervenant sur une tâche.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+    if taches.user_est_intervenant(tache_id, g.user["id"]):
+        flash("Vous êtes déjà intervenant sur cette tâche.", "success")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+
+    try:
+        ok = taches.add_intervenant(tache_id, projet_id, g.user["id"], g.user["id"])
+    except Exception as exc:
+        flash(_message_erreur_intervenant(exc, "de rejoindre cette tâche"), "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+
+    if not ok:
+        flash("Tâche introuvable sur ce projet.", "error")
+    else:
+        flash("Vous avez rejoint la tâche.", "success")
     return redirect(url_for("projets.detail", projet_id=projet_id))

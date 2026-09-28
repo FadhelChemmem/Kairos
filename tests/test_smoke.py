@@ -342,6 +342,7 @@ class SmokeTestCase(unittest.TestCase):
             "app.repositories.projets.list_intervenants": INTERVENANTS,
             "app.repositories.projets.user_can_manage": True,
             "app.repositories.projets.user_can_view": True,
+            "app.repositories.projets.user_est_rattache": False,
             "app.repositories.projets.propose_code": "26099X",
             "app.repositories.taches.list_deadlines": DEADLINES,
             "app.repositories.taches.list_mes_taches": MES_TACHES,
@@ -1924,11 +1925,21 @@ class SmokeTestCase(unittest.TestCase):
         # Bug corrigé (2026-09-27, retour Fadhel) : le filtre listait tout
         # le monde (UTILISATEURS_ACTIFS) au lieu des seuls chefs de projet
         # réels (CHEFS_DE_PROJET) — voir projets.list_chefs_de_projet().
+        #
+        # Assertion volontairement scopée au SEUL <select name="chef_id">
+        # (le filtre) : depuis le 2026-09-28, la page contient aussi la
+        # fenêtre flottante "+ Nouveau projet" (partials/projet_dialog.html),
+        # dont le champ "Chef de projet" liste lui TOUS les actifs (n'importe
+        # qui de non-RH peut se voir confier un nouveau projet) — Omar Aziz
+        # y apparaît légitimement, sans rapport avec ce filtre.
         resp = self._get("/projets", **{"app.repositories.projets.list_projets": [PROJET_LISTE_SANS_HEURES]})
         self.assertEqual(resp.status_code, 200)
         body = resp.data.decode()
-        self.assertIn("Sana Trabelsi", body)
-        self.assertNotIn("Omar Aziz", body)
+        debut = body.index('name="chef_id"')
+        fin = body.index("</select>", debut)
+        filtre_chef = body[debut:fin]
+        self.assertIn("Sana Trabelsi", filtre_chef)
+        self.assertNotIn("Omar Aziz", filtre_chef)
 
     def test_projets_liste_ajax_ne_renvoie_que_le_tableau(self):
         # Retour Fadhel (2026-09-27) : la recherche/les filtres sur "Tous
@@ -2982,6 +2993,7 @@ class TestControlesDAccesStricts(unittest.TestCase):
 
     _login = SmokeTestCase._login
     _patched = SmokeTestCase._patched
+    _get = SmokeTestCase._get
 
     def setUp(self):
         self.app = create_app(TestConfig)
@@ -3084,6 +3096,118 @@ class TestControlesDAccesStricts(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 404)
         add.assert_not_called()
+
+    # --- "Rejoindre ce projet" / "rejoindre cette tâche" (retour Fadhel,
+    # 2026-09-28) : ajout immédiat de SOI-MÊME comme intervenant, sans
+    # validation d'un chef/co-chef — à la différence de ajouter_intervenant
+    # ci-dessus (qui ajoute quelqu'un d'autre et exige user_can_manage). ---
+    def test_rejoindre_projet_ajoute_lutilisateur_connecte(self):
+        _, add = self._requete("post", "/projets/1/rejoindre", "app.repositories.projets.add_intervenant")
+        add.assert_called_once_with(1, USER["id"], USER["id"])
+
+    def test_rejoindre_projet_deja_rattache_nexecute_rien(self):
+        _, add = self._requete(
+            "post", "/projets/1/rejoindre", "app.repositories.projets.add_intervenant",
+            **{"app.repositories.projets.user_est_rattache": True},
+        )
+        add.assert_not_called()
+
+    def test_rejoindre_projet_rh_refuse(self):
+        _, add = self._requete(
+            "post", "/projets/1/rejoindre", "app.repositories.projets.add_intervenant",
+            **{"app.auth.get_user_by_id": {**USER, "role": "rh"}},
+        )
+        add.assert_not_called()
+
+    def test_rejoindre_projet_invisible_404(self):
+        resp, add = self._requete(
+            "post", "/projets/1/rejoindre", "app.repositories.projets.add_intervenant",
+            **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        add.assert_not_called()
+
+    def test_rejoindre_tache_ajoute_lutilisateur_connecte(self):
+        _, add = self._requete(
+            "post", "/projets/1/taches/5/rejoindre", "app.repositories.taches.add_intervenant",
+        )
+        add.assert_called_once_with(5, 1, USER["id"], USER["id"])
+
+    def test_rejoindre_tache_deja_intervenant_nexecute_rien(self):
+        _, add = self._requete(
+            "post", "/projets/1/taches/5/rejoindre", "app.repositories.taches.add_intervenant",
+            **{"app.repositories.taches.user_est_intervenant": True},
+        )
+        add.assert_not_called()
+
+    def test_rejoindre_tache_rh_refuse(self):
+        _, add = self._requete(
+            "post", "/projets/1/taches/5/rejoindre", "app.repositories.taches.add_intervenant",
+            **{"app.auth.get_user_by_id": {**USER, "role": "rh"}},
+        )
+        add.assert_not_called()
+
+    def test_rejoindre_tache_projet_invisible_404(self):
+        resp, add = self._requete(
+            "post", "/projets/1/taches/5/rejoindre", "app.repositories.taches.add_intervenant",
+            **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        add.assert_not_called()
+
+    def test_page_projet_bouton_rejoindre_projet_visible_si_non_rattache(self):
+        body = self._get(
+            "/projets/1", **{"app.repositories.projets.user_est_rattache": False},
+        ).data.decode()
+        self.assertIn("Rejoindre ce projet", body)
+
+    def test_page_projet_bouton_rejoindre_projet_masque_si_deja_rattache(self):
+        body = self._get(
+            "/projets/1", **{"app.repositories.projets.user_est_rattache": True},
+        ).data.decode()
+        self.assertNotIn("Rejoindre ce projet", body)
+
+    def test_page_projet_bouton_rejoindre_projet_masque_pour_rh(self):
+        body = self._get(
+            "/projets/1",
+            **{
+                "app.auth.get_user_by_id": {**USER, "role": "rh"},
+                "app.repositories.projets.user_est_rattache": False,
+            },
+        ).data.decode()
+        self.assertNotIn("Rejoindre ce projet", body)
+
+    def test_page_projet_bouton_rejoindre_tache_selon_intervenants(self):
+        """TACHES_PROJET : la tâche 5 a déjà l'utilisateur connecté (id=1)
+        comme intervenant, la tâche 6 n'a aucun intervenant — le bouton ne
+        doit apparaître QUE pour la tâche 6 (une seule occurrence)."""
+        body = self._get("/projets/1").data.decode()
+        self.assertEqual(body.count('action="/projets/1/taches/5/rejoindre"'), 0)
+        self.assertEqual(body.count('action="/projets/1/taches/6/rejoindre"'), 1)
+
+    def test_page_projet_entree_points_nouveau_post_consolides(self):
+        """Retour Fadhel, 2026-09-28 (captures annotées) : la carte verte
+        "Nouveau post" de la colonne gauche et les boutons rapides
+        "+ Information"/"+ Requête" au-dessus du tableau des tâches sont
+        retirés — seuls "+ Tâche" (au-dessus du tableau) et "+ Nouveau
+        post" (près du filtre des posts) restent. Les titres ci-dessous
+        sont uniques à ces boutons (le rebond de post_card.html, qui a
+        lui aussi un "+ Requête", n'a pas d'attribut title)."""
+        body = self._get("/projets/1").data.decode()
+        self.assertNotIn("Poster une information", body)
+        self.assertNotIn('title="Créer une requête sur ce projet"', body)
+        self.assertIn('title="Créer une tâche sur ce projet"', body)
+        self.assertIn("+ Nouveau post", body)
+
+    def test_projets_liste_bouton_nouveau_projet_ouvre_la_fenetre_flottante(self):
+        """Retour Fadhel, 2026-09-28 : "+ Nouveau projet" n'est plus un
+        lien vers une page séparée mais ouvre partials/projet_dialog.html,
+        même principe que "+ Nouveau post" — voir aussi projet_creer.html
+        (conservée comme repli automatique en cas d'erreur de validation)."""
+        body = self._get("/projets").data.decode()
+        self.assertIn("data-open-projet-dialog", body)
+        self.assertIn('id="dialog-nouveau-projet"', body)
+        self.assertNotIn('<a href="/projets/nouveau"', body)
 
     # --- Pièces jointes (P0 #1) : un VRAI fichier sur disque ---
     def _ecrire_fichier(self, chemin_relatif):

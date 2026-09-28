@@ -1,3 +1,10 @@
+{# Depuis le 2026-09-28 (retour Fadhel), la création se fait normalement
+   depuis la fenêtre flottante de /projets (partials/projet_dialog.html,
+   même route POST projets.creer) — cette page complète n'est plus liée
+   depuis l'interface mais reste le repli AUTOMATIQUE en cas d'erreur de
+   validation (la route la re-rend alors avec la saisie préremplie,
+   comportement historique conservé — voir PROMPT_CORRECTIONS.md audit
+   n°2) ; elle reste aussi directement accessible via /projets/nouveau. #}
 {% extends "base.html" %}
 {% block title %}Nouveau projet — Kairos{% endblock %}
 {% block body %}

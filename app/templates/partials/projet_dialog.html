@@ -1,0 +1,71 @@
+{# Fenêtre flottante "Nouveau projet" (retour Fadhel, 2026-09-28), même
+   principe que partials/post_dialog.html : un clic sur un déclencheur
+   `data-open-projet-dialog` (bouton "+ Nouveau projet" de /projets)
+   l'ouvre par-dessus la page, sans navigation — voir
+   app/static/js/projet-dialog.js.
+
+   Le formulaire poste vers la route existante `projets.creer`,
+   inchangée : en cas de succès elle redirige directement vers la page du
+   nouveau projet (comme avant). En cas d'ERREUR de validation, elle
+   re-rend la page complète `projet_creer.html` (comportement historique,
+   volontairement conservé — voir PROMPT_CORRECTIONS.md audit n°2 : la
+   saisie y est repréremplie). Cette page complète reste donc la page de
+   secours automatique en cas d'erreur ; la fenêtre flottante ne couvre
+   que le cas normal (création réussie du premier coup).
+
+   Attend dans le contexte : utilisateurs_creation_projet, phases_creation,
+   code_propose_dialog, phase_initiale_dialog, date_du_jour.
+#}
+<dialog id="dialog-nouveau-projet" class="post-dialog" aria-labelledby="dialog-nouveau-projet-titre" data-url-code-propose="{{ url_for('projets.api_code_propose') }}">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+    <span id="dialog-nouveau-projet-titre" style="font-size:15px; font-weight:800;">Nouveau projet</span>
+    <button type="button" data-close-projet-dialog aria-label="Fermer" style="background:none; border:none; cursor:pointer; color:var(--text-faint); padding:4px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+    </button>
+  </div>
+
+  <form method="post" action="{{ url_for('projets.creer') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row">
+      <label for="dialog-projet-nom">Nom du projet</label>
+      <input type="text" id="dialog-projet-nom" name="nom" placeholder="Ex. Tour Meridian" required>
+    </div>
+    <div class="form-row">
+      <label for="dialog-projet-code">Code (proposé, modifiable)</label>
+      <input type="text" id="dialog-projet-code" name="code" value="{{ code_propose_dialog }}" required>
+    </div>
+    <div class="form-row">
+      <label for="dialog-projet-phase">Phase</label>
+      <select id="dialog-projet-phase" name="phase">
+        {% for ph in phases_creation %}
+          <option value="{{ ph }}" {{ 'selected' if ph == phase_initiale_dialog }}>{{ ph }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-row">
+      <label for="dialog-projet-lots">Lot(s)</label>
+      <select id="dialog-projet-lots" name="lots" multiple data-chip-select>
+        <option value="CM">CM — Charpente Métallique</option>
+        <option value="GO">GO — Gros Œuvre</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label for="dialog-projet-chef">Chef de projet</label>
+      <select id="dialog-projet-chef" name="chef_projet_id">
+        {% for u in utilisateurs_creation_projet %}
+          <option value="{{ u.id }}" {{ 'selected' if u.id == g.user.id }}>{{ u.prenom }} {{ u.nom }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-row" style="margin-bottom:0;">
+      <label for="dialog-projet-debut">Date de début</label>
+      <input type="date" id="dialog-projet-debut" name="date_debut" value="{{ date_du_jour }}">
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border-soft);">
+      <button type="button" data-close-projet-dialog class="btn-secondary" style="width:auto; padding:9px 16px;">Annuler</button>
+      <button type="submit" class="btn-primary" style="width:auto; padding:9px 18px; background:#4a7c59; color:#fff;">Créer le projet</button>
+    </div>
+  </form>
+</dialog>
+<script src="{{ url_for('static', filename='js/projet-dialog.js') }}" defer></script>

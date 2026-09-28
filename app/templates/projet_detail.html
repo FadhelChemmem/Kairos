@@ -81,13 +81,10 @@
       </div>
     </div>
 
-    {% if peut_gerer %}
-    <div class="card card-cta">
-      <div style="font-size:13px; font-weight:700; color:#fff; margin-bottom:4px;">Nouveau post</div>
-      <div style="font-size:12px; color:#d6efe8; margin-bottom:12px; line-height:1.4;">Créer une tâche, une information ou une requête sur ce projet.</div>
-      <button type="button" data-open-post-dialog data-intent="tache" class="btn-primary" style="display:block; width:100%; text-align:center; border:none; cursor:pointer; font-family:inherit;">+ Nouveau post</button>
-    </div>
-    {% endif %}
+    {# Carte "Nouveau post" retirée (retour Fadhel, 2026-09-28) : c'était un
+       point d'entrée redondant avec le bouton "+ Nouveau post" déjà présent
+       près du filtre des posts, plus bas sur cette même page — un seul
+       point d'entrée suffit. #}
   </div>
 
   <!-- Centre : tâches + fil -->
@@ -100,18 +97,14 @@
           <span style="font-size:12px; color:var(--text-muted);">{{ nb_taches }} tâche{{ 's' if nb_taches != 1 else '' }} · {{ nb_en_cours }} en cours</span>
         </div>
         {% if peut_gerer %}
+        {# +Information et +Requête retirés d'ici (retour Fadhel, 2026-09-28) :
+           redondants avec le bouton "+ Nouveau post" près du filtre des
+           posts, plus bas — seul "+ Tâche" reste, raccourci utile juste
+           au-dessus du tableau qu'il alimente. #}
         <div style="display:flex; align-items:center; gap:6px;">
           <button type="button" data-open-post-dialog data-intent="tache" class="quickadd quickadd-primary" title="Créer une tâche sur ce projet">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
             Tâche
-          </button>
-          <button type="button" data-open-post-dialog data-intent="information" class="quickadd" title="Poster une information (visible hors de ce projet — étape 2)">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-            Information
-          </button>
-          <button type="button" data-open-post-dialog data-intent="requete" class="quickadd" title="Créer une requête sur ce projet">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-            Requête
           </button>
         </div>
         {% endif %}
@@ -125,10 +118,26 @@
         {% set tst = tache_etat_style(t.etat) %}
         <div class="taskrow">
           <span style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; {% if t.etat in ('termine','abandonne') %}color:var(--text-faint);{% endif %}">{{ t.titre }}</span>
-          <div class="avatar-stack" style="display:flex;">
-            {% for iv in t.intervenants %}
-              {{ avatarm.avatar(iv.id, iv.prenom, iv.nom, iv.avatar_chemin, css_class='avatar avatar-sm', titre=(iv.prenom ~ ' ' ~ iv.nom)) }}
-            {% endfor %}
+          {# "Rejoindre cette tâche" (retour Fadhel, 2026-09-28) : ajout
+             immédiat comme intervenant de la tâche, sans validation —
+             n'apparaît qu'au survol de la ligne (moins de bruit visuel
+             qu'un bouton toujours visible), pour qui n'en est pas déjà
+             intervenant et n'est pas RH. #}
+          {% set deja_intervenant_tache = g.user.id in (t.intervenants|map(attribute='id')|list) %}
+          <div class="taskrow-intervenants">
+            <div class="avatar-stack" style="display:flex;">
+              {% for iv in t.intervenants %}
+                {{ avatarm.avatar(iv.id, iv.prenom, iv.nom, iv.avatar_chemin, css_class='avatar avatar-sm', titre=(iv.prenom ~ ' ' ~ iv.nom)) }}
+              {% endfor %}
+            </div>
+            {% if g.user.role != 'rh' and not deja_intervenant_tache %}
+            <form method="post" action="{{ url_for('projets.rejoindre_tache', projet_id=projet.id, tache_id=t.id) }}" class="task-join-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="task-join-btn" title="Rejoindre cette tâche" aria-label="Rejoindre cette tâche">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+            </form>
+            {% endif %}
           </div>
           <span class="pill" style="background:{{ tst.bg }}; color:{{ tst.fg }};">{{ tst.label }}</span>
           <span style="font-size:12px; color:{{ 'var(--text-faint)' if t.etat in ('termine','abandonne') else 'var(--text-secondary)' }};">
@@ -284,6 +293,19 @@
           <button type="submit" class="btn-secondary" style="width:auto; padding:8px 12px;">Ajouter</button>
         </form>
       </details>
+      {% endif %}
+      {# "Rejoindre ce projet" (retour Fadhel, 2026-09-28) : ajout immédiat
+         comme intervenant, sans validation — proposé seulement à qui voit
+         déjà le projet (même équipe) mais n'y est pas encore formellement
+         rattaché (ni chef, ni co-chef, ni intervenant), et jamais à un
+         compte RH (qui ne peut pas être intervenant, contrainte déjà en
+         base — voir routes/projets.py:detail). #}
+      {% if peut_rejoindre_projet %}
+      <div class="divider" style="margin-left:0;"></div>
+      <form method="post" action="{{ url_for('projets.rejoindre', projet_id=projet.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-secondary" style="width:100%;">+ Rejoindre ce projet</button>
+      </form>
       {% endif %}
     </div>
   </div>

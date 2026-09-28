@@ -8,7 +8,9 @@
     {# Même règle que la route projets.creer (admin, chef de projet) — le
        bouton était montré à tous (audit n°2). #}
     {% if g.user.role in ('admin', 'chef_de_projet') %}
-    <a href="{{ url_for('projets.creer') }}" class="btn-secondary" style="width:auto; padding:9px 16px; text-decoration:none;">+ Nouveau projet</a>
+    {# Fenêtre flottante depuis le 2026-09-28 (retour Fadhel), même principe
+       que "+ Nouveau post" — voir partials/projet_dialog.html. #}
+    <button type="button" data-open-projet-dialog class="btn-secondary" style="width:auto; padding:9px 16px;">+ Nouveau projet</button>
     {% endif %}
   </div>
 
@@ -119,4 +121,8 @@
   });
 })();
 </script>
+
+{% if g.user.role in ('admin', 'chef_de_projet') %}
+  {% include "partials/projet_dialog.html" %}
+{% endif %}
 {% endblock %}
