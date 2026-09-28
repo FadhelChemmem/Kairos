@@ -89,16 +89,16 @@ def formulaire():
     )
 
     mois_ref = date.replace(day=1)
-    jours_du_mois = [
-        j.isoformat() for j in dailylog.list_jours_remplis_mois(g.user["id"], mois_ref.year, mois_ref.month)
-    ]
+    etats_du_mois = dailylog.etats_jours_mois(
+        g.user["id"], mois_ref.year, mois_ref.month, standard_hours=STANDARD_HOURS,
+    )
 
     return render_template(
         "dailylog.html",
         date=date, aujourdhui=aujourdhui, est_aujourdhui=est_aujourdhui,
         hier=hier, demain=demain, rappel_hier=rappel_hier,
         lignes_initiales=lignes_initiales, suggestions=suggestions,
-        jours_remplis=jours_du_mois, standard_hours=STANDARD_HOURS,
+        etats_jours=etats_du_mois, standard_hours=STANDARD_HOURS,
     )
 
 
@@ -106,14 +106,16 @@ def formulaire():
 @login_required
 def api_jours_remplis():
     """Petite API JSON interne (même origine, même session) utilisée par le
-    calendrier du DailyLog pour afficher la pastille "rempli" quand on
-    change de mois sans recharger toute la page."""
+    calendrier du DailyLog pour afficher les pastilles rempli/partiel/
+    manque (Lot 5, retour Fadhel, 2026-09-28) quand on change de mois sans
+    recharger toute la page. Nom de route/endpoint conservé tel quel
+    (historique) même si la réponse ne se limite plus aux seuls jours
+    "remplis" depuis ce chantier."""
     annee = request.args.get("annee", type=int)
     mois = request.args.get("mois", type=int)
     if not annee or not mois:
-        return {"jours": []}
-    jours = dailylog.list_jours_remplis_mois(g.user["id"], annee, mois)
-    return {"jours": [j.isoformat() for j in jours]}
+        return {"etats": {}}
+    return {"etats": dailylog.etats_jours_mois(g.user["id"], annee, mois, standard_hours=STANDARD_HOURS)}
 
 
 @bp.route("/recherche-projets")

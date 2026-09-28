@@ -50,6 +50,10 @@
   --brand-text-strong: #14513b;
   --error-bg: #fdeae4;
   --error-text: #c23a1a;
+  /* Pastille "partiel" du calendrier DailyLog (Lot 5, retour Fadhel,
+     2026-09-28 : "calendrier à pastilles vert/bleu/rouge") — même bleu
+     que la pastille d'état de projet "En cours" (app/utils.py). */
+  --info-text: #3b7de0;
 }
 
 :root[data-theme="dark"] {
@@ -80,6 +84,7 @@
   --brand-text-strong: #a9dcbb;
   --error-bg: #3a1f18;
   --error-text: #f0917a;
+  --info-text: #8ab4f5;
 }
 
 body {

@@ -42,8 +42,14 @@
           {% for l in ('L','M','M','J','V','S','D') %}<span style="text-align:center; font-size:10px; color:var(--text-faint); font-weight:700;">{{ l }}</span>{% endfor %}
         </div>
         <div id="cal-grid" style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px;"></div>
-        <div style="display:flex; align-items:center; gap:6px; margin-top:10px; font-size:10.5px; color:var(--text-muted);">
-          <span style="width:6px; height:6px; border-radius:999px; background:#4a7c59;"></span> rempli
+        {# Légende des 3 pastilles (Lot 5, retour Fadhel, 2026-09-28 :
+           "calendrier à pastilles vert/bleu/rouge") — voir
+           dailylog.etats_jours_mois pour la définition exacte de chaque
+           état. #}
+        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin-top:10px; font-size:10.5px; color:var(--text-muted);">
+          <span style="display:flex; align-items:center; gap:5px;"><span style="width:6px; height:6px; border-radius:999px; background:#4a7c59;"></span> rempli</span>
+          <span style="display:flex; align-items:center; gap:5px;"><span style="width:6px; height:6px; border-radius:999px; background:var(--info-text);"></span> partiel</span>
+          <span style="display:flex; align-items:center; gap:5px;"><span style="width:6px; height:6px; border-radius:999px; background:var(--error-text);"></span> manqué</span>
         </div>
       </div>
     </div>
@@ -125,7 +131,7 @@
   "lignesInitiales": lignes_initiales,
   "suggestionsMine": suggestions.mine,
   "suggestionsRecentes": suggestions.recentes,
-  "joursRemplis": jours_remplis,
+  "etatsJours": etats_jours,
   "moisAffiche": date.strftime('%Y-%m'),
   "urlFormulaire": url_for('dailylog.formulaire'),
   "urlJoursRemplis": url_for('dailylog.api_jours_remplis'),
@@ -567,8 +573,11 @@
   var FR_MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
   var todayIso = DATA.todayIso;
   var selectedIso = DATA.dateIso;
-  var filledSet = {};
-  DATA.joursRemplis.forEach(function (d) { filledSet[d] = true; });
+  // {iso: 'rempli' | 'partiel' | 'manque'} — voir dailylog.etats_jours_mois
+  // (Lot 5, retour Fadhel, 2026-09-28 : "calendrier à pastilles vert/bleu/
+  // rouge"). Un jour absent du dict n'a pas de pastille (neutre).
+  var etatsJours = DATA.etatsJours || {};
+  var COULEUR_PASTILLE = { rempli: '#4a7c59', partiel: 'var(--info-text)', manque: 'var(--error-text)' };
   var calYear = parseInt(DATA.moisAffiche.split('-')[0], 10);
   var calMonth = parseInt(DATA.moisAffiche.split('-')[1], 10) - 1;
 
@@ -593,10 +602,11 @@
       if (iso === selectedIso) a.style.cssText += 'border:1.5px solid #4a7c59;';
       if (iso > todayIso) a.style.opacity = '0.4';
       a.textContent = d;
-      if (filledSet[iso]) {
+      var etat = etatsJours[iso];
+      if (etat && COULEUR_PASTILLE[etat]) {
         var dot = document.createElement('span');
         dot.className = 'cal-dot';
-        dot.style.background = '#4a7c59';
+        dot.style.background = COULEUR_PASTILLE[etat];
         a.appendChild(dot);
       }
       grid.appendChild(a);
@@ -609,8 +619,7 @@
     fetch(DATA.urlJoursRemplis + '?annee=' + year + '&mois=' + (month + 1))
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        filledSet = {};
-        (data.jours || []).forEach(function (d) { filledSet[d] = true; });
+        etatsJours = data.etats || {};
         renderCalendarGrid();
       })
       .catch(function () {});

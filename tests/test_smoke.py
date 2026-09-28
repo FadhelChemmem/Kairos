@@ -295,7 +295,11 @@ DAILYLOG_SUGGESTIONS = {
     # projets de l'entreprise) ; voir dailylog.list_projets_recents.
     "recentes": [{"projet_id": 9, "code": "24001X", "nom": "The Hub", "tache_id": None, "tache_titre": None}],
 }
-DAILYLOG_JOURS_REMPLIS = [datetime.date(2026, 9, 11), datetime.date(2026, 9, 14)]
+# Lot 5 (retour Fadhel, 2026-09-28) : "calendrier à pastilles vert/bleu/
+# rouge" — voir dailylog.etats_jours_mois. Les trois états sont représentés
+# ici pour que les tests de rendu (pastilles/légende) puissent tous
+# s'appuyer sur ce même fixture par défaut.
+DAILYLOG_ETATS_JOURS = {"2026-09-11": "rempli", "2026-09-14": "partiel", "2026-09-16": "manque"}
 
 NOTIFICATIONS = [
     {"id": 10, "categorie": "projet", "message": "Foulen Chedly vous a mentionné dans un post.",
@@ -382,7 +386,7 @@ class SmokeTestCase(unittest.TestCase):
             "app.repositories.dailylog.list_projets_pour_dailylog": DAILYLOG_PROJETS,
             "app.repositories.dailylog.list_entrees_jour": DAILYLOG_ENTREES,
             "app.repositories.dailylog.list_lignes_suggerees": DAILYLOG_SUGGESTIONS,
-            "app.repositories.dailylog.list_jours_remplis_mois": DAILYLOG_JOURS_REMPLIS,
+            "app.repositories.dailylog.etats_jours_mois": DAILYLOG_ETATS_JOURS,
             "app.repositories.dailylog.jours_manques_recents": [],
             "app.repositories.dailylog.rechercher_projets": [],
             "app.repositories.utilisateurs.list_tous": UTILISATEURS_TOUS,
@@ -727,6 +731,9 @@ class SmokeTestCase(unittest.TestCase):
                 p.stop()
 
     def test_dailylog_jours_remplis_api(self):
+        """Lot 5 (retour Fadhel, 2026-09-28) : la réponse porte désormais un
+        état par jour (rempli/partiel/manque), pas seulement une liste de
+        jours "remplis" — voir dailylog.etats_jours_mois."""
         self._login()
         patchers = self._patched()
         for p in patchers:
@@ -737,7 +744,7 @@ class SmokeTestCase(unittest.TestCase):
             for p in patchers:
                 p.stop()
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.get_json(), {"jours": ["2026-09-11", "2026-09-14"]})
+        self.assertEqual(resp.get_json(), {"etats": DAILYLOG_ETATS_JOURS})
 
     def test_deadlines_renders_gantt(self):
         resp = self._get("/deadlines")
@@ -1838,6 +1845,67 @@ class SmokeTestCase(unittest.TestCase):
 
         self.assertEqual(resultat, attendu)
         self.assertTrue(all(j.weekday() < 5 for j in resultat))
+
+    # --- Lot 5 (retour Fadhel, 2026-09-28) : "calendrier à pastilles
+    #     vert/bleu/rouge" — voir dailylog.etats_jours_mois. ---
+
+    def test_etats_jours_mois_distingue_rempli_et_partiel(self):
+        from app.repositories import dailylog as dailylog_repo
+
+        rows = [
+            {"date": datetime.date(2026, 9, 10), "total": 8.0},
+            {"date": datetime.date(2026, 9, 11), "total": 3.5},
+        ]
+        with patch("app.repositories.dailylog.db.query_all", return_value=rows), \
+             patch("app.repositories.dailylog.jours_manques_recents", return_value=[]):
+            resultat = dailylog_repo.etats_jours_mois(user_id=1, annee=2026, mois=9)
+        self.assertEqual(resultat, {"2026-09-10": "rempli", "2026-09-11": "partiel"})
+
+    def test_etats_jours_mois_au_dela_de_la_journee_type_reste_rempli(self):
+        """Une journée avec plus de 8h (heures supplémentaires) doit rester
+        "rempli", pas un état inconnu — >= la journée type, pas =="""
+        from app.repositories import dailylog as dailylog_repo
+
+        rows = [{"date": datetime.date(2026, 9, 10), "total": 9.5}]
+        with patch("app.repositories.dailylog.db.query_all", return_value=rows), \
+             patch("app.repositories.dailylog.jours_manques_recents", return_value=[]):
+            resultat = dailylog_repo.etats_jours_mois(user_id=1, annee=2026, mois=9)
+        self.assertEqual(resultat, {"2026-09-10": "rempli"})
+
+    def test_etats_jours_mois_manque_reprend_jours_manques_recents_du_mois_affiche(self):
+        """"manque" (rouge) reprend jours_manques_recents (même fenêtre
+        glissante/heuristique que la carte DailyLog de l'accueil) — un jour
+        manqué HORS du mois demandé est exclu, pas de fuite entre mois."""
+        from app.repositories import dailylog as dailylog_repo
+
+        jours_manques = [datetime.date(2026, 9, 16), datetime.date(2026, 8, 31)]
+        with patch("app.repositories.dailylog.db.query_all", return_value=[]), \
+             patch("app.repositories.dailylog.jours_manques_recents", return_value=jours_manques):
+            resultat = dailylog_repo.etats_jours_mois(user_id=1, annee=2026, mois=9)
+        self.assertEqual(resultat, {"2026-09-16": "manque"})
+
+    def test_etats_jours_mois_priorise_rempli_partiel_sur_manque(self):
+        """Un jour avec des heures déjà enregistrées ne doit jamais être
+        écrasé en "manque", même s'il apparaissait (défensif — ne devrait
+        pas arriver en pratique, jours_manques_recents excluant déjà les
+        jours remplis) dans jours_manques_recents."""
+        from app.repositories import dailylog as dailylog_repo
+
+        rows = [{"date": datetime.date(2026, 9, 16), "total": 8.0}]
+        with patch("app.repositories.dailylog.db.query_all", return_value=rows), \
+             patch("app.repositories.dailylog.jours_manques_recents", return_value=[datetime.date(2026, 9, 16)]):
+            resultat = dailylog_repo.etats_jours_mois(user_id=1, annee=2026, mois=9)
+        self.assertEqual(resultat, {"2026-09-16": "rempli"})
+
+    def test_dailylog_calendrier_affiche_les_trois_pastilles(self):
+        resp = self._get("/dailylog")
+        self.assertEqual(resp.status_code, 200, resp.data[:2000])
+        body = resp.data.decode()
+        self.assertIn("rempli", body)
+        self.assertIn("partiel", body)
+        self.assertIn("manqué", body)
+        self.assertIn("2026-09-16", body)
+        self.assertIn('"manque"', body)
 
     def test_accueil_bandeau_deadlines_pleine_largeur(self):
         resp = self._get("/accueil")

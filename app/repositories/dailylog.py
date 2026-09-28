@@ -163,20 +163,44 @@ def list_lignes_suggerees(user_id: int) -> dict:
     return {"mine": mine, "recentes": recentes}
 
 
-def list_jours_remplis_mois(user_id: int, annee: int, mois: int) -> list:
-    """Dates (du mois donné) où l'utilisateur a au moins une ligne
-    enregistrée — pour la pastille verte du calendrier du DailyLog. La
-    pastille "manquant" du prototype n'a pas été reprise : elle demanderait
-    de définir ce qu'est un jour normalement travaillé (jours fériés,
-    date d'embauche, etc.), non modélisé pour l'instant."""
+def etats_jours_mois(user_id: int, annee: int, mois: int, standard_hours: float = 8) -> dict:
+    """État de chaque jour "notable" du mois donné, pour les pastilles du
+    calendrier DailyLog (Lot 5, retour Fadhel, 2026-09-28 : "calendrier à
+    pastilles vert/bleu/rouge" — reprend enfin la pastille "manquant" que
+    l'implémentation du 2026-09-18 avait volontairement laissée de côté) :
+
+    - 'rempli' (vert) : total des heures du jour >= la journée type (8h).
+    - 'partiel' (bleu) : au moins une ligne enregistrée, mais total < 8h.
+    - 'manque' (rouge) : jour ouvré SANS AUCUNE ligne, dans la fenêtre de
+      `jours_manques_recents` (même fonction que la carte DailyLog de
+      l'accueil — même heuristique lun-ven, pas de notion de jour férié/
+      absence/date d'embauche, non modélisées ; "aujourd'hui" ne compte
+      comme manqué qu'à partir de 16h, retour Fadhel, 2026-09-28 : "ne pas
+      mettre en rouge dès le matin"). Volontairement bornée à cette même
+      fenêtre glissante (pas tout le mois affiché) : sans elle, naviguer
+      vers un mois passé peindrait en rouge des semaines entières d'avant
+      la création du compte — même simplification assumée que pour la
+      carte d'accueil.
+
+    Un jour futur, un week-end, ou un jour sans ligne hors de cette
+    fenêtre : pas d'entrée dans le dict (neutre, pas de pastille)."""
     rows = db.query_all(
         """
-        SELECT DISTINCT date FROM dailylog_entree
+        SELECT date, SUM(heures) AS total
+        FROM dailylog_entree
         WHERE utilisateur_id = %s AND EXTRACT(YEAR FROM date) = %s AND EXTRACT(MONTH FROM date) = %s
+        GROUP BY date
         """,
         (user_id, annee, mois),
     )
-    return [r["date"] for r in rows]
+    etats = {
+        r["date"].isoformat(): ("rempli" if float(r["total"]) >= standard_hours else "partiel")
+        for r in rows
+    }
+    for jour in jours_manques_recents(user_id):
+        if jour.year == annee and jour.month == mois:
+            etats.setdefault(jour.isoformat(), "manque")
+    return etats
 
 
 def jours_manques_recents(
