@@ -1147,6 +1147,61 @@ class SmokeTestCase(unittest.TestCase):
                 p.stop()
         self.assertEqual(resp.status_code, 404)
 
+    # --- Fichier orphelin sur disque si l'INSERT échoue après save_upload()
+    # (audit sécurité/qualité externe, 2026-09-28, item P0-3) : avant ce
+    # correctif, rien ne nettoyait le fichier déjà écrit sur disque quand
+    # l'écriture en base plantait juste après. ---
+
+    def test_fichiers_upload_tache_nettoie_le_fichier_si_insert_echoue(self):
+        self._login()
+        patchers = self._patched() + [
+            patch("app.routes.fichiers.save_upload", return_value=("note.pdf", "taches/5/xyz.pdf")),
+            patch("app.repositories.taches.add_piece_jointe", side_effect=Exception("connexion perdue")),
+        ]
+        delete_patcher = patch("app.routes.fichiers.delete_upload")
+        for p in patchers:
+            p.start()
+        mock_delete = delete_patcher.start()
+        try:
+            with self.assertRaises(Exception):
+                self.client.post(
+                    "/fichiers/taches/5/upload",
+                    data={"fichier": (io.BytesIO(b"contenu bidon"), "note.pdf")},
+                    content_type="multipart/form-data",
+                )
+            mock_delete.assert_called_once_with("taches/5/xyz.pdf")
+        finally:
+            delete_patcher.stop()
+            for p in patchers:
+                p.stop()
+
+    def test_posts_creer_nettoie_le_fichier_si_insert_piece_jointe_echoue(self):
+        self._login()
+        patchers = self._patched() + [
+            patch("app.routes.posts.save_upload", return_value=("plan.pdf", "posts/101/xyz.pdf")),
+            patch("app.repositories.posts.create_post", return_value=101),
+            patch("app.repositories.posts.add_piece_jointe", side_effect=Exception("connexion perdue")),
+        ]
+        delete_patcher = patch("app.routes.posts.delete_upload")
+        for p in patchers:
+            p.start()
+        mock_delete = delete_patcher.start()
+        try:
+            with self.assertRaises(Exception):
+                self.client.post(
+                    "/posts",
+                    data={
+                        "projet_id": "1", "type_code": "envoi", "contenu": "Test",
+                        "fichier": (io.BytesIO(b"contenu bidon"), "plan.pdf"),
+                    },
+                    content_type="multipart/form-data",
+                )
+            mock_delete.assert_called_once_with("posts/101/xyz.pdf")
+        finally:
+            delete_patcher.stop()
+            for p in patchers:
+                p.stop()
+
     # --- Autorisation sur les actions de tâche (PROMPT_CORRECTIONS.md
     # P0 #2) : avant ce correctif, le menu d'action de la tâche était
     # affiché à tout le monde dans projet_detail.html sans aucun contrôle

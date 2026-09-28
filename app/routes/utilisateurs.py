@@ -21,7 +21,7 @@ from ..repositories import posts as posts_repo
 from ..repositories import projets as projets_repo
 from ..repositories import taches as taches_repo
 from ..repositories import utilisateurs as utilisateurs_repo
-from ..storage import is_image_filename, save_upload
+from ..storage import delete_upload, is_image_filename, save_upload
 from ..utils import EQUIPE_CHOICES
 
 bp = Blueprint("utilisateurs", __name__, url_prefix="/utilisateurs")
@@ -46,7 +46,13 @@ def _enregistrer_avatar_si_fourni(user_id: int, current_user_id: int) -> None:
         flash("Photo de profil ignorée : formats acceptés — jpg, png, gif, webp.", "error")
         return
     _, chemin = save_upload(fichier, f"avatars/{user_id}")
-    utilisateurs_repo.set_avatar(user_id, chemin, current_user_id)
+    # Fichier orphelin sur disque si l'UPDATE échoue juste après (audit
+    # sécurité/qualité externe, 2026-09-28, item P0-3).
+    try:
+        utilisateurs_repo.set_avatar(user_id, chemin, current_user_id)
+    except Exception:
+        delete_upload(chemin)
+        raise
 
 
 def _semaine_derniere(user_id: int) -> list[dict]:

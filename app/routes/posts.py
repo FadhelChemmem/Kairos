@@ -10,7 +10,7 @@ from ..auth import login_required
 from ..repositories import notifications as notifications_repo
 from ..repositories import posts as posts_repo
 from ..repositories import projets as projets_repo
-from ..storage import save_upload
+from ..storage import delete_upload, save_upload
 from ..utils import is_lien_valide, redirect_vers_next
 
 bp = Blueprint("posts", __name__, url_prefix="/posts")
@@ -90,7 +90,15 @@ def creer():
     fichier = request.files.get("fichier")
     if fichier and fichier.filename:
         nom_fichier, chemin = save_upload(fichier, f"posts/{post_id}")
-        posts_repo.add_piece_jointe(post_id, nom_fichier, chemin, g.user["id"])
+        # Fichier orphelin sur disque si l'INSERT échoue juste après
+        # (audit sécurité/qualité externe, 2026-09-28, item P0-3) : on
+        # nettoie puis on relève l'exception d'origine (comportement
+        # inchangé pour l'appelant, juste sans laisser le fichier traîner).
+        try:
+            posts_repo.add_piece_jointe(post_id, nom_fichier, chemin, g.user["id"])
+        except Exception:
+            delete_upload(chemin)
+            raise
 
     if mentionne_ids:
         auteur = f"{g.user['prenom']} {g.user['nom']}"
@@ -173,7 +181,11 @@ def commenter(post_id: int):
     fichier = request.files.get("fichier")
     if fichier and fichier.filename:
         nom_fichier, chemin = save_upload(fichier, f"posts/{post_id}/commentaires/{commentaire_id}")
-        posts_repo.add_piece_jointe_commentaire(commentaire_id, nom_fichier, chemin, g.user["id"])
+        try:
+            posts_repo.add_piece_jointe_commentaire(commentaire_id, nom_fichier, chemin, g.user["id"])
+        except Exception:
+            delete_upload(chemin)
+            raise
 
     if mentionne_user_id and mentionne_user_id != g.user["id"]:
         auteur = f"{g.user['prenom']} {g.user['nom']}"

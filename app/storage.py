@@ -61,3 +61,22 @@ def save_upload(file_storage, subdir: str) -> tuple[str, str]:
     file_storage.save(abs_path)
 
     return nom_brut, rel_path
+
+
+def delete_upload(rel_path: str | None) -> None:
+    """Supprime un fichier précédemment enregistré par save_upload().
+
+    Utilisé pour nettoyer un fichier orphelin sur disque quand l'écriture
+    en base censée le référencer (INSERT ...piece_jointe...) échoue juste
+    après save_upload() (audit sécurité/qualité externe, 2026-09-28, item
+    P0-3 : sans ce nettoyage, le fichier reste sur disque indéfiniment,
+    sans aucune ligne en base pour le retrouver ni le supprimer). Best-
+    effort : une erreur de suppression ne doit ni masquer l'exception
+    d'origine ni empêcher son propre appelant de la relever."""
+    if not rel_path:
+        return
+    abs_path = os.path.join(current_app.config["UPLOAD_DIR"], rel_path)
+    try:
+        os.remove(abs_path)
+    except OSError:
+        pass

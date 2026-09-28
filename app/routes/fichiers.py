@@ -6,7 +6,7 @@ from ..repositories import posts as posts_repo
 from ..repositories import projets as projets_repo
 from ..repositories import taches as taches_repo
 from ..repositories import utilisateurs as utilisateurs_repo
-from ..storage import is_image_filename, save_upload
+from ..storage import delete_upload, is_image_filename, save_upload
 from ..utils import redirect_vers_next
 
 bp = Blueprint("fichiers", __name__, url_prefix="/fichiers")
@@ -35,7 +35,13 @@ def upload_tache(tache_id: int):
         return _safe_redirect()
 
     nom_fichier, chemin = save_upload(fichier, f"taches/{tache_id}")
-    taches_repo.add_piece_jointe(tache_id, nom_fichier, chemin, g.user["id"])
+    # Fichier orphelin sur disque si l'INSERT échoue juste après (audit
+    # sécurité/qualité externe, 2026-09-28, item P0-3).
+    try:
+        taches_repo.add_piece_jointe(tache_id, nom_fichier, chemin, g.user["id"])
+    except Exception:
+        delete_upload(chemin)
+        raise
     flash("Pièce jointe ajoutée.", "success")
     return _safe_redirect()
 
@@ -65,7 +71,11 @@ def upload_post(post_id: int):
         return _safe_redirect()
 
     nom_fichier, chemin = save_upload(fichier, f"posts/{post_id}")
-    posts_repo.add_piece_jointe(post_id, nom_fichier, chemin, g.user["id"])
+    try:
+        posts_repo.add_piece_jointe(post_id, nom_fichier, chemin, g.user["id"])
+    except Exception:
+        delete_upload(chemin)
+        raise
     flash("Pièce jointe ajoutée.", "success")
     return _safe_redirect()
 
@@ -97,7 +107,11 @@ def upload_commentaire(commentaire_id: int):
         flash("Aucun fichier sélectionné.", "error")
         return _safe_redirect()
     nom_fichier, chemin = save_upload(fichier, f"posts/commentaires/{commentaire_id}")
-    posts_repo.add_piece_jointe_commentaire(commentaire_id, nom_fichier, chemin, g.user["id"])
+    try:
+        posts_repo.add_piece_jointe_commentaire(commentaire_id, nom_fichier, chemin, g.user["id"])
+    except Exception:
+        delete_upload(chemin)
+        raise
     flash("Pièce jointe ajoutée.", "success")
     return _safe_redirect()
 
