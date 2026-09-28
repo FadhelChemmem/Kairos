@@ -787,6 +787,57 @@ class SmokeTestCase(unittest.TestCase):
         self.assertIn("Phase invalide".encode(), resp.data)
         mock_create.assert_not_called()
 
+    # --- audit sécurité/qualité externe, 2026-09-28, relecture Luna round 4 :
+    # date_debut_valide était calculée (_parser_date_tache) mais jamais
+    # utilisée — la chaîne brute date_debut était repassée à create_projet()
+    # à la place. Fonctionnellement inoffensif (le elif ci-dessous empêche
+    # d'atteindre create_projet() avec un format invalide, donc la chaîne
+    # transmise était déjà garantie valide), mais incohérent avec le reste
+    # du fichier (modifier_infos()/creer_tache() passent déjà la valeur
+    # validée). Corrigé pour cohérence — les deux tests ci-dessous verrouillent
+    # à la fois le rejet du format invalide et le type réellement transmis. ---
+
+    def test_projet_creer_rejette_une_date_debut_invalide(self):
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.projets.create_projet") as mock_create:
+                resp = self.client.post(
+                    "/projets/nouveau",
+                    data={"nom": "Test", "code": "26099X", "phase": "EXE", "date_debut": "n-importe-quoi"},
+                    follow_redirects=True,
+                )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 200, resp.data[:2000])
+        self.assertIn("Date de d\xe9but invalide".encode(), resp.data)
+        mock_create.assert_not_called()
+
+    def test_projet_creer_passe_la_date_debut_validee_a_create_projet(self):
+        """Contre-épreuve : create_projet() doit recevoir un objet
+        datetime.date (la valeur validée), pas la chaîne brute du
+        formulaire — sinon ce test réussirait même sans le correctif."""
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.projets.create_projet", return_value=42) as mock_create:
+                resp = self.client.post(
+                    "/projets/nouveau",
+                    data={"nom": "Test", "code": "26099X", "phase": "EXE", "date_debut": "2026-09-28"},
+                    follow_redirects=False,
+                )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302, resp.data[:2000])
+        mock_create.assert_called_once()
+        self.assertEqual(mock_create.call_args.kwargs["date_debut"], datetime.date(2026, 9, 28))
+
     def test_api_code_propose_renvoie_un_code_json(self):
         resp = self._get(
             "/projets/code-propose?phase=DCE",
@@ -1791,6 +1842,58 @@ class SmokeTestCase(unittest.TestCase):
         # Ancienne façon de faire : un second appel séparé à toggle_actif().
         # Le nouvel INSERT pose déjà actif=false, plus besoin de ce détour.
         mock_toggle.assert_not_called()
+
+    # --- audit sécurité/qualité externe, 2026-09-28, relecture Luna round 4 :
+    # date_embauche n'était pas validée du tout côté applicatif, contrairement
+    # à date_debut/date_echeance (tâches/projets) — un format invalide
+    # plantait l'INSERT en erreur Postgres brute au lieu d'un message clair. ---
+
+    def test_creer_rejette_une_date_embauche_invalide(self):
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.utilisateurs.create_utilisateur") as mock_create:
+                resp = self.client.post(
+                    "/utilisateurs/nouveau",
+                    data={
+                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "role": "intervenant", "equipe_code": "MIDGARD",
+                        "date_embauche": "n-importe-quoi",
+                    },
+                )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 200, resp.data[:2000])
+        self.assertIn("embauche invalide".encode(), resp.data)
+        mock_create.assert_not_called()
+
+    def test_creer_passe_la_date_embauche_validee_a_create_utilisateur(self):
+        """Contre-épreuve : create_utilisateur() doit recevoir un objet
+        datetime.date (la valeur validée), pas la chaîne brute du
+        formulaire — sinon ce test réussirait même sans le correctif."""
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.utilisateurs.create_utilisateur", return_value=42) as mock_create:
+                resp = self.client.post(
+                    "/utilisateurs/nouveau",
+                    data={
+                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "role": "intervenant", "equipe_code": "MIDGARD",
+                        "date_embauche": "2026-09-28", "actif": "on",
+                    },
+                )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302, resp.data[:2000])
+        mock_create.assert_called_once()
+        self.assertEqual(mock_create.call_args.kwargs["date_embauche"], datetime.date(2026, 9, 28))
 
     def test_toggle_actif_gere_le_garde_fou_rh_singleton(self):
         """Réactiver un compte RH alors qu'un autre est déjà actif
@@ -2927,6 +3030,60 @@ class SmokeTestCase(unittest.TestCase):
                 p.stop()
         self.assertIn("R\xf4le invalide".encode(), resp.data)
         mock_update.assert_not_called()
+
+    def test_fiche_rejette_une_date_embauche_invalide(self):
+        """Même correctif que creer() (audit sécurité/qualité externe,
+        2026-09-28, relecture Luna round 4) : date_embauche n'était pas
+        validée du tout côté applicatif dans fiche() non plus."""
+        patchers = self._patched(**{
+            "app.repositories.utilisateurs.get_utilisateur": AUTRE_UTILISATEUR,
+        })
+        self._login()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.utilisateurs.update_utilisateur_complet") as mock_update:
+                resp = self.client.post(
+                    "/utilisateurs/2",
+                    data={
+                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "role": "intervenant", "equipe_code": "URBS",
+                        "date_embauche": "n-importe-quoi",
+                    },
+                )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertIn("embauche invalide".encode(), resp.data)
+        mock_update.assert_not_called()
+
+    def test_fiche_passe_la_date_embauche_validee_a_update_utilisateur_complet(self):
+        """Contre-épreuve : update_utilisateur_complet() doit recevoir un
+        objet datetime.date (la valeur validée), pas la chaîne brute du
+        formulaire."""
+        patchers = self._patched(**{
+            "app.repositories.utilisateurs.get_utilisateur": AUTRE_UTILISATEUR,
+        })
+        self._login()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.utilisateurs.update_utilisateur_complet") as mock_update:
+                resp = self.client.post(
+                    "/utilisateurs/2",
+                    data={
+                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "role": "intervenant", "equipe_code": "URBS",
+                        "date_embauche": "2026-09-28",
+                    },
+                    follow_redirects=True,
+                )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertIn("mise \xe0 jour".encode(), resp.data)
+        mock_update.assert_called_once()
+        self.assertEqual(mock_update.call_args.kwargs["date_embauche"], datetime.date(2026, 9, 28))
 
     # --- Changement silencieux d'équipe/rôle (PROMPT_CORRECTIONS.md P1 #12) :
     # un <select> HTML sans <option> `selected` correspondant à la valeur

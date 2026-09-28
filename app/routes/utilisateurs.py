@@ -55,6 +55,21 @@ def _enregistrer_avatar_si_fourni(user_id: int, current_user_id: int) -> None:
         raise
 
 
+def _parser_date_embauche(date_str: str | None):
+    """Date d'embauche du formulaire Créer/Modifier un utilisateur — même
+    principe que projets._parser_date_tache/dailylog._parser_date/
+    admin._parser_date : None si absent/vide, lève ValueError sur un
+    format invalide. Avant ce correctif, date_embauche n'était pas validée
+    du tout côté applicatif — un format invalide (requête forgée ; le
+    <input type="date"> normal ne peut pas en produire) plantait
+    l'INSERT/UPDATE en erreur Postgres brute au lieu d'un message clair,
+    contrairement au même champ de date pour les tâches/projets (audit
+    sécurité/qualité externe, 2026-09-28, relecture Luna round 4)."""
+    if not date_str:
+        return None
+    return datetime.date.fromisoformat(date_str)
+
+
 def _semaine_derniere(user_id: int) -> list[dict]:
     """Daily log en lecture seule de la semaine dernière — lundi à vendredi
     uniquement (retour Fadhel, 2026-09-21 : "ne pas afficher samedi et
@@ -185,10 +200,17 @@ def creer():
             if n.strip()
         }
 
+        try:
+            date_embauche_valide = _parser_date_embauche(date_embauche)
+        except ValueError:
+            date_embauche_valide = False
+
         if not prenom or not nom or not email:
             flash("Prénom, nom et email sont obligatoires.", "error")
         elif role not in ROLES_CREABLES:
             flash("Rôle invalide.", "error")
+        elif date_embauche_valide is False:
+            flash("Date d'embauche invalide.", "error")
         else:
             try:
                 # Pas de mot de passe défini ici (retour Fadhel, 2026-09-21 :
@@ -202,7 +224,7 @@ def creer():
                 user_id = utilisateurs_repo.create_utilisateur(
                     email=email, mot_de_passe_hash=hash_password(secrets.token_urlsafe(32)),
                     prenom=prenom, nom=nom, role=role, telephone=telephone,
-                    poste=poste, adresse=adresse, date_embauche=date_embauche,
+                    poste=poste, adresse=adresse, date_embauche=date_embauche_valide,
                     equipe_code=equipe_code, verifie=False, actif=actif_compte,
                     champs_perso=champs_perso, current_user_id=g.user["id"],
                 )
@@ -388,17 +410,24 @@ def fiche(user_id: int):
         # fiche d'un tel compte deviendrait impossible à modifier, même pour
         # ses autres champs (voir aussi utilisateur_fiche.html, qui verrouille
         # déjà le <select> dans ce cas — PROMPT_CORRECTIONS.md P1 #12).
+        try:
+            date_embauche_valide = _parser_date_embauche(date_embauche)
+        except ValueError:
+            date_embauche_valide = False
+
         if user_id == g.user["id"] and role != utilisateur["role"]:
             flash("Vous ne pouvez pas changer votre propre rôle depuis cet écran.", "error")
         elif role not in ROLES_CREABLES and role != utilisateur["role"]:
             flash("Rôle invalide.", "error")
         elif not prenom or not nom or not email:
             flash("Prénom, nom et email sont obligatoires.", "error")
+        elif date_embauche_valide is False:
+            flash("Date d'embauche invalide.", "error")
         else:
             try:
                 utilisateurs_repo.update_utilisateur_complet(
                     user_id, prenom=prenom, nom=nom, email=email, telephone=telephone,
-                    poste=poste, adresse=adresse, date_embauche=date_embauche,
+                    poste=poste, adresse=adresse, date_embauche=date_embauche_valide,
                     equipe_code=equipe_code, role=role, champs_perso=champs_perso,
                     current_user_id=g.user["id"],
                 )

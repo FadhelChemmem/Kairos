@@ -167,9 +167,19 @@ def creer():
             flash("Phase invalide.", "error")
         else:
             try:
+                # date_debut_valide (déjà calculée ci-dessus, jamais None ni
+                # False à ce stade : le elif au-dessus intercepte le format
+                # invalide avant d'arriver ici) — pas la chaîne brute
+                # date_debut, par cohérence avec le reste du fichier
+                # (modifier_infos()/creer_tache() ci-dessous passent déjà la
+                # valeur validée, pas la chaîne). Fonctionnellement
+                # équivalent (Postgres caste déjà une chaîne ISO valide),
+                # mais évite de calculer une valeur validée pour ne jamais
+                # s'en servir (audit sécurité/qualité externe, 2026-09-28,
+                # relecture Luna round 4).
                 projet_id = projets.create_projet(
                     code=code, nom=nom, phase=phase, chef_projet_id=chef_projet_id,
-                    lots=lots, date_debut=date_debut, current_user_id=g.user["id"],
+                    lots=lots, date_debut=date_debut_valide, current_user_id=g.user["id"],
                 )
             except Exception as exc:
                 # Seule une violation d'unicité du code justifie ce message ;
