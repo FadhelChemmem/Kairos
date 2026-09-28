@@ -314,6 +314,14 @@ UTILISATEURS_TOUS = [
 ]
 COMPTE_UTILISATEURS = {"total": 2, "actifs": 1}
 
+AUDIT_ENTREES = [
+    {"id": 1, "table_cible": "projet", "ligne_id": 1, "action": "UPDATE",
+     "created_at": datetime.datetime(2026, 9, 28, 10, 0),
+     "donnees_avant": {"etat": "en_cours"}, "donnees_apres": {"etat": "bloque"},
+     "auteur_id": 1, "auteur_prenom": "Foulen", "auteur_nom": "Chedly"},
+]
+AUDIT_AUTEURS = [{"id": 1, "prenom": "Foulen", "nom": "Chedly"}]
+
 
 class SmokeTestCase(unittest.TestCase):
     def setUp(self):
@@ -379,6 +387,8 @@ class SmokeTestCase(unittest.TestCase):
             "app.repositories.notifications.marquer_toutes_lues": None,
             "app.repositories.notifications.creer": 201,
             "app.repositories.notifications.creer_pour_plusieurs": None,
+            "app.repositories.audit.list_entrees": AUDIT_ENTREES,
+            "app.repositories.audit.list_auteurs": AUDIT_AUTEURS,
         }
         defaults.update(overrides)
         return [patch(target, return_value=value) for target, value in defaults.items()]
@@ -3686,6 +3696,75 @@ class TestVerifierRappelDailylog(unittest.TestCase):
             _verifier_rappel_dailylog(1, aujourdhui=dimanche)
         mock_list.assert_not_called()
         mock_creer.assert_not_called()
+
+
+class TestJournalAudit(unittest.TestCase):
+    """Lot 5 (retour Fadhel, 2026-09-28) : page admin de parcours du
+    journal d'audit — aucune nouvelle infrastructure (audit_log + triggers
+    existent depuis le premier schéma), seulement une page Admin-only."""
+
+    _login = SmokeTestCase._login
+    _patched = SmokeTestCase._patched
+    _get = SmokeTestCase._get
+
+    def setUp(self):
+        self.app = create_app(TestConfig)
+        self.client = self.app.test_client()
+
+    def test_admin_voit_le_journal(self):
+        resp = self._get("/admin/journal")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Journal d", resp.data)
+
+    def test_non_admin_refuse_et_nexecute_rien(self):
+        """Un chef de projet (ou tout rôle non-admin) est redirigé par
+        role_required AVANT d'atteindre le repository — vérifié via un
+        espion plutôt qu'un simple code 302 (audit n°2, voir
+        TestControlesDAccesStricts)."""
+        utilisateur_non_admin = dict(USER, role="chef_de_projet")
+        self._login()
+        patchers = self._patched(**{
+            "app.auth.get_user_by_id": utilisateur_non_admin,
+        })
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.audit.list_entrees") as mock_liste:
+                resp = self.client.get("/admin/journal")
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        mock_liste.assert_not_called()
+
+    def test_filtre_table_invalide_ignore_silencieusement(self):
+        """Une valeur hors TABLES_AUDITEES dans l'URL (bidouillée à la
+        main) ne doit pas être transmise telle quelle au repository —
+        sinon un filtre toujours faux, silencieusement (jamais une
+        200/erreur visible)."""
+        resp = self._get("/admin/journal?table=DROP+TABLE")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_date_invalide_ignoree_plutot_que_500(self):
+        resp = self._get("/admin/journal?date_debut=n-importe-quoi")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_icone_journal_visible_seulement_pour_admin(self):
+        resp = self._get("/accueil")
+        self.assertIn(b'href="/admin/journal"', resp.data)
+
+    def test_icone_journal_absente_pour_non_admin(self):
+        utilisateur_non_admin = dict(USER, role="intervenant")
+        self._login()
+        patchers = self._patched(**{"app.auth.get_user_by_id": utilisateur_non_admin})
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.get("/accueil")
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertNotIn(b'href="/admin/journal"', resp.data)
 
 
 class TestProposeCode(unittest.TestCase):

@@ -154,6 +154,7 @@ def create_app(config_class=Config) -> Flask:
     from .routes.fichiers import bp as fichiers_bp
     from .routes.utilisateurs import bp as utilisateurs_bp
     from .routes.notifications import bp as notifications_bp
+    from .routes.admin import bp as admin_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(projets_bp)
@@ -163,6 +164,7 @@ def create_app(config_class=Config) -> Flask:
     app.register_blueprint(fichiers_bp)
     app.register_blueprint(utilisateurs_bp)
     app.register_blueprint(notifications_bp)
+    app.register_blueprint(admin_bp)
 
     @app.route("/")
     def index():

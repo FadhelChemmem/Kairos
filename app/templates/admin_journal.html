@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Journal d'audit — Kairos{% endblock %}
+{% block body %}
+
+<div class="subbar">
+  <div class="subbar-inner">
+    <span style="font-size:14px; font-weight:700;">Journal d'audit</span>
+    <span style="font-size:12.5px; color:var(--text-muted);">{{ entrees|length }} entrée{{ 's' if entrees|length != 1 else '' }} affichée{{ 's' if entrees|length != 1 else '' }} (300 max)</span>
+    <span class="pill" style="background:var(--hover-bg); color:var(--text-faint); margin-left:auto;">Visible par : Admin</span>
+  </div>
+</div>
+
+<div class="page-wrap" style="padding-top:20px; padding-bottom:60px;">
+
+  <form method="get" style="display:flex; align-items:center; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
+    <select name="table" aria-label="Table" onchange="this.form.submit()">
+      <option value="">Toutes les tables</option>
+      {% for t in tables %}
+        <option value="{{ t }}" {{ 'selected' if table_cible == t }}>{{ t }}</option>
+      {% endfor %}
+    </select>
+    <select name="action" aria-label="Action" onchange="this.form.submit()">
+      <option value="">Toutes les actions</option>
+      {% for a in actions %}
+        <option value="{{ a }}" {{ 'selected' if action == a }}>{{ a }}</option>
+      {% endfor %}
+    </select>
+    <select name="utilisateur_id" aria-label="Auteur" onchange="this.form.submit()">
+      <option value="">Tous les auteurs</option>
+      {% for u in auteurs %}
+        <option value="{{ u.id }}" {{ 'selected' if utilisateur_id|string == u.id|string }}>{{ u.prenom }} {{ u.nom }}</option>
+      {% endfor %}
+    </select>
+    <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--text-muted);">
+      Du
+      <input type="date" name="date_debut" value="{{ date_debut }}" onchange="this.form.submit()">
+    </label>
+    <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--text-muted);">
+      au
+      <input type="date" name="date_fin" value="{{ date_fin }}" onchange="this.form.submit()">
+    </label>
+    {% if table_cible or action or utilisateur_id or date_debut or date_fin %}
+      <a href="{{ url_for('admin.journal') }}" style="font-size:12.5px; color:var(--text-faint);">Réinitialiser</a>
+    {% endif %}
+  </form>
+
+  <div class="card table-scroll" style="padding:16px 18px 6px;">
+    <div class="uhead" style="grid-template-columns: 150px 90px 160px 1fr 160px;">
+      <span>Date</span>
+      <span>Action</span>
+      <span>Table / ligne</span>
+      <span>Détail</span>
+      <span>Auteur</span>
+    </div>
+
+    {% for e in entrees %}
+      <div class="urow" style="grid-template-columns: 150px 90px 160px 1fr 160px; align-items:flex-start;">
+        <span style="font-size:12px; color:var(--text-secondary); white-space:nowrap;">{{ e.created_at.strftime('%d/%m/%Y %H:%M') }}</span>
+        <span class="pill pill-sm" style="background:{{ {'INSERT':'#e7f3ec','UPDATE':'#fdf3ec','DELETE':'#fbeaea'}[e.action] }}; color:{{ {'INSERT':'#2fa876','UPDATE':'#c97a24','DELETE':'#c94f4f'}[e.action] }};">{{ e.action }}</span>
+        <span style="font-size:12.5px; font-weight:600;">{{ e.table_cible }}{% if e.ligne_id %} <span style="font-weight:400; color:var(--text-faint);">#{{ e.ligne_id }}</span>{% endif %}</span>
+        <details style="font-size:11.5px; color:var(--text-secondary);">
+          <summary style="cursor:pointer; color:var(--text-faint);">Voir les données</summary>
+          {% if e.donnees_avant %}
+            <div style="margin-top:4px;"><strong style="font-weight:600;">Avant :</strong> <code style="word-break:break-all;">{{ e.donnees_avant }}</code></div>
+          {% endif %}
+          {% if e.donnees_apres %}
+            <div style="margin-top:4px;"><strong style="font-weight:600;">Après :</strong> <code style="word-break:break-all;">{{ e.donnees_apres }}</code></div>
+          {% endif %}
+        </details>
+        <span style="font-size:12.5px; color:var(--text-secondary);">
+          {% if e.auteur_id %}{{ e.auteur_prenom }} {{ e.auteur_nom }}{% else %}<span style="color:var(--text-faint);">—</span>{% endif %}
+        </span>
+      </div>
+    {% else %}
+      <p style="padding:24px 4px; color:var(--text-faint); font-size:13px;">Aucune entrée pour ces filtres.</p>
+    {% endfor %}
+  </div>
+
+</div>
+{% endblock %}
