@@ -1,0 +1,85 @@
+{# Fenêtre flottante "Informations" du projet (retour Fadhel, 2026-09-28,
+   Lot 5) : édite nom/état/lots/dates/phase liée — réservée au chef de
+   projet/co-chef (voir peut_gerer dans projet_detail.html, même règle que
+   la création de tâche). Même principe que post_dialog.html/projet_dialog.html
+   : un clic sur [data-open-informations-dialog] l'ouvre par-dessus la
+   page, sans navigation — voir app/static/js/projet-informations-dialog.js.
+
+   Volontairement PAS éditables ici : `code` (identifiant stable) et
+   `phase` (fixée à la création — une transition de phase crée un NOUVEAU
+   projet relié via "Phase liée", pas une édition en place — voir
+   update_projet()). "Phase liée" elle-même n'avait jamais été branchée à
+   une vraie UI jusqu'ici (champ prévu en base depuis le début mais aucun
+   formulaire ne le proposait) : réutilise le combobox de recherche
+   générique (search-combobox.js) sur la liste des projets visibles.
+
+   Attend dans le contexte : projet, lots, projets_phase_liee (liste de
+   projets {id, code, nom} candidats, projet courant exclu).
+#}
+<dialog id="dialog-informations-projet" class="post-dialog" aria-labelledby="dialog-informations-projet-titre">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+    <span id="dialog-informations-projet-titre" style="font-size:15px; font-weight:800;">Informations du projet</span>
+    <button type="button" data-close-informations-dialog aria-label="Fermer" style="background:none; border:none; cursor:pointer; color:var(--text-faint); padding:4px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+    </button>
+  </div>
+
+  <form method="post" action="{{ url_for('projets.editer_informations', projet_id=projet.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row">
+      <label for="dialog-info-nom">Nom du projet</label>
+      <input type="text" id="dialog-info-nom" name="nom" value="{{ projet.nom }}" required>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <div class="form-row">
+        <label>Code <span style="font-weight:400; color:var(--text-faint);">— fixe</span></label>
+        <div style="font-size:13px; font-weight:600; padding:8px 0;">{{ projet.code }}</div>
+      </div>
+      <div class="form-row">
+        <label>Phase <span style="font-weight:400; color:var(--text-faint);">— fixe</span></label>
+        <div style="font-size:13px; font-weight:600; padding:8px 0;">{{ projet.phase }}</div>
+      </div>
+    </div>
+    <div class="form-row">
+      <label for="dialog-info-etat">État</label>
+      <select id="dialog-info-etat" name="etat">
+        <option value="en_cours" {{ 'selected' if projet.etat == 'en_cours' }}>En cours</option>
+        <option value="bloque" {{ 'selected' if projet.etat == 'bloque' }}>Bloqué</option>
+        <option value="termine" {{ 'selected' if projet.etat == 'termine' }}>Terminé</option>
+        <option value="abandonne" {{ 'selected' if projet.etat == 'abandonne' }}>Abandonné</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label for="dialog-info-lots">Lot(s)</label>
+      <select id="dialog-info-lots" name="lots" multiple data-chip-select>
+        <option value="CM" {{ 'selected' if 'CM' in lots|map(attribute='code')|list }}>CM — Charpente Métallique</option>
+        <option value="GO" {{ 'selected' if 'GO' in lots|map(attribute='code')|list }}>GO — Gros Œuvre</option>
+      </select>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <div class="form-row">
+        <label for="dialog-info-debut">Date de début</label>
+        <input type="date" id="dialog-info-debut" name="date_debut" value="{{ projet.date_debut.isoformat() if projet.date_debut else '' }}">
+      </div>
+      <div class="form-row">
+        <label for="dialog-info-fin">Date de fin</label>
+        <input type="date" id="dialog-info-fin" name="date_fin" value="{{ projet.date_fin.isoformat() if projet.date_fin else '' }}">
+      </div>
+    </div>
+    <div class="form-row" style="margin-bottom:0;">
+      <label for="dialog-info-phase-liee">Phase liée <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+      <select id="dialog-info-phase-liee" name="phase_liee_id" data-search-combobox data-search-placeholder="Rechercher un projet…">
+        <option value=""></option>
+        {% for p in projets_phase_liee %}
+          <option value="{{ p.id }}" {{ 'selected' if p.id == projet.phase_liee_id }}>{{ p.code }}_{{ p.nom }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border-soft);">
+      <button type="button" data-close-informations-dialog class="btn-secondary" style="width:auto; padding:9px 16px;">Annuler</button>
+      <button type="submit" class="btn-primary" style="width:auto; padding:9px 18px; background:#4a7c59; color:#fff;">Enregistrer</button>
+    </div>
+  </form>
+</dialog>
+<script src="{{ url_for('static', filename='js/projet-informations-dialog.js') }}" defer></script>

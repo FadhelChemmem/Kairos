@@ -230,6 +230,48 @@ def get_projet(projet_id: int) -> dict | None:
     return db.query_one(sql, (projet_id,))
 
 
+def update_projet(
+    projet_id: int,
+    nom: str,
+    etat: str,
+    lots: list[str],
+    date_debut=None,
+    date_fin=None,
+    phase_liee_id: int | None = None,
+    current_user_id: int | None = None,
+) -> None:
+    """Édition des informations du projet — fenêtre flottante
+    "Informations" (retour Fadhel, 2026-09-28), réservée au chef de
+    projet/co-chef (voir user_can_manage). `updated_by`/`updated_at`
+    sont posés automatiquement par trg_projet_updated_at (schema.sql),
+    pas ici.
+
+    Volontairement PAS éditables ici : `code` (identifiant stable, utilisé
+    dans les URLs/exports) et `phase` — la table "Draft entities" de la
+    spec liste la phase comme fixée "à la création" (elle détermine la
+    lettre du code), et une transition de phase se fait en créant un
+    NOUVEAU projet relié via `phase_liee_id` (champ "Phase liée"), pas en
+    éditant la phase d'un projet existant."""
+    with db.get_cursor(user_id=current_user_id) as cur:
+        cur.execute(
+            """
+            UPDATE projet
+            SET nom = %s, etat = %s, date_debut = %s, date_fin = %s, phase_liee_id = %s
+            WHERE id = %s
+            """,
+            (nom, etat, date_debut, date_fin, phase_liee_id, projet_id),
+        )
+        # Remplace les lots (supprime puis réinsère) — même principe que
+        # dailylog.remplacer_jour : plus simple qu'un diff, et le volume
+        # (CM/GO, 1 à 2 lignes) ne justifie pas mieux.
+        cur.execute("DELETE FROM projet_lot WHERE projet_id = %s", (projet_id,))
+        for lot_code in lots:
+            cur.execute(
+                "INSERT INTO projet_lot (projet_id, lot_code) VALUES (%s, %s)",
+                (projet_id, lot_code),
+            )
+
+
 def list_lots(projet_id: int) -> list[dict]:
     sql = """
         SELECT l.code, l.libelle

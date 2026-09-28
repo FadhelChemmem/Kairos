@@ -38,6 +38,13 @@
           <span style="font-size:20px; font-weight:800; letter-spacing:-0.01em;">{{ projet.code }}_{{ projet.nom }}</span>
           <span class="pill" style="background:var(--hover-bg); color:var(--text-secondary);">{{ projet.phase }}</span>
           <span class="pill" style="background:{{ petat.bg }}; color:{{ petat.fg }};">{{ petat.label }}</span>
+          {# Fenêtre "Informations" (retour Fadhel, 2026-09-28, Lot 5) :
+             chef de projet/co-chef seulement, même règle que "+ Tâche". #}
+          {% if peut_gerer %}
+          <button type="button" data-open-informations-dialog title="Modifier les informations du projet" aria-label="Modifier les informations du projet" style="background:none; border:none; cursor:pointer; color:var(--text-faint); padding:2px; display:flex;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </button>
+          {% endif %}
         </div>
         <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; font-size:12.5px; color:var(--text-muted);">
           <span>Lot {% for l in lots %}<strong style="color:var(--text-secondary);">{{ l.code }}</strong>{% if not loop.last %} · {% endif %}{% endfor %}</span>
@@ -315,4 +322,7 @@
 {% with projet_id=projet.id, projets_choix=None, next_url=request.path %}
   {% include "partials/post_dialog.html" %}
 {% endwith %}
+{% if peut_gerer %}
+  {% include "partials/projet_informations_dialog.html" %}
+{% endif %}
 {% endblock %}

@@ -28,6 +28,12 @@ TYPE_DEADLINE_VALIDES = {"rendu_client", "interne"}
 # échouer l'INSERT, présenté comme "code déjà utilisé ?" (audit n°2).
 LOTS_VALIDES = {"CM", "GO"}
 
+# Valeurs valides de projet.etat (projet_etat_enum, schema.sql) — même
+# garde-fou que TYPE_DEADLINE_VALIDES/LOTS_VALIDES ci-dessus : une valeur
+# hors de cette liste ferait échouer l'UPDATE (violation de l'ENUM
+# Postgres) plutôt qu'un message clair (fenêtre "Informations", Lot 5).
+ETATS_PROJET_VALIDES = {"en_cours", "bloque", "termine", "abandonne"}
+
 
 def _message_erreur_intervenant(exc: Exception, action: str) -> str:
     """Message d'erreur à afficher quand l'ajout d'intervenant(s) échoue en
@@ -240,8 +246,7 @@ def detail(projet_id: int):
         g.user["role"] != "rh" and not projets.user_est_rattache(projet_id, g.user["id"])
     )
 
-    return render_template(
-        "projet_detail.html",
+    contexte = dict(
         projet=projet,
         lots=lots,
         intervenants=intervenants,
@@ -253,6 +258,77 @@ def detail(projet_id: int):
         nb_en_cours=nb_en_cours,
         utilisateurs_actifs=utilisateurs_actifs,
     )
+
+    # Fenêtre "Informations" (retour Fadhel, 2026-09-28, Lot 5) : liste des
+    # projets candidats pour "Phase liée" — seulement calculée pour qui
+    # peut ouvrir cette fenêtre (chef de projet/co-chef), même principe que
+    # utilisateurs_creation_projet dans liste(). Réutilise projets.search()
+    # (déjà limité aux projets visibles) avec une chaîne vide : renvoie les
+    # projets les plus récemment actifs plutôt que rien.
+    if peut_gerer:
+        contexte["projets_phase_liee"] = [
+            p for p in projets.search(g.user["id"], "", limit=200) if p["id"] != projet_id
+        ]
+
+    return render_template("projet_detail.html", **contexte)
+
+
+@bp.route("/<int:projet_id>/informations", methods=["POST"])
+@login_required
+def editer_informations(projet_id: int):
+    """Fenêtre flottante "Informations" (retour Fadhel, 2026-09-28, Lot 5) :
+    édite nom/état/lots/dates/phase liée. Réservée au chef de projet/co-chef
+    — même autorisation que creer_tache/ajouter_intervenant (user_can_manage)."""
+    if not projets.user_can_view(projet_id, g.user["id"]):
+        abort(404)
+    if not projets.user_can_manage(projet_id, g.user["id"]):
+        flash("Seul le chef de projet ou un co-chef peut modifier les informations du projet.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+
+    nom = request.form.get("nom", "").strip()
+    etat = request.form.get("etat", "")
+    lots = request.form.getlist("lots")
+    date_debut = request.form.get("date_debut") or None
+    date_fin = request.form.get("date_fin") or None
+    phase_liee_id = request.form.get("phase_liee_id", type=int) or None
+
+    if not nom:
+        flash("Le nom du projet est obligatoire.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+    if etat not in ETATS_PROJET_VALIDES:
+        flash("État invalide.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+    if any(l not in LOTS_VALIDES for l in lots):
+        flash("Lot invalide.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+
+    try:
+        date_debut_valide = _parser_date_tache(date_debut)
+        date_fin_valide = _parser_date_tache(date_fin)
+    except ValueError:
+        flash("Date invalide.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+
+    # "Phase liée" doit rester un projet réellement visible par
+    # l'utilisateur (même contrôle IDOR que pour le projet lui-même) —
+    # sinon on pourrait relier un projet à un id deviné/invisible.
+    if phase_liee_id is not None and not projets.user_can_view(phase_liee_id, g.user["id"]):
+        flash("Projet lié invalide.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+
+    try:
+        projets.update_projet(
+            projet_id, nom=nom, etat=etat, lots=lots,
+            date_debut=date_debut_valide, date_fin=date_fin_valide,
+            phase_liee_id=phase_liee_id, current_user_id=g.user["id"],
+        )
+    except Exception:
+        current_app.logger.exception("Échec inattendu de modification des informations (projet %s)", projet_id)
+        flash("Impossible d'enregistrer les informations (erreur inattendue, réessayez).", "error")
+    else:
+        flash("Informations du projet mises à jour.", "success")
+
+    return redirect(url_for("projets.detail", projet_id=projet_id))
 
 
 @bp.route("/<int:projet_id>/taches", methods=["POST"])

@@ -344,6 +344,7 @@ class SmokeTestCase(unittest.TestCase):
             "app.repositories.projets.user_can_view": True,
             "app.repositories.projets.user_est_rattache": False,
             "app.repositories.projets.propose_code": "26099X",
+            "app.repositories.projets.update_projet": None,
             "app.repositories.taches.list_deadlines": DEADLINES,
             "app.repositories.taches.list_mes_taches": MES_TACHES,
             "app.repositories.taches.list_taches_projet": TACHES_PROJET,
@@ -3243,6 +3244,106 @@ class TestControlesDAccesStricts(unittest.TestCase):
         self.assertIn("data-open-projet-dialog", body)
         self.assertIn('id="dialog-nouveau-projet"', body)
         self.assertNotIn('<a href="/projets/nouveau"', body)
+
+    # --- Fenêtre "Informations" du projet (retour Fadhel, 2026-09-28, Lot 5) ---
+
+    def test_page_projet_bouton_informations_visible_si_peut_gerer(self):
+        body = self._get("/projets/1", **{"app.repositories.projets.user_can_manage": True}).data.decode()
+        self.assertIn("data-open-informations-dialog", body)
+        self.assertIn('id="dialog-informations-projet"', body)
+        # Préremplie avec les valeurs actuelles du projet (PROJET : nom
+        # "Tour Meridian", état "bloque").
+        self.assertIn('value="Tour Meridian"', body)
+        self.assertIn('value="bloque" selected', body)
+
+    def test_page_projet_bouton_informations_masque_si_ne_peut_pas_gerer(self):
+        body = self._get("/projets/1", **{"app.repositories.projets.user_can_manage": False}).data.decode()
+        self.assertNotIn("data-open-informations-dialog", body)
+        self.assertNotIn('id="dialog-informations-projet"', body)
+
+    def test_editer_informations_modifie_le_projet(self):
+        resp, update = self._requete(
+            "post", "/projets/1/informations", "app.repositories.projets.update_projet",
+            {
+                "nom": "Tour Meridian — révisé", "etat": "termine", "lots": ["GO"],
+                "date_debut": "2025-02-03", "date_fin": "2026-10-01", "phase_liee_id": "",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.headers["Location"], "/projets/1")
+        update.assert_called_once()
+        _, kwargs = update.call_args
+        self.assertEqual(kwargs["nom"], "Tour Meridian — révisé")
+        self.assertEqual(kwargs["etat"], "termine")
+        self.assertEqual(kwargs["lots"], ["GO"])
+        self.assertIsNone(kwargs["phase_liee_id"])
+
+    def test_editer_informations_refuse_si_ne_peut_pas_gerer(self):
+        resp, update = self._requete(
+            "post", "/projets/1/informations", "app.repositories.projets.update_projet",
+            {"nom": "X", "etat": "en_cours", "lots": []},
+            **{"app.repositories.projets.user_can_manage": False},
+        )
+        self.assertEqual(resp.status_code, 302)
+        update.assert_not_called()
+
+    def test_editer_informations_projet_invisible_404(self):
+        resp, update = self._requete(
+            "post", "/projets/1/informations", "app.repositories.projets.update_projet",
+            {"nom": "X", "etat": "en_cours", "lots": []},
+            **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        update.assert_not_called()
+
+    def test_editer_informations_etat_invalide_nexecute_rien(self):
+        _, update = self._requete(
+            "post", "/projets/1/informations", "app.repositories.projets.update_projet",
+            {"nom": "X", "etat": "pas-un-etat", "lots": []},
+        )
+        update.assert_not_called()
+
+    def test_editer_informations_lot_invalide_nexecute_rien(self):
+        _, update = self._requete(
+            "post", "/projets/1/informations", "app.repositories.projets.update_projet",
+            {"nom": "X", "etat": "en_cours", "lots": ["ZZ"]},
+        )
+        update.assert_not_called()
+
+    def test_editer_informations_nom_vide_nexecute_rien(self):
+        _, update = self._requete(
+            "post", "/projets/1/informations", "app.repositories.projets.update_projet",
+            {"nom": "  ", "etat": "en_cours", "lots": []},
+        )
+        update.assert_not_called()
+
+    def test_editer_informations_phase_liee_invisible_nexecute_rien(self):
+        """Contrôle IDOR (même famille que P0 #1) : on ne doit pas pouvoir
+        relier un projet à un id de "phase liée" qu'on ne peut pas voir.
+        `user_can_view` doit renvoyer True pour le projet 1 (sinon 404
+        avant même d'atteindre la validation de phase_liee_id) et False
+        pour le 999 visé comme "phase liée" — nécessite un side_effect,
+        pas juste un return_value statique, donc patché à la main plutôt
+        que via _requete/_patched."""
+        patchers = self._patched(
+            **{"app.repositories.projets.user_can_view": True}
+        )
+        for p in patchers:
+            p.start()
+        try:
+            with patch(
+                "app.repositories.projets.user_can_view",
+                side_effect=lambda projet_id, user_id: projet_id == 1,
+            ), patch("app.repositories.projets.update_projet") as update:
+                resp = self.client.post(
+                    "/projets/1/informations",
+                    data={"nom": "X", "etat": "en_cours", "lots": [], "phase_liee_id": "999"},
+                )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        update.assert_not_called()
 
     # --- Pièces jointes (P0 #1) : un VRAI fichier sur disque ---
     def _ecrire_fichier(self, chemin_relatif):
