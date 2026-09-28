@@ -62,6 +62,12 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   <script src="{{ url_for('static', filename='js/chip-select.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/post-reaction.js') }}" defer></script>
+  {# Chargé ici (dans le <head>, avec defer) pour s'exécuter AVANT
+     post-dialog.js — inclus plus bas, dans partials/post_dialog.html — qui
+     s'appuie dessus ; l'ordre d'exécution des scripts defer suit l'ordre
+     où ils sont rencontrés dans le document, pas leur position physique
+     tête/corps. #}
+  <script src="{{ url_for('static', filename='js/floating-window.js') }}" defer></script>
 </head>
 <body>
 

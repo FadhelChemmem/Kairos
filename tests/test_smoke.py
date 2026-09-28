@@ -2062,6 +2062,19 @@ class SmokeTestCase(unittest.TestCase):
             body,
         )
 
+    def test_floating_window_js_charge_avant_post_dialog_js(self):
+        """Retour Fadhel, 2026-09-28 : "On fait ça sur toutes les fenêtres
+        flottantes." — floating-window.js (règle commune, réutilisable par
+        de futures fenêtres) doit être chargé, et avant post-dialog.js qui
+        s'appuie dessus (voir base.html) — le comportement réel (clic
+        extérieur ignoré tant qu'il y a du texte saisi) est vérifié par
+        Playwright, pas par ce test de rendu."""
+        resp = self._get("/accueil")
+        body = resp.data.decode()
+        pos_floating = body.index("js/floating-window.js")
+        pos_post_dialog = body.index("js/post-dialog.js")
+        self.assertLess(pos_floating, pos_post_dialog)
+
     def test_login_rend_la_session_permanente(self):
         """"Reste connecté" (retour Fadhel) : sans session.permanent = True,
         Flask pose un cookie qui expire à la fermeture du navigateur."""
