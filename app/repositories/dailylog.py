@@ -179,22 +179,40 @@ def list_jours_remplis_mois(user_id: int, annee: int, mois: int) -> list:
     return [r["date"] for r in rows]
 
 
-def jours_manques_recents(user_id: int, aujourdhui=None, fenetre_jours: int = 14) -> list:
+def jours_manques_recents(
+    user_id: int, aujourdhui=None, fenetre_jours: int = 14,
+    maintenant=None, heure_alerte_aujourdhui: int = 16,
+) -> list:
     """Jours ouvrés (lun-ven, même heuristique que le rappel de connexion —
     voir auth._verifier_rappel_dailylog — sans notion de jour férié ni de
-    date d'embauche, non modélisées) strictement avant aujourd'hui, dans
-    les `fenetre_jours` derniers jours, pour lesquels l'utilisateur n'a
-    rien saisi. Utilisé pour la carte Daily log de l'accueil (fond rouge
-    tant qu'il reste du retard, demandé par Fadhel le 2026-09-19) — jamais
-    pour bloquer la saisie, seulement pour l'alerte visuelle."""
+    date d'embauche, non modélisées) pour lesquels l'utilisateur n'a rien
+    saisi, dans les `fenetre_jours` derniers jours. Utilisé pour la carte
+    Daily log de l'accueil (alerte tant qu'il reste du retard, demandé par
+    Fadhel le 2026-09-19) — jamais pour bloquer la saisie, seulement pour
+    l'alerte visuelle.
+
+    Le jour même (retour Fadhel, 2026-09-28 : "ne pas mettre en rouge dès
+    le matin, mettre en rouge vers 16h+ si toutes les autres journées sont
+    remplies") n'est ajouté à la liste qu'à partir de `heure_alerte_aujourdhui`
+    (16h par défaut) — avant cette heure, ne pas avoir encore saisi
+    aujourd'hui reste normal (message calme dans accueil.html, jamais
+    d'alerte). Les jours PASSÉS manquants, eux, comptent toujours
+    immédiatement, sans délai de grâce — seul "aujourd'hui" bénéficie de
+    ces quelques heures."""
     import datetime
 
     aujourdhui = aujourdhui or datetime.date.today()
+    maintenant = maintenant or datetime.datetime.now()
+
     jours_ouvres = [
         aujourdhui - datetime.timedelta(days=i)
         for i in range(1, fenetre_jours + 1)
     ]
     jours_ouvres = [j for j in jours_ouvres if j.weekday() < 5]
+
+    if aujourdhui.weekday() < 5 and maintenant.hour >= heure_alerte_aujourdhui:
+        jours_ouvres.append(aujourdhui)
+
     if not jours_ouvres:
         return []
 

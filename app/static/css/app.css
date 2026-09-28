@@ -520,11 +520,20 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
 .notif-dot { width: 8px; height: 8px; border-radius: 999px; background: #4a7c59; margin-top: 6px; flex-shrink: 0; }
 .notif-dot.vide { background: transparent; }
 
-/* --- Daily log CTA (accueil) : passe au rouge quand des jours ouvrés
-   passés n'ont pas été remplis (retour Fadhel, 2026-09-19). --- */
+/* --- Daily log CTA (accueil) : passe en alerte quand il reste du retard
+   (retour Fadhel, 2026-09-19). Depuis le 2026-09-28 : carte blanche +
+   liseré rouge (variante "B" choisie parmi 3 propositions envoyées en
+   aperçu) plutôt que l'ancien dégradé rouge plein, jugé trop agressif —
+   voir accueil.html pour les couleurs de texte/bouton associées, qui
+   changent aussi entre l'état normal (fond vert, texte blanc) et l'état
+   d'alerte (fond blanc, texte sombre). --- */
 .card-cta-alert {
-  background: linear-gradient(160deg, #e3512c, #c23f1f);
-  border: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  /* var(--error-text), pas #c23a1a fixe : ce token s'éclaircit déjà en
+     thème sombre (voir :root[data-theme="dark"]) pour rester lisible sur
+     fond sombre — un rouge saturé fixe y serait trop terne/peu contrasté. */
+  border-left: 4px solid var(--error-text);
 }
 
 /* --- Bannière Deadlines pleine largeur (accueil, entre la topbar et les

@@ -73,16 +73,21 @@
        ci-dessus (même liste d'échéances, deux largeurs différentes). La
        bannière (mini-Gantt, ajoutée le 2026-09-19) est conservée seule. #}
 
+    {# Variante B (retour Fadhel, 2026-09-28) : carte blanche + liseré rouge
+       en alerte, au lieu de l'ancien dégradé rouge plein — donc texte/bouton
+       sombres sur fond blanc en alerte, plutôt que blancs sur fond coloré. #}
     <div class="card {{ 'card-cta-alert' if dailylog_jours_manques else 'card-cta' }}">
-      <div style="font-size:13px; font-weight:700; color:#fff; margin-bottom:4px;">Daily log</div>
+      {# var(--text-strong), pas un gris fixe : sinon illisible en thème
+         sombre (bug trouvé à la vérification Playwright, 2026-09-28). #}
+      <div style="font-size:13px; font-weight:700; margin-bottom:4px; color:{{ 'var(--text-strong)' if dailylog_jours_manques else '#fff' }};">Daily log</div>
       {% if dailylog_jours_manques %}
-        <div style="font-size:12px; color:#fbe2da; margin-bottom:12px; line-height:1.4;">
+        <div style="font-size:12px; color:var(--text-secondary); margin-bottom:12px; line-height:1.4;">
           {{ dailylog_jours_manques|length }} jour{{ 's' if dailylog_jours_manques|length != 1 else '' }} sans saisie ({{ dailylog_jours_manques[0]|date_courte }}{% if dailylog_jours_manques|length > 1 %}…{% endif %}).
         </div>
       {% else %}
         <div style="font-size:12px; color:#d6efe8; margin-bottom:12px; line-height:1.4;">Vous n'avez pas encore réparti vos heures d'aujourd'hui.</div>
       {% endif %}
-      <a href="{{ url_for('dailylog.formulaire') }}" class="btn-primary" style="display:block; text-align:center; text-decoration:none;">Remplir mon Daily log</a>
+      <a href="{{ url_for('dailylog.formulaire') }}" class="btn-primary" style="display:block; text-align:center; text-decoration:none; {{ 'background:var(--error-text); color:#fff;' if dailylog_jours_manques }}">Remplir mon Daily log</a>
     </div>
 
   </div>
