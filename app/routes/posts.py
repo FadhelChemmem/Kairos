@@ -77,28 +77,40 @@ def creer():
     # un projet auquel il n'a pas accès).
     mentionne_ids = [uid for uid in mentionne_ids if projets_repo.user_can_view(projet_id, uid)]
 
-    post_id = posts_repo.create_post(
-        projet_id=projet_id,
-        auteur_id=g.user["id"],
-        type_code=type_code,
-        contenu=contenu,
-        parent_post_id=parent_post_id,
-        lien=lien,
-        mentionne_ids=mentionne_ids,
-    )
-
+    # Pièce jointe : sauvegardée sur disque AVANT la création du post, pour
+    # pouvoir passer (nom_fichier, chemin) à create_post() et insérer les
+    # deux dans LA MÊME transaction (audit sécurité/qualité externe,
+    # 2026-09-28, suivi P0-3 round 2 — Luna) : avant ce correctif,
+    # create_post() committait seul puis l'insertion de la pièce jointe
+    # suivait dans une seconde transaction — un échec de cette dernière
+    # laissait le post en base SANS sa pièce jointe (le fichier orphelin,
+    # lui, était déjà nettoyé depuis P0-3 round 1). Le chemin de stockage
+    # ne peut donc plus être nommé d'après post_id (pas encore connu à ce
+    # stade) — projet_id, déjà connu, sert de regroupement à la place ;
+    # le nom de fichier stocké reste un UUID (save_upload()), donc sans
+    # impact sur l'unicité.
     fichier = request.files.get("fichier")
+    piece_jointe = None
+    chemin = None
     if fichier and fichier.filename:
-        nom_fichier, chemin = save_upload(fichier, f"posts/{post_id}")
-        # Fichier orphelin sur disque si l'INSERT échoue juste après
-        # (audit sécurité/qualité externe, 2026-09-28, item P0-3) : on
-        # nettoie puis on relève l'exception d'origine (comportement
-        # inchangé pour l'appelant, juste sans laisser le fichier traîner).
-        try:
-            posts_repo.add_piece_jointe(post_id, nom_fichier, chemin, g.user["id"])
-        except Exception:
+        nom_fichier, chemin = save_upload(fichier, f"posts/projet-{projet_id}")
+        piece_jointe = (nom_fichier, chemin)
+
+    try:
+        post_id = posts_repo.create_post(
+            projet_id=projet_id,
+            auteur_id=g.user["id"],
+            type_code=type_code,
+            contenu=contenu,
+            parent_post_id=parent_post_id,
+            lien=lien,
+            mentionne_ids=mentionne_ids,
+            piece_jointe=piece_jointe,
+        )
+    except Exception:
+        if chemin:
             delete_upload(chemin)
-            raise
+        raise
 
     if mentionne_ids:
         auteur = f"{g.user['prenom']} {g.user['nom']}"
@@ -176,16 +188,31 @@ def commenter(post_id: int):
                 or parent_commentaire["parent_commentaire_id"] is not None):
             parent_commentaire_id = None
 
-    commentaire_id = posts_repo.add_comment(post_id, g.user["id"], contenu, mentionne_user_id, parent_commentaire_id)
-
+    # Même principe que dans creer() ci-dessus (suivi P0-3 round 2) : le
+    # fichier est sauvegardé AVANT l'insertion du commentaire, pour que
+    # commentaire + pièce jointe soient insérés dans LA MÊME transaction
+    # (add_comment(..., piece_jointe=...)) — un échec de l'insertion de la
+    # pièce jointe annule alors aussi le commentaire, plutôt que de
+    # laisser un commentaire "réussi" en apparence mais sans le fichier
+    # que l'utilisateur voulait joindre. commentaire_id n'étant pas encore
+    # connu à ce stade, le chemin de stockage ne descend plus qu'au niveau
+    # du post (déjà connu), pas du commentaire.
     fichier = request.files.get("fichier")
+    piece_jointe = None
+    chemin = None
     if fichier and fichier.filename:
-        nom_fichier, chemin = save_upload(fichier, f"posts/{post_id}/commentaires/{commentaire_id}")
-        try:
-            posts_repo.add_piece_jointe_commentaire(commentaire_id, nom_fichier, chemin, g.user["id"])
-        except Exception:
+        nom_fichier, chemin = save_upload(fichier, f"posts/{post_id}/commentaires")
+        piece_jointe = (nom_fichier, chemin)
+
+    try:
+        commentaire_id = posts_repo.add_comment(
+            post_id, g.user["id"], contenu, mentionne_user_id, parent_commentaire_id,
+            piece_jointe=piece_jointe,
+        )
+    except Exception:
+        if chemin:
             delete_upload(chemin)
-            raise
+        raise
 
     if mentionne_user_id and mentionne_user_id != g.user["id"]:
         auteur = f"{g.user['prenom']} {g.user['nom']}"

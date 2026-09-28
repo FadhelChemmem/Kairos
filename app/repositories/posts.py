@@ -186,6 +186,7 @@ def create_post(
     parent_post_id: int | None = None,
     lien: str | None = None,
     mentionne_ids: list[int] | None = None,
+    piece_jointe: tuple[str, str] | None = None,
 ) -> int:
     """Création manuelle d'un post (Envoi/Réponse/Question/Requête), ou
     d'un "rebond" quand parent_post_id est renseigné (voir spec : l'action
@@ -193,7 +194,21 @@ def create_post(
     une icône flèche).
 
     `lien` et `mentionne_ids` (personnes taguées) sont optionnels, ajoutés
-    2026-09-18 pour le composeur "Nouveau post" (panneau Requête)."""
+    2026-09-18 pour le composeur "Nouveau post" (panneau Requête).
+
+    `piece_jointe` (nom_fichier, chemin), optionnel : quand fourni, la
+    pièce jointe est insérée dans LA MÊME transaction que le post (audit
+    sécurité/qualité externe, 2026-09-28, suivi P0-3 round 2 — Luna).
+    Avant ce correctif, routes/posts.py appelait create_post() puis, dans
+    un second temps/une seconde transaction déjà committée, l'insertion
+    de la pièce jointe : si celle-ci échouait, le fichier orphelin était
+    bien nettoyé (P0-3 round 1), mais le post restait en base SANS sa
+    pièce jointe — un post créé par erreur en apparence "réussi" alors
+    que l'utilisateur voulait joindre un fichier. En passant `piece_jointe`
+    ici, un échec de l'insertion fait échouer TOUT le bloc `with
+    db.get_cursor()`, qui annule alors aussi la création du post lui-même
+    (rollback automatique) — le fichier sur disque reste alors à nettoyer
+    par l'appelant (voir routes/posts.py)."""
     with db.get_cursor(user_id=auteur_id) as cur:
         cur.execute(
             """
@@ -209,6 +224,16 @@ def create_post(
             cur.execute(
                 "INSERT INTO post_mention (post_id, utilisateur_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                 (post_id, uid),
+            )
+
+        if piece_jointe is not None:
+            nom_fichier, chemin = piece_jointe
+            cur.execute(
+                """
+                INSERT INTO post_piece_jointe (post_id, nom_fichier, chemin, uploaded_by)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (post_id, nom_fichier, chemin, auteur_id),
             )
 
         return post_id
@@ -238,12 +263,19 @@ def remove_reaction(post_id: int, user_id: int) -> None:
 def add_comment(
     post_id: int, auteur_id: int, contenu: str,
     mentionne_user_id: int | None = None, parent_commentaire_id: int | None = None,
+    piece_jointe: tuple[str, str] | None = None,
 ) -> int:
     """`parent_commentaire_id` (Lot 5, retour Fadhel, 2026-09-28 : "réponse
     en ligne") DOIT déjà avoir été validé par l'appelant — voir
     routes/posts.py:commenter — comme référençant un commentaire du MÊME
     post_id et lui-même de premier niveau (pas de fil imbriqué à
-    l'infini)."""
+    l'infini).
+
+    `piece_jointe` (nom_fichier, chemin), optionnel : même principe que
+    create_post() ci-dessus — insérée dans LA MÊME transaction que le
+    commentaire, pour qu'un échec de cette insertion annule aussi le
+    commentaire plutôt que de laisser un commentaire sans sa pièce jointe
+    (audit sécurité/qualité externe, 2026-09-28, suivi P0-3 round 2)."""
     with db.get_cursor(user_id=auteur_id) as cur:
         cur.execute(
             """
@@ -253,7 +285,19 @@ def add_comment(
             """,
             (post_id, auteur_id, contenu, mentionne_user_id, parent_commentaire_id),
         )
-        return cur.fetchone()["id"]
+        commentaire_id = cur.fetchone()["id"]
+
+        if piece_jointe is not None:
+            nom_fichier, chemin = piece_jointe
+            cur.execute(
+                """
+                INSERT INTO post_commentaire_piece_jointe (commentaire_id, nom_fichier, chemin, uploaded_by)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (commentaire_id, nom_fichier, chemin, auteur_id),
+            )
+
+        return commentaire_id
 
 
 def get_commentaire(commentaire_id: int) -> dict | None:

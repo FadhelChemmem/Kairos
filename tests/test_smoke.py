@@ -1175,12 +1175,17 @@ class SmokeTestCase(unittest.TestCase):
             for p in patchers:
                 p.stop()
 
-    def test_posts_creer_nettoie_le_fichier_si_insert_piece_jointe_echoue(self):
+    def test_posts_creer_nettoie_le_fichier_si_creation_echoue(self):
+        """Depuis le suivi P0-3 round 2 (Luna) : post + pièce jointe sont
+        insérés dans LA MÊME transaction (create_post(..., piece_jointe=...))
+        — un échec de cette insertion (simulé ici en faisant lever
+        create_post() lui-même) doit nettoyer le fichier sur disque, sans
+        laisser de post orphelin en base (contrairement à round 1, où
+        create_post() committait déjà avant que la pièce jointe échoue)."""
         self._login()
         patchers = self._patched() + [
-            patch("app.routes.posts.save_upload", return_value=("plan.pdf", "posts/101/xyz.pdf")),
-            patch("app.repositories.posts.create_post", return_value=101),
-            patch("app.repositories.posts.add_piece_jointe", side_effect=Exception("connexion perdue")),
+            patch("app.routes.posts.save_upload", return_value=("plan.pdf", "posts/projet-1/xyz.pdf")),
+            patch("app.repositories.posts.create_post", side_effect=Exception("connexion perdue")),
         ]
         delete_patcher = patch("app.routes.posts.delete_upload")
         for p in patchers:
@@ -1196,7 +1201,66 @@ class SmokeTestCase(unittest.TestCase):
                     },
                     content_type="multipart/form-data",
                 )
-            mock_delete.assert_called_once_with("posts/101/xyz.pdf")
+            mock_delete.assert_called_once_with("posts/projet-1/xyz.pdf")
+        finally:
+            delete_patcher.stop()
+            for p in patchers:
+                p.stop()
+
+    def test_posts_creer_passe_bien_la_piece_jointe_a_create_post(self):
+        """Contre-épreuve : vérifie que create_post() reçoit bien
+        piece_jointe=(nom_fichier, chemin) quand un fichier est fourni —
+        sans elle, le test ci-dessus passerait même si piece_jointe
+        n'était jamais transmis (create_post lèverait pour une autre
+        raison et le test resterait vert par accident)."""
+        self._login()
+        patchers = self._patched() + [
+            patch("app.routes.posts.save_upload", return_value=("plan.pdf", "posts/projet-1/xyz.pdf")),
+        ]
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.create_post", return_value=101) as mock_create:
+                resp = self.client.post(
+                    "/posts",
+                    data={
+                        "projet_id": "1", "type_code": "envoi", "contenu": "Test",
+                        "fichier": (io.BytesIO(b"contenu bidon"), "plan.pdf"),
+                    },
+                    content_type="multipart/form-data",
+                )
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(
+            mock_create.call_args.kwargs["piece_jointe"], ("plan.pdf", "posts/projet-1/xyz.pdf"),
+        )
+
+    def test_posts_commenter_nettoie_le_fichier_si_creation_echoue(self):
+        """Même principe pour commenter() : add_comment() insère
+        maintenant le commentaire et sa pièce jointe dans la même
+        transaction (suivi P0-3 round 2)."""
+        self._login()
+        patchers = self._patched() + [
+            patch("app.routes.posts.save_upload", return_value=("note.jpg", "posts/1/commentaires/xyz.jpg")),
+            patch("app.repositories.posts.add_comment", side_effect=Exception("connexion perdue")),
+        ]
+        delete_patcher = patch("app.routes.posts.delete_upload")
+        for p in patchers:
+            p.start()
+        mock_delete = delete_patcher.start()
+        try:
+            with self.assertRaises(Exception):
+                self.client.post(
+                    "/posts/1/commenter",
+                    data={
+                        "contenu": "Voici",
+                        "fichier": (io.BytesIO(b"contenu bidon"), "note.jpg"),
+                    },
+                    content_type="multipart/form-data",
+                )
+            mock_delete.assert_called_once_with("posts/1/commentaires/xyz.jpg")
         finally:
             delete_patcher.stop()
             for p in patchers:
@@ -4156,7 +4220,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
             for p in patchers:
                 p.stop()
         self.assertEqual(resp.status_code, 302)
-        mock_add.assert_called_once_with(1, 1, "Réponse", None, 3)
+        mock_add.assert_called_once_with(1, 1, "Réponse", None, 3, piece_jointe=None)
 
     def test_repondre_a_une_reponse_est_ignore(self):
         """Verrou de non-régression : pas de 3e niveau — répondre à un
@@ -4176,7 +4240,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
             for p in patchers:
                 p.stop()
         self.assertEqual(resp.status_code, 302)
-        mock_add.assert_called_once_with(1, 1, "x", None, None)
+        mock_add.assert_called_once_with(1, 1, "x", None, None, piece_jointe=None)
 
     def test_repondre_a_un_commentaire_dun_autre_post_est_ignore(self):
         """IDOR (PROMPT_CORRECTIONS.md P0 #1) : un id de commentaire deviné
@@ -4195,19 +4259,23 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
             for p in patchers:
                 p.stop()
         self.assertEqual(resp.status_code, 302)
-        mock_add.assert_called_once_with(1, 1, "x", None, None)
+        mock_add.assert_called_once_with(1, 1, "x", None, None, piece_jointe=None)
 
     # --- Pièce jointe de commentaire (glisser-déposer + aperçu image) ---
 
     def test_commenter_avec_piece_jointe_est_associee_au_commentaire(self):
+        """Depuis le suivi P0-3 round 2 (Luna) : la pièce jointe n'est plus
+        insérée séparément via add_piece_jointe_commentaire() après coup —
+        elle est passée à add_comment(piece_jointe=...) pour être insérée
+        dans LA MÊME transaction que le commentaire (voir
+        repositories/posts.py:add_comment)."""
         patchers = self._patched()
         for p in patchers:
             p.start()
         try:
             with patch("app.repositories.posts.add_comment", return_value=42) as mock_add, \
                  patch("app.routes.posts.save_upload",
-                       return_value=("photo.jpg", "posts/1/commentaires/42/xyz.jpg")) as mock_save, \
-                 patch("app.repositories.posts.add_piece_jointe_commentaire", return_value=1) as mock_pj:
+                       return_value=("photo.jpg", "posts/1/commentaires/xyz.jpg")) as mock_save:
                 resp = self.client.post(
                     "/posts/1/commenter",
                     data={"contenu": "Voici", "fichier": (io.BytesIO(b"contenu bidon"), "photo.jpg")},
@@ -4217,9 +4285,11 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
             for p in patchers:
                 p.stop()
         self.assertEqual(resp.status_code, 302, resp.data[:2000])
-        mock_add.assert_called_once()
         mock_save.assert_called_once()
-        mock_pj.assert_called_once_with(42, "photo.jpg", "posts/1/commentaires/42/xyz.jpg", 1)
+        mock_add.assert_called_once_with(
+            1, 1, "Voici", None, None,
+            piece_jointe=("photo.jpg", "posts/1/commentaires/xyz.jpg"),
+        )
 
     def test_fichiers_commentaire_piece_jointe_image_servie_en_ligne(self):
         """"Aperçu image" : une image est servie EN LIGNE (pas de
