@@ -101,6 +101,28 @@ def list_feed_mes_projets(current_user_id: int, limit: int = 30) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def list_feed_auteur(auteur_id: int, viewer_id: int, limit: int = 8) -> list[dict]:
+    """Posts récents d'UNE personne (page de profil, Lot 5, retour Fadhel
+    2026-09-28) — filtrés à ce que LE VISITEUR (`viewer_id`) peut voir
+    (v_projet_visibilite), pas ce que l'auteur peut voir : un profil ne
+    doit pas devenir un détour pour lire le fil d'une équipe à laquelle
+    on n'appartient pas (même logique que taches.list_en_cours_pour_profil
+    / projets.list_ids_visibles). `%(uid)s` reste le VISITEUR — c'est
+    aussi lui dont dépendent "je_gere"/"ma_reaction" dans _FEED_SELECT."""
+    sql = _FEED_SELECT + """
+        WHERE p.auteur_id = %(auteur_id)s
+          AND EXISTS (
+                SELECT 1 FROM v_projet_visibilite vv
+                WHERE vv.projet_id = p.projet_id AND vv.utilisateur_id = %(uid)s
+              )
+        ORDER BY p.created_at DESC
+        LIMIT %(limit)s
+    """
+    with db.get_cursor() as cur:
+        cur.execute(sql, {"uid": viewer_id, "auteur_id": auteur_id, "limit": limit})
+        return [dict(r) for r in cur.fetchall()]
+
+
 def get_post(post_id: int) -> dict | None:
     """Version minimale d'un post (id, projet, tâche, parent, auteur) —
     utilisée pour les contrôles d'accès (visibilité du projet porteur)

@@ -1,0 +1,96 @@
+{# Page de profil d'une personne (Lot 5, retour Fadhel, 2026-09-28) —
+   accessible à TOUT utilisateur connecté via la recherche topbar
+   (contrairement à utilisateurs.fiche, réservée admin/RH/chef de
+   projet). Volontairement AUCUN champ de contact (téléphone/email/
+   adresse/date d'embauche) : ceux-là restent sur la fiche RH — ici on
+   montre seulement l'identité/le rôle, l'activité en cours (tâches,
+   DailyLog 7 jours glissants) et les posts récents, chacun filtré à ce
+   que LE VISITEUR peut voir (voir routes/utilisateurs.py:profil_personne).
+   Attend dans le contexte : utilisateur, jours, taches_en_cours, posts_recents. #}
+{% extends "base.html" %}
+{% import "partials/avatar.html" as avatarm %}
+{% block title %}{{ utilisateur.prenom }} {{ utilisateur.nom }} — Kairos{% endblock %}
+{% block body %}
+
+<div class="subbar">
+  <div class="subbar-inner" style="max-width:900px;">
+    <span style="font-size:14px; font-weight:700;">{{ utilisateur.prenom }} {{ utilisateur.nom }}</span>
+    <span class="pill" style="background:var(--hover-bg); color:var(--text-faint); margin-left:auto;">Profil — lecture seule</span>
+  </div>
+</div>
+
+<div class="page-body page-body-2col" style="max-width:900px;">
+
+  <div class="col">
+    <div class="card">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px;">
+        {{ avatarm.avatar(utilisateur.id, utilisateur.prenom, utilisateur.nom, utilisateur.avatar_chemin, css_class='avatar avatar-lg', style='width:52px; height:52px; font-size:16px;') }}
+        <div style="min-width:0;">
+          <div style="font-size:16px; font-weight:800;">{{ utilisateur.prenom }} {{ utilisateur.nom }}</div>
+          <span class="pill pill-sm" style="background:{{ role_style(utilisateur.role).bg }}; color:{{ role_style(utilisateur.role).fg }};">{{ role_style(utilisateur.role).label }}</span>
+          {% if not utilisateur.actif %}<span class="pill pill-sm" style="background:var(--hover-bg); color:var(--border-hover); margin-left:4px;">Parti</span>{% endif %}
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:8px; font-size:12.5px;">
+        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Poste</span><span style="font-weight:600;">{{ utilisateur.poste or '—' }}</span></div>
+        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Équipe</span><span style="font-weight:600;">{{ equipe_libelle(utilisateur.equipe_code) }}</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:14px; font-weight:700; margin-bottom:12px;">Tâches en cours</div>
+      {% for t in taches_en_cours %}
+        {% set tst = tache_etat_style(t.etat) %}
+        <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" style="display:block; padding:9px 0; border-bottom:1px solid var(--border-soft); color:inherit;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+            <span style="font-size:12.5px; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ t.titre }}</span>
+            <span class="pill pill-sm" style="background:{{ tst.bg }}; color:{{ tst.fg }}; flex-shrink:0;">{{ tst.label }}</span>
+          </div>
+          <div style="font-size:11.5px; color:var(--text-faint); margin-top:2px;">
+            {{ t.projet_code }}_{{ t.projet_nom }}{% if t.date_echeance %} · {{ t.date_echeance|date_courte }}{% endif %}
+          </div>
+        </a>
+      {% else %}
+        <p style="font-size:12.5px; color:var(--text-faint);">Aucune tâche en cours (parmi celles que vous pouvez voir).</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="col-center" style="max-width:none;">
+    <div class="card">
+      <div style="font-size:14px; font-weight:700; margin-bottom:14px;">Daily log — 7 derniers jours</div>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        {% for jour in jours %}
+          <div style="border:1px solid var(--border-soft); border-radius:10px; padding:10px 14px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:{{ '8px' if jour.entrees else '0' }};">
+              <span style="font-size:12.5px; font-weight:700; text-transform:capitalize;">{{ date_fr(jour.date) }}</span>
+              <span style="font-size:12px; color:{{ 'var(--text-muted)' if jour.total_heures else 'var(--border-hover)' }};">{{ jour.total_heures|round(1) }} h</span>
+            </div>
+            {% for e in jour.entrees %}
+              <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-secondary); padding:2px 0;">
+                <span>{{ e.projet_nom }}{% if e.tache_titre %} · {{ e.tache_titre }}{% endif %}</span>
+                <span style="color:var(--text-muted);">{{ e.heures }} h</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+      <div style="font-size:11px; color:var(--text-faint); margin-top:10px;">Seules les entrées sur des projets que vous pouvez voir sont affichées ici.</div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:14px; font-weight:700; margin-bottom:14px;">Posts récents</div>
+      {% for post in posts_recents %}
+        <div style="margin-bottom:12px;">
+          {% with post=post, show_projet=true, next_url=url_for('utilisateurs.profil_personne', user_id=utilisateur.id) %}
+            {% include "partials/post_card.html" %}
+          {% endwith %}
+        </div>
+      {% else %}
+        <p style="font-size:12.5px; color:var(--text-faint);">Aucun post récent (parmi ceux que vous pouvez voir).</p>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

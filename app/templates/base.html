@@ -94,7 +94,7 @@
   <div class="topbar-search" style="position:relative;">
     <div class="topbar-search-box" style="position:relative;">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="text" id="recherche-globale" aria-label="Rechercher un projet" autocomplete="off" placeholder="Rechercher un projet, une personne…" style="border:none; outline:none; background:none; font-size:14px; color:var(--text-strong); width:100%; font-family:inherit;">
+      <input type="text" id="recherche-globale" aria-label="Rechercher un projet ou une personne" autocomplete="off" placeholder="Rechercher un projet, une personne…" style="border:none; outline:none; background:none; font-size:14px; color:var(--text-strong); width:100%; font-family:inherit;">
       <div id="recherche-globale-resultats" style="display:none; position:absolute; top:calc(100% + 6px); left:0; right:0; background:var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow:0 8px 24px rgba(20,30,25,0.12); padding:6px; z-index:200; max-height:360px; overflow-y:auto;"></div>
     </div>
   </div>
@@ -184,8 +184,18 @@
     items.forEach(function (it) {
       var a = document.createElement('a');
       a.href = it.url;
-      a.style.cssText = 'display:block; padding:9px 12px; border-radius:8px; font-size:13px; color:inherit; text-decoration:none;';
-      a.textContent = it.label;
+      a.style.cssText = 'display:flex; align-items:baseline; gap:6px; padding:9px 12px; border-radius:8px; font-size:13px; color:inherit; text-decoration:none;';
+      var label = document.createElement('span');
+      label.textContent = it.label;
+      a.appendChild(label);
+      // Distingue une personne (poste en sous-titre) d'un projet, dans la
+      // même liste de résultats (Lot 5, retour Fadhel, 2026-09-28).
+      if (it.sous_titre) {
+        var sous = document.createElement('span');
+        sous.style.cssText = 'font-size:11.5px; color:var(--text-faint);';
+        sous.textContent = it.sous_titre;
+        a.appendChild(sous);
+      }
       a.addEventListener('mouseover', function () { a.style.background = 'var(--hover-bg)'; });
       a.addEventListener('mouseout', function () { a.style.background = ''; });
       box.appendChild(a);

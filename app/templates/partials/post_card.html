@@ -3,24 +3,21 @@
 <div class="card">
   <div style="display:flex; align-items:center; gap:10px;">
     {# Pastille + nom du posteur, et nom du projet, cliquables (retour
-       Fadhel, 2026-09-28). Pas encore de fiche personne complète avec
-       DailyLogs/tâches/posts récents (chantier à part, voir la fiche
-       "recherche de personnes") : en attendant, le lien mène à la fiche
-       "Utilisateurs" existante (admin/RH/chef de projet, comme le menu de
-       la topbar — voir base.html) ; pour les autres rôles ce n'est pas
-       cliquable, faute d'écran à leur montrer. #}
-    {% set peut_voir_fiches = g.user.role in ('admin', 'rh', 'chef_de_projet') %}
-    {% set auteur_url = url_for('utilisateurs.fiche', user_id=post.auteur_id) if peut_voir_fiches else none %}
-    <a href="{{ auteur_url or '#' }}" {% if not peut_voir_fiches %}tabindex="-1" style="cursor:default;" onclick="return false;"{% endif %}>
+       Fadhel, 2026-09-28). Le lien mène désormais à la page de profil
+       (Lot 5, retour Fadhel, 2026-09-28 — utilisateurs.profil_personne,
+       ouverte à tout utilisateur connecté), plus à la fiche "Utilisateurs"
+       (celle-là reste réservée admin/RH/chef de projet, voir base.html). #}
+    {% set auteur_url = url_for('utilisateurs.profil_personne', user_id=post.auteur_id) %}
+    <a href="{{ auteur_url }}">
       {{ avatarm.avatar(post.auteur_id, post.auteur_prenom, post.auteur_nom, post.auteur_avatar_chemin, css_class='avatar avatar-lg') }}
     </a>
     <div style="flex:1; min-width:0;">
       {% if post.est_creation_tache %}
-        <div style="font-size:13.5px;"><a href="{{ auteur_url or '#' }}" style="font-weight:700; color:inherit;" {% if not peut_voir_fiches %}tabindex="-1" onclick="return false;"{% endif %}>{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a créé une tâche</div>
+        <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a créé une tâche</div>
       {% elif post.est_cloture_tache %}
-        <div style="font-size:13.5px;"><a href="{{ auteur_url or '#' }}" style="font-weight:700; color:inherit;" {% if not peut_voir_fiches %}tabindex="-1" onclick="return false;"{% endif %}>{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a terminé une tâche</div>
+        <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a terminé une tâche</div>
       {% else %}
-        <div style="font-size:13.5px;"><a href="{{ auteur_url or '#' }}" style="font-weight:700; color:inherit;" {% if not peut_voir_fiches %}tabindex="-1" onclick="return false;"{% endif %}>{{ post.auteur_prenom }} {{ post.auteur_nom }}</a></div>
+        <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a></div>
       {% endif %}
       <div style="font-size:11.5px; color:var(--text-muted);">
         {% if show_projet %}<a href="{{ url_for('projets.detail', projet_id=post.projet_id) }}" style="color:inherit;">{{ post.projet_code }}_{{ post.projet_nom }}</a> · {% endif %}{{ post.created_at|il_y_a }}

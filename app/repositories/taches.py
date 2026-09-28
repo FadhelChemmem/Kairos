@@ -87,6 +87,38 @@ def list_mes_taches(user_id: int, limit: int = 10) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def list_en_cours_pour_profil(user_id: int, viewer_id: int, limit: int = 8) -> list[dict]:
+    """Variante de list_mes_taches() pour la page de profil d'une personne
+    (Lot 5, retour Fadhel, 2026-09-28) : même sélection de tâches, mais
+    restreinte à ce que LE VISITEUR (`viewer_id`) peut voir
+    (v_projet_visibilite) plutôt qu'à ce que la personne consultée
+    (`user_id`) peut voir elle-même — voir projets.list_ids_visibles."""
+    sql = """
+        SELECT t.id, t.titre, t.etat, t.date_echeance,
+               p.id AS projet_id, p.nom AS projet_nom, p.code AS projet_code
+        FROM tache t
+        JOIN projet p ON p.id = t.projet_id
+        WHERE t.etat NOT IN ('termine', 'abandonne', 'bloque')
+          AND p.etat IN ('en_cours', 'bloque')
+          AND (
+                t.created_by = %(uid)s
+                OR EXISTS (
+                     SELECT 1 FROM tache_intervenant ti
+                     WHERE ti.tache_id = t.id AND ti.utilisateur_id = %(uid)s
+                   )
+              )
+          AND EXISTS (
+                SELECT 1 FROM v_projet_visibilite vv
+                WHERE vv.projet_id = p.id AND vv.utilisateur_id = %(viewer_id)s
+              )
+        ORDER BY t.date_echeance NULLS LAST
+        LIMIT %(limit)s
+    """
+    with db.get_cursor() as cur:
+        cur.execute(sql, {"uid": user_id, "viewer_id": viewer_id, "limit": limit})
+        return [dict(r) for r in cur.fetchall()]
+
+
 def list_deadlines(user_id: int, limit: int = 20) -> list[dict]:
     """Échéances à venir sur les projets où l'utilisateur est impliqué
     (chef, co-chef, intervenant projet, ou intervenant tâche)."""

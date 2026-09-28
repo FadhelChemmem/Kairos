@@ -70,15 +70,21 @@ def accueil():
 @login_required
 def recherche_api():
     """Petite API JSON interne pour la recherche de la topbar (voir
-    base.html) — pour l'instant limitée aux projets (recherche de
-    personnes différée : pas de page de profil publique pour les
-    utilisateurs autres que soi-même, voir utilisateurs.mon_profil)."""
+    base.html) — projets ET personnes (Lot 5, retour Fadhel, 2026-09-28 :
+    la recherche de personnes était différée jusqu'ici faute de page de
+    profil, voir utilisateurs.profil_personne, qui vient de la combler)."""
     q = (request.args.get("q") or "").strip()
     if len(q) < 2:
         return {"resultats": []}
-    trouves = projets.search(g.user["id"], q, limit=8)
+    projets_trouves = projets.search(g.user["id"], q, limit=6)
+    personnes_trouvees = utilisateurs.search(q, limit=6)
     resultats = [
-        {"label": f"{p['code']}_{p['nom']}", "url": url_for("projets.detail", projet_id=p["id"])}
-        for p in trouves
+        {"label": f"{p['code']}_{p['nom']}", "sous_titre": None,
+         "url": url_for("projets.detail", projet_id=p["id"])}
+        for p in projets_trouves
+    ] + [
+        {"label": f"{u['prenom']} {u['nom']}", "sous_titre": u["poste"],
+         "url": url_for("utilisateurs.profil_personne", user_id=u["id"])}
+        for u in personnes_trouvees
     ]
     return {"resultats": resultats}

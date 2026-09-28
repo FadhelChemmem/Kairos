@@ -321,6 +321,12 @@ UTILISATEURS_TOUS = [
 ]
 COMPTE_UTILISATEURS = {"total": 2, "actifs": 1}
 
+TACHES_EN_COURS_PROFIL = [
+    {"id": 5, "titre": "Plan ferraillage voile R+2", "etat": "bloque",
+     "date_echeance": datetime.date(2026, 9, 20), "projet_id": 1,
+     "projet_nom": "Tour Meridian", "projet_code": "26099X"},
+]
+
 AUDIT_ENTREES = [
     {"id": 1, "table_cible": "projet", "ligne_id": 1, "action": "UPDATE",
      "created_at": datetime.datetime(2026, 9, 28, 10, 0),
@@ -386,7 +392,11 @@ class SmokeTestCase(unittest.TestCase):
             "app.repositories.utilisateurs.update_profil": None,
             "app.repositories.utilisateurs.set_reset_token": None,
             "app.repositories.utilisateurs.get_mot_de_passe_hash": MOT_DE_PASSE_HASH_PAR_DEFAUT,
+            "app.repositories.utilisateurs.search": [],
             "app.repositories.projets.search": [],
+            "app.repositories.projets.list_ids_visibles": {1},
+            "app.repositories.taches.list_en_cours_pour_profil": TACHES_EN_COURS_PROFIL,
+            "app.repositories.posts.list_feed_auteur": [],
             "app.repositories.notifications.compter_non_lues": 2,
             "app.repositories.notifications.list_notifications": NOTIFICATIONS,
             "app.repositories.notifications.get_notification": NOTIFICATION_UNE,
@@ -2078,13 +2088,13 @@ class SmokeTestCase(unittest.TestCase):
 
     def test_post_card_auteur_et_projet_cliquables_pour_chef_de_projet(self):
         """Retour Fadhel, 2026-09-28 : "Rendre le champ des personnes qui
-        poste (pastille et nom) et le nom des projets cliquable." — USER
-        (fixture par défaut de _login) a le rôle admin, qui voit la fiche
-        utilisateur existante (comme admin/rh/chef_de_projet, voir
-        utilisateurs.fiche)."""
+        poste (pastille et nom) et le nom des projets cliquable." — mène à
+        la page de profil (Lot 5, ouverte à tout le monde, voir
+        test_fil_accueil_pointe_vers_le_profil_pas_la_fiche_admin), plus à
+        l'ancienne fiche utilisateur (admin/RH/chef de projet)."""
         resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [FEED_POST_MANUEL]})
         body = resp.data.decode()
-        self.assertIn(f'<a href="/utilisateurs/{FEED_POST_MANUEL["auteur_id"]}"', body)
+        self.assertIn(f'<a href="/utilisateurs/{FEED_POST_MANUEL["auteur_id"]}/profil"', body)
         self.assertIn(
             f'<a href="/projets/{FEED_POST_MANUEL["projet_id"]}" style="color:inherit;">'
             f'{FEED_POST_MANUEL["projet_code"]}_{FEED_POST_MANUEL["projet_nom"]}</a>',
@@ -3825,6 +3835,80 @@ class TestJournalAudit(unittest.TestCase):
             for p in patchers:
                 p.stop()
         self.assertNotIn(b'href="/admin/journal"', resp.data)
+
+
+class TestProfilPersonne(unittest.TestCase):
+    """Lot 5 (retour Fadhel, 2026-09-28) : page de profil d'une personne,
+    ouverte à tout utilisateur connecté (contrairement à la fiche RH),
+    reliée à la recherche topbar."""
+
+    _login = SmokeTestCase._login
+    _patched = SmokeTestCase._patched
+    _get = SmokeTestCase._get
+
+    def setUp(self):
+        self.app = create_app(TestConfig)
+        self.client = self.app.test_client()
+
+    def test_page_visible_par_nimporte_quel_role_connecte(self):
+        """Contrairement à /utilisateurs (fiche/liste), un simple
+        intervenant peut ouvrir le profil de n'importe qui."""
+        utilisateur_intervenant = dict(USER, role="intervenant")
+        self._login()
+        patchers = self._patched(**{"app.auth.get_user_by_id": utilisateur_intervenant})
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.get("/utilisateurs/1/profil")
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Foulen", resp.data)
+
+    def test_utilisateur_introuvable_redirige(self):
+        resp = self._get("/utilisateurs/999/profil", **{
+            "app.repositories.utilisateurs.get_utilisateur": None,
+        })
+        self.assertEqual(resp.status_code, 302)
+
+    def test_dailylog_filtre_aux_projets_visibles_par_le_visiteur(self):
+        """IDOR (PROMPT_CORRECTIONS.md P0 #1) : une entrée DailyLog sur un
+        projet que LE VISITEUR ne peut pas voir doit disparaître de son
+        profil, même si la personne consultée peut le voir, elle."""
+        entree_visible = {"id": 1, "projet_id": 1, "tache_id": None, "heures": 5.0,
+                           "projet_nom": "Tour Meridian", "tache_titre": None}
+        entree_masquee = {"id": 2, "projet_id": 99, "tache_id": None, "heures": 3.0,
+                           "projet_nom": "Projet d'une autre équipe", "tache_titre": None}
+        resp = self._get("/utilisateurs/1/profil", **{
+            "app.repositories.dailylog.list_entrees_jour": [entree_visible, entree_masquee],
+            "app.repositories.projets.list_ids_visibles": {1},
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Tour Meridian", resp.data)
+        self.assertNotIn(b"une autre \xc3\xa9quipe", resp.data)
+
+    def test_recherche_topbar_renvoie_projets_et_personnes(self):
+        resp = self._get("/recherche/api?q=to", **{
+            "app.repositories.projets.search": [{"id": 1, "code": "26099X", "nom": "Tour Meridian"}],
+            "app.repositories.utilisateurs.search": [{"id": 3, "prenom": "Omar", "nom": "Aziz", "poste": "Technicien"}],
+        })
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        labels = [r["label"] for r in data["resultats"]]
+        self.assertIn("26099X_Tour Meridian", labels)
+        self.assertIn("Omar Aziz", labels)
+        personne = next(r for r in data["resultats"] if r["label"] == "Omar Aziz")
+        self.assertIn("/utilisateurs/3/profil", personne["url"])
+
+    def test_fil_accueil_pointe_vers_le_profil_pas_la_fiche_admin(self):
+        """post_card.html (Lot 5) : l'avatar/le nom de l'auteur d'un post
+        mène maintenant à la page de profil ouverte à tous, plus à
+        l'ancienne fiche admin/RH/chef de projet réservée."""
+        resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": FEED})
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"/utilisateurs/2/profil", resp.data)
+        self.assertNotIn(b'/utilisateurs/2"', resp.data)
 
 
 class TestProposeCode(unittest.TestCase):

@@ -21,6 +21,27 @@ def list_actifs() -> list[dict]:
     )
 
 
+def search(q: str, limit: int = 6) -> list[dict]:
+    """Recherche de personnes pour la barre de recherche topbar (Lot 5,
+    retour Fadhel, 2026-09-28 — jusqu'ici différée, voir l'ancien
+    commentaire de main.recherche_api : "pas de page de profil publique").
+    Ouverte à toute l'entreprise (pas filtrée par équipe, contrairement
+    aux projets) : seul le nom/poste est exposé ici, jamais l'email/le
+    téléphone — c'est le PROFIL (utilisateurs.profil_personne) qui décide
+    ensuite de ce qu'il montre, avec ses propres filtres de visibilité."""
+    like = f"%{q.strip().lower()}%"
+    return db.query_all(
+        """
+        SELECT id, prenom, nom, poste
+        FROM utilisateur
+        WHERE actif = true AND (lower(prenom) LIKE %s OR lower(nom) LIKE %s)
+        ORDER BY nom, prenom
+        LIMIT %s
+        """,
+        (like, like, limit),
+    )
+
+
 def list_tous(q: str | None = None, equipe_code: str | None = None,
               role: str | None = None, actif: bool | None = None) -> list[dict]:
     """Liste complète pour la page Utilisateurs (admin/RH, et chef de projet

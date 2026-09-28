@@ -17,6 +17,9 @@ from ..auth import (
     password_fingerprint, role_required, verify_password,
 )
 from ..repositories import dailylog as dailylog_repo
+from ..repositories import posts as posts_repo
+from ..repositories import projets as projets_repo
+from ..repositories import taches as taches_repo
 from ..repositories import utilisateurs as utilisateurs_repo
 from ..storage import is_image_filename, save_upload
 from ..utils import EQUIPE_CHOICES
@@ -65,6 +68,67 @@ def _semaine_derniere(user_id: int) -> list[dict]:
             "total_heures": sum(float(e["heures"]) for e in entrees),
         })
     return jours
+
+
+def _fenetre_7_jours(user_id: int, projets_visibles_ids: set) -> list[dict]:
+    """DailyLog glissant sur 7 jours (aujourd'hui inclus, en remontant),
+    pour la page de profil d'une personne (Lot 5, retour Fadhel,
+    2026-09-28 : "fenêtre 7 jours") — différent de _semaine_derniere
+    ci-dessus (lundi-vendredi de la semaine PRÉCÉDENTE, utilisé par
+    /moi et la fiche chef de projet) : ici on veut l'activité RÉCENTE de
+    la personne consultée, weekends inclus s'il y a eu du DailyLog.
+
+    Chaque ligne dont le projet n'est PAS dans `projets_visibles_ids`
+    (ce que LE VISITEUR peut voir, voir projets.list_ids_visibles) est
+    retirée plutôt que masquée en clair : un profil ne doit pas laisser
+    deviner, même sans le nom, qu'une personne travaille sur un projet
+    d'une équipe à laquelle le visiteur n'a pas accès."""
+    aujourdhui = datetime.date.today()
+    jours = []
+    for i in range(6, -1, -1):
+        jour = aujourdhui - datetime.timedelta(days=i)
+        entrees = [
+            e for e in dailylog_repo.list_entrees_jour(user_id, jour)
+            if e["projet_id"] in projets_visibles_ids
+        ]
+        jours.append({
+            "date": jour,
+            "entrees": entrees,
+            "total_heures": sum(float(e["heures"]) for e in entrees),
+        })
+    return jours
+
+
+@bp.route("/<int:user_id>/profil")
+@login_required
+def profil_personne(user_id: int):
+    """Page de profil d'une personne (Lot 5, retour Fadhel, 2026-09-28) :
+    "accessible via la recherche topbar 'chercher des personnes' — profil,
+    daily logs, tâches en cours, posts récents, fenêtre 7 jours". Ouverte
+    à TOUT utilisateur connecté (contrairement à fiche()/liste(), réservées
+    à admin/RH/chef de projet) : strictement en lecture seule, et avec des
+    champs volontairement limités (pas d'email/téléphone/adresse — ceux-là
+    restent réservés à la fiche RH). Tout ce qui référence un projet
+    (DailyLog, tâches, posts) est filtré à ce que LE VISITEUR peut voir,
+    pas la personne consultée (voir _fenetre_7_jours/list_en_cours_pour_profil/
+    list_feed_auteur) : sinon un profil deviendrait un détour pour voir les
+    projets d'une équipe à laquelle on n'appartient pas (IDOR,
+    PROMPT_CORRECTIONS.md P0 #1)."""
+    utilisateur = utilisateurs_repo.get_utilisateur(user_id)
+    if utilisateur is None:
+        flash("Utilisateur introuvable.", "error")
+        return redirect(url_for("main.accueil"))
+
+    viewer_id = g.user["id"]
+    projets_visibles_ids = projets_repo.list_ids_visibles(viewer_id)
+
+    return render_template(
+        "utilisateur_profil_personne.html",
+        utilisateur=utilisateur,
+        jours=_fenetre_7_jours(user_id, projets_visibles_ids),
+        taches_en_cours=taches_repo.list_en_cours_pour_profil(user_id, viewer_id, limit=8),
+        posts_recents=posts_repo.list_feed_auteur(user_id, viewer_id, limit=8),
+    )
 
 
 @bp.route("")

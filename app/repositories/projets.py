@@ -354,6 +354,21 @@ def list_intervenants(projet_id: int) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def list_ids_visibles(user_id: int) -> set[int]:
+    """Ensemble des id de projets visibles par `user_id` (v_projet_visibilite,
+    voir schema.sql) — pour filtrer, côté appli, des données qui
+    référencent un projet sans passer par list_projets/search (page de
+    profil d'une personne, Lot 5 : le DailyLog/les tâches/les posts
+    d'un AUTRE utilisateur ne doivent montrer que les projets que LE
+    VISITEUR peut voir, pas ceux de la personne consultée — sinon un
+    profil deviendrait un détour pour voir les projets d'une équipe à
+    laquelle on n'appartient pas, IDOR, PROMPT_CORRECTIONS.md P0 #1)."""
+    rows = db.query_all(
+        "SELECT projet_id FROM v_projet_visibilite WHERE utilisateur_id = %s", (user_id,)
+    )
+    return {r["projet_id"] for r in rows}
+
+
 def user_can_view(projet_id: int, user_id: int) -> bool:
     """Vrai si `user_id` a le droit de voir le projet `projet_id`, selon
     exactement la même règle que la vue `v_projet_visibilite` (équipe,
