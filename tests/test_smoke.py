@@ -2171,6 +2171,30 @@ class SmokeTestCase(unittest.TestCase):
         self.assertIn("p.etat::text = ANY(%(etats)s)", source)
         self.assertIn("p.phase::text = ANY(%(phases)s)", source)
 
+    def test_list_projets_caste_lots_pour_le_filtre_exclusif(self):
+        """Régression P0 (2026-09-28, retour Fadhel) : "Tous les projets"
+        (et "Mes projets → Voir tout", qui pointe vers la même page) était
+        cassée à CHAQUE chargement — 500 systématique. Cause : le filtre
+        "lots" exclusif (Lot 3, 2026-09-27) subscriptait/mesurait
+        %(lots)s sans caster, et quand aucun lot n'est choisi, psycopg2
+        envoie un NULL non typé — `NULL[1]` et `array_length(NULL, 1)`
+        sont des erreurs de SYNTAXE Postgres (contrairement à `x =
+        ANY(NULL)`, qui infère son type via l'opérateur `=` et ne plante
+        pas). Reproduit et corrigé en conditions réelles sur une base
+        Postgres 16 de test (`NULL[1]` -> "syntax error at or near '['",
+        exactement le traceback fourni par Fadhel). On ne peut pas
+        exécuter du vrai SQL ici (psycopg2 indisponible dans ce bac à
+        sable de test), donc on verrouille le texte de la requête."""
+        import inspect
+
+        from app.repositories import projets as projets_repo
+
+        source = inspect.getsource(projets_repo.list_projets)
+        self.assertIn("%(lots)s::text[] IS NULL", source)
+        self.assertIn("array_length(%(lots)s::text[], 1)", source)
+        self.assertIn("(%(lots)s::text[])[1]", source)
+        self.assertIn("ANY(%(lots)s::text[])", source)
+
     def test_list_deadlines_exclut_les_projets_termines_ou_abandonnes(self):
         """PROMPT_CORRECTIONS.md P2 #23 : une tâche restée "en_cours" ou
         "bloque" sur un projet déjà "termine"/"abandonne" continuait

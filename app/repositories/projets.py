@@ -123,21 +123,33 @@ def list_projets(
           -- sélectionnés, on garde le comportement "contient au moins un
           -- de ces lots" (comme avant), le cas exclusif n'ayant été demandé
           -- que pour la sélection à un seul lot.
+          --
+          -- BUG CORRIGÉ (2026-09-28, retour Fadhel — 500 sur /projets à
+          -- CHAQUE chargement, "Tous les projets" et "Mes projets → Voir
+          -- tout" étant tous deux inutilisables) : quand aucun lot n'est
+          -- sélectionné, psycopg2 envoie %(lots)s comme un NULL non typé,
+          -- et `NULL[1]`/`array_length(NULL, 1)` sont des erreurs de
+          -- syntaxe côté Postgres — contrairement à `x = ANY(NULL)`
+          -- (etats/phases ci-dessus), qui infère le type via l'opérateur
+          -- `=` et ne plante pas. `NULL::text[]` lève l'ambiguïté de type
+          -- AVANT toute subscription/array_length, y compris pour la
+          -- branche jamais atteinte à l'exécution (l'erreur est levée à
+          -- l'analyse de la requête, pas au moment de l'évaluation du OR).
           AND (
-                %(lots)s IS NULL
+                %(lots)s::text[] IS NULL
                 OR (
-                     array_length(%(lots)s, 1) = 1
+                     array_length(%(lots)s::text[], 1) = 1
                      AND EXISTS (
                            SELECT 1 FROM projet_lot pl2
-                           WHERE pl2.projet_id = p.id AND pl2.lot_code = %(lots)s[1]
+                           WHERE pl2.projet_id = p.id AND pl2.lot_code = (%(lots)s::text[])[1]
                          )
                      AND (SELECT count(*) FROM projet_lot pl3 WHERE pl3.projet_id = p.id) = 1
                    )
                 OR (
-                     array_length(%(lots)s, 1) > 1
+                     array_length(%(lots)s::text[], 1) > 1
                      AND EXISTS (
                            SELECT 1 FROM projet_lot pl2
-                           WHERE pl2.projet_id = p.id AND pl2.lot_code = ANY(%(lots)s)
+                           WHERE pl2.projet_id = p.id AND pl2.lot_code = ANY(%(lots)s::text[])
                          )
                    )
               )
