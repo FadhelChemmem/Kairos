@@ -491,6 +491,18 @@ def ajouter_intervenant(projet_id: int):
         flash("Utilisateur invalide.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
 
+    # Un compte désactivé (actif=false) ne doit jamais pouvoir devenir
+    # intervenant — la liste utilisée par le formulaire (list_actifs) ne
+    # propose que des comptes actifs, mais rien ne vérifiait ce point côté
+    # serveur : une requête forgée avec l'id d'un compte désactivé passait
+    # jusqu'ici sans contrôle (seul le garde-fou RH,
+    # trg_check_projet_intervenant_role, était vérifié) (audit sécurité/
+    # qualité externe, 2026-09-28, item P1-3).
+    candidat = utilisateurs.get_utilisateur(utilisateur_id)
+    if candidat is None or not candidat["actif"]:
+        flash("Utilisateur invalide.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+
     try:
         projets.add_intervenant(projet_id, utilisateur_id, g.user["id"])
     except Exception as exc:

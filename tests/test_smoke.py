@@ -3336,6 +3336,29 @@ class TestControlesDAccesStricts(unittest.TestCase):
         self.assertEqual(resp.status_code, 404)
         add.assert_not_called()
 
+    def test_ajouter_intervenant_compte_desactive_nexecute_rien(self):
+        """Audit sécurité/qualité externe, 2026-09-28, item P1-3 : un compte
+        désactivé (actif=false) ne doit jamais pouvoir devenir intervenant,
+        même via une requête forgée directement sur cette route (la liste du
+        formulaire normal, list_actifs, ne propose que des comptes actifs —
+        mais rien ne le revérifiait côté serveur avant ce correctif)."""
+        resp, add = self._requete(
+            "post", "/projets/1/intervenants", "app.repositories.projets.add_intervenant",
+            {"utilisateur_id": "3"},
+            **{"app.repositories.utilisateurs.get_utilisateur": {**AUTRE_UTILISATEUR, "id": 3, "actif": False}},
+        )
+        self.assertEqual(resp.status_code, 302)
+        add.assert_not_called()
+
+    def test_ajouter_intervenant_compte_inexistant_nexecute_rien(self):
+        resp, add = self._requete(
+            "post", "/projets/1/intervenants", "app.repositories.projets.add_intervenant",
+            {"utilisateur_id": "999"},
+            **{"app.repositories.utilisateurs.get_utilisateur": None},
+        )
+        self.assertEqual(resp.status_code, 302)
+        add.assert_not_called()
+
     # --- "Rejoindre ce projet" / "rejoindre cette tâche" (retour Fadhel,
     # 2026-09-28) : ajout immédiat de SOI-MÊME comme intervenant, sans
     # validation d'un chef/co-chef — à la différence de ajouter_intervenant
