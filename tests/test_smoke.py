@@ -5104,12 +5104,35 @@ class TestPostsAutomatiquesEtProjet(SmokeBase):
 
     def test_changement_d_etat_de_tache_cree_un_post(self):
         from app.repositories import taches as taches_repo
-        cur = self._cur([{"etat": "en_cours"}])
+        # 2e fetchone : le projet n'était pas « En cours » (pas de bascule).
+        cur = self._cur([{"etat": "en_cours"}, None])
         self.assertTrue(taches_repo.set_etat(5, 1, "bloque", 1))
         posts_ = self._inserts_post(cur)
         self.assertEqual(len(posts_), 1)
         self.assertIn("'etat_tache'", posts_[0].args[0])
         self.assertEqual(posts_[0].args[1], (1, 5, 1, "En cours → Bloqué"))
+
+    def test_projet_suit_ses_taches_bloque_puis_en_cours(self):
+        """Lot 8 (décision Fadhel) : tâche bloquée → projet bloqué ; tâche
+        remise en cours ou créée → projet en cours ; post etat_projet."""
+        from app.repositories import taches as taches_repo
+        cur = self._cur([{"etat": "en_cours"}, {"id": 1}])
+        taches_repo.set_etat(5, 1, "bloque", 1)
+        maj = [c for c in cur.execute.call_args_list if c.args[0].startswith("UPDATE projet SET etat")]
+        self.assertEqual(maj[0].args[1], ("bloque", 1, "en_cours"))
+        self.assertEqual(self._inserts_post(cur)[-1].args[1], (1, 1, "En cours → Bloqué"))
+        cur = self._cur([{"etat": "bloque"}, {"id": 1}])
+        taches_repo.set_etat(5, 1, "en_cours", 1)
+        maj = [c for c in cur.execute.call_args_list if c.args[0].startswith("UPDATE projet SET etat")]
+        self.assertEqual(maj[0].args[1], ("en_cours", 1, "bloque"))
+        cur = self._cur([{"id": 9}, {"id": 1}])
+        taches_repo.create_tache(1, "Nouvelle", 1)
+        maj = [c for c in cur.execute.call_args_list if c.args[0].startswith("UPDATE projet SET etat")]
+        self.assertEqual(maj[0].args[1], ("en_cours", 1, "bloque"))
+        # Vérifié / Arrêt / Abandonné : le projet ne bouge pas.
+        cur = self._cur([{"etat": "en_cours"}])
+        taches_repo.set_etat(5, 1, "arret", 1)
+        self.assertFalse([c for c in cur.execute.call_args_list if c.args[0].startswith("UPDATE projet")])
 
     def test_meme_etat_pas_de_post_et_tache_inconnue_refusee(self):
         from app.repositories import taches as taches_repo

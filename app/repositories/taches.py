@@ -52,7 +52,10 @@ def list_taches_projet(projet_id: int) -> list[dict]:
           WHERE de.tache_id = t.id
         ) h ON true
         WHERE t.projet_id = %s
-        ORDER BY (t.etat NOT IN ('termine', 'abandonne')) DESC,
+        -- Tri (retour Fadhel, lot 8) : échéance la plus proche d'abord ; les
+        -- tâches closes (terminée, vérifiée, abandonnée) en bas — une tâche
+        -- « vérifiée » restait avant mêlée aux tâches en cours.
+        ORDER BY (t.etat IN ('termine', 'verifie', 'abandonne')),
                  t.date_echeance NULLS LAST,
                  t.id
     """
@@ -184,6 +187,36 @@ def list_deadlines(user_id: int, limit: int = 20) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def _suivre_etat_projet(cur, projet_id: int, etat_tache: str, current_user_id: int) -> None:
+    """État du projet qui suit ses tâches (décision Fadhel, lot 8) : une
+    tâche qui passe « Bloqué » bloque le projet ; une tâche créée ou remise
+    « En cours » le remet « En cours ». Seulement entre En cours et Bloqué :
+    un projet terminé ou abandonné n'est jamais rouvert par ce biais (il
+    est de toute façon figé, voir routes/projets.py:_refus_si_clos). Même
+    transaction que le changement de la tâche, avec le post automatique
+    habituel du changement d'état du projet."""
+    from ..utils import projet_etat_style
+
+    passage = {"bloque": ("en_cours", "bloque"), "en_cours": ("bloque", "en_cours")}.get(etat_tache)
+    if passage is None:
+        return
+    avant, apres = passage
+    cur.execute(
+        "UPDATE projet SET etat = %s WHERE id = %s AND etat = %s RETURNING id",
+        (apres, projet_id, avant),
+    )
+    if cur.fetchone() is None:
+        return
+    cur.execute(
+        """
+        INSERT INTO post (projet_id, auteur_id, type_code, contenu, evenement)
+        VALUES (%s, %s, 'information', %s, 'etat_projet')
+        """,
+        (projet_id, current_user_id,
+         f"{projet_etat_style(avant)['label']} → {projet_etat_style(apres)['label']}"),
+    )
+
+
 def create_tache(
     projet_id: int,
     titre: str,
@@ -223,6 +256,8 @@ def create_tache(
             """,
             (projet_id, tache_id, parent_post_id, current_user_id, titre),
         )
+        # Nouvelle tâche (En cours) : un projet bloqué repasse En cours.
+        _suivre_etat_projet(cur, projet_id, "en_cours", current_user_id)
         return tache_id
 
 
@@ -314,6 +349,7 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int) -> 
                 (projet_id, tache_id, current_user_id,
                  f"{tache_etat_style(avant['etat'])['label']} → {tache_etat_style(etat)['label']}"),
             )
+            _suivre_etat_projet(cur, projet_id, etat, current_user_id)
         return True
 
 
