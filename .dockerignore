@@ -46,3 +46,6 @@ venv/
 
 # Divers
 .DS_Store
+
+# Captures d'écran à la racine (voir .gitignore)
+/*.png

@@ -16,3 +16,8 @@ migration_sorties/
 identifiants*NE_PAS_COMMITER*.csv
 chronos_*.sql
 migration.sql
+
+# Captures d'écran de vérification posées à la racine par erreur (une
+# s'était retrouvée dans le dépôt et dans l'image Docker, audit du
+# 2026-09-29) — les images de l'appli sont dans app/static/img/.
+/*.png
