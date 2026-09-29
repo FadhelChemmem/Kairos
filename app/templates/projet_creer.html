@@ -19,7 +19,7 @@
     </div>
     <div class="form-row">
       <label for="code">Code (proposé, modifiable)</label>
-      <input type="text" id="code" name="code" value="{{ code_propose }}" required>
+      <input type="text" id="code" name="code" value="{{ code_propose }}" required pattern="[0-9]{5,}[PDXE]" title="Année sur 2 chiffres + numéro (3 chiffres ou plus) + lettre de la phase : P (APS/APD), D (DCE), X (EXE), E (DOE)">
     </div>
     <div class="form-row">
       <label for="phase">Phase</label>
@@ -93,12 +93,15 @@
       modifieManuellement = true;
     });
 
-    champPhase.addEventListener('change', function () {
+    // Phase liée choisie (lot 8) : même numéro, lettre de la phase.
+    var champLie = document.getElementById('phase_liee_id');
+    function recalculer() {
       if (modifieManuellement) return;
       // Changements de phase rapides : seule la réponse à la DERNIÈRE
       // demande est appliquée (audit n°2 : la plus lente gagnait).
       var numero = ++derniereDemande;
-      fetch(urlCodePropose + '?phase=' + encodeURIComponent(champPhase.value))
+      fetch(urlCodePropose + '?phase=' + encodeURIComponent(champPhase.value)
+            + (champLie && champLie.value ? '&phase_liee_id=' + encodeURIComponent(champLie.value) : ''))
         .then(function (r) { return r.json(); })
         .then(function (data) {
           if (numero !== derniereDemande || modifieManuellement) return;
@@ -111,7 +114,9 @@
           // valable, juste pour la phase précédente — l'utilisateur peut
           // toujours l'ajuster à la main.
         });
-    });
+    }
+    champPhase.addEventListener('change', recalculer);
+    if (champLie) champLie.addEventListener('change', recalculer);
   })();
 </script>
 {% endblock %}

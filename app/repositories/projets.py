@@ -547,7 +547,21 @@ def add_intervenant(projet_id: int, utilisateur_id: int, current_user_id: int) -
 PHASES_VALIDES = {"APS", "APD", "DCE", "EXE", "DOE"}
 
 
-def propose_code(phase: str, annee: int | None = None) -> str:
+LETTRE_PHASE = {"APS": "P", "APD": "P", "DCE": "D", "EXE": "X", "DOE": "E"}
+
+
+def code_valide(code: str, phase: str) -> bool:
+    """Format d'un code projet (retour Fadhel, lot 8 : « on ne peut pas
+    mettre 26001Z, Z ne veut rien dire ») : l'année sur 2 chiffres, un
+    numéro d'au moins 3 chiffres, puis la lettre de la phase (APS/APD → P,
+    DCE → D, EXE → X, DOE → E). Ex. 26001X pour un EXE."""
+    import re
+
+    lettre = LETTRE_PHASE.get(phase)
+    return bool(lettre) and re.fullmatch(rf"\d{{5,}}{lettre}", code or "") is not None
+
+
+def propose_code(phase: str, annee: int | None = None, phase_liee_code: str | None = None) -> str:
     """Propose le prochain code projet pour une année/phase données
     (ex. "26099X"), modifiable ensuite par l'utilisateur — voir spec :
     le code reste semi-automatique côté application, la base ne fait que
@@ -565,7 +579,18 @@ def propose_code(phase: str, annee: int | None = None) -> str:
 
     if phase not in PHASES_VALIDES:
         phase = "EXE"
-    lettre = {"APS": "P", "APD": "P", "DCE": "D", "EXE": "X", "DOE": "E"}[phase]
+    lettre = LETTRE_PHASE[phase]
+
+    # Projet lié (retour Fadhel, lot 8) : même code que la phase liée, avec
+    # la lettre de la nouvelle phase (26001D → 26001X) — s'il est libre ;
+    # sinon (ex. APS → APD, même lettre P) on retombe sur le numéro suivant.
+    if phase_liee_code:
+        m = re.fullmatch(r"(\d{5,})[A-Z]", phase_liee_code)
+        if m:
+            candidat = f"{m.group(1)}{lettre}"
+            if db.query_one("SELECT 1 AS pris FROM projet WHERE code = %s", (candidat,)) is None:
+                return candidat
+
     annee = annee or datetime.date.today().year
     prefixe = f"{annee % 100:02d}"
 

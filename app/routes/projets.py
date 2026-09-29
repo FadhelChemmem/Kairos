@@ -276,6 +276,14 @@ def creer():
 
         if not nom or not code:
             flash("Le code et le nom du projet sont obligatoires.", "error")
+        elif phase in PHASES and not projets.code_valide(code, phase):
+            flash(
+                f"Code invalide : l'année sur 2 chiffres, un numéro d'au moins 3 chiffres, puis la lettre "
+                f"de la phase {phase} ({projets.LETTRE_PHASE[phase]}) — ex. 26001{projets.LETTRE_PHASE[phase]}.",
+                "error",
+            )
+        elif len(nom) > 200:
+            flash("Nom du projet trop long (200 caractères au plus).", "error")
         elif date_debut_valide is False:
             flash("Date de début invalide.", "error")
         elif honoraires is False:
@@ -354,7 +362,14 @@ def api_code_propose():
     phase = request.args.get("phase", "EXE")
     if phase not in PHASES:
         return {"erreur": "Phase invalide."}, 400
-    return {"code": projets.propose_code(phase)}
+    # Phase liée choisie (lot 8) : même numéro que ce projet — seulement
+    # s'il est visible (pas de fuite du code d'un projet invisible).
+    code_lie = None
+    phase_liee_id = request.args.get("phase_liee_id", type=int)
+    if phase_liee_id and projets.user_can_view(phase_liee_id, g.user["id"]):
+        lie = projets.get_projet(phase_liee_id)
+        code_lie = lie["code"] if lie else None
+    return {"code": projets.propose_code(phase, phase_liee_code=code_lie)}
 
 
 @bp.route("/<int:projet_id>")

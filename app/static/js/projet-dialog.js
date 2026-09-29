@@ -41,10 +41,15 @@
       modifieManuellement = true;
     });
 
-    champPhase.addEventListener('change', function () {
+    // Phase liée choisie (lot 8) : le code reprend son numéro avec la
+    // lettre de la phase (26001D → 26001X), toujours modifiable.
+    var champLie = dialog.querySelector('#dialog-projet-phase-liee');
+    var recalculer = function () {
       if (modifieManuellement) return;
       var numero = ++derniereDemande;
-      fetch(urlCodePropose + '?phase=' + encodeURIComponent(champPhase.value))
+      var url = urlCodePropose + '?phase=' + encodeURIComponent(champPhase.value)
+        + (champLie && champLie.value ? '&phase_liee_id=' + encodeURIComponent(champLie.value) : '');
+      fetch(url)
         .then(function (r) { return r.json(); })
         .then(function (data) {
           if (numero !== derniereDemande || modifieManuellement) return;
@@ -56,6 +61,8 @@
           // Silencieux, comme sur la page "Nouveau projet" complète : le
           // code déjà affiché reste une proposition valable.
         });
-    });
+    };
+    champPhase.addEventListener('change', recalculer);
+    if (champLie) champLie.addEventListener('change', recalculer);
   }
 })();

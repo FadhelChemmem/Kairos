@@ -5917,5 +5917,36 @@ class TestLot8(SmokeBase):
         self.assertEqual(mocks["app.repositories.notifications.creer_pour_plusieurs"].call_args.args[0], [3])
 
 
+    def test_code_projet_verifie_lettre_de_la_phase(self):
+        from app.repositories.projets import code_valide
+        for code, phase, ok in (("26001X", "EXE", True), ("26001Z", "EXE", False), ("26001D", "EXE", False),
+                                ("261000X", "EXE", True), ("2601X", "EXE", False), ("26001P", "APD", True),
+                                ("26001p", "APS", False), ("x26001X", "EXE", False), ("26001E", "DOE", True)):
+            with self.subTest(code=code, phase=phase):
+                self.assertEqual(code_valide(code, phase), ok)
+        donnees = {"nom": "Tour B", "code": "26001Z", "phase": "EXE", "chef_projet_id": "1"}
+        _, mocks = self._requete("post", "/projets/nouveau", data=donnees,
+                                 espions=[("app.repositories.projets.create_projet", 77)])
+        mocks["app.repositories.projets.create_projet"].assert_not_called()
+
+    def test_code_propose_reprend_le_numero_de_la_phase_liee(self):
+        from unittest import mock as _mock
+        from app.repositories import projets as projets_repo
+        with _mock.patch("app.db.query_one", return_value=None):
+            self.assertEqual(projets_repo.propose_code("EXE", phase_liee_code="24091D"), "24091X")
+        with _mock.patch("app.db.query_one", return_value={"pris": 1}), \
+                _mock.patch("app.db.query_all", return_value=[{"code": "26007P"}]):
+            self.assertEqual(projets_repo.propose_code("APD", annee=2026, phase_liee_code="26001P"), "26008P")
+        # API : seulement si la phase liée est visible.
+        resp, mocks = self._requete("get", "/projets/code-propose?phase=EXE&phase_liee_id=2",
+                                    espions=[("app.repositories.projets.propose_code", "24091X")],
+                                    **{"app.repositories.projets.get_projet": {**PROJET, "code": "24091D"}})
+        self.assertEqual(mocks["app.repositories.projets.propose_code"].call_args.kwargs["phase_liee_code"], "24091D")
+        resp, mocks = self._requete("get", "/projets/code-propose?phase=EXE&phase_liee_id=2",
+                                    espions=[("app.repositories.projets.propose_code", "26100X")],
+                                    **{"app.repositories.projets.user_can_view": False})
+        self.assertIsNone(mocks["app.repositories.projets.propose_code"].call_args.kwargs["phase_liee_code"])
+
+
 if __name__ == "__main__":
     unittest.main()
