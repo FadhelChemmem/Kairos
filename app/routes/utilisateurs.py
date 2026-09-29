@@ -22,6 +22,7 @@ from ..repositories import projets as projets_repo
 from ..repositories import taches as taches_repo
 from ..repositories import utilisateurs as utilisateurs_repo
 from ..storage import delete_upload, is_image_filename, save_upload
+from .. import validation as v
 from ..utils import EQUIPE_CHOICES
 
 bp = Blueprint("utilisateurs", __name__, url_prefix="/utilisateurs")
@@ -53,6 +54,33 @@ def _enregistrer_avatar_si_fourni(user_id: int, current_user_id: int) -> None:
     except Exception:
         delete_upload(chemin)
         raise
+
+
+def _erreur_fiche(prenom, nom, email, telephone, poste, adresse, date_embauche, equipe_code,
+                  champs_perso) -> str | None:
+    """Contrôle commun des formulaires Créer / Modifier un utilisateur
+    (retour Fadhel, lot 8 : « vérifier toutes les saisies »). Avant, un
+    champ trop long, une équipe inconnue ou un email mal formé finissaient
+    en « Impossible de créer ce compte » (erreur Postgres) ou passaient."""
+    import datetime
+
+    embauche_future = None
+    if date_embauche and date_embauche > datetime.date.today() + datetime.timedelta(days=366):
+        embauche_future = "Date d'embauche invalide : plus d'un an dans le futur."
+    return v.premiere_erreur(
+        v.trop_long(prenom, v.MAX_PRENOM_NOM, "Prénom"),
+        v.trop_long(nom, v.MAX_PRENOM_NOM, "Nom"),
+        v.email_invalide(email),
+        v.telephone_invalide(telephone),
+        v.trop_long(poste, v.MAX_POSTE, "Poste"),
+        v.trop_long(adresse, v.MAX_ADRESSE, "Adresse"),
+        v.date_hors_bornes(date_embauche, "Date d'embauche"),
+        embauche_future,
+        "Équipe invalide." if equipe_code and equipe_code not in {c for c, _ in EQUIPE_CHOICES} else None,
+        f"{v.MAX_CHAMPS_PERSO} champs personnalisés au plus." if len(champs_perso) > v.MAX_CHAMPS_PERSO else None,
+        next((f"Champ personnalisé « {n[:30]} » : nom ou valeur trop long." for n, val in champs_perso.items()
+              if len(n) > v.MAX_CHAMP_PERSO_NOM or len(val) > v.MAX_CHAMP_PERSO_VALEUR), None),
+    )
 
 
 def _parser_date_embauche(date_str: str | None):
@@ -236,6 +264,9 @@ def creer():
             flash("Rôle invalide.", "error")
         elif date_embauche_valide is False:
             flash("Date d'embauche invalide.", "error")
+        elif erreur := _erreur_fiche(prenom, nom, email, telephone, poste, adresse,
+                                     date_embauche_valide, equipe_code, champs_perso):
+            flash(erreur, "error")
         else:
             try:
                 # Pas de mot de passe défini ici (retour Fadhel, 2026-09-21 :
@@ -317,6 +348,14 @@ def mon_profil():
         telephone = request.form.get("telephone", "").strip() or None
         poste = request.form.get("poste", "").strip() or None
         adresse = request.form.get("adresse", "").strip() or None
+        erreur = v.premiere_erreur(
+            v.telephone_invalide(telephone),
+            v.trop_long(poste, v.MAX_POSTE, "Poste"),
+            v.trop_long(adresse, v.MAX_ADRESSE, "Adresse"),
+        )
+        if erreur:
+            flash(erreur, "error")
+            return redirect(url_for("utilisateurs.mon_profil"))
         utilisateurs_repo.update_profil(
             user_id, telephone=telephone, poste=poste, adresse=adresse,
             current_user_id=user_id,
@@ -448,6 +487,9 @@ def fiche(user_id: int):
             flash("Prénom, nom et email sont obligatoires.", "error")
         elif date_embauche_valide is False:
             flash("Date d'embauche invalide.", "error")
+        elif erreur := _erreur_fiche(prenom, nom, email, telephone, poste, adresse,
+                                     date_embauche_valide, equipe_code, champs_perso):
+            flash(erreur, "error")
         else:
             try:
                 utilisateurs_repo.update_utilisateur_complet(

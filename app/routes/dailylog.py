@@ -78,7 +78,13 @@ def formulaire():
         # Rien d'enregistré ce jour : projets en cours proposés par défaut
         # (lignes "projet seul" du catalogue), répartis à parts égales par
         # la page (minutes = None).
-        defauts = [m for m in suggestions["mine"] if m["tache_id"] is None]
+        # Pas un projet qui n'a pas encore commencé ce jour-là (lot 8 : la
+        # saisie serait refusée à l'enregistrement).
+        def commence(projet_id):
+            projet = projets_repo.get_projet(projet_id)
+            return not (projet and projet.get("date_debut") and projet["date_debut"] > date)
+
+        defauts = [m for m in suggestions["mine"] if m["tache_id"] is None and commence(m["projet_id"])]
         lignes_initiales = [
             {"projet_id": p["projet_id"], "tache_id": None, "code": p.get("code"), "nom": p["nom"],
              "tache_titre": None, "minutes": None}
@@ -177,7 +183,7 @@ def enregistrer():
     # Projets clos avant ce jour (décision Fadhel, lot 7) : plus d'heures
     # après leur date de clôture — toute la saisie est alors refusée.
     clotures = {}
-    apres_cloture = []
+    hors_periode = []
     for pid, tid, h in zip(projet_ids, tache_ids, heures_list):
         # Ids non numériques (PROMPT_CORRECTIONS.md P1 #10) : `int(pid)`
         # sur une valeur trafiquée plantait auparavant en 500 (ValueError
@@ -221,16 +227,21 @@ def enregistrer():
             refusees.add(cle)
             continue
 
+        # Pas d'heures avant le début du projet (lot 8) ni après sa clôture.
         if projet_id not in clotures:
             projet = projets_repo.get_projet(projet_id)
+            clos = projet and projet["etat"] in projets_repo.ETATS_CLOS and projet.get("date_cloture")
             clotures[projet_id] = (
-                (projet.get("date_cloture"), f"{projet['code']}_{projet['nom']}")
-                if projet and projet["etat"] in projets_repo.ETATS_CLOS and projet.get("date_cloture")
-                else None
+                projet.get("date_debut") if projet else None,
+                projet.get("date_cloture") if clos else None,
+                f"{projet['code']}_{projet['nom']}" if projet else "",
             )
-        if clotures[projet_id] and date > clotures[projet_id][0]:
-            date_cloture, libelle = clotures[projet_id]
-            apres_cloture.append(f"{libelle} (clos le {date_cloture.strftime('%d/%m/%Y')})")
+        debut, cloture, libelle = clotures[projet_id]
+        if cloture and date > cloture:
+            hors_periode.append(f"{libelle} (clos le {cloture.strftime('%d/%m/%Y')})")
+            continue
+        if debut and date < debut:
+            hors_periode.append(f"{libelle} (commence le {debut.strftime('%d/%m/%Y')})")
             continue
 
         # La tâche doit appartenir au projet indiqué sur la MÊME ligne —
@@ -248,10 +259,10 @@ def enregistrer():
             "heures": heures,
         })
 
-    if apres_cloture:
+    if hors_periode:
         flash(
-            "Rien n'a été enregistré : on ne peut plus saisir d'heures après la clôture d'un projet — "
-            + ", ".join(dict.fromkeys(apres_cloture)) + ". Retirez cette ligne de la journée.",
+            "Rien n'a été enregistré : pas d'heures avant le début d'un projet ni après sa clôture — "
+            + ", ".join(dict.fromkeys(hors_periode)) + ". Retirez cette ligne de la journée.",
             "error",
         )
         return redirect(url_for("dailylog.formulaire", date=date_str))

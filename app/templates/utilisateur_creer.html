@@ -20,11 +20,11 @@
     <div class="form-row-2">
       <div class="form-row">
         <label for="prenom">Prénom</label>
-        <input type="text" id="prenom" name="prenom" value="{{ f.get('prenom', '') }}" placeholder="Foulen" required autofocus>
+        <input type="text" id="prenom" name="prenom" maxlength="100" value="{{ f.get('prenom', '') }}" placeholder="Foulen" required autofocus>
       </div>
       <div class="form-row">
         <label for="nom">Nom</label>
-        <input type="text" id="nom" name="nom" value="{{ f.get('nom', '') }}" placeholder="Ben Foulen" required>
+        <input type="text" id="nom" name="nom" maxlength="100" value="{{ f.get('nom', '') }}" placeholder="Ben Foulen" required>
       </div>
     </div>
     <div class="form-row">
@@ -33,16 +33,16 @@
     </div>
     <div class="form-row">
       <label for="email">Email <span style="font-weight:400; color:var(--text-faint);">— identifiant de connexion</span></label>
-      <input type="email" id="email" name="email" value="{{ f.get('email', '') }}" placeholder="foulen@gmail.com" required>
+      <input type="email" id="email" name="email" maxlength="255" value="{{ f.get('email', '') }}" placeholder="foulen@gmail.com" required>
     </div>
     <div class="form-row">
       <label for="telephone">Téléphone</label>
-      <input type="tel" id="telephone" name="telephone" value="{{ f.get('telephone', '') }}" autocomplete="off" placeholder="55 555 555">
+      <input type="tel" id="telephone" name="telephone" maxlength="30" value="{{ f.get('telephone', '') }}" autocomplete="off" placeholder="55 555 555">
     </div>
     <div class="form-row-2">
       <div class="form-row">
         <label for="poste">Poste</label>
-        <input type="text" id="poste" name="poste" value="{{ f.get('poste', '') }}" autocomplete="off" placeholder="Ingénieur, Technicien…">
+        <input type="text" id="poste" name="poste" maxlength="150" value="{{ f.get('poste', '') }}" autocomplete="off" placeholder="Ingénieur, Technicien…">
       </div>
       <div class="form-row">
         <label for="date_embauche">Date d'embauche</label>

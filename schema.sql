@@ -829,6 +829,41 @@ END $$;
 
 
 -- ---------------------------------------------------------------------
+-- Dates ordonnées et honoraires positifs (migration 0012, lot 8).
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_check_dates_projet()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.date_fin IS NOT NULL AND NEW.date_debut IS NOT NULL AND NEW.date_fin < NEW.date_debut THEN
+    RAISE EXCEPTION 'Date de fin du projet (%) antérieure à sa date de début (%).', NEW.date_fin, NEW.date_debut;
+  END IF;
+  IF NEW.honoraires IS NOT NULL AND NEW.honoraires < 0 THEN
+    RAISE EXCEPTION 'Honoraires négatifs refusés.';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trg_check_dates_projet ON projet;
+CREATE TRIGGER trg_check_dates_projet
+  BEFORE INSERT OR UPDATE OF date_debut, date_fin, honoraires ON projet
+  FOR EACH ROW EXECUTE FUNCTION fn_check_dates_projet();
+
+CREATE OR REPLACE FUNCTION fn_check_dates_tache()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.date_echeance IS NOT NULL AND NEW.date_debut IS NOT NULL AND NEW.date_echeance < NEW.date_debut THEN
+    RAISE EXCEPTION 'Échéance de la tâche (%) antérieure à sa date de début (%).', NEW.date_echeance, NEW.date_debut;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trg_check_dates_tache ON tache;
+CREATE TRIGGER trg_check_dates_tache
+  BEFORE INSERT OR UPDATE OF date_debut, date_echeance ON tache
+  FOR EACH ROW EXECUTE FUNCTION fn_check_dates_tache();
+
+
+-- ---------------------------------------------------------------------
 -- Migrations déjà intégrées à ce fichier : une base créée depuis
 -- schema.sql les marque comme appliquées, pour que le premier
 -- `flask migrer` ne les rejoue pas (voir app/__init__.py). À compléter à
@@ -849,5 +884,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0008_dailylog_jour'),
   ('0009_fil_information_commentaires'),
   ('0010_projet_client'),
-  ('0011_roles_et_projets_clos')
+  ('0011_roles_et_projets_clos'),
+  ('0012_controle_des_dates')
 ON CONFLICT (version) DO NOTHING;

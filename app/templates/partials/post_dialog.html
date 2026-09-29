@@ -103,14 +103,17 @@
         <input type="hidden" name="parent_post_id" value="">
         <div class="form-row">
           <label for="dialog-titre-tache">Titre de la tâche</label>
-          <input type="text" id="dialog-titre-tache" name="titre" placeholder="Ex. Note de calcul EXE lot GO" required>
+          <input type="text" id="dialog-titre-tache" name="titre" maxlength="255" placeholder="Ex. Note de calcul EXE lot GO" required>
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
           <div class="form-row">
             <label for="dialog-echeance-tache">Échéance</label>
             {# Préremplie à aujourd'hui (retour Fadhel, 2026-09-28) — l'utilisateur
                reste libre de la changer ou de la vider. #}
-            <input type="date" id="dialog-echeance-tache" name="date_echeance" value="{{ today().isoformat() }}">
+            {# Pas avant le début du projet (lot 8 — vérifié aussi par le
+               serveur) : borne connue quand le projet est celui de la page. #}
+            {% set debut_projet = projet.date_debut if (projet_id is not none and projet is defined and projet and projet.date_debut) else none %}
+            <input type="date" id="dialog-echeance-tache" name="date_echeance" value="{{ [today(), debut_projet]|select|max if debut_projet else today() }}"{% if debut_projet %} min="{{ debut_projet.isoformat() }}"{% endif %}>
           </div>
           <div class="form-row">
             <label for="dialog-type-deadline-tache">Type de deadline</label>
@@ -145,7 +148,7 @@
 
         <div class="form-row">
           <label for="dialog-contenu-information">Information</label>
-          <textarea id="dialog-contenu-information" name="contenu" required></textarea>
+          <textarea id="dialog-contenu-information" name="contenu" maxlength="10000" required></textarea>
         </div>
         {% if projet_id is none and sans_projet_possible %}
         <div class="form-row" data-post-dialog-equipes style="display:none;">
@@ -173,7 +176,7 @@
         </div>
         <div class="form-row">
           <label for="dialog-lien-information">Lien <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
-          <input type="text" id="dialog-lien-information" name="lien" placeholder="\\NAS\Projets\...">
+          <input type="text" id="dialog-lien-information" name="lien" maxlength="2000" placeholder="\\NAS\Projets\...">
         </div>
         <div class="form-row" style="margin-bottom:0;">
           <label>Pièce jointe <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
@@ -202,11 +205,11 @@
 
         <div class="form-row">
           <label for="dialog-objet-requete">Objet de la requête</label>
-          <input type="text" id="dialog-objet-requete" name="objet" placeholder="Ex. Demande de plans mis à jour" required>
+          <input type="text" id="dialog-objet-requete" name="objet" maxlength="200" placeholder="Ex. Demande de plans mis à jour" required>
         </div>
         <div class="form-row">
           <label for="dialog-description-requete">Description <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
-          <textarea id="dialog-description-requete" name="contenu" placeholder="Détaillez la demande…"></textarea>
+          <textarea id="dialog-description-requete" name="contenu" maxlength="10000" placeholder="Détaillez la demande…"></textarea>
         </div>
         <div class="form-row">
           <label for="dialog-mentions-requete">Personnes taguées <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
@@ -216,7 +219,7 @@
         </div>
         <div class="form-row">
           <label for="dialog-lien-requete">Lien <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
-          <input type="text" id="dialog-lien-requete" name="lien" placeholder="\\NAS\Projets\...">
+          <input type="text" id="dialog-lien-requete" name="lien" maxlength="2000" placeholder="\\NAS\Projets\...">
         </div>
         <div class="form-row" style="margin-bottom:0;">
           <label>Pièce jointe <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>

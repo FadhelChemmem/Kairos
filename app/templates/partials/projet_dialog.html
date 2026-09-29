@@ -28,7 +28,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-row">
       <label for="dialog-projet-nom">Nom du projet</label>
-      <input type="text" id="dialog-projet-nom" name="nom" placeholder="Ex. Tour Meridian" required>
+      <input type="text" id="dialog-projet-nom" name="nom" maxlength="200" placeholder="Ex. Tour Meridian" required>
     </div>
     <div class="form-row">
       <label for="dialog-projet-code">Code (proposé, modifiable)</label>

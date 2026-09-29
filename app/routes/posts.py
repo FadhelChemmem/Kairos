@@ -11,6 +11,7 @@ from ..repositories import notifications as notifications_repo
 from ..repositories import posts as posts_repo
 from ..repositories import projets as projets_repo
 from ..repositories import utilisateurs as utilisateurs_repo
+from .. import validation as v
 from ..storage import delete_upload, save_upload
 from ..utils import EQUIPE_CHOICES, is_lien_valide, redirect_vers_next
 
@@ -89,6 +90,15 @@ def creer():
 
     if type_code not in TYPES_VALIDES or not contenu or (not projet_id and type_code != "information"):
         flash("Message invalide.", "error")
+        return _safe_redirect()
+    # Longueurs (lot 8) : vérifiées avant tout enregistrement de fichier.
+    erreur = v.premiere_erreur(
+        v.trop_long(objet, v.MAX_OBJET_REQUETE, "Objet de la requête"),
+        v.trop_long(contenu, v.MAX_CONTENU_POST, "Texte du post"),
+        v.trop_long(request.form.get("lien", "").strip(), v.MAX_LIEN, "Lien"),
+    )
+    if erreur:
+        flash(erreur, "error")
         return _safe_redirect()
     if g.user["role"] == "client" and (type_code not in TYPES_CLIENT or not projet_id):
         flash("Vous pouvez envoyer des Requêtes et des Informations sur les projets de votre équipe.", "error")
@@ -248,6 +258,9 @@ def commenter(post_id: int):
     if not contenu:
         flash("Le commentaire ne peut pas être vide.", "error")
         return _safe_redirect()
+    if erreur := v.trop_long(contenu, v.MAX_COMMENTAIRE, "Commentaire"):
+        flash(erreur, "error")
+        return _safe_redirect()
 
     # Ancien champ "@ Taguer" séparé (avant le 2026-09-29) — encore accepté.
     mentionne_user_id = request.form.get("mentionne_user_id", type=int)
@@ -339,6 +352,9 @@ def modifier_commentaire(commentaire_id: int):
     contenu = request.form.get("contenu", "").strip()
     if not contenu:
         flash("Le commentaire ne peut pas être vide.", "error")
+        return _safe_redirect()
+    if erreur := v.trop_long(contenu, v.MAX_COMMENTAIRE, "Commentaire"):
+        flash(erreur, "error")
         return _safe_redirect()
     post = {"id": commentaire["post_id"], "projet_id": commentaire["projet_id"]}
     nouveaux = posts_repo.modifier_commentaire(commentaire_id, g.user["id"], contenu, _tags_du_texte(post, contenu))

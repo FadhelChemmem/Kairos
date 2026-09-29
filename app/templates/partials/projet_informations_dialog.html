@@ -28,7 +28,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-row">
       <label for="dialog-info-nom">Nom du projet</label>
-      <input type="text" id="dialog-info-nom" name="nom" value="{{ projet.nom }}" required>
+      <input type="text" id="dialog-info-nom" name="nom" maxlength="200" value="{{ projet.nom }}" required>
     </div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
       <div class="form-row">
@@ -73,7 +73,7 @@
       </div>
       <div class="form-row">
         <label for="dialog-info-fin">Date de fin</label>
-        <input type="date" id="dialog-info-fin" name="date_fin" value="{{ projet.date_fin.isoformat() if projet.date_fin else '' }}">
+        <input type="date" id="dialog-info-fin" name="date_fin" value="{{ projet.date_fin.isoformat() if projet.date_fin else '' }}"{% if projet.date_debut %} min="{{ projet.date_debut.isoformat() }}"{% endif %}>
       </div>
     </div>
     <div class="form-row" style="margin-bottom:0;">

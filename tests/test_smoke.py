@@ -383,6 +383,7 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.taches.user_est_intervenant": False,
             "app.repositories.taches.set_etat": True,
             "app.repositories.taches.close_tache": 100,
+            "app.repositories.taches.premiere_date": None,
             "app.repositories.posts.list_feed_mes_projets": FEED,
             "app.repositories.posts.list_feed_projet": FEED,
             "app.repositories.posts.get_post": POST_POUR_ACCES,
@@ -5946,6 +5947,78 @@ class TestLot8(SmokeBase):
                                     espions=[("app.repositories.projets.propose_code", "26100X")],
                                     **{"app.repositories.projets.user_can_view": False})
         self.assertIsNone(mocks["app.repositories.projets.propose_code"].call_args.kwargs["phase_liee_code"])
+
+
+    # --- Contrôle des saisies ----------------------------------------------
+    def _refuse(self, chemin, data, espion, **overrides):
+        _, mocks = self._requete("post", chemin, data=data, espions=[(espion, 1)], **overrides)
+        return not mocks[espion].called
+
+    def test_taches_dates_coherentes_avec_le_projet(self):
+        projet = {**PROJET, "date_debut": datetime.date(2026, 3, 1)}
+        cas = [
+            ({"titre": "T", "date_echeance": "2026-02-15"}, True),               # avant le début du projet
+            ({"titre": "T", "date_debut": "2026-02-20"}, True),
+            ({"titre": "T", "date_debut": "2026-04-10", "date_echeance": "2026-04-01"}, True),  # échéance < début
+            ({"titre": "T", "date_echeance": "0202-04-01"}, True),              # faute de frappe
+            ({"titre": "x" * 256}, True),
+            ({"titre": "T", "date_debut": "2026-03-01", "date_echeance": "2026-04-01"}, False),
+        ]
+        for data, refuse in cas:
+            with self.subTest(data=str(data)[:60]):
+                self.assertEqual(self._refuse("/projets/1/taches", data, "app.repositories.taches.create_tache",
+                                              **{"app.repositories.projets.get_projet": projet}), refuse)
+
+    def test_informations_du_projet_dates_coherentes(self):
+        base = {"nom": "Tour", "etat": "en_cours"}
+        cas = [
+            ({**base, "date_debut": "2026-03-01", "date_fin": "2026-02-01"}, None, True),
+            ({**base, "date_debut": "2026-05-01"}, datetime.date(2026, 4, 1), True),   # une tâche avant
+            ({**base, "date_debut": "2026-03-01", "date_fin": "2026-12-31"}, datetime.date(2026, 4, 1), False),
+            ({**base, "nom": "x" * 201}, None, True),
+        ]
+        for data, premiere, refuse in cas:
+            with self.subTest(data=str(data)[:60]):
+                self.assertEqual(self._refuse("/projets/1/informations", data, "app.repositories.projets.update_projet",
+                                              **{"app.repositories.taches.premiere_date": premiere}), refuse)
+
+    def test_creation_de_projet_longueurs_et_dates(self):
+        base = {"nom": "Tour B", "code": "26100X", "phase": "EXE", "chef_projet_id": "1"}
+        for data, refuse in (({**base, "nom": "x" * 201}, True), ({**base, "client": "c" * 151}, True),
+                             ({**base, "date_debut": "20266-01-01"}, True), ({**base, "date_debut": "1900-01-01"}, True),
+                             (base, False)):
+            with self.subTest(data=str(data)[:60]):
+                self.assertEqual(self._refuse("/projets/nouveau", data, "app.repositories.projets.create_projet"), refuse)
+
+    def test_posts_et_commentaires_longueurs(self):
+        self.assertTrue(self._refuse("/posts", {"projet_id": "1", "type_code": "requete", "contenu": "x" * 10001},
+                                     "app.repositories.posts.create_post"))
+        self.assertTrue(self._refuse("/posts", {"projet_id": "1", "type_code": "requete", "objet": "o" * 201, "contenu": "x"},
+                                     "app.repositories.posts.create_post"))
+        self.assertTrue(self._refuse("/posts/1/commenter", {"contenu": "x" * 5001}, "app.repositories.posts.add_comment",
+                                     **{"app.repositories.posts.peut_voir": True}))
+        self.assertFalse(self._refuse("/posts", {"projet_id": "1", "type_code": "requete", "contenu": "x" * 10000},
+                                      "app.repositories.posts.create_post"))
+
+    def test_daily_log_refuse_avant_le_debut_du_projet(self):
+        projet = {**PROJET, "date_debut": datetime.date(2026, 9, 20)}
+        base = {"duree": "8", "ligne_projet_id": ["1"], "ligne_tache_id": [""], "ligne_heures": ["8"]}
+        self.assertTrue(self._refuse("/dailylog", {**base, "date": "2026-09-15"}, "app.repositories.dailylog.remplacer_jour",
+                                     **{"app.repositories.projets.get_projet": projet}))
+        self.assertFalse(self._refuse("/dailylog", {**base, "date": "2026-09-21"}, "app.repositories.dailylog.remplacer_jour",
+                                      **{"app.repositories.projets.get_projet": projet}))
+
+    def test_fiche_utilisateur_saisies_verifiees(self):
+        base = {"prenom": "Ali", "nom": "Ben", "email": "ali@midgard.tn", "role": "intervenant"}
+        cas = [({**base, "email": "pas-un-email"}, True), ({**base, "equipe_code": "INCONNUE"}, True),
+               ({**base, "prenom": "x" * 101}, True), ({**base, "telephone": "abc"}, True),
+               ({**base, "date_embauche": "1850-01-01"}, True), ({**base, "telephone": "+216 55 555 555"}, False)]
+        for data, refuse in cas:
+            with self.subTest(data=str(data)[-40:]):
+                self.assertEqual(self._refuse("/utilisateurs/nouveau", data,
+                                              "app.repositories.utilisateurs.create_utilisateur"), refuse)
+                self.assertEqual(self._refuse("/utilisateurs/3", data,
+                                              "app.repositories.utilisateurs.update_utilisateur_complet"), refuse)
 
 
 if __name__ == "__main__":

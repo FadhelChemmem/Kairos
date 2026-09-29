@@ -62,6 +62,16 @@ def list_taches_projet(projet_id: int) -> list[dict]:
     return db.query_all(sql, (projet_id,))
 
 
+def premiere_date(projet_id: int):
+    """Plus ancienne date (début ou échéance) des tâches du projet, ou None
+    — la date de début du projet ne peut pas la dépasser (lot 8)."""
+    row = db.query_one(
+        "SELECT LEAST(min(date_debut), min(date_echeance)) AS d FROM tache WHERE projet_id = %s",
+        (projet_id,),
+    )
+    return row["d"] if row else None
+
+
 def get_tache(tache_id: int) -> dict | None:
     sql = """
         SELECT t.*, p.nom AS projet_nom, p.code AS projet_code, p.etat AS projet_etat,

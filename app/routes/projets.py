@@ -8,6 +8,7 @@ from flask import Blueprint, abort, current_app, flash, g, redirect, render_temp
 from ..auth import login_required
 from ..repositories import notifications as notifications_repo
 from ..repositories import posts, projets, taches, utilisateurs
+from .. import validation as v
 from ..utils import parser_montant
 
 bp = Blueprint("projets", __name__, url_prefix="/projets")
@@ -81,7 +82,9 @@ def _client_et_honoraires():
     """Champs Client et Honoraires d'un projet (migration 0010) : client
     "IPCO" par défaut s'il est laissé vide ; honoraires optionnels
     (montant à la française) — False si la saisie est invalide."""
-    client = (request.form.get("client") or "").strip()[:150] or "IPCO"
+    # Plus de troncature silencieuse (lot 8) : une saisie trop longue est
+    # refusée avec un message (voir les routes).
+    client = (request.form.get("client") or "").strip() or "IPCO"
     try:
         honoraires = parser_montant(request.form.get("honoraires"))
     except ValueError:
@@ -282,8 +285,12 @@ def creer():
                 f"de la phase {phase} ({projets.LETTRE_PHASE[phase]}) — ex. 26001{projets.LETTRE_PHASE[phase]}.",
                 "error",
             )
-        elif len(nom) > 200:
-            flash("Nom du projet trop long (200 caractères au plus).", "error")
+        elif erreur := v.premiere_erreur(
+            v.trop_long(nom, v.MAX_NOM_PROJET, "Nom du projet"),
+            v.trop_long(client, v.MAX_CLIENT, "Client"),
+            v.date_hors_bornes(date_debut_valide or None, "Date de début"),
+        ):
+            flash(erreur, "error")
         elif date_debut_valide is False:
             flash("Date de début invalide.", "error")
         elif honoraires is False:
@@ -461,6 +468,11 @@ def editer_informations(projet_id: int):
     if not nom:
         flash("Le nom du projet est obligatoire.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
+    erreur = v.premiere_erreur(v.trop_long(nom, v.MAX_NOM_PROJET, "Nom du projet"),
+                               v.trop_long(client, v.MAX_CLIENT, "Client"))
+    if erreur:
+        flash(erreur, "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
     if etat not in ETATS_PROJET_VALIDES:
         flash("État invalide.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
@@ -473,6 +485,25 @@ def editer_informations(projet_id: int):
         date_fin_valide = _parser_date_tache(date_fin)
     except ValueError:
         flash("Date invalide.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+    # Dates cohérentes (retour Fadhel, lot 8) : années plausibles, fin
+    # prévue pas avant le début, et pas de début après une tâche déjà
+    # datée du projet.
+    premiere_tache = taches.premiere_date(projet_id) if date_debut_valide else None
+    tache_avant_debut = None
+    if premiere_tache and premiere_tache < date_debut_valide:
+        tache_avant_debut = (
+            f"Date de début impossible : une tâche du projet commence ou est due le "
+            f"{premiere_tache.strftime('%d/%m/%Y')}, avant le {date_debut_valide.strftime('%d/%m/%Y')}."
+        )
+    erreur = v.premiere_erreur(
+        v.date_hors_bornes(date_debut_valide, "Date de début"),
+        v.date_hors_bornes(date_fin_valide, "Date de fin"),
+        v.ordre_dates(date_debut_valide, date_fin_valide, "la date de début", "Date de fin"),
+        tache_avant_debut,
+    )
+    if erreur:
+        flash(erreur, "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
 
     # "Phase liée" doit rester un projet réellement visible par
@@ -514,6 +545,9 @@ def creer_tache(projet_id: int):
     if not titre:
         flash("Le titre de la tâche est obligatoire.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
+    if erreur := v.trop_long(titre, v.MAX_TITRE_TACHE, "Titre de la tâche"):
+        flash(erreur, "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
 
     type_deadline = request.form.get("type_deadline", "rendu_client")
     if type_deadline not in TYPE_DEADLINE_VALIDES:
@@ -525,6 +559,20 @@ def creer_tache(projet_id: int):
         date_echeance = _parser_date_tache(request.form.get("date_echeance"))
     except ValueError:
         flash("Date de début ou d'échéance invalide.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+    # Dates cohérentes (retour Fadhel, lot 8) : pas de tâche antérieure au
+    # début du projet, pas d'échéance avant le début de la tâche.
+    projet = projets.get_projet(projet_id)
+    debut_projet = projet.get("date_debut") if projet else None
+    erreur = v.premiere_erreur(
+        v.date_hors_bornes(date_debut, "Date de début"),
+        v.date_hors_bornes(date_echeance, "Échéance"),
+        v.ordre_dates(date_debut, date_echeance, "la date de début de la tâche", "Échéance"),
+        v.ordre_dates(debut_projet, date_debut, "la date de début du projet", "Date de début de la tâche"),
+        v.ordre_dates(debut_projet, date_echeance, "la date de début du projet", "Échéance"),
+    )
+    if erreur:
+        flash(erreur, "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
 
     # Seules des personnes qui voient déjà le projet peuvent y être
@@ -674,7 +722,10 @@ def cloturer_tache(projet_id: int, tache_id: int):
     if type_code not in TYPES_CLOTURE_VALIDES:
         flash("Tag de clôture invalide.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
-    contenu = request.form.get("contenu") or None
+    contenu = (request.form.get("contenu") or "").strip() or None
+    if erreur := v.trop_long(contenu, v.MAX_CONTENU_POST, "Message de clôture"):
+        flash(erreur, "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
 
     if taches.close_tache(tache_id, projet_id, g.user["id"], type_code, contenu) is None:
         flash("Impossible de clôturer cette tâche (introuvable sur ce projet, ou déjà clôturée).", "error")

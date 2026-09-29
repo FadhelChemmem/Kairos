@@ -17,11 +17,11 @@
     <div class="form-row-2">
       <div class="form-row">
         <label for="prenom">Prénom</label>
-        <input type="text" id="prenom" name="prenom" value="{{ utilisateur.prenom }}" required autofocus>
+        <input type="text" id="prenom" name="prenom" maxlength="100" value="{{ utilisateur.prenom }}" required autofocus>
       </div>
       <div class="form-row">
         <label for="nom">Nom</label>
-        <input type="text" id="nom" name="nom" value="{{ utilisateur.nom }}" required>
+        <input type="text" id="nom" name="nom" maxlength="100" value="{{ utilisateur.nom }}" required>
       </div>
     </div>
     <div class="form-row">
@@ -30,16 +30,16 @@
     </div>
     <div class="form-row">
       <label for="email">Email <span style="font-weight:400; color:var(--text-faint);">— identifiant de connexion</span></label>
-      <input type="email" id="email" name="email" value="{{ utilisateur.email }}" required>
+      <input type="email" id="email" name="email" maxlength="255" value="{{ utilisateur.email }}" required>
     </div>
     <div class="form-row">
       <label for="telephone">Téléphone</label>
-      <input type="tel" id="telephone" name="telephone" autocomplete="off" value="{{ utilisateur.telephone or '' }}" placeholder="55 555 555">
+      <input type="tel" id="telephone" name="telephone" maxlength="30" autocomplete="off" value="{{ utilisateur.telephone or '' }}" placeholder="55 555 555">
     </div>
     <div class="form-row-2">
       <div class="form-row">
         <label for="poste">Poste</label>
-        <input type="text" id="poste" name="poste" autocomplete="off" value="{{ utilisateur.poste or '' }}" placeholder="Ingénieur, Technicien…">
+        <input type="text" id="poste" name="poste" maxlength="150" autocomplete="off" value="{{ utilisateur.poste or '' }}" placeholder="Ingénieur, Technicien…">
       </div>
       <div class="form-row">
         <label for="date_embauche">Date d'embauche</label>
