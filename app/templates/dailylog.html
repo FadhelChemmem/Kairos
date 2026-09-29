@@ -256,8 +256,46 @@
       .sort(function (a, b) { return b.rang - a.rang; });
     return jamais.concat(apres);
   }
+  // Invariants (bug remonté par Fadhel le 2026-09-29 : cliquer un peu
+  // partout sur une ligne la mettait à 8 h alors que la ligne d'avant avait
+  // déjà 4 h — 12 h pour une journée de 8 h) :
+  // - au plus n-1 projets "touchés" : après le retrait ou la
+  //   désélection d'un projet, tous les autres pouvaient être touchés, il
+  //   n'y avait plus de réserve et le projet réglé croyait être seul ;
+  //   le dernier touché redevient alors la réserve ;
+  // - le total des projets sélectionnés fait toujours la journée.
+  function normaliser() {
+    var sel = selected();
+    if (sel.length === 1) sel[0].rang = null;
+    var touches = sel.filter(function (l) { return l.rang != null; });
+    if (sel.length >= 2 && touches.length === sel.length) {
+      touches.sort(function (a, b) { return b.rang - a.rang; })[0].rang = null;
+    }
+    equilibrer();
+  }
+  function equilibrer() {
+    var sel = selected();
+    if (!sel.length || state.absent) return;
+    var ecart = T() - somme(sel);
+    if (!ecart) return;
+    // Rendu/pris d'abord sur la réserve (projet non touché, le plus bas),
+    // puis sur les projets touchés, du plus récent au plus ancien.
+    var ordre = sel.filter(function (l) { return l.rang == null; }).reverse()
+      .concat(sel.filter(function (l) { return l.rang != null; }).sort(function (a, b) { return b.rang - a.rang; }));
+    if (ecart > 0) { ordre[0].min += ecart; return; }
+    ordre.forEach(function (l) {
+      if (ecart >= 0) return;
+      var pris = Math.min(l.min, -ecart);
+      l.min -= pris; ecart += pris;
+    });
+  }
   function regler(ligne, minutes) {
     if (!ligne.selected || state.absent) return;
+    normaliser();
+    reglerSansControle(ligne, minutes);
+    normaliser();
+  }
+  function reglerSansControle(ligne, minutes) {
     if (ligne === reserve()) {
       var ad = avantDernier();
       if (!ad) return;
@@ -293,6 +331,7 @@
     var avant = somme(sel.slice(0, i)), paire = a.min + b.min;
     a.min = Math.max(0, Math.min(paire, snap(minutesCumulees - avant)));
     b.min = paire - a.min;
+    normaliser();
   }
   // Temps libéré par une ligne retirée/désélectionnée : au dernier projet
   // non touché de la liste, sinon au dernier touché.
@@ -312,6 +351,7 @@
       ligne.selected = true; ligne.min = 0; ligne.rang = null;
       if (selected().length === 1) ligne.min = T();
     }
+    normaliser();
     render();
   }
   function removeLine(ligne) {
@@ -320,6 +360,7 @@
     var part = ligne.selected ? ligne.min : 0;
     lines.splice(idx, 1);
     rendre(part);
+    normaliser();
     render();
   }
   function addLine(proto, adhoc) {
@@ -334,6 +375,7 @@
     // Première ligne de la journée : elle fait toute la journée ; sinon
     // elle arrive à 0 h et se règle (heures cliquables ou curseur).
     if (selected().length === 1) ligne.min = T();
+    normaliser();
     render();
   }
 

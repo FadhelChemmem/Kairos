@@ -230,11 +230,26 @@ def enregistrer():
 
     # Total toujours = durée de la journée (Daily log v2 : "toujours
     # 100 %"). La page le garantit ; ce contrôle protège d'une requête
-    # forgée. Ignoré si des lignes ont été refusées (leur ancienne valeur
-    # est conservée, le total ne peut donc pas être vérifié ici).
-    if not absent and lignes and not refusees:
-        total = round(sum(l["heures"] for l in lignes), 2)
+    # forgée. Les lignes refusées gardent leur valeur déjà enregistrée :
+    # elle compte donc dans le total (audit du 2026-09-29 — le contrôle
+    # était sauté dès qu'une ligne était refusée, ce qui laissait
+    # enregistrer 3 × 24 h sur une journée avec une ligne invalide).
+    if not absent and (lignes or refusees):
+        conservees = 0.0
+        if refusees:
+            deja = {(e["projet_id"], e["tache_id"] or 0): float(e["heures"])
+                    for e in dailylog.list_entrees_jour(g.user["id"], date_str)}
+            conservees = sum(deja.get(cle, 0.0) for cle in refusees)
+        total = round(sum(l["heures"] for l in lignes) + conservees, 2)
         if abs(total - duree) > 0.02:
+            if refusees:
+                flash(
+                    f"{len(refusees)} ligne(s) ne peuvent pas être modifiées (valeur invalide, ou projet "
+                    f"auquel vous n'avez plus accès) : leur valeur déjà enregistrée ({conservees:g} h) est "
+                    "conservée, et la journée doit rester répartie à 100 % : rien n'a été enregistré.",
+                    "error",
+                )
+                return redirect(url_for("dailylog.formulaire", date=date_str))
             flash("La journée doit être répartie à 100 % : rien n'a été enregistré.", "error")
             return redirect(url_for("dailylog.formulaire", date=date_str))
 

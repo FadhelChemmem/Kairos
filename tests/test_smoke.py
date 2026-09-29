@@ -608,6 +608,7 @@ class SmokeTestCase(SmokeBase):
             with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
                 resp = self.client.post("/dailylog", data={
                     "date": "2026-09-15",
+                    "duree": "5",  # valeur déjà enregistrée, conservée
                     "ligne_projet_id": ["1", "1"],
                     "ligne_tache_id": ["", ""],
                     "ligne_heures": ["30", "-5"],
@@ -627,6 +628,7 @@ class SmokeTestCase(SmokeBase):
             with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
                 resp = self.client.post("/dailylog", data={
                     "date": "2026-09-15",
+                    "duree": "5",  # valeur déjà enregistrée, conservée
                     "ligne_projet_id": ["1"],
                     "ligne_tache_id": [""],
                     "ligne_heures": ["4"],
@@ -643,6 +645,7 @@ class SmokeTestCase(SmokeBase):
         self._login()
         patchers = self._patched(**{
             "app.repositories.taches.get_tache": {**TACHE_POUR_FICHIERS, "projet_id": 99},
+            "app.repositories.dailylog.list_entrees_jour": [{"projet_id": 1, "tache_id": 5, "heures": 4.0}],
         })
         for p in patchers:
             p.start()
@@ -697,7 +700,11 @@ class SmokeTestCase(SmokeBase):
             return str(total)
         return "8"
 
-    def _poster_dailylog(self, heures, **overrides):
+    def _poster_dailylog(self, heures, duree=None, **overrides):
+        """`duree` : durée de la journée envoyée (par défaut le total des
+        heures). Une ligne refusée garde sa valeur déjà enregistrée
+        (DAILYLOG_ENTREES : 5 h sur le projet 1), qui compte dans le total
+        de la journée (audit du 2026-09-29)."""
         self._login()
         patchers = self._patched(**overrides)
         for p in patchers:
@@ -706,7 +713,7 @@ class SmokeTestCase(SmokeBase):
             with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
                 resp = self.client.post("/dailylog", data={
                     "date": "2026-09-15",
-                    "duree": self._duree_pour(heures),
+                    "duree": duree or self._duree_pour(heures),
                     "ligne_projet_id": ["1"] * len(heures),
                     "ligne_tache_id": [""] * len(heures),
                     "ligne_heures": heures,
@@ -782,7 +789,7 @@ class SmokeTestCase(SmokeBase):
         est fausse) et rendait les totaux d'heures du projet égaux à NaN."""
         for valeur in ("nan", "NaN", "inf", "-inf"):
             with self.subTest(valeur=valeur):
-                mock_remplacer = self._poster_dailylog([valeur])
+                mock_remplacer = self._poster_dailylog([valeur], duree="5")
                 self.assertEqual(mock_remplacer.call_args.args[2], [])
 
     def test_dailylog_bornes_24h_exactes(self):
@@ -790,7 +797,32 @@ class SmokeTestCase(SmokeBase):
             self._poster_dailylog(["24"]).call_args.args[2],
             [{"projet_id": 1, "tache_id": None, "heures": 24.0}],
         )
-        self.assertEqual(self._poster_dailylog(["24.01"]).call_args.args[2], [])
+        self.assertEqual(self._poster_dailylog(["24.01"], duree="5").call_args.args[2], [])
+
+    def test_dailylog_ligne_refusee_ne_contourne_plus_le_total(self):
+        """Audit du 2026-09-29 : une ligne invalide faisait sauter le
+        contrôle du total — 3 × 24 h passaient pour une journée de 8 h."""
+        mock_remplacer = self._poster_dailylog(["abc", "24", "24", "24"], duree="8")
+        mock_remplacer.assert_not_called()
+        with self.client.session_transaction() as sess:
+            flashes = sess.get("_flashes", [])
+        self.assertTrue(any("100 %" in msg for _, msg in flashes))
+
+    def test_dailylog_curseurs_gardent_le_total(self):
+        """Bug remonté par Fadhel (2026-09-29) : après le retrait ou la
+        désélection d'un projet, cliquer sur une ligne la mettait à la
+        journée entière sans rien reprendre aux autres (12 h sur 8 h). Les
+        règles de répartition passent désormais par normaliser() (au plus
+        n-1 projets "touchés", total = journée) — comportement vérifié par
+        1 000 clics aléatoires sous Playwright, ici on verrouille le câblage."""
+        import pathlib
+        tpl = (pathlib.Path(__file__).resolve().parent.parent / "app" / "templates" / "dailylog.html").read_text(encoding="utf-8")
+        regler = tpl[tpl.index("function regler("):tpl.index("function reglerSansControle(")]
+        self.assertEqual(regler.count("normaliser();"), 2)
+        for fonction in ("function toggleSelect(", "function removeLine(", "function addLine(", "function deplacerLimite("):
+            corps = tpl[tpl.index(fonction):]
+            corps = corps[:corps.index("\n  }\n")]
+            self.assertIn("normaliser();", corps, fonction)
 
     def test_dailylog_ligne_refusee_conservee_et_signalee(self):
         """Audit n°2 : une ligne refusée (ici, projet devenu invisible) ne
@@ -798,7 +830,7 @@ class SmokeTestCase(SmokeBase):
         remplacer_jour pour conserver la valeur déjà enregistrée, et
         l'utilisateur est prévenu."""
         mock_remplacer = self._poster_dailylog(
-            ["4"], **{"app.repositories.projets.user_can_view": False},
+            ["4"], duree="5", **{"app.repositories.projets.user_can_view": False},
         )
         self.assertEqual(mock_remplacer.call_args.kwargs["conserver"], {(1, 0)})
         with self.client.session_transaction() as sess:
