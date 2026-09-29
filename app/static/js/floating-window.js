@@ -19,7 +19,9 @@ window.KairosFloatingWindow = (function () {
   function capturer(container) {
     var etat = [];
     container.querySelectorAll('input, select, textarea').forEach(function (el) {
-      if (el.type === 'hidden' || el.disabled) return;
+      // Les champs désactivés restent comptés : un onglet activé ou
+      // désactivé par le code ne doit pas passer pour une saisie.
+      if (el.type === 'hidden') return;
       var v;
       if (el.type === 'checkbox' || el.type === 'radio') {
         v = el.checked ? '1' : '0';

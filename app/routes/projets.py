@@ -172,10 +172,7 @@ def export_excel():
         return float(v) if v is not None else None
 
     def texte(v):
-        # Jamais de formule : une cellule qui commence par = + - @ est
-        # préfixée d'une apostrophe (injection de formule dans Excel).
-        v = "" if v is None else str(v)
-        return "'" + v if v[:1] in ("=", "+", "-", "@") else v
+        return "" if v is None else str(v)
 
     for p in lignes:
         feuille.append([
@@ -186,6 +183,11 @@ def export_excel():
             p.get("prochaine_deadline"), texte(p.get("prochaine_deadline_titre")),
             etat_libelle.get(p["etat"], p["etat"]), p.get("date_debut"),
         ])
+        # Jamais de formule : un texte saisi qui commence par "=" (nom de
+        # projet, client…) reste du texte dans Excel (injection de formule).
+        for cellule in feuille[feuille.max_row]:
+            if isinstance(cellule.value, str) and cellule.value.startswith("="):
+                cellule.data_type = "s"
     for i, largeur in enumerate([10, 40, 8, 10, 24, 18, 14, 12, 12, 14, 36, 14, 36, 11, 12], start=1):
         feuille.column_dimensions[get_column_letter(i)].width = largeur
     for colonne in ("J", "L", "O"):

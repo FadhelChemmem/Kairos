@@ -74,16 +74,24 @@ def creer():
     if type_code not in TYPES_VALIDES or not contenu or (not projet_id and type_code != "information"):
         flash("Message invalide.", "error")
         return _safe_redirect()
-    if not projet_id and not equipe_codes:
-        flash("Choisissez un projet ou au moins une équipe destinataire.", "error")
-        return _safe_redirect()
     if projet_id:
         equipe_codes = []  # un post de projet suit la visibilité du projet
+    elif not equipe_codes and not parent_post_id:
+        flash("Choisissez un projet ou au moins une équipe destinataire.", "error")
+        return _safe_redirect()
 
     # Contrôle d'accès (IDOR, PROMPT_CORRECTIONS.md P0 #1) : on ne peut
     # publier que sur un projet qu'on voit déjà.
     if projet_id and not projets_repo.user_can_view(projet_id, g.user["id"]):
         abort(404)
+    # Projet terminé ou abandonné : seuls son chef et ses co-chefs peuvent
+    # encore y publier (relecture du 2026-09-29).
+    if projet_id:
+        projet = projets_repo.get_projet(projet_id)
+        if (projet and projet["etat"] in PROJET_CLOS
+                and not projets_repo.user_can_manage(projet_id, g.user["id"])):
+            flash("Ce projet est terminé : on ne peut plus y publier.", "error")
+            return _safe_redirect()
 
     # Un rebond doit obligatoirement pointer vers un post du MÊME projet —
     # sinon on pourrait relier deux projets sans lien de visibilité entre
@@ -99,6 +107,11 @@ def creer():
         if parent.get("projet_etat") in PROJET_CLOS:
             flash("Ce projet est terminé : on ne peut plus y reposter.", "error")
             return _safe_redirect()
+        # Réponse à une Information d'équipe (sans projet) : elle va aux
+        # MÊMES équipes que le post d'origine — sinon le bloc "En réponse
+        # à" montrerait ce post à d'autres équipes (relecture 2026-09-29).
+        if parent["projet_id"] is None:
+            equipe_codes = posts_repo.equipes_du_post(parent["id"])
 
     # Idem pour les mentions : on ne peut taguer que des personnes qui
     # voient déjà ce projet (pas de fuite d'existence d'un utilisateur vers
@@ -109,6 +122,11 @@ def creer():
     else:
         actifs = {u["id"] for u in utilisateurs_repo.list_actifs()}
         mentionne_ids = [uid for uid in mentionne_ids if uid in actifs]
+    # Une personne taguée dans une réponse doit aussi voir le post d'origine
+    # (repris dans le bloc "En réponse à").
+    if parent_post_id:
+        mentionne_ids = [uid for uid in mentionne_ids
+                         if posts_repo.peut_voir(parent["id"], parent["projet_id"], uid)]
 
     # Pièce jointe : sauvegardée sur disque AVANT la création du post, pour
     # pouvoir passer (nom_fichier, chemin) à create_post() et insérer les

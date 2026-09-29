@@ -139,6 +139,20 @@ _FEED_SELECT = """
 """
 
 
+def _en_datetime(valeur):
+    """Horodatage lu dans un json_agg (texte ISO, ex.
+    "2026-09-29T12:07:27.816896+01:00") → datetime ; laissé tel quel s'il
+    en est déjà un (fixtures de tests), None si vide ou illisible."""
+    import datetime
+
+    if valeur is None or isinstance(valeur, datetime.datetime):
+        return valeur
+    try:
+        return datetime.datetime.fromisoformat(str(valeur))
+    except ValueError:
+        return None
+
+
 def _structurer_commentaires(rows: list[dict]) -> list[dict]:
     """Restructure, pour chaque post, sa liste PLATE de commentaires
     (celle renvoyée par _FEED_SELECT) en (commentaires de premier niveau
@@ -148,6 +162,12 @@ def _structurer_commentaires(rows: list[dict]) -> list[dict]:
     post reste petit, donc le coût est négligeable."""
     for post in rows:
         plats = post["commentaires"]
+        # json_agg renvoie les dates en texte ISO (psycopg2 décode le JSON,
+        # pas les timestamps qu'il contient) : les templates attendent des
+        # datetime (filtre il_y_a) — relecture du 2026-09-29.
+        for c in plats:
+            for cle in ("created_at", "modifie_le"):
+                c[cle] = _en_datetime(c.get(cle))
         par_id = {c["id"]: {**c, "replies": []} for c in plats}
         racine = []
         for c in plats:
@@ -519,6 +539,12 @@ def personnes_taguees(texte: str, candidats: list[dict]) -> list[int]:
     return trouves
 
 
+def equipes_du_post(post_id: int) -> list[str]:
+    """Codes des équipes destinataires d'une Information sans projet."""
+    rows = db.query_all("SELECT equipe_code FROM post_equipe WHERE post_id = %s ORDER BY equipe_code", (post_id,))
+    return [r["equipe_code"] for r in rows]
+
+
 def repost(post_id: int, auteur_id: int, contenu: str | None = None) -> int:
     """"Reposter" (Lot 5, retour Fadhel, 2026-09-28) — distinct du
     "rebond" (parent_post_id + composeur, une nouvelle Tâche/Requête/etc.
@@ -542,7 +568,17 @@ def repost(post_id: int, auteur_id: int, contenu: str | None = None) -> int:
             """,
             {"auteur_id": auteur_id, "contenu": contenu, "post_id": post_id},
         )
-        return cur.fetchone()["id"]
+        nouveau_id = cur.fetchone()["id"]
+        # Information d'équipe sans projet : le repost va aux mêmes équipes
+        # (sinon seuls l'auteur et les Admin/RH le verraient).
+        cur.execute(
+            """
+            INSERT INTO post_equipe (post_id, equipe_code)
+            SELECT %s, equipe_code FROM post_equipe WHERE post_id = %s
+            """,
+            (nouveau_id, post_id),
+        )
+        return nouveau_id
 
 
 def add_piece_jointe(post_id: int, nom_fichier: str, chemin: str, uploaded_by: int) -> int:

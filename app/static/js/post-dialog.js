@@ -74,6 +74,7 @@
       o.value = pid;
       o.textContent = label || pid;
       o.dataset.gere = '0';
+      o.dataset.temporaire = '1';
       projetSelect.appendChild(o);
     }
     projetSelect.value = pid;
@@ -106,7 +107,9 @@
       var premier = ['tache', 'information', 'requete'].filter(function (i) { return radio(i) && !radio(i).disabled; })[0];
       if (premier) radio(premier).checked = true;
     }
-    if (equipesRow) equipesRow.style.display = (sansProjet && intentCourant() === 'information') ? '' : 'none';
+    // Reposter une Information d'équipe : la réponse va aux mêmes équipes
+    // que le post d'origine (imposé par le serveur) — pas de choix ici.
+    if (equipesRow) equipesRow.style.display = (sansProjet && !projetImpose && intentCourant() === 'information') ? '' : 'none';
     if (projetOptionnel) projetOptionnel.style.display = intentCourant() === 'information' ? '' : 'none';
   }
 
@@ -138,6 +141,7 @@
   document.querySelectorAll('[data-open-post-dialog]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       if (btn.disabled) return;
+      projetImpose = !!btn.getAttribute('data-projet-id');
       definirParent(btn.getAttribute('data-parent-post-id'), btn.getAttribute('data-parent-label'));
       var intents = btn.getAttribute('data-intents');
       intentsAutorises = intents ? intents.split(',') : null;
@@ -158,6 +162,12 @@
             if (projetFigeeLabel) projetFigeeLabel.textContent = btn.getAttribute('data-projet-label') || '';
           }
         } else {
+          // Options ajoutées pour un Reposter précédent : retirées, la
+          // liste redevient "mes projets".
+          projetSelect.querySelectorAll('option[data-temporaire]').forEach(function (o) {
+            if (projetSelect.value === o.value) projetSelect.value = premierProjet() || AUCUN;
+            o.remove();
+          });
           if (projetRow) projetRow.style.display = '';
           if (projetFigee) projetFigee.style.display = 'none';
           if (intent === 'information') {

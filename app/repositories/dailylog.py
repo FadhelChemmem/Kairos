@@ -66,7 +66,11 @@ def duree_et_absence(user_id: int, date, entrees: list[dict]) -> tuple[float, bo
         return float(jour["duree_heures"]), bool(jour["absent"])
     total = round(sum(float(e["heures"]) for e in entrees), 2)
     if total > 0:
-        return min(total, 24.0), False
+        # Au quart d'heure le plus proche (relecture du 2026-09-29) : une
+        # ancienne journée de 3 × 2,67 h (8,01 h) ne doit pas donner une
+        # durée que l'enregistrement refuse ensuite. L'écran répartit alors
+        # les lignes sur cette durée (dailylog.html).
+        return min(max(round(total * 4) / 4, 0.25), 24.0), False
     return float(DUREE_TYPE), False
 
 

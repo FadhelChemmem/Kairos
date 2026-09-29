@@ -4349,9 +4349,12 @@ class TestJournalAudit(unittest.TestCase):
         import pathlib, re
         from app.repositories import audit
         schema = (pathlib.Path(__file__).resolve().parent.parent / "schema.sql").read_text(encoding="utf-8")
-        tables = set(re.findall(r"CREATE TRIGGER trg_audit_\w+ AFTER INSERT OR UPDATE OR DELETE ON (\w+)", schema))
+        # ^ : ignore les triggers en commentaire (post_reaction n'est pas
+        # audité) ; égalité dans les deux sens : pas de table proposée au
+        # filtre qui ne pourrait jamais rien afficher.
+        tables = set(re.findall(r"^CREATE TRIGGER trg_audit_\w+ AFTER INSERT OR UPDATE OR DELETE ON (\w+)", schema, re.M))
         self.assertTrue(tables)
-        self.assertEqual(tables - set(audit.TABLES_AUDITEES), set())
+        self.assertEqual(tables, set(audit.TABLES_AUDITEES))
 
     def test_non_admin_refuse_et_nexecute_rien(self):
         """Un chef de projet (ou tout rôle non-admin) est redirigé par
@@ -5396,12 +5399,81 @@ class TestPagesLot6(SmokeBase):
         self.assertEqual(lignes[0][:3], ("Code", "Nom", "Phase"))
         self.assertEqual(lignes[1][0], "26099X")
         self.assertEqual(lignes[1][10], "Note de calcul")
-        self.assertEqual(lignes[2][1], "'=HYPERLINK(1)")  # jamais de formule
+        self.assertEqual(lignes[2][1], "=HYPERLINK(1)")
+        self.assertEqual(feuille["B3"].data_type, "s")  # du texte, jamais une formule
 
     def test_utilisateurs_filtres_sur_une_ligne(self):
         import pathlib
         css = (pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / "css" / "app.css").read_text(encoding="utf-8")
         self.assertIn(".filtres-utilisateurs { flex-wrap: nowrap !important; }", css)
+
+
+
+class TestRelectureLot6(SmokeBase):
+    """Corrections après relecture indépendante du lot (2026-09-29)."""
+
+    def test_dates_de_commentaire_en_texte_iso(self):
+        """json_agg renvoie created_at/modifie_le en texte : le fil ne doit
+        pas planter (filtre il_y_a) sur un vrai PostgreSQL."""
+        from app.repositories.posts import _structurer_commentaires
+        rows = [{"commentaires": [{"id": 1, "parent_commentaire_id": None,
+                                   "created_at": "2026-09-29T12:07:27.816896+01:00", "modifie_le": None}]}]
+        c = _structurer_commentaires(rows)[0]["commentaires"][0]
+        self.assertEqual(c["created_at"], datetime.datetime.fromisoformat("2026-09-29T12:07:27.816896+01:00"))
+        post = {**FEED_POST_MANUEL, "commentaires": [{
+            "id": 1, "contenu": "Ok", "auteur_id": 3, "auteur_prenom": "Omar", "auteur_nom": "Aziz",
+            "parent_commentaire_id": None, "created_at": c["created_at"],
+            "modifie_le": datetime.datetime(2026, 9, 29, 13, 0, tzinfo=datetime.timezone.utc),
+            "pieces_jointes": [], "replies": []}]}
+        resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [post]})
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("· modifié", resp.data.decode())
+
+    def test_ancienne_journee_duree_au_quart_d_heure(self):
+        from app.repositories import dailylog as dailylog_repo
+        with patch("app.repositories.dailylog.get_jour", return_value=None):
+            self.assertEqual(dailylog_repo.duree_et_absence(1, "2026-09-01", [{"heures": 2.67}] * 3), (8.0, False))
+            self.assertEqual(dailylog_repo.duree_et_absence(1, "2026-09-01", [{"heures": 0.05}]), (0.25, False))
+
+    def test_reponse_a_une_information_d_equipe_garde_ses_equipes(self):
+        self._login()
+        parent = {**POST_POUR_ACCES, "id": 9, "projet_id": None, "projet_etat": None}
+        patchers = self._patched(**{"app.repositories.posts.get_post": parent})
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.peut_voir", side_effect=lambda pid, proj, uid: uid in (1, 3)), \
+                 patch("app.repositories.posts.equipes_du_post", return_value=["SS"]), \
+                 patch("app.repositories.posts.create_post", return_value=101) as mock_create:
+                self.client.post("/posts", data={"type_code": "information", "contenu": "Réponse",
+                                                 "parent_post_id": "9", "equipes": ["Q"], "mentions": ["3", "1"]})
+        finally:
+            for p in reversed(patchers):
+                p.stop()
+        kwargs = mock_create.call_args.kwargs
+        self.assertEqual(kwargs["equipe_codes"], ["SS"])  # pas l'équipe Q choisie
+        self.assertEqual(kwargs["mentionne_ids"], [3, 1])
+
+    def test_repost_copie_les_equipes(self):
+        import inspect
+        from app.repositories import posts as posts_repo
+        self.assertIn("INSERT INTO post_equipe (post_id, equipe_code)", inspect.getsource(posts_repo.repost))
+
+    def test_projet_termine_publication_reservee_aux_chefs(self):
+        self._login()
+        patchers = self._patched(**{"app.repositories.projets.get_projet": {**PROJET, "etat": "termine"},
+                                    "app.repositories.projets.user_can_manage": False})
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.create_post", return_value=101) as mock_create:
+                self.client.post("/posts", data={"projet_id": "1", "type_code": "requete", "contenu": "x"})
+            body = self.client.get("/projets/1").data.decode()
+        finally:
+            for p in reversed(patchers):
+                p.stop()
+        mock_create.assert_not_called()
+        self.assertNotIn("+ Nouveau post</button>", body)
 
 
 if __name__ == "__main__":

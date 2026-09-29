@@ -200,6 +200,11 @@
   if (lines.some(function (l) { return l.min == null; })) {
     lines.forEach(function (l) { l.min = 0; });
     repartirSur(lines, T());
+  } else if (lines.length && somme(lines) !== T()) {
+    // Ancienne journée (option B) dont le total n'était pas au quart
+    // d'heure : ses lignes sont ramenées, au prorata, sur la durée affichée
+    // — sinon l'enregistrement serait refusé (total ≠ 100 %).
+    repartirSur(lines, T());
   }
 
   // Répartit `total` minutes sur `liste` au prorata des valeurs actuelles
