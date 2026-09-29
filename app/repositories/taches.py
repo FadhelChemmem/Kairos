@@ -63,11 +63,17 @@ def list_taches_projet(projet_id: int) -> list[dict]:
 
 
 def premiere_date(projet_id: int):
-    """Plus ancienne date (début ou échéance) des tâches du projet, ou None
-    — la date de début du projet ne peut pas la dépasser (lot 8)."""
+    """Plus ancienne date du projet côté tâches (début ou échéance) et
+    Daily log (heures saisies), ou None — la date de début du projet ne
+    peut pas la dépasser (lot 8)."""
     row = db.query_one(
-        "SELECT LEAST(min(date_debut), min(date_echeance)) AS d FROM tache WHERE projet_id = %s",
-        (projet_id,),
+        """
+        SELECT LEAST(
+          (SELECT LEAST(min(date_debut), min(date_echeance)) FROM tache WHERE projet_id = %(p)s),
+          (SELECT min(date) FROM dailylog_entree WHERE projet_id = %(p)s)
+        ) AS d
+        """,
+        {"p": projet_id},
     )
     return row["d"] if row else None
 
@@ -197,10 +203,14 @@ def list_deadlines(user_id: int, limit: int = 20) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
-def _suivre_etat_projet(cur, projet_id: int, etat_tache: str, current_user_id: int) -> None:
+def _suivre_etat_projet(cur, projet_id: int, etat_tache: str, current_user_id: int,
+                        ancien_etat: str | None = None) -> None:
     """État du projet qui suit ses tâches (décision Fadhel, lot 8) : une
     tâche qui passe « Bloqué » bloque le projet ; une tâche créée ou remise
-    « En cours » le remet « En cours ». Seulement entre En cours et Bloqué :
+    « En cours » le remet « En cours ». Une tâche bloquée qui est terminée,
+    vérifiée, arrêtée ou abandonnée le débloque aussi, s'il ne reste plus
+    aucune tâche bloquée (sinon le projet restait bloqué pour une tâche
+    close). Seulement entre En cours et Bloqué :
     un projet terminé ou abandonné n'est jamais rouvert par ce biais (il
     est de toute façon figé, voir routes/projets.py:_refus_si_clos). Même
     transaction que le changement de la tâche, avec le post automatique
@@ -208,6 +218,10 @@ def _suivre_etat_projet(cur, projet_id: int, etat_tache: str, current_user_id: i
     from ..utils import projet_etat_style
 
     passage = {"bloque": ("en_cours", "bloque"), "en_cours": ("bloque", "en_cours")}.get(etat_tache)
+    if passage is None and ancien_etat == "bloque":
+        cur.execute("SELECT 1 AS reste FROM tache WHERE projet_id = %s AND etat = 'bloque' LIMIT 1", (projet_id,))
+        if cur.fetchone() is None:
+            passage = ("bloque", "en_cours")
     if passage is None:
         return
     avant, apres = passage
@@ -359,7 +373,7 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int) -> 
                 (projet_id, tache_id, current_user_id,
                  f"{tache_etat_style(avant['etat'])['label']} → {tache_etat_style(etat)['label']}"),
             )
-            _suivre_etat_projet(cur, projet_id, etat, current_user_id)
+            _suivre_etat_projet(cur, projet_id, etat, current_user_id, ancien_etat=avant["etat"])
         return True
 
 
@@ -440,13 +454,16 @@ def close_tache(
     ce projet, ou est déjà clôturée — la route transforme ça en message
     flash plutôt qu'en erreur 500."""
     with db.get_cursor(user_id=current_user_id) as cur:
+        # `avant` (CTE) : l'état AVANT la clôture — une tâche bloquée qui se
+        # termine peut débloquer le projet (_suivre_etat_projet).
         cur.execute(
             """
+            WITH avant AS (SELECT etat FROM tache WHERE id = %s)
             UPDATE tache SET etat = 'termine', date_fin = CURRENT_DATE
             WHERE id = %s AND projet_id = %s AND etat NOT IN ('termine', 'verifie')
-            RETURNING id, projet_id, titre
+            RETURNING id, projet_id, titre, (SELECT etat FROM avant) AS ancien_etat
             """,
-            (tache_id, projet_id),
+            (tache_id, tache_id, projet_id),
         )
         row = cur.fetchone()
         if row is None:
@@ -460,4 +477,7 @@ def close_tache(
             """,
             (row["projet_id"], tache_id, current_user_id, type_code, contenu),
         )
-        return cur.fetchone()["id"]
+        post_id = cur.fetchone()["id"]
+        _suivre_etat_projet(cur, row["projet_id"], "termine", current_user_id,
+                            ancien_etat=row.get("ancien_etat"))
+        return post_id

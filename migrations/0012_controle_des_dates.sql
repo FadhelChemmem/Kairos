@@ -5,10 +5,11 @@
 --   - un projet dont la date de fin précède la date de début, ou avec des
 --     honoraires négatifs ;
 --   - une tâche dont l'échéance précède sa date de début.
--- Triggers limités aux colonnes concernées (UPDATE OF ...) plutôt que des
--- CHECK : une donnée ancienne incohérente ne doit bloquer ni la mise à
--- jour, ni un simple changement d'état de la tâche ou du projet (un CHECK,
--- même NOT VALID, revérifie toute la ligne à chaque UPDATE).
+-- Triggers déclenchés seulement quand ces valeurs CHANGENT, plutôt que
+-- des CHECK : une donnée ancienne incohérente (ex. reprise de Chronos) ne
+-- doit bloquer ni la mise à jour, ni un changement d'état, ni un
+-- renommage (un CHECK, même NOT VALID, revérifie toute la ligne à chaque
+-- UPDATE ; la fenêtre Informations réécrit les dates à chaque envoi).
 --
 -- Rejouable : CREATE OR REPLACE, DROP TRIGGER IF EXISTS.
 CREATE OR REPLACE FUNCTION fn_check_dates_projet()
@@ -25,8 +26,16 @@ END;
 $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS trg_check_dates_projet ON projet;
 CREATE TRIGGER trg_check_dates_projet
-  BEFORE INSERT OR UPDATE OF date_debut, date_fin, honoraires ON projet
+  BEFORE INSERT ON projet
   FOR EACH ROW EXECUTE FUNCTION fn_check_dates_projet();
+DROP TRIGGER IF EXISTS trg_check_dates_projet_maj ON projet;
+CREATE TRIGGER trg_check_dates_projet_maj
+  BEFORE UPDATE OF date_debut, date_fin, honoraires ON projet
+  FOR EACH ROW
+  WHEN (OLD.date_debut IS DISTINCT FROM NEW.date_debut
+        OR OLD.date_fin IS DISTINCT FROM NEW.date_fin
+        OR OLD.honoraires IS DISTINCT FROM NEW.honoraires)
+  EXECUTE FUNCTION fn_check_dates_projet();
 
 CREATE OR REPLACE FUNCTION fn_check_dates_tache()
 RETURNS TRIGGER AS $$
@@ -39,5 +48,12 @@ END;
 $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS trg_check_dates_tache ON tache;
 CREATE TRIGGER trg_check_dates_tache
-  BEFORE INSERT OR UPDATE OF date_debut, date_echeance ON tache
+  BEFORE INSERT ON tache
   FOR EACH ROW EXECUTE FUNCTION fn_check_dates_tache();
+DROP TRIGGER IF EXISTS trg_check_dates_tache_maj ON tache;
+CREATE TRIGGER trg_check_dates_tache_maj
+  BEFORE UPDATE OF date_debut, date_echeance ON tache
+  FOR EACH ROW
+  WHEN (OLD.date_debut IS DISTINCT FROM NEW.date_debut
+        OR OLD.date_echeance IS DISTINCT FROM NEW.date_echeance)
+  EXECUTE FUNCTION fn_check_dates_tache();

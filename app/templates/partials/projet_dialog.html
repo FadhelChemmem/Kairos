@@ -32,7 +32,7 @@
     </div>
     <div class="form-row">
       <label for="dialog-projet-code">Code (proposé, modifiable)</label>
-      <input type="text" id="dialog-projet-code" name="code" value="{{ code_propose_dialog }}" required pattern="[0-9]{5,}[PDXE]" title="Année sur 2 chiffres + numéro (3 chiffres ou plus) + lettre de la phase : P (APS/APD), D (DCE), X (EXE), E (DOE)">
+      <input type="text" id="dialog-projet-code" name="code" maxlength="20" value="{{ code_propose_dialog }}" required pattern="[0-9]{5,}[PDXE]" title="Année sur 2 chiffres + numéro (3 chiffres ou plus) + lettre de la phase : P (APS/APD), D (DCE), X (EXE), E (DOE)">
     </div>
     <div class="form-row">
       <label for="dialog-projet-phase">Phase</label>

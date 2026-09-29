@@ -845,8 +845,16 @@ END;
 $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS trg_check_dates_projet ON projet;
 CREATE TRIGGER trg_check_dates_projet
-  BEFORE INSERT OR UPDATE OF date_debut, date_fin, honoraires ON projet
+  BEFORE INSERT ON projet
   FOR EACH ROW EXECUTE FUNCTION fn_check_dates_projet();
+DROP TRIGGER IF EXISTS trg_check_dates_projet_maj ON projet;
+CREATE TRIGGER trg_check_dates_projet_maj
+  BEFORE UPDATE OF date_debut, date_fin, honoraires ON projet
+  FOR EACH ROW
+  WHEN (OLD.date_debut IS DISTINCT FROM NEW.date_debut
+        OR OLD.date_fin IS DISTINCT FROM NEW.date_fin
+        OR OLD.honoraires IS DISTINCT FROM NEW.honoraires)
+  EXECUTE FUNCTION fn_check_dates_projet();
 
 CREATE OR REPLACE FUNCTION fn_check_dates_tache()
 RETURNS TRIGGER AS $$
@@ -859,8 +867,15 @@ END;
 $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS trg_check_dates_tache ON tache;
 CREATE TRIGGER trg_check_dates_tache
-  BEFORE INSERT OR UPDATE OF date_debut, date_echeance ON tache
+  BEFORE INSERT ON tache
   FOR EACH ROW EXECUTE FUNCTION fn_check_dates_tache();
+DROP TRIGGER IF EXISTS trg_check_dates_tache_maj ON tache;
+CREATE TRIGGER trg_check_dates_tache_maj
+  BEFORE UPDATE OF date_debut, date_echeance ON tache
+  FOR EACH ROW
+  WHEN (OLD.date_debut IS DISTINCT FROM NEW.date_debut
+        OR OLD.date_echeance IS DISTINCT FROM NEW.date_echeance)
+  EXECUTE FUNCTION fn_check_dates_tache();
 
 
 -- ---------------------------------------------------------------------

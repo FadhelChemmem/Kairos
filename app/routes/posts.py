@@ -67,6 +67,13 @@ def creer():
     type_code = request.form.get("type_code", "envoi")
     contenu = request.form.get("contenu", "").strip()
     objet = request.form.get("objet", "").strip()
+    # Longueurs (lot 8), objet et description séparément (chacun sa limite
+    # dans le formulaire), avant de les réunir.
+    erreur_longueur = v.premiere_erreur(
+        v.trop_long(objet, v.MAX_OBJET_REQUETE, "Objet de la requête"),
+        v.trop_long(contenu, v.MAX_CONTENU_POST, "Texte du post"),
+        v.trop_long(request.form.get("lien", "").strip(), v.MAX_LIEN, "Lien"),
+    )
     if objet:
         # Composeur Requête : "Objet" + "Description" (voir maquette) —
         # pas de colonne dédiée, on les combine dans post.contenu.
@@ -91,14 +98,9 @@ def creer():
     if type_code not in TYPES_VALIDES or not contenu or (not projet_id and type_code != "information"):
         flash("Message invalide.", "error")
         return _safe_redirect()
-    # Longueurs (lot 8) : vérifiées avant tout enregistrement de fichier.
-    erreur = v.premiere_erreur(
-        v.trop_long(objet, v.MAX_OBJET_REQUETE, "Objet de la requête"),
-        v.trop_long(contenu, v.MAX_CONTENU_POST, "Texte du post"),
-        v.trop_long(request.form.get("lien", "").strip(), v.MAX_LIEN, "Lien"),
-    )
-    if erreur:
-        flash(erreur, "error")
+    # Longueurs (calculées plus haut) : avant tout enregistrement de fichier.
+    if erreur_longueur:
+        flash(erreur_longueur, "error")
         return _safe_redirect()
     if g.user["role"] == "client" and (type_code not in TYPES_CLIENT or not projet_id):
         flash("Vous pouvez envoyer des Requêtes et des Informations sur les projets de votre équipe.", "error")

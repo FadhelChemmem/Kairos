@@ -558,7 +558,8 @@ def code_valide(code: str, phase: str) -> bool:
     import re
 
     lettre = LETTRE_PHASE.get(phase)
-    return bool(lettre) and re.fullmatch(rf"\d{{5,}}{lettre}", code or "") is not None
+    # 20 caractères au plus (projet.code VARCHAR(20)).
+    return bool(lettre) and re.fullmatch(rf"\d{{5,19}}{lettre}", code or "") is not None
 
 
 def propose_code(phase: str, annee: int | None = None, phase_liee_code: str | None = None) -> str:

@@ -184,6 +184,7 @@ def enregistrer():
     # après leur date de clôture — toute la saisie est alors refusée.
     clotures = {}
     hors_periode = []
+    deja_enregistrees = None
     for pid, tid, h in zip(projet_ids, tache_ids, heures_list):
         # Ids non numériques (PROMPT_CORRECTIONS.md P1 #10) : `int(pid)`
         # sur une valeur trafiquée plantait auparavant en 500 (ValueError
@@ -237,10 +238,21 @@ def enregistrer():
                 f"{projet['code']}_{projet['nom']}" if projet else "",
             )
         debut, cloture, libelle = clotures[projet_id]
-        if cloture and date > cloture:
+        # Heures déjà enregistrées ce jour-là sur cette ligne (saisies avant
+        # le déplacement du début ou la clôture, ou reprises de Chronos) :
+        # gardées, sinon la journée ne pourrait plus jamais être
+        # réenregistrée sans les effacer.
+        hors = (cloture and date > cloture) or (debut and date < debut)
+        if hors:
+            if deja_enregistrees is None:
+                deja_enregistrees = {(e["projet_id"], e["tache_id"] or 0)
+                                     for e in dailylog.list_entrees_jour(g.user["id"], date_str)}
+            if cle in deja_enregistrees:
+                hors = False
+        if hors and cloture and date > cloture:
             hors_periode.append(f"{libelle} (clos le {cloture.strftime('%d/%m/%Y')})")
             continue
-        if debut and date < debut:
+        if hors and debut and date < debut:
             hors_periode.append(f"{libelle} (commence le {debut.strftime('%d/%m/%Y')})")
             continue
 

@@ -5134,6 +5134,15 @@ class TestPostsAutomatiquesEtProjet(SmokeBase):
         cur = self._cur([{"etat": "en_cours"}])
         taches_repo.set_etat(5, 1, "arret", 1)
         self.assertFalse([c for c in cur.execute.call_args_list if c.args[0].startswith("UPDATE projet")])
+        # Tâche bloquée close alors qu'il n'en reste aucune autre : débloque.
+        cur = self._cur([{"etat": "bloque"}, None, {"id": 1}])
+        taches_repo.set_etat(5, 1, "abandonne", 1)
+        maj = [c for c in cur.execute.call_args_list if c.args[0].startswith("UPDATE projet SET etat")]
+        self.assertEqual(maj[0].args[1], ("en_cours", 1, "bloque"))
+        # ... mais pas s'il reste une autre tâche bloquée.
+        cur = self._cur([{"etat": "bloque"}, {"reste": 1}])
+        taches_repo.set_etat(5, 1, "abandonne", 1)
+        self.assertFalse([c for c in cur.execute.call_args_list if c.args[0].startswith("UPDATE projet")])
 
     def test_meme_etat_pas_de_post_et_tache_inconnue_refusee(self):
         from app.repositories import taches as taches_repo
@@ -5856,7 +5865,10 @@ class TestDecisionsLot7(SmokeBase):
 
     def test_daily_log_refuse_apres_la_cloture(self):
         self._login()
-        patchers = self._patched(**{"app.repositories.projets.get_projet": PROJET_CLOS})
+        # Rien d'enregistré ce jour-là (une ligne déjà enregistrée est gardée,
+        # voir test_daily_log_garde_les_heures_deja_enregistrees).
+        patchers = self._patched(**{"app.repositories.projets.get_projet": PROJET_CLOS,
+                                    "app.repositories.dailylog.list_entrees_jour": []})
         for p in patchers:
             p.start()
         try:
@@ -5982,6 +5994,29 @@ class TestLot8(SmokeBase):
                 self.assertEqual(self._refuse("/projets/1/informations", data, "app.repositories.projets.update_projet",
                                               **{"app.repositories.taches.premiere_date": premiere}), refuse)
 
+    def test_projet_ancien_aux_dates_incoherentes_reste_modifiable(self):
+        """Relecture : dates inchangées → pas de contrôle de dates (projet
+        repris de Chronos avec fin < début, ou tâche avant le début)."""
+        ancien = {**PROJET, "date_debut": datetime.date(2026, 3, 1), "date_fin": datetime.date(2026, 2, 1)}
+        data = {"nom": "Renommé", "etat": "termine", "date_debut": "2026-03-01", "date_fin": "2026-02-01"}
+        self.assertFalse(self._refuse("/projets/1/informations", data, "app.repositories.projets.update_projet",
+                                      **{"app.repositories.projets.get_projet": ancien,
+                                         "app.repositories.taches.premiere_date": datetime.date(2025, 1, 1)}))
+        # Mais changer la date de fin pour une autre date incohérente : refusé.
+        self.assertTrue(self._refuse("/projets/1/informations", {**data, "date_fin": "2026-02-02"},
+                                     "app.repositories.projets.update_projet",
+                                     **{"app.repositories.projets.get_projet": ancien}))
+
+    def test_code_projet_20_caracteres_au_plus(self):
+        from app.repositories.projets import code_valide
+        self.assertTrue(code_valide("2" * 19 + "X", "EXE"))
+        self.assertFalse(code_valide("2" * 20 + "X", "EXE"))
+
+    def test_requete_objet_et_description_a_leur_limite(self):
+        self.assertFalse(self._refuse("/posts", {"projet_id": "1", "type_code": "requete",
+                                                 "objet": "o" * 200, "contenu": "x" * 10000},
+                                      "app.repositories.posts.create_post"))
+
     def test_creation_de_projet_longueurs_et_dates(self):
         base = {"nom": "Tour B", "code": "26100X", "phase": "EXE", "chef_projet_id": "1"}
         for data, refuse in (({**base, "nom": "x" * 201}, True), ({**base, "client": "c" * 151}, True),
@@ -6004,7 +6039,13 @@ class TestLot8(SmokeBase):
         projet = {**PROJET, "date_debut": datetime.date(2026, 9, 20)}
         base = {"duree": "8", "ligne_projet_id": ["1"], "ligne_tache_id": [""], "ligne_heures": ["8"]}
         self.assertTrue(self._refuse("/dailylog", {**base, "date": "2026-09-15"}, "app.repositories.dailylog.remplacer_jour",
-                                     **{"app.repositories.projets.get_projet": projet}))
+                                     **{"app.repositories.projets.get_projet": projet,
+                                        "app.repositories.dailylog.list_entrees_jour": []}))
+        # Heures déjà enregistrées ce jour-là sur ce projet (DAILYLOG_ENTREES :
+        # 5 h sur le projet 1) : gardées, la journée reste enregistrable.
+        self.assertFalse(self._refuse("/dailylog", {**base, "date": "2026-09-15", "duree": "5", "ligne_heures": ["5"]},
+                                      "app.repositories.dailylog.remplacer_jour",
+                                      **{"app.repositories.projets.get_projet": projet}))
         self.assertFalse(self._refuse("/dailylog", {**base, "date": "2026-09-21"}, "app.repositories.dailylog.remplacer_jour",
                                       **{"app.repositories.projets.get_projet": projet}))
 

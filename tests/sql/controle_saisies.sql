@@ -41,9 +41,16 @@ END $$;
 
 -- Ancienne donnée incohérente (d'avant la migration) : son état reste
 -- modifiable.
-ALTER TABLE tache DISABLE TRIGGER trg_check_dates_tache;
+ALTER TABLE tache DISABLE TRIGGER trg_check_dates_tache_maj;
 UPDATE tache SET date_echeance = DATE '2026-03-15' WHERE titre = 'Tâche normale';
-ALTER TABLE tache ENABLE TRIGGER trg_check_dates_tache;
+ALTER TABLE tache ENABLE TRIGGER trg_check_dates_tache_maj;
 UPDATE tache SET etat = 'bloque' WHERE titre = 'Tâche normale';
+-- Même chose pour un projet : la fenêtre Informations réécrit les dates
+-- telles quelles en renommant ou en clôturant.
+ALTER TABLE projet DISABLE TRIGGER trg_check_dates_projet_maj;
+UPDATE projet SET date_fin = DATE '2026-02-01' WHERE code = 'T0100X';
+ALTER TABLE projet ENABLE TRIGGER trg_check_dates_projet_maj;
+UPDATE projet SET nom = 'Renommé', etat = 'termine', date_debut = date_debut, date_fin = date_fin,
+                  honoraires = honoraires WHERE code = 'T0100X';
 
 ROLLBACK;

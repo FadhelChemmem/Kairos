@@ -19,7 +19,7 @@
     </div>
     <div class="form-row">
       <label for="code">Code (proposé, modifiable)</label>
-      <input type="text" id="code" name="code" value="{{ code_propose }}" required pattern="[0-9]{5,}[PDXE]" title="Année sur 2 chiffres + numéro (3 chiffres ou plus) + lettre de la phase : P (APS/APD), D (DCE), X (EXE), E (DOE)">
+      <input type="text" id="code" name="code" maxlength="20" value="{{ code_propose }}" required pattern="[0-9]{5,}[PDXE]" title="Année sur 2 chiffres + numéro (3 chiffres ou plus) + lettre de la phase : P (APS/APD), D (DCE), X (EXE), E (DOE)">
     </div>
     <div class="form-row">
       <label for="phase">Phase</label>

@@ -487,21 +487,28 @@ def editer_informations(projet_id: int):
         flash("Date invalide.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
     # Dates cohérentes (retour Fadhel, lot 8) : années plausibles, fin
-    # prévue pas avant le début, et pas de début après une tâche déjà
-    # datée du projet.
-    premiere_tache = taches.premiere_date(projet_id) if date_debut_valide else None
-    tache_avant_debut = None
-    if premiere_tache and premiere_tache < date_debut_valide:
-        tache_avant_debut = (
-            f"Date de début impossible : une tâche du projet commence ou est due le "
-            f"{premiere_tache.strftime('%d/%m/%Y')}, avant le {date_debut_valide.strftime('%d/%m/%Y')}."
+    # prévue pas avant le début, et pas de début après une tâche ou des
+    # heures déjà datées du projet. Contrôlé seulement si les dates CHANGENT :
+    # un projet ancien aux dates incohérentes (ex. repris de Chronos) reste
+    # modifiable pour tout le reste — le renommer, le clore, le rouvrir.
+    actuel = projets.get_projet(projet_id) or {}
+    dates_changees = (date_debut_valide != actuel.get("date_debut")
+                      or date_fin_valide != actuel.get("date_fin"))
+    erreur = None
+    if dates_changees:
+        premiere = taches.premiere_date(projet_id) if date_debut_valide else None
+        avant_debut = None
+        if premiere and premiere < date_debut_valide:
+            avant_debut = (
+                f"Date de début impossible : une tâche ou des heures du projet datent du "
+                f"{premiere.strftime('%d/%m/%Y')}, avant le {date_debut_valide.strftime('%d/%m/%Y')}."
+            )
+        erreur = v.premiere_erreur(
+            v.date_hors_bornes(date_debut_valide, "Date de début"),
+            v.date_hors_bornes(date_fin_valide, "Date de fin"),
+            v.ordre_dates(date_debut_valide, date_fin_valide, "la date de début", "Date de fin"),
+            avant_debut,
         )
-    erreur = v.premiere_erreur(
-        v.date_hors_bornes(date_debut_valide, "Date de début"),
-        v.date_hors_bornes(date_fin_valide, "Date de fin"),
-        v.ordre_dates(date_debut_valide, date_fin_valide, "la date de début", "Date de fin"),
-        tache_avant_debut,
-    )
     if erreur:
         flash(erreur, "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
