@@ -460,6 +460,10 @@ class SmokeTestCase(SmokeBase):
                 self.assertEqual(resp.status_code, 200)
                 self.assertTrue(resp.data.startswith(debut))
                 resp.close()
+        # K toujours noir, y compris en thème sombre du navigateur (Fadhel, lot 7).
+        resp = self.client.get("/static/img/favicon.svg")
+        self.assertNotIn(b"prefers-color-scheme", resp.data)
+        resp.close()
 
     def test_accueil_renders_with_full_feed(self):
         resp = self._get("/accueil")
@@ -5553,6 +5557,26 @@ class TestAuditV3(SmokeBase):
             self.assertEqual(pool.call_args.kwargs.get("options"), "-c jit=off")
         finally:
             _db._pool = ancien
+
+    def test_rejoindre_tache_visible_sans_survol(self):
+        """Écrans tactiles : le bouton "rejoindre la tâche" ne dépend plus du survol."""
+        import pathlib, re
+        css = (pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / "css" / "app.css").read_text(encoding="utf-8")
+        self.assertRegex(css, r"@media \(hover: none\) \{ \.task-join-form \{ opacity: 1; \} \}")
+
+    def test_rappel_dailylog_lisible_en_theme_sombre(self):
+        """Le bandeau "DailyLog d'hier non rempli" suit le thème (plus de
+        fond clair en dur avec un lien vert illisible en sombre)."""
+        import pathlib
+        racine = pathlib.Path(__file__).resolve().parent.parent / "app"
+        tpl = (racine / "templates" / "dailylog.html").read_text(encoding="utf-8")
+        css = (racine / "static" / "css" / "app.css").read_text(encoding="utf-8")
+        self.assertIn('class="card warn-banner"', tpl)
+        self.assertNotIn("#fdf3ec", tpl)
+        sombre = css[css.index(':root[data-theme="dark"] {'):]
+        sombre = sombre[:sombre.index("}")]
+        self.assertIn("--warn-bg:", sombre)
+        self.assertIn("--text-faint: #8a9680", sombre)
 
     def test_page_projet_n_agrege_plus_tout_le_dailylog(self):
         """Les heures de l'en-tête projet et des tâches sont calculées pour ce

@@ -55,10 +55,10 @@
   </div>
 
   {% if rappel_hier %}
-  <div class="card" style="display:flex; align-items:center; gap:10px; padding:10px 14px; margin-bottom:16px; background:#fdf3ec; border-color:#f3ddc6;">
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#c97a24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
-    <span style="font-size:12.5px; color:#8a5a1e;">Le DailyLog d'hier ({{ hier.strftime('%d/%m') }}) n'a pas été rempli.</span>
-    <a href="{{ url_for('dailylog.formulaire', date=hier.isoformat()) }}" style="font-size:12.5px; font-weight:700; margin-left:auto;">Le remplir →</a>
+  <div class="card warn-banner">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--warn-icon)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+    <span class="warn-banner-text">Le DailyLog d'hier ({{ hier.strftime('%d/%m') }}) n'a pas été rempli.</span>
+    <a href="{{ url_for('dailylog.formulaire', date=hier.isoformat()) }}">Le remplir →</a>
   </div>
   {% endif %}
 

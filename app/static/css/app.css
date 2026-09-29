@@ -49,6 +49,12 @@
   --brand-text: #4a7c59;
   --brand-text-strong: #14513b;
   --error-bg: #fdeae4;
+  /* Avertissements (rappel Daily log, "Non vérifié") — lot 7 : avant,
+     couleurs claires en dur, le lien vert devenait illisible en sombre. */
+  --warn-bg: #fdf3ec;
+  --warn-border: #f3ddc6;
+  --warn-text: #8a5a1e;
+  --warn-icon: #c97a24;
   --error-text: #c23a1a;
   /* Pastille "partiel" du calendrier DailyLog (Lot 5, retour Fadhel,
      2026-09-28 : "calendrier à pastilles vert/bleu/rouge") — même bleu
@@ -77,12 +83,16 @@
   --text-secondary: #b7c0af;
   --text-muted: #94a08a;
   --text-muted-2: #94a08a;
-  --text-faint: #7c8873;
+  --text-faint: #8a9680; /* lot 7 : 4.7:1 sur les fonds clairs du thème sombre (était 3.9:1) */
   --text-disabled: #5c6552;
   --brand-bg-soft: #1c3327;
   --brand-text: #7fbb92;
   --brand-text-strong: #a9dcbb;
   --error-bg: #3a1f18;
+  --warn-bg: #33270f;
+  --warn-border: #5a4424;
+  --warn-text: #f0c48a;
+  --warn-icon: #e3a45a;
   --error-text: #f0917a;
   --info-text: #8ab4f5;
 }
@@ -263,6 +273,9 @@ a:hover { color: var(--brand-text-strong); }
 .taskrow-intervenants { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .task-join-form { opacity: 0; transition: opacity 0.12s; flex-shrink: 0; }
 .taskrow:hover .task-join-form, .task-join-form:focus-within { opacity: 1; }
+/* Écrans tactiles : pas de survol, le bouton "rejoindre" reste visible
+   (audit, lot 7 — sinon introuvable sur téléphone/tablette). */
+@media (hover: none) { .task-join-form { opacity: 1; } }
 .task-join-btn {
   width: 20px; height: 20px; border-radius: 999px; padding: 0; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; cursor: pointer;
@@ -818,7 +831,7 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
   font-weight: 700; color: var(--text-muted); cursor: pointer; list-style: none;
 }
 .post-comment-action:hover { color: var(--text-secondary); }
-.post-comment-action.danger { color: #e3512c; }
+.post-comment-action.danger { color: var(--error-text); }
 .post-comment-supprimer > summary::-webkit-details-marker { display: none; }
 .post-comment-supprimer[open] > summary { display: none; }
 .post-comment-supprimer form { display: inline-flex; gap: 8px; align-items: center; }
@@ -987,3 +1000,10 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
   font: inherit; font-size: 12px; font-weight: 700; color: var(--brand-text); cursor: pointer;
 }
 .bouton-texte:hover { text-decoration: underline; }
+
+/* Bandeau d'avertissement (rappel Daily log d'hier) — lot 7. */
+.warn-banner { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin-bottom: 16px;
+  background: var(--warn-bg); border-color: var(--warn-border); }
+.warn-banner-text { font-size: 12.5px; color: var(--warn-text); }
+.warn-banner a { font-size: 12.5px; font-weight: 700; margin-left: auto; color: var(--warn-text); text-decoration: underline; }
+.pill-warn { background: var(--warn-bg); color: var(--warn-text); }
