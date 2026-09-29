@@ -58,62 +58,29 @@ def download_tache(piece_id: int):
     )
 
 
-@bp.route("/posts/<int:post_id>/upload", methods=["POST"])
-@login_required
-def upload_post(post_id: int):
-    post = posts_repo.get_post(post_id)
-    if post is None or not posts_repo.peut_voir(post["id"], post["projet_id"], g.user["id"]):
-        abort(404)
-
-    fichier = request.files.get("fichier")
-    if not fichier or not fichier.filename:
-        flash("Aucun fichier sélectionné.", "error")
-        return _safe_redirect()
-
-    nom_fichier, chemin = save_upload(fichier, f"posts/{post_id}")
-    try:
-        posts_repo.add_piece_jointe(post_id, nom_fichier, chemin, g.user["id"])
-    except Exception:
-        delete_upload(chemin)
-        raise
-    flash("Pièce jointe ajoutée.", "success")
-    return _safe_redirect()
-
-
 @bp.route("/posts/<int:piece_id>", methods=["GET"])
 @login_required
 def download_post(piece_id: int):
     piece = posts_repo.get_piece_jointe(piece_id)
     if piece is None or not posts_repo.peut_voir(piece["post_id"], piece["projet_id"], g.user["id"]):
         abort(404)
+    # Image : servie en ligne, affichée dans le fil et la visionneuse
+    # (J.docx : « montrer les photos, on utilise beaucoup de captures
+    # d'écran ») ; tout autre fichier en téléchargement.
+    if is_image_filename(piece["nom_fichier"]):
+        return send_from_directory(current_app.config["UPLOAD_DIR"], piece["chemin"])
     return send_from_directory(
         current_app.config["UPLOAD_DIR"], piece["chemin"],
         as_attachment=True, download_name=piece["nom_fichier"],
     )
 
 
-@bp.route("/posts/commentaires/<int:commentaire_id>/upload", methods=["POST"])
-@login_required
-def upload_commentaire(commentaire_id: int):
-    """Séparée de posts.commenter() (qui accepte déjà une pièce jointe à
-    la création) : utilisée seulement si post-comments.js retente l'envoi
-    du fichier après coup (jamais appelée dans le flux normal, gardée pour
-    la même raison que upload_tache/upload_post — cohérence de l'API)."""
-    commentaire = posts_repo.get_commentaire(commentaire_id)
-    if commentaire is None or not posts_repo.peut_voir(commentaire["post_id"], commentaire["projet_id"], g.user["id"]):
-        abort(404)
-    fichier = request.files.get("fichier")
-    if not fichier or not fichier.filename:
-        flash("Aucun fichier sélectionné.", "error")
-        return _safe_redirect()
-    nom_fichier, chemin = save_upload(fichier, f"posts/commentaires/{commentaire_id}")
-    try:
-        posts_repo.add_piece_jointe_commentaire(commentaire_id, nom_fichier, chemin, g.user["id"])
-    except Exception:
-        delete_upload(chemin)
-        raise
-    flash("Pièce jointe ajoutée.", "success")
-    return _safe_redirect()
+# Plus de route d'ajout de pièce jointe APRÈS COUP sur un post ou un
+# commentaire (audit du 2026-09-29) : le trombone sous les posts a été
+# retiré (remplacé par « Reposter »), et un commentaire reçoit son fichier
+# à la création (posts.commenter). Ces deux routes n'étaient plus appelées
+# et permettaient d'ajouter un fichier au post ou au commentaire de
+# quelqu'un d'autre.
 
 
 @bp.route("/posts/commentaires/<int:piece_id>", methods=["GET"])

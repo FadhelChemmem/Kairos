@@ -70,12 +70,17 @@ def _parser_date_embauche(date_str: str | None):
     return datetime.date.fromisoformat(date_str)
 
 
-def _semaine_derniere(user_id: int) -> list[dict]:
+def _semaine_derniere(user_id: int, projets_visibles_ids: set | None = None) -> list[dict]:
     """Daily log en lecture seule de la semaine dernière — lundi à vendredi
     uniquement (retour Fadhel, 2026-09-21 : "ne pas afficher samedi et
     dimanche"), partagé par /moi (mon_profil, où c'est le propre DailyLog
     de l'utilisateur) et par la fiche en lecture seule d'un chef de projet
-    (fiche(), où c'est celui d'un autre utilisateur)."""
+    (fiche(), où c'est celui d'un autre utilisateur).
+
+    `projets_visibles_ids` (audit du 2026-09-29) : pour le DailyLog d'une
+    AUTRE personne, seules les lignes des projets que le visiteur peut voir
+    — sinon la fiche montrait les noms de projets d'autres équipes (même
+    règle que _fenetre_7_jours pour la page de profil)."""
     aujourdhui = datetime.date.today()
     lundi_cette_semaine = aujourdhui - datetime.timedelta(days=aujourdhui.weekday())
     lundi_semaine_derniere = lundi_cette_semaine - datetime.timedelta(days=7)
@@ -83,6 +88,8 @@ def _semaine_derniere(user_id: int) -> list[dict]:
     for i in range(5):  # lundi (0) à vendredi (4)
         jour = lundi_semaine_derniere + datetime.timedelta(days=i)
         entrees = dailylog_repo.list_entrees_jour(user_id, jour)
+        if projets_visibles_ids is not None:
+            entrees = [e for e in entrees if e["projet_id"] in projets_visibles_ids]
         jours.append({
             "date": jour,
             "entrees": entrees,
@@ -393,7 +400,7 @@ def fiche(user_id: int):
         return render_template(
             "utilisateur_voir.html",
             utilisateur=utilisateur,
-            semaine_derniere=_semaine_derniere(user_id),
+            semaine_derniere=_semaine_derniere(user_id, projets_repo.list_ids_visibles(g.user["id"])),
         )
 
     if request.method == "POST":

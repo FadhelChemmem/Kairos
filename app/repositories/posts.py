@@ -491,19 +491,6 @@ def get_commentaire(commentaire_id: int) -> dict | None:
     )
 
 
-def add_piece_jointe_commentaire(commentaire_id: int, nom_fichier: str, chemin: str, uploaded_by: int) -> int:
-    with db.get_cursor(user_id=uploaded_by) as cur:
-        cur.execute(
-            """
-            INSERT INTO post_commentaire_piece_jointe (commentaire_id, nom_fichier, chemin, uploaded_by)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id
-            """,
-            (commentaire_id, nom_fichier, chemin, uploaded_by),
-        )
-        return cur.fetchone()["id"]
-
-
 def get_piece_jointe_commentaire(piece_id: int) -> dict | None:
     """Inclut `projet_id` (double jointure jusqu'à `post`) pour le
     contrôle d'accès (IDOR, PROMPT_CORRECTIONS.md P0 #1), même principe
@@ -579,19 +566,6 @@ def repost(post_id: int, auteur_id: int, contenu: str | None = None) -> int:
             (nouveau_id, post_id),
         )
         return nouveau_id
-
-
-def add_piece_jointe(post_id: int, nom_fichier: str, chemin: str, uploaded_by: int) -> int:
-    with db.get_cursor(user_id=uploaded_by) as cur:
-        cur.execute(
-            """
-            INSERT INTO post_piece_jointe (post_id, nom_fichier, chemin, uploaded_by)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id
-            """,
-            (post_id, nom_fichier, chemin, uploaded_by),
-        )
-        return cur.fetchone()["id"]
 
 
 def get_piece_jointe(piece_id: int) -> dict | None:

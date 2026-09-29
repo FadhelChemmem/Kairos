@@ -204,11 +204,20 @@
     </a>
   {% endif %}
 
+  {# Images jointes affichées dans le fil, en grand dans la visionneuse
+     (J.docx : « montrer les photos si on en rajoute, on utilise beaucoup
+     de captures d'écran ») ; autres fichiers en lien de téléchargement. #}
   {% for pj in post.pieces_jointes %}
+    {% if is_image_filename(pj.nom_fichier) %}
+      <a href="{{ url_for('fichiers.download_post', piece_id=pj.id) }}" target="_blank" rel="noopener" data-lightbox style="display:block; margin:0 0 8px 46px;">
+        <img src="{{ url_for('fichiers.download_post', piece_id=pj.id) }}" alt="{{ pj.nom_fichier }}" class="post-attachment-img" loading="lazy">
+      </a>
+    {% else %}
     <a href="{{ url_for('fichiers.download_post', piece_id=pj.id) }}" style="display:flex; align-items:center; gap:6px; margin:0 0 6px 46px;">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
       <span style="font-size:12px; color:var(--text-muted);">{{ pj.nom_fichier }}</span>
     </a>
+    {% endif %}
   {% endfor %}
 
   {% if post.parent_post_id %}

@@ -1321,26 +1321,22 @@ class SmokeTestCase(SmokeBase):
                 p.stop()
         self.assertEqual(resp.status_code, 404)
 
-    def test_fichiers_upload_post_404_si_post_inexistant(self):
+    def test_plus_d_ajout_de_fichier_apres_coup_sur_un_post_ou_un_commentaire(self):
+        """Audit du 2026-09-29 : ces routes n'étaient plus utilisées et
+        permettaient d'ajouter un fichier au post/commentaire d'un autre."""
         self._login()
-        patchers = self._patched(**{"app.repositories.posts.get_post": None})
+        patchers = self._patched()
         for p in patchers:
             p.start()
         try:
-            resp = self.client.post(
-                "/fichiers/posts/999/upload",
-                data={"fichier": (io.BytesIO(b"contenu bidon"), "note.pdf")},
-                content_type="multipart/form-data",
-            )
+            for url in ("/fichiers/posts/1/upload", "/fichiers/posts/commentaires/1/upload"):
+                with self.subTest(url=url):
+                    resp = self.client.post(url, data={"fichier": (io.BytesIO(b"x"), "a.pdf")},
+                                            content_type="multipart/form-data")
+                    self.assertIn(resp.status_code, (404, 405))
         finally:
             for p in reversed(patchers):
                 p.stop()
-        self.assertEqual(resp.status_code, 404)
-
-    # --- Fichier orphelin sur disque si l'INSERT échoue après save_upload()
-    # (audit sécurité/qualité externe, 2026-09-28, item P0-3) : avant ce
-    # correctif, rien ne nettoyait le fichier déjà écrit sur disque quand
-    # l'écriture en base plantait juste après. ---
 
     def test_fichiers_upload_tache_nettoie_le_fichier_si_insert_echoue(self):
         self._login()
@@ -1620,7 +1616,6 @@ class SmokeTestCase(SmokeBase):
             patch("app.routes.fichiers.save_upload", return_value=("note.pdf", "taches/5/xyz.pdf")),
             patch("app.routes.posts.save_upload", return_value=("plan.pdf", "posts/101/xyz.pdf")),
             patch("app.repositories.taches.add_piece_jointe", return_value=1),
-            patch("app.repositories.posts.add_piece_jointe", return_value=1),
             patch("app.repositories.utilisateurs.create_utilisateur", return_value=42),
             patch("app.repositories.utilisateurs.toggle_actif", return_value=None),
         ]
@@ -1682,13 +1677,6 @@ class SmokeTestCase(SmokeBase):
                 content_type="multipart/form-data",
             )
             self.assertEqual(r10.status_code, 302, r10.data[:2000])
-
-            r11 = self.client.post(
-                "/fichiers/posts/1/upload",
-                data={"fichier": (io.BytesIO(b"contenu bidon"), "note.pdf")},
-                content_type="multipart/form-data",
-            )
-            self.assertEqual(r11.status_code, 302, r11.data[:2000])
 
             r12 = self.client.post("/utilisateurs/nouveau", data={
                 "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
@@ -4042,15 +4030,6 @@ class TestControlesDAccesStricts(unittest.TestCase):
         self.assertEqual(resp.status_code, 404)
         save.assert_not_called()
 
-    def test_upload_post_projet_invisible_nenregistre_rien(self):
-        resp, save = self._requete(
-            "post", "/fichiers/posts/1/upload", "app.routes.fichiers.save_upload",
-            {"fichier": (io.BytesIO(b"x"), "plan.pdf")},
-            **{"app.repositories.projets.user_can_view": False},
-        )
-        self.assertEqual(resp.status_code, 404)
-        save.assert_not_called()
-
     # --- Posts : réactions, commentaires, mentions ---
     def test_reagir_projet_invisible_nexecute_rien(self):
         resp, react = self._requete(
@@ -5515,6 +5494,38 @@ class TestAuditV3(SmokeBase):
     def test_lien_excel_garde_tous_les_filtres(self):
         body = self._get("/projets?filtres_actifs=1&phase=APS&phase=EXE&etat=en_cours").data.decode()
         self.assertIn('href="/projets/export.xlsx?filtres_actifs=1&amp;phase=APS&amp;phase=EXE&amp;etat=en_cours"', body)
+
+    def test_fiche_semaine_derniere_filtree_par_visibilite(self):
+        """Un chef de projet ne voit, sur la fiche d'un autre, que les
+        lignes de DailyLog des projets qu'il voit lui-même."""
+        self._login()
+        entrees = [{"id": 1, "projet_id": 1, "tache_id": None, "heures": 3.0, "projet_code": "26099X",
+                    "projet_nom": "Visible", "tache_titre": None},
+                   {"id": 2, "projet_id": 42, "tache_id": None, "heures": 5.0, "projet_code": "26042X",
+                    "projet_nom": "Projet Secret", "tache_titre": None}]
+        patchers = self._patched(**{
+            "app.auth.get_user_by_id": {**USER, "role": "chef_de_projet"},
+            "app.repositories.utilisateurs.get_utilisateur": AUTRE_UTILISATEUR,
+            "app.repositories.dailylog.list_entrees_jour": entrees,
+            "app.repositories.projets.list_ids_visibles": {1},
+        })
+        for p in patchers:
+            p.start()
+        try:
+            body = self.client.get("/utilisateurs/2").data.decode()
+        finally:
+            for p in reversed(patchers):
+                p.stop()
+        self.assertIn("Visible", body)
+        self.assertNotIn("Projet Secret", body)
+
+    def test_image_jointe_a_un_post_affichee(self):
+        post = {**FEED_POST_MANUEL, "pieces_jointes": [{"id": 4, "nom_fichier": "capture.png"},
+                                                       {"id": 5, "nom_fichier": "plan.pdf"}]}
+        body = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [post]}).data.decode()
+        self.assertRegex(body, r'<a href="/fichiers/posts/4"[^>]*data-lightbox')
+        self.assertIn('<img src="/fichiers/posts/4" alt="capture.png" class="post-attachment-img"', body)
+        self.assertIn("plan.pdf</span>", body)
 
     def test_migrations_appliquees_au_demarrage(self):
         """Plus de fenêtre entre le --build et `flask migrer` où personne ne

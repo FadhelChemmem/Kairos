@@ -93,6 +93,29 @@
     document.querySelectorAll('[data-dropzone]').forEach(build);
   }
 
+  // Capture d'écran collée (Ctrl+V) pendant qu'on écrit un post : elle va
+  // dans la zone de dépôt du formulaire en cours (retour Fadhel : « on
+  // utilise beaucoup de captures d'écran »). Le champ de commentaire gère
+  // son propre collage (comment-composer.js).
+  document.addEventListener('paste', function (e) {
+    var files = e.clipboardData && e.clipboardData.files;
+    if (!files || !files.length) return;
+    var actif = document.activeElement;
+    var form = actif && actif.closest && actif.closest('form');
+    if (!form || form.hasAttribute('data-comment-composer') || form.hasAttribute('data-comment-edit')) return;
+    var input = form.querySelector('[data-dropzone] input[type="file"]');
+    if (!input) return;
+    try {
+      var dt = new DataTransfer();
+      dt.items.add(files[0]);
+      input.files = dt.files;
+    } catch (err) {
+      return;
+    }
+    e.preventDefault();
+    input.dispatchEvent(new Event('change'));
+  });
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
