@@ -35,6 +35,13 @@ def upload_tache(tache_id: int):
     if tache.get("projet_etat") in projets_repo.ETATS_CLOS:
         flash("Ce projet est clos (terminé ou abandonné) : on ne peut plus y ajouter de fichier.", "error")
         return _safe_redirect()
+    # Même règle que les autres actions sur une tâche (état, titre, clôture)
+    # et que le point G de l'audit pour les posts : chef, co-chef ou
+    # intervenant de CETTE tâche — plus n'importe qui voyant le projet.
+    if not (projets_repo.user_can_manage(tache["projet_id"], g.user["id"])
+            or taches_repo.user_est_intervenant(tache_id, g.user["id"])):
+        flash("Seuls le chef de projet, un co-chef ou un intervenant de cette tâche peuvent y joindre un fichier.", "error")
+        return _safe_redirect()
 
     fichier = request.files.get("fichier")
     if not fichier or not fichier.filename:

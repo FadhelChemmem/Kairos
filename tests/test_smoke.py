@@ -5700,6 +5700,29 @@ class TestDecisionsLot7(SmokeBase):
         bloc = resp.data.decode().split('name="utilisateur_id"')[1].split("</select>")[0]
         self.assertNotIn("Karim", bloc)
 
+    def test_anciens_rattachements_d_un_client_ne_donnent_aucun_droit(self):
+        """Relecture : un Client (ou RH) resté co-chef/intervenant d'avant la
+        migration 0011 ne gère rien et n'agit sur aucune tâche."""
+        import inspect
+        from app.repositories import posts as posts_repo, projets as projets_repo, taches as taches_repo
+        garde = "ux.role IN ('client', 'rh')"
+        self.assertIn(garde, inspect.getsource(projets_repo.user_can_manage))
+        self.assertIn(garde, inspect.getsource(taches_repo.user_est_intervenant))
+        self.assertIn(garde, posts_repo._FEED_SELECT)
+
+    def test_fichier_de_tache_reserve_au_chef_et_aux_intervenants(self):
+        import io
+        for gere, intervenant, attendu in ((False, False, False), (True, False, True), (False, True, True)):
+            with self.subTest(gere=gere, intervenant=intervenant):
+                _, mocks = self._requete(
+                    "post", "/fichiers/taches/5/upload", data={"fichier": (io.BytesIO(b"x"), "n.pdf")},
+                    espions=[("app.routes.fichiers.save_upload", ("n.pdf", "taches/5/x.pdf")),
+                             ("app.repositories.taches.add_piece_jointe", None)],
+                    **{"app.auth.get_user_by_id": {**USER, "role": "intervenant"},
+                       "app.repositories.projets.user_can_manage": gere,
+                       "app.repositories.taches.user_est_intervenant": intervenant})
+                self.assertEqual(mocks["app.routes.fichiers.save_upload"].called, attendu)
+
     # --- Informations d'équipe -------------------------------------------
     def test_information_sans_projet_vers_sa_seule_equipe_sauf_admin_et_rh(self):
         cas = [

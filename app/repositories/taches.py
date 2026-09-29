@@ -230,10 +230,15 @@ def user_est_intervenant(tache_id: int, user_id: int) -> bool:
     """Vrai si `user_id` est affecté comme intervenant sur cette tâche —
     en plus du chef de projet et des co-chefs (voir projets.user_can_manage),
     un intervenant de la tâche peut changer son état ou la clôturer
-    (PROMPT_CORRECTIONS.md P0 #2)."""
-    sql = "SELECT 1 FROM tache_intervenant WHERE tache_id = %s AND utilisateur_id = %s"
+    (PROMPT_CORRECTIONS.md P0 #2). Jamais un Client ni le RH (lot 7, même
+    raison que projets.user_can_manage)."""
+    sql = """
+        SELECT 1 FROM tache_intervenant
+        WHERE tache_id = %(tid)s AND utilisateur_id = %(uid)s
+          AND NOT EXISTS (SELECT 1 FROM utilisateur ux WHERE ux.id = %(uid)s AND ux.role IN ('client', 'rh'))
+    """
     with db.get_cursor() as cur:
-        cur.execute(sql, (tache_id, user_id))
+        cur.execute(sql, {"tid": tache_id, "uid": user_id})
         return cur.fetchone() is not None
 
 

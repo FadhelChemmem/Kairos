@@ -86,6 +86,22 @@ BEGIN
   END IF;
 END $$;
 
+-- Un compte encore rattaché ne peut pas passer au rôle Client (ni RH).
+DO $$
+DECLARE
+  v_chef  BIGINT := (SELECT id FROM utilisateur WHERE email = 't-chefm@test.tn');
+  v_refus BOOLEAN := false;
+BEGIN
+  BEGIN
+    UPDATE utilisateur SET role = 'client' WHERE id = v_chef;
+  EXCEPTION WHEN raise_exception THEN
+    v_refus := SQLERRM LIKE '%rôle Client ne peut pas être chef de projet%';
+  END;
+  IF NOT v_refus THEN
+    RAISE EXCEPTION 'Passage au rôle Client accepté pour un chef de projet encore rattaché';
+  END IF;
+END $$;
+
 -- Colonne de date de clôture (migration 0011) présente.
 DO $$
 BEGIN

@@ -136,7 +136,7 @@
            de la tâche (titre modifiable, état, clôture, pièces jointes) à la
            place de l'ancien menu "…" — voir tache-dialog.js. #}
         {# Projet clos : plus d'action sur ses tâches (décision Fadhel, lot 7). #}
-        {% set peut_agir_tache = not projet_clos and (peut_gerer or (g.user.id in (t.intervenants|map(attribute='id')|list))) %}
+        {% set peut_agir_tache = not projet_clos and (peut_gerer or (g.user.role not in ('client', 'rh') and g.user.id in (t.intervenants|map(attribute='id')|list))) %}
         <div class="taskrow taskrow-cliquable" data-open-tache="{{ t.id }}" role="button" tabindex="0" aria-haspopup="dialog" title="Ouvrir la tâche">
           <span style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; {% if t.etat in ('termine','abandonne') %}color:var(--text-faint);{% endif %}">{{ t.titre }}</span>
           {# "Rejoindre cette tâche" (retour Fadhel, 2026-09-28) : ajout
@@ -247,7 +247,7 @@
             {% else %}
               <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:6px;">Aucune.</div>
             {% endfor %}
-            {% if not projet_clos and g.user.role != 'client' %}
+            {% if peut_agir_tache %}
             <form method="post" action="{{ url_for('fichiers.upload_tache', tache_id=t.id) }}" enctype="multipart/form-data" style="display:flex; gap:6px;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="next" value="{{ request.path }}">

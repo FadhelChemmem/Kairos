@@ -799,13 +799,14 @@ WHERE u.actif = true
 CREATE OR REPLACE FUNCTION fn_check_passage_role_rh()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF NEW.role = 'rh' AND OLD.role IS DISTINCT FROM 'rh' AND (
+  IF NEW.role IN ('rh', 'client') AND OLD.role IS DISTINCT FROM NEW.role AND (
        EXISTS (SELECT 1 FROM projet WHERE chef_projet_id = NEW.id)
     OR EXISTS (SELECT 1 FROM projet_co_chef WHERE utilisateur_id = NEW.id)
     OR EXISTS (SELECT 1 FROM projet_intervenant WHERE utilisateur_id = NEW.id)
     OR EXISTS (SELECT 1 FROM tache_intervenant WHERE utilisateur_id = NEW.id)
   ) THEN
-    RAISE EXCEPTION 'Un utilisateur avec le rôle RH ne peut pas être chef de projet, co-chef ou intervenant (utilisateur id=%) : retirez-le d''abord de ses projets et tâches.', NEW.id;
+    RAISE EXCEPTION 'Un utilisateur avec le rôle % ne peut pas être chef de projet, co-chef ou intervenant (utilisateur id=%) : retirez-le d''abord de ses projets et tâches.',
+      CASE NEW.role WHEN 'rh' THEN 'RH' ELSE 'Client' END, NEW.id;
   END IF;
   RETURN NEW;
 END;

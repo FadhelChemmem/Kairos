@@ -63,10 +63,11 @@ _FEED_SELECT = """
            -- Sert à n'afficher "+ Tâche" (rebond) qu'à ceux qui pourront
            -- effectivement la créer (audit n°2 : le bouton était montré à
            -- tous, puis refusé par le serveur une fois le formulaire rempli).
-           COALESCE(proj.chef_projet_id = %(uid)s OR EXISTS (
+           -- Jamais un Client ni le RH (lot 7, voir projets.user_can_manage).
+           COALESCE((proj.chef_projet_id = %(uid)s OR EXISTS (
               SELECT 1 FROM projet_co_chef cc
               WHERE cc.projet_id = p.projet_id AND cc.utilisateur_id = %(uid)s
-           ), false) AS je_gere,
+           )) AND NOT EXISTS (SELECT 1 FROM utilisateur ux WHERE ux.id = %(uid)s AND ux.role IN ('client', 'rh')), false) AS je_gere,
            (SELECT count(*) FROM post_reaction r WHERE r.post_id = p.id) AS nb_reactions,
            (SELECT count(*) FROM post_commentaire c WHERE c.post_id = p.id) AS nb_commentaires,
            (SELECT pr.reaction_code FROM post_reaction pr

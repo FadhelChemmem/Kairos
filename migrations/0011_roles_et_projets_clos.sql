@@ -8,7 +8,11 @@
 --    - Admin : tout ; autres rôles : inchangé (équipe + rattachements).
 -- 2. Un Client ne peut être ni chef, ni co-chef, ni intervenant (projet ou
 --    tâche) — même garde-fou en base que pour le RH (fn_check_role_non_rh,
---    appelée par les triggers trg_check_*_role).
+--    appelée par les triggers trg_check_*_role), y compris quand un compte
+--    rattaché passe au rôle Client (fn_check_passage_role_rh, migration
+--    0005, étendue). Les rattachements d'un Client antérieurs à cette
+--    migration ne sont pas supprimés, mais l'appli ne leur donne plus aucun
+--    droit (projets.user_can_manage, taches.user_est_intervenant).
 -- 3. Date de clôture (projet.date_cloture) : posée automatiquement quand
 --    le projet passe à Terminé ou Abandonné, effacée s'il est rouvert
 --    (voir projets.update_projet). Après cette date, plus d'heures de
@@ -58,6 +62,23 @@ BEGIN
   IF v_role = 'client' THEN
     RAISE EXCEPTION 'Un utilisateur avec le rôle Client ne peut pas être % (utilisateur id=%).', p_contexte, p_utilisateur_id;
   END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 2 bis.
+CREATE OR REPLACE FUNCTION fn_check_passage_role_rh()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.role IN ('rh', 'client') AND OLD.role IS DISTINCT FROM NEW.role AND (
+       EXISTS (SELECT 1 FROM projet WHERE chef_projet_id = NEW.id)
+    OR EXISTS (SELECT 1 FROM projet_co_chef WHERE utilisateur_id = NEW.id)
+    OR EXISTS (SELECT 1 FROM projet_intervenant WHERE utilisateur_id = NEW.id)
+    OR EXISTS (SELECT 1 FROM tache_intervenant WHERE utilisateur_id = NEW.id)
+  ) THEN
+    RAISE EXCEPTION 'Un utilisateur avec le rôle % ne peut pas être chef de projet, co-chef ou intervenant (utilisateur id=%) : retirez-le d''abord de ses projets et tâches.',
+      CASE NEW.role WHEN 'rh' THEN 'RH' ELSE 'Client' END, NEW.id;
+  END IF;
+  RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 

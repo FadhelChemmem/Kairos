@@ -478,12 +478,17 @@ ETATS_CLOS = ("termine", "abandonne")
 
 def user_can_manage(projet_id: int, user_id: int) -> bool:
     """Chef de projet OU co-chef : seuls eux peuvent créer des tâches sur
-    ce projet (cf. décision "co-chef simple" — voir spec)."""
+    ce projet (cf. décision "co-chef simple" — voir spec).
+
+    Jamais un Client ni le RH (lot 7), même s'il reste un rattachement
+    d'avant la migration 0011 : les garde-fous en base ne jouent qu'à
+    l'ajout d'un rattachement."""
     sql = """
         SELECT 1
         FROM projet p
         LEFT JOIN projet_co_chef cc ON cc.projet_id = p.id AND cc.utilisateur_id = %(uid)s
         WHERE p.id = %(pid)s AND (p.chef_projet_id = %(uid)s OR cc.utilisateur_id IS NOT NULL)
+          AND NOT EXISTS (SELECT 1 FROM utilisateur ux WHERE ux.id = %(uid)s AND ux.role IN ('client', 'rh'))
     """
     with db.get_cursor() as cur:
         cur.execute(sql, {"pid": projet_id, "uid": user_id})
