@@ -50,8 +50,25 @@
       return trouve ? trouve.textContent : '';
     }
 
+    var trouves = [];
+    var actif = -1;
+
     function fermer() {
       list.hidden = true;
+    }
+
+    function choisir(o) {
+      select.value = o.value;
+      input.value = o.textContent;
+      fermer();
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function surligner() {
+      Array.prototype.forEach.call(list.querySelectorAll('.search-combobox-item'), function (el, i) {
+        el.classList.toggle('is-active', i === actif);
+        if (i === actif) el.scrollIntoView({ block: 'nearest' });
+      });
     }
 
     function afficher(filtre) {
@@ -66,6 +83,8 @@
         vide.textContent = 'Aucun résultat';
         list.appendChild(vide);
       }
+      trouves = matches;
+      actif = matches.length ? 0 : -1;
       matches.forEach(function (o) {
         var item = document.createElement('button');
         item.type = 'button';
@@ -73,15 +92,11 @@
         item.setAttribute('role', 'option');
         item.textContent = o.textContent;
         if (o.value === select.value) item.classList.add('is-selected');
-        item.addEventListener('click', function () {
-          select.value = o.value;
-          input.value = o.textContent;
-          fermer();
-          select.dispatchEvent(new Event('change', { bubbles: true }));
-        });
+        item.addEventListener('click', function () { choisir(o); });
         list.appendChild(item);
       });
       list.hidden = false;
+      surligner();
     }
 
     input.addEventListener('focus', function () {
@@ -91,14 +106,39 @@
       afficher(input.value === labelFor(select.value) ? '' : input.value);
     });
     input.addEventListener('input', function () { afficher(input.value); });
+    // Clavier (audit du 2026-09-29) : flèches pour parcourir, Entrée pour
+    // CHOISIR le résultat surligné (avant, Entrée fermait seulement la
+    // liste : le champ affichait « Olivi » mais le post partait sur le
+    // projet précédent), Échap pour annuler. Entrée ne soumet jamais le
+    // formulaire parent (même règle que chip-select.js).
     input.addEventListener('keydown', function (evt) {
-      // Entrée dans ce champ ne doit jamais soumettre le formulaire
-      // parent (même règle que chip-select.js) — juste garder/fermer.
-      if (evt.key === 'Enter') { evt.preventDefault(); fermer(); }
-      if (evt.key === 'Escape') { fermer(); input.blur(); }
+      if (evt.key === 'ArrowDown' || evt.key === 'ArrowUp') {
+        evt.preventDefault();
+        if (list.hidden) { afficher(input.value === labelFor(select.value) ? '' : input.value); return; }
+        if (!trouves.length) return;
+        actif = (actif + (evt.key === 'ArrowDown' ? 1 : trouves.length - 1)) % trouves.length;
+        surligner();
+      } else if (evt.key === 'Enter') {
+        evt.preventDefault();
+        if (!list.hidden && actif >= 0 && trouves[actif]) choisir(trouves[actif]);
+        else { input.value = labelFor(select.value); fermer(); }
+      } else if (evt.key === 'Escape') {
+        input.value = labelFor(select.value);
+        fermer();
+        input.blur();
+      }
     });
+    // Le texte affiché correspond toujours au projet réellement choisi :
+    // une saisie abandonnée (clic ailleurs) revient au choix en cours.
+    function annulerSaisie() {
+      if (input.value !== labelFor(select.value)) input.value = labelFor(select.value);
+    }
     document.addEventListener('click', function (evt) {
-      if (!wrap.contains(evt.target)) fermer();
+      if (!wrap.contains(evt.target)) { fermer(); annulerSaisie(); }
+    });
+    input.addEventListener('blur', function () {
+      // Après un éventuel clic dans la liste (traité avant).
+      setTimeout(function () { if (list.hidden) annulerSaisie(); }, 150);
     });
 
     // Texte affiché initial = l'option déjà sélectionnée côté serveur.

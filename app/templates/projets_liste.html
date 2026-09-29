@@ -10,8 +10,11 @@
     <div style="display:flex; align-items:center; gap:8px;">
       {# « Télécharger en Excel » (retour Fadhel, 2026-09-29) : la liste
          affichée, avec les filtres en cours (lien mis à jour à chaque
-         rafraîchissement, voir le script plus bas). #}
-      <a id="export-excel" href="{{ url_for('projets.export_excel', **request.args) }}" class="btn-secondary" style="width:auto; padding:9px 14px; display:inline-flex; align-items:center; gap:6px;" download>
+         rafraîchissement, voir le script plus bas). Toute la chaîne de
+         requête, pas **request.args : ce dernier ne garde que la PREMIÈRE
+         valeur de chaque filtre (audit du 2026-09-29 — export incomplet
+         avec plusieurs phases cochées). #}
+      <a id="export-excel" href="{{ url_for('projets.export_excel') }}{% if request.query_string %}?{{ request.query_string.decode() }}{% endif %}" class="btn-secondary" style="width:auto; padding:9px 14px; display:inline-flex; align-items:center; gap:6px;" download>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
         Télécharger en Excel
       </a>

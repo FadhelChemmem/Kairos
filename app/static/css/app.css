@@ -745,7 +745,7 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
   font: inherit; font-size: 13px; color: var(--text-secondary); cursor: pointer;
   padding: 7px 10px; border-radius: 6px;
 }
-.search-combobox-item:hover { background: var(--hover-bg); }
+.search-combobox-item:hover, .search-combobox-item.is-active { background: var(--hover-bg); }
 .search-combobox-item.is-selected { background: var(--brand-bg-soft); color: var(--brand-text-strong); font-weight: 600; }
 .search-combobox-empty { padding: 7px 10px; font-size: 12.5px; color: var(--text-faint); }
 

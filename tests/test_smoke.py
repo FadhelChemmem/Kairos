@@ -5508,5 +5508,20 @@ class TestRelectureLot6(SmokeBase):
         self.assertNotIn("+ Nouveau post</button>", body)
 
 
+
+class TestAuditV3(SmokeBase):
+    """Corrections issues du troisième audit (2026-09-29)."""
+
+    def test_lien_excel_garde_tous_les_filtres(self):
+        body = self._get("/projets?filtres_actifs=1&phase=APS&phase=EXE&etat=en_cours").data.decode()
+        self.assertIn('href="/projets/export.xlsx?filtres_actifs=1&amp;phase=APS&amp;phase=EXE&amp;etat=en_cours"', body)
+
+    def test_recherche_de_projet_entree_choisit(self):
+        import pathlib
+        js = (pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / "js" / "search-combobox.js").read_text(encoding="utf-8")
+        self.assertIn("choisir(trouves[actif])", js)
+        self.assertIn("ArrowDown", js)
+
+
 if __name__ == "__main__":
     unittest.main()
