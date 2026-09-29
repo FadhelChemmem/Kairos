@@ -91,7 +91,7 @@ def _semaine_derniere(user_id: int) -> list[dict]:
     return jours
 
 
-def _fenetre_7_jours(user_id: int, projets_visibles_ids: set) -> list[dict]:
+def _fenetre_7_jours(user_id: int, projets_visibles_ids: set, nb_jours: int = 7) -> list[dict]:
     """DailyLog glissant sur 7 jours (aujourd'hui inclus, en remontant),
     pour la page de profil d'une personne (Lot 5, retour Fadhel,
     2026-09-28 : "fenêtre 7 jours") — différent de _semaine_derniere
@@ -106,7 +106,9 @@ def _fenetre_7_jours(user_id: int, projets_visibles_ids: set) -> list[dict]:
     d'une équipe à laquelle le visiteur n'a pas accès."""
     aujourdhui = datetime.date.today()
     jours = []
-    for i in range(6, -1, -1):
+    # Du plus récent au plus ancien (2026-09-29) : "Voir +" ajoute les
+    # semaines précédentes en dessous.
+    for i in range(nb_jours):
         jour = aujourdhui - datetime.timedelta(days=i)
         entrees = [
             e for e in dailylog_repo.list_entrees_jour(user_id, jour)
@@ -142,13 +144,22 @@ def profil_personne(user_id: int):
 
     viewer_id = g.user["id"]
     projets_visibles_ids = projets_repo.list_ids_visibles(viewer_id)
+    # "Ce qui est récent, sur une semaine, avec la possibilité de voir +"
+    # (retour Fadhel, J.docx, T3) : daily log et posts de la dernière
+    # semaine ; chaque "Voir +" ajoute une semaine (12 au plus).
+    semaines = min(max(request.args.get("semaines", 1, type=int) or 1, 1), 12)
+    depuis = datetime.date.today() - datetime.timedelta(days=7 * semaines - 1)
+    posts_recents = posts_repo.list_feed_auteur(user_id, viewer_id, limit=100, depuis=depuis)
+    posts_plus_anciens = bool(posts_repo.list_feed_auteur(user_id, viewer_id, limit=1, avant=depuis))
 
     return render_template(
         "utilisateur_profil_personne.html",
         utilisateur=utilisateur,
-        jours=_fenetre_7_jours(user_id, projets_visibles_ids),
+        jours=_fenetre_7_jours(user_id, projets_visibles_ids, nb_jours=7 * semaines),
+        semaines=semaines,
+        posts_plus_anciens=posts_plus_anciens,
         taches_en_cours=taches_repo.list_en_cours_pour_profil(user_id, viewer_id, limit=8),
-        posts_recents=posts_repo.list_feed_auteur(user_id, viewer_id, limit=8),
+        posts_recents=posts_recents,
         # Lot 5 (retour Fadhel, 2026-09-28) : "@ Taguer" dans le
         # composeur de commentaire de post_card.html a besoin de la même
         # liste que sur l'accueil/la page projet (voir main.accueil /

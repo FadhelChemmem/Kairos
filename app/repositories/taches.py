@@ -233,8 +233,9 @@ def add_intervenant(tache_id: int, projet_id: int, utilisateur_id: int, current_
 
 def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int) -> bool:
     """Changement d'état simple (En cours / Bloqué / Vérifié / Arrêt /
-    Abandonné) — pas de post automatique, contrairement à la clôture
-    ("Terminé", voir close_tache).
+    Abandonné) — avec un post automatique "ancien état → nouvel état"
+    depuis le 2026-09-29 (P1) ; la clôture ("Terminé", voir close_tache)
+    garde son propre post, avec le tag choisi.
 
     `projet_id` est ajouté au WHERE (PROMPT_CORRECTIONS.md P0 #2) : sans
     ça, connaître un tache_id suffisait à le modifier depuis n'importe
@@ -248,17 +249,63 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int) -> 
     passage à "Vérifié" (étape normale APRÈS la clôture) ou "Abandonné"
     garde en revanche la date de clôture (audit n°2 : elle était effacée
     à tort dès qu'une tâche terminée était vérifiée)."""
-    rowcount = db.execute(
-        """
-        UPDATE tache
-        SET etat = %s,
-            date_fin = CASE WHEN %s IN ('en_cours', 'bloque', 'arret') THEN NULL ELSE date_fin END
-        WHERE id = %s AND projet_id = %s
-        """,
-        (etat, etat, tache_id, projet_id),
-        user_id=current_user_id,
-    )
-    return rowcount > 0
+    from ..utils import tache_etat_style
+
+    with db.get_cursor(user_id=current_user_id) as cur:
+        cur.execute(
+            "SELECT etat FROM tache WHERE id = %s AND projet_id = %s FOR UPDATE",
+            (tache_id, projet_id),
+        )
+        avant = cur.fetchone()
+        if avant is None:
+            return False
+        cur.execute(
+            """
+            UPDATE tache
+            SET etat = %s,
+                date_fin = CASE WHEN %s IN ('en_cours', 'bloque', 'arret') THEN NULL ELSE date_fin END
+            WHERE id = %s AND projet_id = %s
+            """,
+            (etat, etat, tache_id, projet_id),
+        )
+        # Post automatique du changement d'état (retour Fadhel, 2026-09-29,
+        # P1 — avant, seules la création et la clôture en avaient un).
+        if avant["etat"] != etat:
+            cur.execute(
+                """
+                INSERT INTO post (projet_id, tache_id, auteur_id, type_code, contenu, evenement)
+                VALUES (%s, %s, %s, 'information', %s, 'etat_tache')
+                """,
+                (projet_id, tache_id, current_user_id,
+                 f"{tache_etat_style(avant['etat'])['label']} → {tache_etat_style(etat)['label']}"),
+            )
+        return True
+
+
+def set_titre(tache_id: int, projet_id: int, titre: str, current_user_id: int) -> bool:
+    """Modification du titre d'une tâche (retour Fadhel, 2026-09-29 : clic
+    sur la ligne de la tâche → fenêtre flottante) ; le changement apparaît
+    dans le fil ("ancien → nouveau", evenement='titre_tache'), dans la même
+    transaction. Même garde-fou `projet_id` que set_etat."""
+    with db.get_cursor(user_id=current_user_id) as cur:
+        cur.execute(
+            "SELECT titre FROM tache WHERE id = %s AND projet_id = %s FOR UPDATE",
+            (tache_id, projet_id),
+        )
+        avant = cur.fetchone()
+        if avant is None:
+            return False
+        if avant["titre"] == titre:
+            return True
+        cur.execute("UPDATE tache SET titre = %s WHERE id = %s", (titre, tache_id))
+        cur.execute(
+            """
+            INSERT INTO post (projet_id, tache_id, auteur_id, type_code, contenu, evenement)
+            VALUES (%s, %s, %s, 'information', %s, 'titre_tache')
+            """,
+            (projet_id, tache_id, current_user_id, f"{avant['titre']} → {titre}"),
+        )
+        return True
 
 
 def add_piece_jointe(tache_id: int, nom_fichier: str, chemin: str, uploaded_by: int) -> int:

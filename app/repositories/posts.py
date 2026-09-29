@@ -56,6 +56,9 @@ _FEED_SELECT = """
            -- (parent_post_id renseigné mais evenement NULL) — voir
            -- posts.repost() / post_card.html.
            (p.evenement = 'repost') AS est_repost,
+           -- Posts automatiques (migration 0009) : creation_projet,
+           -- etat_projet, etat_tache, titre_tache — voir post_card.html.
+           p.evenement,
            -- L'utilisateur gère-t-il le projet du post (chef ou co-chef) ?
            -- Sert à n'afficher "+ Tâche" (rebond) qu'à ceux qui pourront
            -- effectivement la créer (audit n°2 : le bouton était montré à
@@ -192,22 +195,29 @@ def list_feed_mes_projets(current_user_id: int, limit: int = 30) -> list[dict]:
         return _structurer_commentaires([dict(r) for r in cur.fetchall()])
 
 
-def list_feed_auteur(auteur_id: int, viewer_id: int, limit: int = 8) -> list[dict]:
+def list_feed_auteur(auteur_id: int, viewer_id: int, limit: int = 8, depuis=None, avant=None) -> list[dict]:
     """Posts récents d'UNE personne (page de profil, Lot 5, retour Fadhel
     2026-09-28) — filtrés à ce que LE VISITEUR (`viewer_id`) peut voir
     (v_projet_visibilite), pas ce que l'auteur peut voir : un profil ne
     doit pas devenir un détour pour lire le fil d'une équipe à laquelle
     on n'appartient pas (même logique que taches.list_en_cours_pour_profil
     / projets.list_ids_visibles). `%(uid)s` reste le VISITEUR — c'est
-    aussi lui dont dépendent "je_gere"/"ma_reaction" dans _FEED_SELECT."""
+    aussi lui dont dépendent "je_gere"/"ma_reaction" dans _FEED_SELECT.
+
+    `depuis` / `avant` (dates, retour Fadhel, 2026-09-29, T3 : "ce qui est
+    récent, sur une semaine, avec voir +") : posts publiés à partir de /
+    avant ce jour-là."""
     sql = _FEED_SELECT + """
         WHERE p.auteur_id = %(auteur_id)s
           AND """ + _POST_VISIBLE + """
+          AND (%(depuis)s::date IS NULL OR p.created_at >= %(depuis)s::date)
+          AND (%(avant)s::date IS NULL OR p.created_at < %(avant)s::date)
         ORDER BY p.created_at DESC
         LIMIT %(limit)s
     """
     with db.get_cursor() as cur:
-        cur.execute(sql, {"uid": viewer_id, "auteur_id": auteur_id, "limit": limit})
+        cur.execute(sql, {"uid": viewer_id, "auteur_id": auteur_id, "limit": limit,
+                          "depuis": depuis, "avant": avant})
         return _structurer_commentaires([dict(r) for r in cur.fetchall()])
 
 

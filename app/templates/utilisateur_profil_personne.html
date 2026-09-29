@@ -4,7 +4,7 @@
    projet). Volontairement AUCUN champ de contact (téléphone/email/
    adresse/date d'embauche) : ceux-là restent sur la fiche RH — ici on
    montre seulement l'identité/le rôle, l'activité en cours (tâches,
-   DailyLog 7 jours glissants) et les posts récents, chacun filtré à ce
+   DailyLog et posts de la dernière semaine, "Voir +" pour remonter), chacun filtré à ce
    que LE VISITEUR peut voir (voir routes/utilisateurs.py:profil_personne).
    Attend dans le contexte : utilisateur, jours, taches_en_cours, posts_recents. #}
 {% extends "base.html" %}
@@ -58,7 +58,7 @@
 
   <div class="col-center" style="max-width:none;">
     <div class="card">
-      <div style="font-size:14px; font-weight:700; margin-bottom:14px;">Daily log — 7 derniers jours</div>
+      <div style="font-size:14px; font-weight:700; margin-bottom:14px;" id="dailylog">Daily log — {{ 'dernière semaine' if semaines == 1 else semaines ~ ' dernières semaines' }}</div>
       <div style="display:flex; flex-direction:column; gap:10px;">
         {% for jour in jours %}
           <div style="border:1px solid var(--border-soft); border-radius:10px; padding:10px 14px;">
@@ -75,26 +75,32 @@
           </div>
         {% endfor %}
       </div>
+      {% if semaines < 12 %}
+        <a href="{{ url_for('utilisateurs.profil_personne', user_id=utilisateur.id, semaines=semaines + 1) }}#dailylog" class="bouton-texte" style="display:inline-block; margin-top:10px;">Voir +</a>
+      {% endif %}
       <div style="font-size:11px; color:var(--text-faint); margin-top:10px;">Seules les entrées sur des projets que vous pouvez voir sont affichées ici.</div>
     </div>
 
     <div class="card">
-      <div style="font-size:14px; font-weight:700; margin-bottom:14px;">Posts récents</div>
+      <div style="font-size:14px; font-weight:700; margin-bottom:14px;" id="posts">Posts — {{ 'dernière semaine' if semaines == 1 else semaines ~ ' dernières semaines' }}</div>
       {% for post in posts_recents %}
         <div style="margin-bottom:12px;">
-          {% with post=post, show_projet=true, next_url=url_for('utilisateurs.profil_personne', user_id=utilisateur.id) %}
+          {% with post=post, show_projet=true, next_url=url_for('utilisateurs.profil_personne', user_id=utilisateur.id, semaines=(semaines if semaines > 1 else none)) %}
             {% include "partials/post_card.html" %}
           {% endwith %}
         </div>
       {% else %}
-        <p style="font-size:12.5px; color:var(--text-faint);">Aucun post récent (parmi ceux que vous pouvez voir).</p>
+        <p style="font-size:12.5px; color:var(--text-faint);">Aucun post {{ 'cette dernière semaine' if semaines == 1 else 'sur cette période' }} (parmi ceux que vous pouvez voir).</p>
       {% endfor %}
+      {% if posts_plus_anciens and semaines < 12 %}
+        <a href="{{ url_for('utilisateurs.profil_personne', user_id=utilisateur.id, semaines=semaines + 1) }}#posts" class="bouton-texte">Voir +</a>
+      {% endif %}
     </div>
   </div>
 
 </div>
 {# "Reposter" depuis le profil (2026-09-29) : même fenêtre que l'accueil. #}
-{% with projet_id=None, projets_choix=projets_postables, next_url=url_for('utilisateurs.profil_personne', user_id=utilisateur.id) %}
+{% with projet_id=None, projets_choix=projets_postables, next_url=url_for('utilisateurs.profil_personne', user_id=utilisateur.id, semaines=(semaines if semaines > 1 else none)) %}
   {% include "partials/post_dialog.html" %}
 {% endwith %}
 {% endblock %}

@@ -127,7 +127,11 @@
 
       {% for t in taches %}
         {% set tst = tache_etat_style(t.etat) %}
-        <div class="taskrow">
+        {# Clic sur la ligne (retour Fadhel, 2026-09-29) : ouvre la fenêtre
+           de la tâche (titre modifiable, état, clôture, pièces jointes) à la
+           place de l'ancien menu "…" — voir tache-dialog.js. #}
+        {% set peut_agir_tache = peut_gerer or (g.user.id in (t.intervenants|map(attribute='id')|list)) %}
+        <div class="taskrow taskrow-cliquable" data-open-tache="{{ t.id }}" role="button" tabindex="0" aria-haspopup="dialog" title="Ouvrir la tâche">
           <span style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; {% if t.etat in ('termine','abandonne') %}color:var(--text-faint);{% endif %}">{{ t.titre }}</span>
           {# "Rejoindre cette tâche" (retour Fadhel, 2026-09-28) : ajout
              immédiat comme intervenant de la tâche, sans validation —
@@ -159,76 +163,91 @@
              Lot 5) — pas assez de place dans la ligne pour l'afficher en
              clair, voir v_tache_heures_par_role (schema.sql). #}
           <span style="font-size:12px; color:var(--text-muted);" title="{{ t.heures_chef|default(0, true)|round(1) }}h chef · {{ t.heures_intervenant|default(0, true)|round(1) }}h interv.">{{ t.heures_cumulees|default(0, true)|round(1) }} h</span>
-          {# Changer l'état / clôturer : seulement le chef, un co-chef ou un
-             intervenant de la tâche (même règle que le serveur, audit n°2 —
-             le menu était montré à tous puis refusé à l'envoi). Les pièces
-             jointes restent ouvertes à tous ceux qui voient le projet. #}
-          {% set peut_agir_tache = peut_gerer or (g.user.id in (t.intervenants|map(attribute='id')|list)) %}
-          <details>
-            <summary style="list-style:none; cursor:pointer;" aria-label="Actions sur la tâche « {{ t.titre }} »" title="Actions sur la tâche">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg>
-            </summary>
-            <div style="position:relative;">
-              <div class="task-menu-pop" style="position:absolute; right:0; top:4px; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px; width:220px; box-shadow:0 4px 12px rgba(20,30,25,0.08); z-index:10;">
-                {% if t.etat not in ('termine', 'verifie') and peut_agir_tache %}
-                <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" style="display:flex; gap:6px; margin-bottom:8px;">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <select name="etat" aria-label="Nouvel état" style="flex:1;">
-                    <option value="en_cours" {{ 'selected' if t.etat == 'en_cours' }}>En cours</option>
-                    <option value="bloque" {{ 'selected' if t.etat == 'bloque' }}>Bloqué</option>
-                    <option value="verifie" {{ 'selected' if t.etat == 'verifie' }}>Vérifié</option>
-                    <option value="arret" {{ 'selected' if t.etat == 'arret' }}>Arrêt</option>
-                    <option value="abandonne" {{ 'selected' if t.etat == 'abandonne' }}>Abandonné</option>
-                  </select>
-                  <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">OK</button>
-                </form>
-                <form method="post" action="{{ url_for('projets.cloturer_tache', projet_id=projet.id, tache_id=t.id) }}">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <label for="cloture-tag-{{ t.id }}">Clôturer avec le tag</label>
-                  <select name="type_code" id="cloture-tag-{{ t.id }}" style="margin-bottom:6px;">
-                    <option value="envoi">Envoi</option>
-                    <option value="reponse">Réponse</option>
-                    <option value="question">Question</option>
-                    <option value="requete">Requête</option>
-                  </select>
-                  <button type="submit" class="btn-primary" style="background:#4a7c59; color:#fff;">Terminé</button>
-                </form>
-                {% elif t.etat in ('termine', 'verifie') %}
-                  <span style="font-size:12px; color:var(--text-muted);">Tâche {{ 'vérifiée' if t.etat == 'verifie' else 'terminée' }}{% if t.date_fin %} — clôturée le {{ t.date_fin.strftime('%d/%m/%Y') }}{% endif %}</span>
-                  {% if peut_agir_tache %}
-                  <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" style="display:flex; gap:6px; margin-top:8px;">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <select name="etat" aria-label="Nouvel état" style="flex:1;">
-                      {% if t.etat == 'termine' %}<option value="verifie">Vérifié</option>{% endif %}
-                      <option value="en_cours">Rouvrir (En cours)</option>
-                    </select>
-                    <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">OK</button>
-                  </form>
-                  {% endif %}
-                {% else %}
-                  <span style="font-size:12px; color:var(--text-muted);">Seuls le chef de projet, un co-chef ou un intervenant de la tâche peuvent changer son état.</span>
-                {% endif %}
-
-                <div class="divider" style="margin-left:0;"></div>
-                <div style="font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Pièces jointes</div>
-                {% for pj in t.pieces_jointes %}
-                  <a href="{{ url_for('fichiers.download_tache', piece_id=pj.id) }}" style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:6px;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
-                    {{ pj.nom_fichier }}
-                  </a>
-                {% else %}
-                  <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:6px;">Aucune.</div>
-                {% endfor %}
-                <form method="post" action="{{ url_for('fichiers.upload_tache', tache_id=t.id) }}" enctype="multipart/form-data" style="display:flex; gap:6px;">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <input type="hidden" name="next" value="{{ request.path }}">
-                  <input type="file" name="fichier" aria-label="Fichier à joindre à la tâche" style="flex:1; font-size:11px;">
-                  <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">+</button>
-                </form>
-              </div>
-            </div>
-          </details>
+          <span class="taskrow-ouvrir" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+          </span>
         </div>
+        <dialog class="post-dialog tache-dialog" id="dialog-tache-{{ t.id }}" aria-label="Tâche « {{ t.titre }} »">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px;">
+            <span class="pill" style="background:{{ tst.bg }}; color:{{ tst.fg }};">{{ tst.label }}</span>
+            <button type="button" data-close-tache aria-label="Fermer" style="background:none; border:none; cursor:pointer; color:var(--text-faint); padding:4px; width:auto;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+          {% if peut_agir_tache %}
+          {# Titre modifiable ; le changement apparaît dans le fil. #}
+          <form method="post" action="{{ url_for('projets.modifier_titre_tache', projet_id=projet.id, tache_id=t.id) }}" class="form-row" style="display:flex; gap:8px; align-items:flex-end;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div style="flex:1; min-width:0;">
+              <label for="tache-titre-{{ t.id }}">Titre de la tâche</label>
+              <input type="text" id="tache-titre-{{ t.id }}" name="titre" value="{{ t.titre }}" maxlength="255" required>
+            </div>
+            <button type="submit" class="btn-secondary" style="width:auto; padding:9px 14px;">Renommer</button>
+          </form>
+          {% else %}
+          <div style="font-size:15px; font-weight:800; margin-bottom:12px;">{{ t.titre }}</div>
+          {% endif %}
+          <div style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
+            {% if t.date_echeance %}Échéance {{ t.date_echeance|date_courte }}{% if t.type_deadline == 'interne' %} · interne{% endif %} · {% endif %}{{ t.intervenants|map(attribute='prenom')|join(', ') or 'Aucun intervenant' }}
+          </div>
+          <div class="tache-dialog-actions">
+                {% if t.etat not in ('termine', 'verifie') and peut_agir_tache %}
+            <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" style="display:flex; gap:6px; margin-bottom:8px;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="etat" aria-label="Nouvel état" style="flex:1;">
+                <option value="en_cours" {{ 'selected' if t.etat == 'en_cours' }}>En cours</option>
+                <option value="bloque" {{ 'selected' if t.etat == 'bloque' }}>Bloqué</option>
+                <option value="verifie" {{ 'selected' if t.etat == 'verifie' }}>Vérifié</option>
+                <option value="arret" {{ 'selected' if t.etat == 'arret' }}>Arrêt</option>
+                <option value="abandonne" {{ 'selected' if t.etat == 'abandonne' }}>Abandonné</option>
+              </select>
+              <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">OK</button>
+            </form>
+            <form method="post" action="{{ url_for('projets.cloturer_tache', projet_id=projet.id, tache_id=t.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <label for="cloture-tag-{{ t.id }}">Clôturer avec le tag</label>
+              <select name="type_code" id="cloture-tag-{{ t.id }}" style="margin-bottom:6px;">
+                <option value="envoi">Envoi</option>
+                <option value="reponse">Réponse</option>
+                <option value="question">Question</option>
+                <option value="requete">Requête</option>
+              </select>
+              <button type="submit" class="btn-primary" style="background:#4a7c59; color:#fff;">Terminé</button>
+            </form>
+            {% elif t.etat in ('termine', 'verifie') %}
+              <span style="font-size:12px; color:var(--text-muted);">Tâche {{ 'vérifiée' if t.etat == 'verifie' else 'terminée' }}{% if t.date_fin %} — clôturée le {{ t.date_fin.strftime('%d/%m/%Y') }}{% endif %}</span>
+              {% if peut_agir_tache %}
+              <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" style="display:flex; gap:6px; margin-top:8px;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <select name="etat" aria-label="Nouvel état" style="flex:1;">
+                  {% if t.etat == 'termine' %}<option value="verifie">Vérifié</option>{% endif %}
+                  <option value="en_cours">Rouvrir (En cours)</option>
+                </select>
+                <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">OK</button>
+              </form>
+              {% endif %}
+            {% else %}
+              <span style="font-size:12px; color:var(--text-muted);">Seuls le chef de projet, un co-chef ou un intervenant de la tâche peuvent changer son état.</span>
+            {% endif %}
+
+            <div class="divider" style="margin-left:0;"></div>
+            <div style="font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Pièces jointes</div>
+            {% for pj in t.pieces_jointes %}
+              <a href="{{ url_for('fichiers.download_tache', piece_id=pj.id) }}" style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:6px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+                {{ pj.nom_fichier }}
+              </a>
+            {% else %}
+              <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:6px;">Aucune.</div>
+            {% endfor %}
+            <form method="post" action="{{ url_for('fichiers.upload_tache', tache_id=t.id) }}" enctype="multipart/form-data" style="display:flex; gap:6px;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="next" value="{{ request.path }}">
+              <input type="file" name="fichier" aria-label="Fichier à joindre à la tâche" style="flex:1; font-size:11px;">
+              <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">+</button>
+            </form>
+          </div>
+        </dialog>
       {% else %}
         <div style="padding:16px 4px; font-size:12.5px; color:var(--text-muted);">Aucune tâche pour l'instant.</div>
       {% endfor %}
@@ -319,13 +338,16 @@
       <div class="divider" style="margin-left:0;"></div>
       <form method="post" action="{{ url_for('projets.rejoindre', projet_id=projet.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn-secondary" style="width:100%;">+ Rejoindre ce projet</button>
+        {# Un chef de projet rejoint comme co-chef (2026-09-29, PR8). #}
+        <button type="submit" class="btn-secondary" style="width:100%;">+ Rejoindre ce projet{% if g.user.role == 'chef_de_projet' %} comme co-chef{% endif %}</button>
       </form>
       {% endif %}
     </div>
   </div>
 
 </div>
+
+<script src="{{ url_for('static', filename='js/tache-dialog.js') }}" defer></script>
 
 {% with projet_id=projet.id, projets_choix=None, next_url=request.path %}
   {% include "partials/post_dialog.html" %}

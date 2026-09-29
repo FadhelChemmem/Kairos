@@ -275,7 +275,11 @@ def update_projet(
     lettre du code), et une transition de phase se fait en créant un
     NOUVEAU projet relié via `phase_liee_id` (champ "Phase liée"), pas en
     éditant la phase d'un projet existant."""
+    from ..utils import projet_etat_style
+
     with db.get_cursor(user_id=current_user_id) as cur:
+        cur.execute("SELECT etat FROM projet WHERE id = %s FOR UPDATE", (projet_id,))
+        avant = cur.fetchone()
         cur.execute(
             """
             UPDATE projet
@@ -284,6 +288,17 @@ def update_projet(
             """,
             (nom, etat, date_debut, date_fin, phase_liee_id, projet_id),
         )
+        # Post automatique quand l'état change (retour Fadhel, 2026-09-29,
+        # P1), dans la même transaction.
+        if avant is not None and avant["etat"] != etat:
+            cur.execute(
+                """
+                INSERT INTO post (projet_id, auteur_id, type_code, contenu, evenement)
+                VALUES (%s, %s, 'information', %s, 'etat_projet')
+                """,
+                (projet_id, current_user_id,
+                 f"{projet_etat_style(avant['etat'])['label']} → {projet_etat_style(etat)['label']}"),
+            )
         # Remplace les lots (supprime puis réinsère) — même principe que
         # dailylog.remplacer_jour : plus simple qu'un diff, et le volume
         # (CM/GO, 1 à 2 lignes) ne justifie pas mieux.
@@ -430,6 +445,20 @@ def user_est_rattache(projet_id: int, user_id: int) -> bool:
         return cur.fetchone() is not None
 
 
+def add_co_chef(projet_id: int, utilisateur_id: int, current_user_id: int) -> None:
+    """« Rejoindre ce projet » pour un chef de projet (retour Fadhel,
+    2026-09-29, PR8) : il rejoint comme co-chef, pas comme intervenant."""
+    db.execute(
+        """
+        INSERT INTO projet_co_chef (projet_id, utilisateur_id)
+        VALUES (%s, %s)
+        ON CONFLICT DO NOTHING
+        """,
+        (projet_id, utilisateur_id),
+        user_id=current_user_id,
+    )
+
+
 def add_intervenant(projet_id: int, utilisateur_id: int, current_user_id: int) -> None:
     db.execute(
         """
@@ -515,4 +544,13 @@ def create_projet(
                 "INSERT INTO projet_lot (projet_id, lot_code) VALUES (%s, %s)",
                 (projet_id, lot_code),
             )
+        # Post automatique (retour Fadhel, 2026-09-29, P1) : la création du
+        # projet apparaît dans le fil, dans la même transaction.
+        cur.execute(
+            """
+            INSERT INTO post (projet_id, auteur_id, type_code, contenu, evenement)
+            VALUES (%s, %s, 'information', %s, 'creation_projet')
+            """,
+            (projet_id, current_user_id or chef_projet_id, f"{code}_{nom}"),
+        )
         return projet_id

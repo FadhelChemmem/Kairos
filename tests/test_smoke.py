@@ -433,7 +433,7 @@ class SmokeBase(unittest.TestCase):
         try:
             return self.client.get(path)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
 
@@ -596,7 +596,7 @@ class SmokeTestCase(SmokeBase):
             self.assertEqual(resp.status_code, 302)
             self.assertEqual(mock_remplacer.call_args.args[2], [])
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_dailylog_enregistrer_ignore_les_heures_hors_bornes(self):
@@ -615,7 +615,7 @@ class SmokeTestCase(SmokeBase):
             self.assertEqual(resp.status_code, 302)
             self.assertEqual(mock_remplacer.call_args.args[2], [])
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_dailylog_enregistrer_ignore_un_projet_non_visible(self):
@@ -634,7 +634,7 @@ class SmokeTestCase(SmokeBase):
             self.assertEqual(resp.status_code, 302)
             self.assertEqual(mock_remplacer.call_args.args[2], [])
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_dailylog_enregistrer_ignore_une_tache_dun_autre_projet(self):
@@ -658,7 +658,7 @@ class SmokeTestCase(SmokeBase):
             self.assertEqual(resp.status_code, 302)
             self.assertEqual(mock_remplacer.call_args.args[2], [])
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_dailylog_enregistrer_accepte_une_ligne_valide(self):
@@ -681,7 +681,7 @@ class SmokeTestCase(SmokeBase):
                 [{"projet_id": 1, "tache_id": 5, "heures": 4.0}],
             )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     @staticmethod
@@ -712,7 +712,7 @@ class SmokeTestCase(SmokeBase):
                     "ligne_heures": heures,
                 })
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         return mock_remplacer
@@ -729,7 +729,7 @@ class SmokeTestCase(SmokeBase):
             with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
                 resp = self.client.post("/dailylog", data=dict({"date": "2026-09-15"}, **data))
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         return mock_remplacer
@@ -819,7 +819,7 @@ class SmokeTestCase(SmokeBase):
             self.assertEqual(resp.status_code, 302)
             self.assertEqual(mock_remplacer.call_args.args[1], datetime.date.today().isoformat())
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_dailylog_recherche_projets_filtre_par_visibilite(self):
@@ -834,7 +834,7 @@ class SmokeTestCase(SmokeBase):
                 self.client.get("/dailylog/recherche-projets?q=hub")
             mock_recherche.assert_called_once_with("hub", user_id=1)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_dailylog_jours_remplis_api(self):
@@ -848,7 +848,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.get("/dailylog/jours-remplis?annee=2026&mois=9")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.get_json(), {"etats": DAILYLOG_ETATS_JOURS})
@@ -888,7 +888,7 @@ class SmokeTestCase(SmokeBase):
                     follow_redirects=True,
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         self.assertIn("Phase invalide".encode(), resp.data)
@@ -917,7 +917,7 @@ class SmokeTestCase(SmokeBase):
                     follow_redirects=True,
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         self.assertIn("Date de d\xe9but invalide".encode(), resp.data)
@@ -939,7 +939,7 @@ class SmokeTestCase(SmokeBase):
                     follow_redirects=False,
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302, resp.data[:2000])
         mock_create.assert_called_once()
@@ -976,7 +976,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.post("/projets/1/taches", data={"titre": "Tâche test"})
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 404)
 
@@ -996,7 +996,7 @@ class SmokeTestCase(SmokeBase):
             self.assertEqual(resp.status_code, 404)
             self.assertFalse(mock_create.target.create_tache.called)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_creer_tache_accepte_un_parent_du_meme_projet(self):
@@ -1012,7 +1012,7 @@ class SmokeTestCase(SmokeBase):
             self.assertEqual(resp.status_code, 302)
             self.assertEqual(mock_create.call_args.kwargs["parent_post_id"], 7)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_creer_tache_erreur_inattendue_na_pas_le_message_rh(self):
@@ -1027,7 +1027,7 @@ class SmokeTestCase(SmokeBase):
         try:
             self.client.post("/projets/1/taches", data={"titre": "T"})
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         with self.client.session_transaction() as sess:
             messages = [msg for _, msg in sess.get("_flashes", [])]
@@ -1052,7 +1052,7 @@ class SmokeTestCase(SmokeBase):
                 data={"titre": "Tâche test", "type_deadline": "autre_chose"},
             )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         with self.client.session_transaction() as sess:
@@ -1070,7 +1070,7 @@ class SmokeTestCase(SmokeBase):
                 data={"titre": "Tâche test", "date_echeance": "31/12/2026"},
             )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         with self.client.session_transaction() as sess:
@@ -1095,7 +1095,7 @@ class SmokeTestCase(SmokeBase):
                 data={"titre": "Tâche test", "intervenants": ["9"]},
             )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         with self.client.session_transaction() as sess:
@@ -1112,7 +1112,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.post("/posts", data={"projet_id": "1", "type_code": "envoi", "contenu": "Test"})
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 404)
 
@@ -1134,7 +1134,7 @@ class SmokeTestCase(SmokeBase):
                 data={"projet_id": "1", "type_code": "envoi", "contenu": "Test", "parent_post_id": "1"},
             )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 404)
 
@@ -1157,7 +1157,7 @@ class SmokeTestCase(SmokeBase):
             self.assertEqual(resp.status_code, 302)
             self.assertIsNone(mock_create.call_args.kwargs["lien"])
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_posts_creer_accepte_un_lien_unc(self):
@@ -1177,7 +1177,7 @@ class SmokeTestCase(SmokeBase):
             self.assertEqual(resp.status_code, 302)
             self.assertEqual(mock_create.call_args.kwargs["lien"], "\\\\NAS\\Projets\\26099X\\")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_post_card_ne_rend_pas_un_lien_javascript(self):
@@ -1219,7 +1219,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.post("/posts/1/reagir", data={"reaction_code": "pouce"})
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 404)
 
@@ -1231,7 +1231,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.post("/posts/999/commenter", data={"contenu": "Test"})
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 404)
 
@@ -1243,7 +1243,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.get("/fichiers/taches/1")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 404)
 
@@ -1257,7 +1257,7 @@ class SmokeTestCase(SmokeBase):
                 resp = self.client.get("/fichiers/taches/1")
             mock_send.assert_called_once()
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 200)
 
@@ -1269,7 +1269,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.get("/fichiers/posts/1")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 404)
 
@@ -1285,7 +1285,7 @@ class SmokeTestCase(SmokeBase):
                 content_type="multipart/form-data",
             )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 404)
 
@@ -1301,7 +1301,7 @@ class SmokeTestCase(SmokeBase):
                 content_type="multipart/form-data",
             )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 404)
 
@@ -1330,7 +1330,7 @@ class SmokeTestCase(SmokeBase):
             mock_delete.assert_called_once_with("taches/5/xyz.pdf")
         finally:
             delete_patcher.stop()
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_posts_creer_nettoie_le_fichier_si_creation_echoue(self):
@@ -1362,7 +1362,7 @@ class SmokeTestCase(SmokeBase):
             mock_delete.assert_called_once_with("posts/projet-1/xyz.pdf")
         finally:
             delete_patcher.stop()
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_posts_creer_passe_bien_la_piece_jointe_a_create_post(self):
@@ -1388,7 +1388,7 @@ class SmokeTestCase(SmokeBase):
                     content_type="multipart/form-data",
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(
@@ -1421,7 +1421,7 @@ class SmokeTestCase(SmokeBase):
             mock_delete.assert_called_once_with("posts/1/commentaires/xyz.jpg")
         finally:
             delete_patcher.stop()
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     # --- Autorisation sur les actions de tâche (PROMPT_CORRECTIONS.md
@@ -1441,7 +1441,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.post("/projets/1/taches/5/etat", data={"etat": "verifie"}, follow_redirects=False)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         # Redirection (pas de crash), avec un message d'erreur — jamais
         # l'état effectivement modifié.
@@ -1460,7 +1460,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.post("/projets/1/taches/5/etat", data={"etat": "verifie"}, follow_redirects=False)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         self.assertIn("/projets/1", resp.headers["Location"])
@@ -1476,7 +1476,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.post("/projets/1/taches/999/etat", data={"etat": "verifie"}, follow_redirects=False)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
 
@@ -1493,7 +1493,7 @@ class SmokeTestCase(SmokeBase):
                 "/projets/1/taches/5/cloturer", data={"type_code": "n-importe-quoi"}, follow_redirects=False,
             )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
 
@@ -1509,7 +1509,7 @@ class SmokeTestCase(SmokeBase):
                 "/projets/1/taches/5/cloturer", data={"type_code": "envoi"}, follow_redirects=False,
             )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
 
@@ -1552,7 +1552,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.get("/utilisateurs", follow_redirects=False)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         self.assertIn("/accueil", resp.headers["Location"])
@@ -1565,7 +1565,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.get("/", follow_redirects=False)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         self.assertIn("/accueil", resp.headers["Location"])
@@ -1669,7 +1669,7 @@ class SmokeTestCase(SmokeBase):
             })
             self.assertEqual(r13.status_code, 302, r13.data[:2000])
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_topbar_shows_unread_notifications_badge(self):
@@ -1694,7 +1694,7 @@ class SmokeTestCase(SmokeBase):
                 resp = self.client.post("/notifications/10/ouvrir", follow_redirects=False)
                 mock_marquer.assert_called_once_with(10, 1)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         self.assertIn("/projets/1", resp.headers["Location"])
@@ -1709,7 +1709,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.post("/notifications/999/ouvrir")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 404)
 
@@ -1721,7 +1721,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.post("/notifications/marquer-toutes-lues", follow_redirects=False)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         self.assertIn("/notifications", resp.headers["Location"])
@@ -1796,7 +1796,7 @@ class SmokeTestCase(SmokeBase):
                 follow_redirects=False,
             )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         self.assertNotIn("evil.tld", resp.headers["Location"])
@@ -1819,7 +1819,7 @@ class SmokeTestCase(SmokeBase):
                 follow_redirects=False,
             )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         self.assertNotIn("evil.tld", resp.headers["Location"])
@@ -1886,7 +1886,7 @@ class SmokeTestCase(SmokeBase):
             self.assertEqual(mock_save.call_args.args[1], "avatars/42")
             mock_set_avatar.assert_called_once_with(42, "avatars/42/xyz.png", 1)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_creation_utilisateur_rejette_une_photo_non_image(self):
@@ -1914,7 +1914,7 @@ class SmokeTestCase(SmokeBase):
             self.assertEqual(resp.status_code, 302, resp.data[:2000])
             mock_set_avatar.assert_not_called()
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     # --- Autres 500 qui devraient être des messages flash
@@ -1942,7 +1942,7 @@ class SmokeTestCase(SmokeBase):
                     },
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302, resp.data[:2000])
         self.assertFalse(mock_create.call_args.kwargs["actif"])
@@ -1971,7 +1971,7 @@ class SmokeTestCase(SmokeBase):
                     },
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         self.assertIn("embauche invalide".encode(), resp.data)
@@ -1996,7 +1996,7 @@ class SmokeTestCase(SmokeBase):
                     },
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302, resp.data[:2000])
         mock_create.assert_called_once()
@@ -2018,7 +2018,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.post("/utilisateurs/2/toggle-actif", data={})
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         with self.client.session_transaction() as sess:
@@ -2037,7 +2037,7 @@ class SmokeTestCase(SmokeBase):
                 "csrf_token": "secret", "q": "wael", "equipe_code": "", "role": "intervenant",
             })
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         self.assertNotIn("csrf_token", resp.headers["Location"])
@@ -2064,7 +2064,7 @@ class SmokeTestCase(SmokeBase):
                 "nouveau_mot_de_passe": "un-nouveau-mot-de-passe-solide",
             })
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302, resp.data[:1500])
         with self.client.session_transaction() as sess:
@@ -2090,7 +2090,7 @@ class SmokeTestCase(SmokeBase):
             self.assertEqual(resp.status_code, 302)
             mock_set_avatar.assert_called_once_with(1, "avatars/1/abc.jpg", 1)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_mon_profil_post_sans_photo_ne_touche_pas_avatar(self):
@@ -2110,7 +2110,7 @@ class SmokeTestCase(SmokeBase):
             self.assertEqual(resp.status_code, 302)
             mock_set_avatar.assert_not_called()
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_route_avatar_sert_le_fichier_si_present(self):
@@ -2126,7 +2126,7 @@ class SmokeTestCase(SmokeBase):
             mock_send.assert_called_once()
             self.assertEqual(mock_send.call_args.args[1], "avatars/1/abc.png")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_route_avatar_404_si_absent(self):
@@ -2140,7 +2140,7 @@ class SmokeTestCase(SmokeBase):
             resp = self.client.get("/fichiers/avatars/1")
             self.assertEqual(resp.status_code, 404)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_fil_affiche_la_photo_de_profil_de_lauteur_si_presente(self):
@@ -2412,7 +2412,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.get("/projets", headers={"X-Requested-With": "XMLHttpRequest"})
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 200)
         body = resp.data.decode()
@@ -2445,7 +2445,7 @@ class SmokeTestCase(SmokeBase):
             self.assertEqual(mock_update.call_args.kwargs.get("poste"), "Chef de projet")
             self.assertEqual(mock_update.call_args.kwargs.get("adresse"), "Tunis")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_topbar_avatar_mene_a_mon_profil(self):
@@ -2822,7 +2822,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.get("/notifications/10/ouvrir")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 405)
 
@@ -3046,7 +3046,7 @@ class SmokeTestCase(SmokeBase):
             self.assertEqual(mock_envoyer.call_args[0][0], "w.rekik@midgard.tn")
             self.assertIn("d\xe9finisse son mot de passe".encode(), resp.data)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_creation_utilisateur_avertit_si_email_non_envoye(self):
@@ -3069,7 +3069,7 @@ class SmokeTestCase(SmokeBase):
                 )
             self.assertIn("SMTP non configur\xe9".encode(), resp.data)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_creation_utilisateur_inactif_n_envoie_aucun_email(self):
@@ -3096,7 +3096,7 @@ class SmokeTestCase(SmokeBase):
             mock_envoyer.assert_not_called()
             self.assertIn("(inactif)".encode(), resp.data)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_fiche_affiche_les_infos_dun_autre_utilisateur(self):
@@ -3109,7 +3109,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.get("/utilisateurs/2")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"Wael", resp.data)
@@ -3132,7 +3132,7 @@ class SmokeTestCase(SmokeBase):
                     follow_redirects=True,
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertIn("mise \xe0 jour".encode(), resp.data)
         mock_update.assert_called_once()
@@ -3155,7 +3155,7 @@ class SmokeTestCase(SmokeBase):
                     },
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertIn("propre r\xf4le".encode(), resp.data)
         mock_update.assert_not_called()
@@ -3182,7 +3182,7 @@ class SmokeTestCase(SmokeBase):
                     },
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertIn("R\xf4le invalide".encode(), resp.data)
         mock_update.assert_not_called()
@@ -3208,7 +3208,7 @@ class SmokeTestCase(SmokeBase):
                     },
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertIn("embauche invalide".encode(), resp.data)
         mock_update.assert_not_called()
@@ -3235,7 +3235,7 @@ class SmokeTestCase(SmokeBase):
                     follow_redirects=True,
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertIn("mise \xe0 jour".encode(), resp.data)
         mock_update.assert_called_once()
@@ -3291,7 +3291,7 @@ class SmokeTestCase(SmokeBase):
                     follow_redirects=True,
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertIn("mise \xe0 jour".encode(), resp.data)
         mock_update.assert_called_once()
@@ -3317,7 +3317,7 @@ class SmokeTestCase(SmokeBase):
                     follow_redirects=True,
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         mock_set_password.assert_called_once()
         self.assertEqual(mock_set_password.call_args[0][0], 2)
@@ -3350,7 +3350,7 @@ class SmokeTestCase(SmokeBase):
             with patch("app.repositories.dailylog.list_entrees_jour", return_value=[]) as mock_entrees:
                 resp = self.client.get("/utilisateurs/moi")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(mock_entrees.call_count, 5)
@@ -3392,7 +3392,7 @@ class SmokeTestCase(SmokeBase):
                     follow_redirects=True,
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertIn("Mot de passe chang\xe9".encode(), resp.data)
         mock_set_password.assert_called_once()
@@ -3418,7 +3418,7 @@ class SmokeTestCase(SmokeBase):
                     follow_redirects=True,
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertIn("actuel incorrect".encode(), resp.data)
         mock_set_password.assert_not_called()
@@ -3443,7 +3443,7 @@ class SmokeTestCase(SmokeBase):
                     follow_redirects=True,
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertIn("ne correspondent pas".encode(), resp.data)
         mock_set_password.assert_not_called()
@@ -3468,7 +3468,7 @@ class SmokeTestCase(SmokeBase):
                     follow_redirects=True,
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertIn("au moins 8 caract\xe8res".encode(), resp.data)
         mock_set_password.assert_not_called()
@@ -3491,7 +3491,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.get("/accueil", follow_redirects=True)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertIn(b"Se connecter", resp.data)
         self.assertIn("Votre mot de passe a \xe9t\xe9 chang\xe9".encode(), resp.data)
@@ -3540,7 +3540,7 @@ class SmokeTestCase(SmokeBase):
                     follow_redirects=True,
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         self.assertIn("Mot de passe chang\xe9".encode(), resp.data)
@@ -3559,7 +3559,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.get("/utilisateurs")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         self.assertNotIn("Nouvel utilisateur".encode(), resp.data)
@@ -3579,7 +3579,7 @@ class SmokeTestCase(SmokeBase):
         try:
             resp = self.client.get("/utilisateurs/2")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         self.assertIn(b"Wael", resp.data)
@@ -3611,7 +3611,7 @@ class SmokeTestCase(SmokeBase):
                     },
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         mock_update.assert_not_called()
@@ -3645,7 +3645,7 @@ class TestControlesDAccesStricts(unittest.TestCase):
             with patch(espion) as mock_espion:
                 resp = getattr(self.client, methode)(chemin, data=data or {})
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         return resp, mock_espion
 
@@ -3962,7 +3962,7 @@ class TestControlesDAccesStricts(unittest.TestCase):
                     data={"nom": "X", "etat": "en_cours", "lots": [], "phase_liee_id": "999"},
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         update.assert_not_called()
@@ -3981,7 +3981,7 @@ class TestControlesDAccesStricts(unittest.TestCase):
         try:
             return self.client.get(url)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_telechargement_tache_accorde_puis_refuse(self):
@@ -4063,7 +4063,7 @@ class TestControlesDAccesStricts(unittest.TestCase):
                     "projet_id": "1", "type_code": "requete", "contenu": "x", "mentions": ["2", "3"],
                 })
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(create.call_args.kwargs["mentionne_ids"], [2])
 
@@ -4367,7 +4367,7 @@ class TestJournalAudit(unittest.TestCase):
             with patch("app.repositories.audit.list_entrees") as mock_liste:
                 resp = self.client.get("/admin/journal")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         mock_liste.assert_not_called()
@@ -4397,7 +4397,7 @@ class TestJournalAudit(unittest.TestCase):
         try:
             resp = self.client.get("/accueil")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertNotIn(b'href="/admin/journal"', resp.data)
 
@@ -4426,7 +4426,7 @@ class TestProfilPersonne(unittest.TestCase):
         try:
             resp = self.client.get("/utilisateurs/1/profil")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"Foulen", resp.data)
@@ -4539,7 +4539,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
                  patch("app.repositories.notifications.creer_pour_plusieurs") as mock_notif:
                 self.client.post("/posts/1/commenter", data={"contenu": "@Foulen Chedly et @omar aziz, ok ?"})
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(mock_add.call_args.kwargs["mention_ids"], [3])
         self.assertEqual(mock_notif.call_args.args[0], [3])
@@ -4558,7 +4558,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
                     "contenu": "Réponse", "parent_commentaire_id": "3",
                 })
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         mock_add.assert_called_once_with(1, 1, "Réponse", None, 3, piece_jointe=None, mention_ids=[])
@@ -4578,7 +4578,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
                     "contenu": "x", "parent_commentaire_id": "2",
                 })
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         mock_add.assert_called_once_with(1, 1, "x", None, None, piece_jointe=None, mention_ids=[])
@@ -4597,7 +4597,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
                     "contenu": "x", "parent_commentaire_id": "5",
                 })
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         mock_add.assert_called_once_with(1, 1, "x", None, None, piece_jointe=None, mention_ids=[])
@@ -4623,7 +4623,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
                     content_type="multipart/form-data",
                 )
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302, resp.data[:2000])
         mock_save.assert_called_once()
@@ -4644,7 +4644,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
             with patch("app.routes.fichiers.send_from_directory", return_value="ok") as mock_send:
                 resp = self.client.get("/fichiers/posts/commentaires/1")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 200)
         mock_send.assert_called_once()
@@ -4660,7 +4660,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
             with patch("app.routes.fichiers.send_from_directory", return_value="ok") as mock_send:
                 resp = self.client.get("/fichiers/posts/commentaires/2")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 200)
         mock_send.assert_called_once()
@@ -4678,7 +4678,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
         try:
             resp = self.client.get("/fichiers/posts/commentaires/3")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 404)
 
@@ -4692,7 +4692,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
             with patch("app.repositories.posts.repost", return_value=55) as mock_repost:
                 resp = self.client.post("/posts/1/reposter", data={"contenu": "À suivre de près."})
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         mock_repost.assert_called_once_with(1, 1, "À suivre de près.")
@@ -4705,7 +4705,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
             with patch("app.repositories.posts.repost", return_value=55) as mock_repost:
                 resp = self.client.post("/posts/1/reposter", data={})
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         mock_repost.assert_called_once_with(1, 1, None)
@@ -4718,7 +4718,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
             with patch("app.repositories.posts.repost", return_value=55) as mock_repost:
                 resp = self.client.post("/posts/1/reposter", data={})
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 404)
         mock_repost.assert_not_called()
@@ -4800,7 +4800,7 @@ class TestInformationEtComposeur(SmokeBase):
             with patch("app.repositories.posts.create_post", return_value=101) as mock_create:
                 resp = self.client.post("/posts", data=data)
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         return resp, mock_create
 
@@ -4867,7 +4867,7 @@ class TestInformationEtComposeur(SmokeBase):
                          patch("app.repositories.posts.react"):
                         resp = self.client.post("/posts/9/reagir", data={"reaction_code": "pouce"})
                 finally:
-                    for p in patchers:
+                    for p in reversed(patchers):
                         p.stop()
                 self.assertEqual(resp.status_code, attendu)
                 mock_voir.assert_called_once_with(9, None, 1)
@@ -4922,7 +4922,7 @@ class TestInformationEtComposeur(SmokeBase):
         try:
             resp = self.client.post(f"/notifications/{notif['id']}/ouvrir")
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertTrue(resp.headers["Location"].endswith("/accueil#post-9"))
 
@@ -4968,7 +4968,7 @@ class TestCommentairesLot6(SmokeBase):
         try:
             return self.client.post(url, data=data or {})
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
 
     def test_commentaires_affiches_sans_clic_et_champ_toujours_visible(self):
@@ -5022,7 +5022,7 @@ class TestCommentairesLot6(SmokeBase):
                 resp = self.client.post("/posts/commentaires/4/modifier",
                                         data={"contenu": "Après, vu @Omar Aziz", "next": "/accueil#post-1"})
         finally:
-            for p in patchers:
+            for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         self.assertTrue(resp.headers["Location"].endswith("/accueil#post-1"))
@@ -5072,6 +5072,146 @@ class TestCommentairesLot6(SmokeBase):
         self.assertEqual(sorted(personnes_taguees("@ali ben et @Ali Ben Salah", candidats)), [1, 2])
         self.assertEqual(personnes_taguees("@Ali Bennani", candidats), [])
         self.assertEqual(personnes_taguees("omar aziz sans arobase", candidats), [])
+
+
+
+class TestPostsAutomatiquesEtProjet(SmokeBase):
+    """Retours Fadhel du 2026-09-29 : posts automatiques (création de
+    projet, changement d'état de tâche/projet, titre de tâche — P1), clic
+    sur la ligne d'une tâche → fenêtre avec titre modifiable, "Rejoindre ce
+    projet" comme co-chef pour un chef de projet (PR8), profil sur la
+    dernière semaine avec "Voir +" (T3). SQL vérifié sur un vrai
+    PostgreSQL."""
+
+    def _post(self, url, data=None, **overrides):
+        self._login()
+        patchers = self._patched(**overrides)
+        for p in patchers:
+            p.start()
+        try:
+            return self.client.post(url, data=data or {})
+        finally:
+            for p in reversed(patchers):
+                p.stop()
+
+    def _cur(self, fetchone):
+        mock_cm = patch("app.db.get_cursor")
+        m = mock_cm.start()
+        self.addCleanup(mock_cm.stop)
+        cur = m.return_value.__enter__.return_value
+        cur.fetchone.side_effect = fetchone
+        return cur
+
+    def _inserts_post(self, cur):
+        return [c for c in cur.execute.call_args_list if "INSERT INTO post" in c.args[0]]
+
+    def test_changement_d_etat_de_tache_cree_un_post(self):
+        from app.repositories import taches as taches_repo
+        cur = self._cur([{"etat": "en_cours"}])
+        self.assertTrue(taches_repo.set_etat(5, 1, "bloque", 1))
+        posts_ = self._inserts_post(cur)
+        self.assertEqual(len(posts_), 1)
+        self.assertIn("'etat_tache'", posts_[0].args[0])
+        self.assertEqual(posts_[0].args[1], (1, 5, 1, "En cours → Bloqué"))
+
+    def test_meme_etat_pas_de_post_et_tache_inconnue_refusee(self):
+        from app.repositories import taches as taches_repo
+        cur = self._cur([{"etat": "bloque"}, None])
+        self.assertTrue(taches_repo.set_etat(5, 1, "bloque", 1))
+        self.assertFalse(taches_repo.set_etat(5, 2, "bloque", 1))
+        self.assertEqual(self._inserts_post(cur), [])
+
+    def test_renommer_une_tache_cree_un_post(self):
+        from app.repositories import taches as taches_repo
+        cur = self._cur([{"titre": "Ancien"}])
+        self.assertTrue(taches_repo.set_titre(5, 1, "Nouveau", 1))
+        posts_ = self._inserts_post(cur)
+        self.assertIn("'titre_tache'", posts_[0].args[0])
+        self.assertEqual(posts_[0].args[1], (1, 5, 1, "Ancien → Nouveau"))
+
+    def test_creation_et_changement_d_etat_de_projet_creent_un_post(self):
+        from app.repositories import projets as projets_repo
+        cur = self._cur([{"id": 42}])
+        projets_repo.create_projet("26077X", "Nouveau", "EXE", 1, ["CM"], equipe_code="MIDGARD", current_user_id=1)
+        self.assertIn("'creation_projet'", self._inserts_post(cur)[0].args[0])
+        self.assertEqual(self._inserts_post(cur)[0].args[1], (42, 1, "26077X_Nouveau"))
+        cur.fetchone.side_effect = [{"etat": "en_cours"}, {"etat": "termine"}]
+        cur.execute.reset_mock()
+        projets_repo.update_projet(42, nom="N", etat="termine", lots=[], current_user_id=1)
+        self.assertEqual(self._inserts_post(cur)[0].args[1], (42, 1, "En cours → Terminé"))
+        cur.execute.reset_mock()
+        projets_repo.update_projet(42, nom="N", etat="termine", lots=[], current_user_id=1)
+        self.assertEqual(self._inserts_post(cur), [])
+
+    def test_fil_affiche_les_posts_automatiques(self):
+        feed = [
+            {**FEED_POST_MANUEL, "id": 11, "evenement": "etat_tache", "tache_id": 5, "tache_titre": "Plan R+2",
+             "contenu": "En cours → Bloqué"},
+            {**FEED_POST_MANUEL, "id": 12, "evenement": "titre_tache", "tache_id": 5, "tache_titre": "Plan R+2",
+             "contenu": "Plan → Plan R+2"},
+            {**FEED_POST_MANUEL, "id": 13, "evenement": "creation_projet", "contenu": "26099X_Tour Meridian"},
+            {**FEED_POST_MANUEL, "id": 14, "evenement": "etat_projet", "contenu": "En cours → Terminé"},
+        ]
+        body = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": feed}).data.decode()
+        for phrase in ("a changé l&#39;état d&#39;une tâche", "a renommé une tâche", "a créé le projet",
+                       "a changé l&#39;état du projet", "En cours → Bloqué", "Plan → Plan R+2"):
+            self.assertIn(phrase, body)
+
+    def test_ligne_de_tache_ouvre_sa_fenetre_avec_titre_modifiable(self):
+        body = self._get("/projets/1").data.decode()
+        self.assertIn('data-open-tache="5"', body)
+        self.assertIn('id="dialog-tache-5"', body)
+        self.assertIn("/projets/1/taches/5/titre", body)
+        self.assertNotIn("Actions sur la tâche", body)
+        self.assertIn("js/tache-dialog.js", body)
+
+    def test_renommer_une_tache_route(self):
+        with patch("app.repositories.taches.set_titre", return_value=True) as mock_titre:
+            resp = self._post("/projets/1/taches/5/titre", {"titre": "  Nouveau titre  "})
+        self.assertEqual(resp.status_code, 302)
+        mock_titre.assert_called_once_with(5, 1, "Nouveau titre", 1)
+
+    def test_renommer_refuse_sans_droit_ou_titre_vide(self):
+        with patch("app.repositories.taches.set_titre") as mock_titre:
+            self._post("/projets/1/taches/5/titre", {"titre": "X"},
+                       **{"app.repositories.projets.user_can_manage": False})
+            self._post("/projets/1/taches/5/titre", {"titre": "   "})
+        mock_titre.assert_not_called()
+
+    def test_rejoindre_comme_co_chef_pour_un_chef_de_projet(self):
+        for role, attendu in (("chef_de_projet", "add_co_chef"), ("intervenant", "add_intervenant")):
+            with self.subTest(role=role), \
+                 patch("app.repositories.projets.add_co_chef") as mock_co, \
+                 patch("app.repositories.projets.add_intervenant") as mock_int:
+                self._post("/projets/1/rejoindre", **{"app.auth.get_user_by_id": {**USER, "role": role}})
+                appele = mock_co if attendu == "add_co_chef" else mock_int
+                pas_appele = mock_int if attendu == "add_co_chef" else mock_co
+                appele.assert_called_once_with(1, 1, 1)
+                pas_appele.assert_not_called()
+
+    def test_bouton_rejoindre_comme_co_chef(self):
+        body = self._get("/projets/1", **{"app.auth.get_user_by_id": {**USER, "role": "chef_de_projet"}}).data.decode()
+        self.assertIn("Rejoindre ce projet comme co-chef", body)
+
+    def test_profil_derniere_semaine_et_voir_plus(self):
+        self._login()
+        patchers = self._patched(**{"app.repositories.utilisateurs.get_utilisateur": {**UTILISATEUR_PROFIL, "id": 3}})
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.list_feed_auteur", side_effect=[[], [FEED_POST_MANUEL]]) as mock_feed:
+                resp = self.client.get("/utilisateurs/3/profil?semaines=2")
+        finally:
+            for p in reversed(patchers):
+                p.stop()
+        self.assertEqual(resp.status_code, 200, resp.data[:3000])
+        body = resp.data.decode()
+        depuis = mock_feed.call_args_list[0].kwargs["depuis"]
+        self.assertEqual((datetime.date.today() - depuis).days, 13)
+        self.assertEqual(mock_feed.call_args_list[1].kwargs["avant"], depuis)
+        self.assertIn("2 dernières semaines", body)
+        self.assertIn("semaines=3#posts", body)
+        self.assertIn("semaines=3#dailylog", body)
 
 
 if __name__ == "__main__":

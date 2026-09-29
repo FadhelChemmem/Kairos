@@ -460,6 +460,32 @@ def changer_etat_tache(projet_id: int, tache_id: int):
     return redirect(url_for("projets.detail", projet_id=projet_id))
 
 
+@bp.route("/<int:projet_id>/taches/<int:tache_id>/titre", methods=["POST"])
+@login_required
+def modifier_titre_tache(projet_id: int, tache_id: int):
+    """Titre d'une tâche, depuis la fenêtre ouverte par un clic sur sa ligne
+    (retour Fadhel, 2026-09-29) — même autorisation que le changement
+    d'état. Le changement apparaît dans le fil (taches.set_titre)."""
+    if not projets.user_can_view(projet_id, g.user["id"]):
+        abort(404)
+    autorise = (
+        projets.user_can_manage(projet_id, g.user["id"])
+        or taches.user_est_intervenant(tache_id, g.user["id"])
+    )
+    if not autorise:
+        flash("Seul le chef de projet, un co-chef ou un intervenant de cette tâche peut la renommer.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+    titre = request.form.get("titre", "").strip()
+    if not titre or len(titre) > 255:
+        flash("Titre invalide.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+    if not taches.set_titre(tache_id, projet_id, titre, g.user["id"]):
+        flash("Tâche introuvable sur ce projet.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+    flash("Tâche renommée.", "success")
+    return redirect(url_for("projets.detail", projet_id=projet_id))
+
+
 @bp.route("/<int:projet_id>/taches/<int:tache_id>/cloturer", methods=["POST"])
 @login_required
 def cloturer_tache(projet_id: int, tache_id: int):
@@ -557,12 +583,18 @@ def rejoindre(projet_id: int):
         flash("Vous êtes déjà rattaché à ce projet.", "success")
         return redirect(url_for("projets.detail", projet_id=projet_id))
 
+    # Un chef de projet rejoint comme co-chef (retour Fadhel, 2026-09-29,
+    # PR8) ; les autres comme intervenant.
+    comme_co_chef = g.user["role"] == "chef_de_projet"
     try:
-        projets.add_intervenant(projet_id, g.user["id"], g.user["id"])
+        if comme_co_chef:
+            projets.add_co_chef(projet_id, g.user["id"], g.user["id"])
+        else:
+            projets.add_intervenant(projet_id, g.user["id"], g.user["id"])
     except Exception as exc:
         flash(_message_erreur_intervenant(exc, "de rejoindre ce projet"), "error")
     else:
-        flash("Vous avez rejoint le projet.", "success")
+        flash("Vous avez rejoint le projet comme co-chef." if comme_co_chef else "Vous avez rejoint le projet.", "success")
     return redirect(url_for("projets.detail", projet_id=projet_id))
 
 
