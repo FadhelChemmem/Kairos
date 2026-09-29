@@ -61,7 +61,7 @@ def list_taches_projet(projet_id: int) -> list[dict]:
 
 def get_tache(tache_id: int) -> dict | None:
     sql = """
-        SELECT t.*, p.nom AS projet_nom, p.code AS projet_code,
+        SELECT t.*, p.nom AS projet_nom, p.code AS projet_code, p.etat AS projet_etat,
                h.heures_cumulees, h.heures_chef, h.heures_intervenant
         FROM tache t
         JOIN projet p ON p.id = t.projet_id

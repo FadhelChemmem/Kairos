@@ -46,6 +46,10 @@
   var parentLabel = dialog.querySelector('[data-post-dialog-parent-label]');
   var tacheActionTemplate = tacheForm ? tacheForm.getAttribute('data-action-template') : null;
   var intentsAutorises = null; // null = tous
+  // "Aucun projet" absent de la liste pour qui ne peut pas publier
+  // d'Information d'équipe (Client, ou compte sans équipe — lot 7) : on ne
+  // doit alors jamais le choisir d'office.
+  var aucunPossible = !!(projetSelect && Array.prototype.some.call(projetSelect.options, function (o) { return o.value === AUCUN; }));
   var gereForce = null;        // data-gere du déclencheur, s'il y en a un
 
   function radio(intent) { return dialog.querySelector('#intent-' + intent); }
@@ -170,7 +174,7 @@
           });
           if (projetRow) projetRow.style.display = '';
           if (projetFigee) projetFigee.style.display = 'none';
-          if (intent === 'information') {
+          if (intent === 'information' && aucunPossible) {
             choisirProjet(AUCUN);
           } else if (projetSelect.value === AUCUN && premierProjet()) {
             choisirProjet(premierProjet());
@@ -203,7 +207,7 @@
   dialog.querySelectorAll('.composer-radio').forEach(function (r) {
     r.addEventListener('change', function () {
       // Onglet Information : projet vide par défaut (s'il n'est pas imposé).
-      if (projetSelect && !projetImpose && intentCourant() === 'information') {
+      if (projetSelect && !projetImpose && aucunPossible && intentCourant() === 'information') {
         choisirProjet(AUCUN);
       }
       // Quitter l'onglet Information sans projet : revenir à un projet.

@@ -195,8 +195,9 @@ def list_feed_mes_projets(current_user_id: int, limit: int = 30) -> list[dict]:
     """Fil d'activité de l'accueil : tous les posts des projets où
     l'utilisateur est chef, co-chef, intervenant — ou intervenant d'une
     tâche seulement (retour Fadhel, 2026-09-29, P1 : ces personnes ne
-    voyaient rien du projet sur leur accueil) — plus les Informations
-    d'équipe qui lui sont destinées (migration 0009)."""
+    voyaient rien du projet sur leur accueil) ; pour un Client, les projets
+    de son équipe (lot 7) — plus les Informations d'équipe qui lui sont
+    destinées (migration 0009). Le RH n'a que ces dernières."""
     sql = _FEED_SELECT + """
         WHERE p.projet_id IN (
             SELECT pj.id FROM projet pj
@@ -205,6 +206,9 @@ def list_feed_mes_projets(current_user_id: int, limit: int = 30) -> list[dict]:
                OR EXISTS (SELECT 1 FROM projet_intervenant pi WHERE pi.projet_id = pj.id AND pi.utilisateur_id = %(uid)s)
                OR EXISTS (SELECT 1 FROM tache tt JOIN tache_intervenant ti ON ti.tache_id = tt.id
                           WHERE tt.projet_id = pj.id AND ti.utilisateur_id = %(uid)s)
+               -- Client (lot 7) : jamais rattaché, il suit les projets de son équipe.
+               OR EXISTS (SELECT 1 FROM utilisateur uc
+                          WHERE uc.id = %(uid)s AND uc.role = 'client' AND uc.equipe_code = pj.equipe_code)
         )
         OR """ + _POST_SANS_PROJET_VISIBLE + """
         ORDER BY p.created_at DESC
@@ -482,9 +486,11 @@ def get_commentaire(commentaire_id: int) -> dict | None:
     réponse — voir add_comment/routes/posts.py:commenter)."""
     return db.query_one(
         """
-        SELECT c.id, c.post_id, c.parent_commentaire_id, c.auteur_id, c.contenu, p.projet_id
+        SELECT c.id, c.post_id, c.parent_commentaire_id, c.auteur_id, c.contenu, p.projet_id,
+               proj.etat AS projet_etat
         FROM post_commentaire c
         JOIN post p ON p.id = c.post_id
+        LEFT JOIN projet proj ON proj.id = p.projet_id
         WHERE c.id = %s
         """,
         (commentaire_id,),

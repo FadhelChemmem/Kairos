@@ -97,7 +97,8 @@ def list_projets(
     Visibilité par équipe (2026-09-16, voir schema.sql / v_projet_visibilite) :
     un utilisateur ne voit que les projets de sa propre équipe, sauf s'il y
     est explicitement rattaché (chef, co-chef, intervenant) même hors de son
-    équipe, ou s'il est Admin/RH (accès total).
+    équipe, ou s'il est Admin (accès total) — le RH ne voit aucun projet et
+    un Client seulement ceux de son équipe (migration 0011).
     """
     sql = """
         SELECT p.id, p.code, p.nom, p.phase, p.etat, p.date_debut, p.date_fin,
@@ -270,7 +271,7 @@ def search(user_id: int, q: str, limit: int = 8) -> list[dict]:
 def get_projet(projet_id: int) -> dict | None:
     """Détail d'un projet (en-tête de la page projet)."""
     sql = """
-        SELECT p.id, p.code, p.nom, p.phase, p.etat, p.date_debut, p.date_fin,
+        SELECT p.id, p.code, p.nom, p.phase, p.etat, p.date_debut, p.date_fin, p.date_cloture,
                p.honoraires, p.client, p.chef_projet_id, p.phase_liee_id,
                u.prenom AS chef_prenom, u.nom AS chef_nom,
                u.avatar_chemin AS chef_avatar_chemin,
@@ -334,10 +335,15 @@ def update_projet(
             """
             UPDATE projet
             SET nom = %s, etat = %s, date_debut = %s, date_fin = %s, phase_liee_id = %s,
-                honoraires = %s, client = %s
+                honoraires = %s, client = %s,
+                -- Date de clôture (migration 0011, décision Fadhel) : posée au
+                -- passage à Terminé/Abandonné (gardée de l'un à l'autre),
+                -- effacée à la réouverture.
+                date_cloture = CASE WHEN %s IN ('termine', 'abandonne')
+                                    THEN COALESCE(date_cloture, CURRENT_DATE) END
             WHERE id = %s
             """,
-            (nom, etat, date_debut, date_fin, phase_liee_id, honoraires, client, projet_id),
+            (nom, etat, date_debut, date_fin, phase_liee_id, honoraires, client, etat, projet_id),
         )
         # Post automatique quand l'état change (retour Fadhel, 2026-09-29,
         # P1), dans la même transaction.
@@ -444,7 +450,8 @@ def user_can_view(projet_id: int, user_id: int) -> bool:
     """Vrai si `user_id` a le droit de voir le projet `projet_id`, selon
     exactement la même règle que la vue `v_projet_visibilite` (équipe,
     chef, co-chef, intervenant du projet ou d'une de ses tâches, ou
-    Admin/RH — voir schema.sql).
+    Admin ; jamais le RH ; un Client : son équipe seulement — voir
+    schema.sql / migration 0011).
 
     À utiliser pour tout accès DIRECT à un objet (page projet, création de
     post/tâche, téléchargement de pièce jointe...), en miroir des listes
@@ -460,6 +467,13 @@ def user_can_view(projet_id: int, user_id: int) -> bool:
     with db.get_cursor() as cur:
         cur.execute(sql, (projet_id, user_id))
         return cur.fetchone() is not None
+
+
+# États d'un projet clos (décision Fadhel, lot 7) : plus aucune
+# intervention — posts, commentaires, réactions, tâches, fichiers,
+# intervenants — tant que son chef ou un co-chef ne le rouvre pas (seule la
+# fenêtre "Informations" reste utilisable, pour changer l'état).
+ETATS_CLOS = ("termine", "abandonne")
 
 
 def user_can_manage(projet_id: int, user_id: int) -> bool:

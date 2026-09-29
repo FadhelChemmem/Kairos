@@ -12,12 +12,16 @@ import math
 
 from flask import Blueprint, flash, g, redirect, render_template, request, url_for
 
-from ..auth import login_required
+from ..auth import role_required
 from ..repositories import dailylog
 from ..repositories import projets as projets_repo
 from ..repositories import taches as taches_repo
 
 bp = Blueprint("dailylog", __name__, url_prefix="/dailylog")
+
+# Ni le RH (aucun accès aux projets) ni un Client n'ont de Daily log
+# (décisions Fadhel, lot 7).
+ROLES_DAILYLOG = ("admin", "chef_de_projet", "intervenant")
 
 STANDARD_HOURS = 8
 
@@ -49,7 +53,7 @@ def _parser_date(date_str: str | None) -> datetime.date:
 
 
 @bp.route("", methods=["GET"])
-@login_required
+@role_required(*ROLES_DAILYLOG)
 def formulaire():
     date = _parser_date(request.args.get("date"))
     aujourdhui = datetime.date.today()
@@ -107,7 +111,7 @@ def formulaire():
 
 
 @bp.route("/jours-remplis")
-@login_required
+@role_required(*ROLES_DAILYLOG)
 def api_jours_remplis():
     """Petite API JSON interne (même origine, même session) utilisée par le
     calendrier du DailyLog pour afficher les pastilles rempli/partiel/
@@ -123,7 +127,7 @@ def api_jours_remplis():
 
 
 @bp.route("/recherche-projets")
-@login_required
+@role_required(*ROLES_DAILYLOG)
 def api_recherche_projets():
     """Recherche live du catalogue "Ajouter une ligne" (retour Fadhel,
     2026-09-27) : remplace l'ancienne liste statique des 50 premiers
@@ -137,7 +141,7 @@ def api_recherche_projets():
 
 
 @bp.route("", methods=["POST"])
-@login_required
+@role_required(*ROLES_DAILYLOG)
 def enregistrer():
     # Validation de la date (PROMPT_CORRECTIONS.md P1 #10) : voir
     # _parser_date — évite d'enregistrer sur un format invalide ou une
@@ -170,6 +174,10 @@ def enregistrer():
     # de la soumission — une ligne refusée disparaissait donc en silence
     # alors que la page affichait "enregistré" (audit n°2).
     refusees = set()
+    # Projets clos avant ce jour (décision Fadhel, lot 7) : plus d'heures
+    # après leur date de clôture — toute la saisie est alors refusée.
+    clotures = {}
+    apres_cloture = []
     for pid, tid, h in zip(projet_ids, tache_ids, heures_list):
         # Ids non numériques (PROMPT_CORRECTIONS.md P1 #10) : `int(pid)`
         # sur une valeur trafiquée plantait auparavant en 500 (ValueError
@@ -213,6 +221,18 @@ def enregistrer():
             refusees.add(cle)
             continue
 
+        if projet_id not in clotures:
+            projet = projets_repo.get_projet(projet_id)
+            clotures[projet_id] = (
+                (projet.get("date_cloture"), f"{projet['code']}_{projet['nom']}")
+                if projet and projet["etat"] in projets_repo.ETATS_CLOS and projet.get("date_cloture")
+                else None
+            )
+        if clotures[projet_id] and date > clotures[projet_id][0]:
+            date_cloture, libelle = clotures[projet_id]
+            apres_cloture.append(f"{libelle} (clos le {date_cloture.strftime('%d/%m/%Y')})")
+            continue
+
         # La tâche doit appartenir au projet indiqué sur la MÊME ligne —
         # sinon une ligne pourrait pointer un couple projet/tâche
         # incohérent (PROMPT_CORRECTIONS.md P1 #10).
@@ -227,6 +247,14 @@ def enregistrer():
             "tache_id": tache_id,
             "heures": heures,
         })
+
+    if apres_cloture:
+        flash(
+            "Rien n'a été enregistré : on ne peut plus saisir d'heures après la clôture d'un projet — "
+            + ", ".join(dict.fromkeys(apres_cloture)) + ". Retirez cette ligne de la journée.",
+            "error",
+        )
+        return redirect(url_for("dailylog.formulaire", date=date_str))
 
     # Total toujours = durée de la journée (Daily log v2 : "toujours
     # 100 %"). La page le garantit ; ce contrôle protège d'une requête

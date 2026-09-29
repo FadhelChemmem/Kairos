@@ -201,7 +201,8 @@ CREATE TABLE projet (
   nom              VARCHAR(200) NOT NULL,
   phase            phase_enum NOT NULL,
   date_debut       DATE,
-  date_fin         DATE,                    -- renseigné à la clôture
+  date_fin         DATE,                    -- fin prévue (affichée "Échéance"), saisie par le chef
+  date_cloture     DATE,                    -- posée automatiquement au passage à Terminé/Abandonné, effacée à la réouverture (migration 0011)
   etat             projet_etat_enum NOT NULL DEFAULT 'en_cours',
   chef_projet_id   BIGINT NOT NULL REFERENCES utilisateur(id),
   phase_liee_id    BIGINT REFERENCES projet(id), -- ex. le 24091X (EXE) pointe vers le 24091D (DCE)
@@ -264,6 +265,10 @@ BEGIN
   SELECT role INTO v_role FROM utilisateur WHERE id = p_utilisateur_id;
   IF v_role = 'rh' THEN
     RAISE EXCEPTION 'Un utilisateur avec le rôle RH ne peut pas être % (utilisateur id=%).', p_contexte, p_utilisateur_id;
+  END IF;
+  -- Client : jamais rattaché à un projet ou une tâche (migration 0011).
+  IF v_role = 'client' THEN
+    RAISE EXCEPTION 'Un utilisateur avec le rôle Client ne peut pas être % (utilisateur id=%).', p_contexte, p_utilisateur_id;
   END IF;
 END;
 $$ LANGUAGE plpgsql;
@@ -758,8 +763,9 @@ GROUP BY de.tache_id;
 -- utilisateur voit un projet s'il appartient à la même équipe que le
 -- projet, OU s'il y est explicitement rattaché (chef, co-chef,
 -- intervenant du projet ou d'une de ses tâches) même hors de son
--- équipe — cas d'une collaboration ponctuelle inter-équipes. Admin et
--- RH voient tout, quelle que soit l'équipe. Une ligne (projet_id,
+-- équipe — cas d'une collaboration ponctuelle inter-équipes. L'Admin
+-- voit tout ; le RH ne voit AUCUN projet ; un Client ne voit que les
+-- projets de son équipe (migration 0011). Une ligne (projet_id,
 -- utilisateur_id) = "cet utilisateur peut voir ce projet" ; l'appli
 -- filtre ses requêtes de liste de projets avec un JOIN/EXISTS dessus
 -- plutôt que de dupliquer cette logique à chaque endroit.
@@ -768,17 +774,20 @@ SELECT p.id AS projet_id, u.id AS utilisateur_id
 FROM projet p
 CROSS JOIN utilisateur u
 WHERE u.actif = true
+  AND u.role <> 'rh'
   AND (
-    u.role IN ('admin', 'rh')
+    u.role = 'admin'
     OR u.equipe_code = p.equipe_code
-    OR u.id = p.chef_projet_id
-    OR EXISTS (SELECT 1 FROM projet_co_chef pc WHERE pc.projet_id = p.id AND pc.utilisateur_id = u.id)
-    OR EXISTS (SELECT 1 FROM projet_intervenant pi WHERE pi.projet_id = p.id AND pi.utilisateur_id = u.id)
-    OR EXISTS (
-      SELECT 1 FROM tache t
-      JOIN tache_intervenant ti ON ti.tache_id = t.id
-      WHERE t.projet_id = p.id AND ti.utilisateur_id = u.id
-    )
+    OR (u.role <> 'client' AND (
+      u.id = p.chef_projet_id
+      OR EXISTS (SELECT 1 FROM projet_co_chef pc WHERE pc.projet_id = p.id AND pc.utilisateur_id = u.id)
+      OR EXISTS (SELECT 1 FROM projet_intervenant pi WHERE pi.projet_id = p.id AND pi.utilisateur_id = u.id)
+      OR EXISTS (
+        SELECT 1 FROM tache t
+        JOIN tache_intervenant ti ON ti.tache_id = t.id
+        WHERE t.projet_id = p.id AND ti.utilisateur_id = u.id
+      )
+    ))
   );
 
 
@@ -838,5 +847,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0007_commentaires_reseau_social'),
   ('0008_dailylog_jour'),
   ('0009_fil_information_commentaires'),
-  ('0010_projet_client')
+  ('0010_projet_client'),
+  ('0011_roles_et_projets_clos')
 ON CONFLICT (version) DO NOTHING;

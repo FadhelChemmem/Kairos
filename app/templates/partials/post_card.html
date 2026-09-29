@@ -76,8 +76,12 @@
         {% if c.modifie_le %}<span title="Modifié {{ c.modifie_le|il_y_a }}">· modifié</span>{% endif %}
         {# Répondre à une réponse : même fil (un seul niveau), la personne
            est taguée d'office. #}
+        {# Projet clos : ni réponse ni modification (décision Fadhel, lot 7). #}
+        {% set clos = post.projet_etat in ('termine', 'abandonne') %}
+        {% if not clos %}
         <button type="button" class="post-comment-action" data-repondre="{{ c.parent_commentaire_id if reponse else c.id }}"{% if reponse and c.auteur_id != g.user.id %} data-mention="@{{ c.auteur_prenom }} {{ c.auteur_nom }} "{% endif %}>Répondre</button>
-        {% if c.auteur_id == g.user.id %}
+        {% endif %}
+        {% if c.auteur_id == g.user.id and not clos %}
           <button type="button" class="post-comment-action" data-modifier="{{ c.id }}">Modifier</button>
         {% endif %}
         {% if g.user.role == 'admin' %}
@@ -92,7 +96,7 @@
           </details>
         {% endif %}
       </div>
-      {% if c.auteur_id == g.user.id %}
+      {% if c.auteur_id == g.user.id and post.projet_etat not in ('termine', 'abandonne') %}
         <form method="post" action="{{ url_for('posts.modifier_commentaire', commentaire_id=c.id) }}" class="comment-composer comment-edit" data-comment-edit="{{ c.id }}" hidden>
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
@@ -239,6 +243,10 @@
     </div>
   {% endif %}
 
+  {# Projet terminé ou abandonné : plus de réaction, de commentaire ni de
+     repost, pour personne (décision Fadhel, lot 7 — vérifié aussi par le
+     serveur, routes/posts.py). #}
+  {% set projet_clos = post.projet_etat in ('termine', 'abandonne') %}
   <div class="divider"></div>
   <div class="post-actions">
     {# Le formulaire pointe vers "retirer" quand on a déjà réagi, vers
@@ -253,7 +261,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
       {% if not post.ma_reaction %}<input type="hidden" name="reaction_code" value="pouce">{% endif %}
-      <button type="submit" aria-pressed="{{ 'true' if post.ma_reaction else 'false' }}" aria-label="{{ 'Retirer ma validation' if post.ma_reaction else 'Valider ce post' }} ({{ post.nb_reactions }})" {% if post.reacteurs %}title="{% for r in post.reacteurs %}{{ r.prenom }} {{ r.nom }}{% if not loop.last %}, {% endif %}{% endfor %}"{% endif %} class="post-action" style="background:{{ 'var(--hover-bg)' if post.ma_reaction else 'transparent' }};">
+      <button type="submit"{% if projet_clos %} disabled{% endif %} aria-pressed="{{ 'true' if post.ma_reaction else 'false' }}" aria-label="{{ 'Retirer ma validation' if post.ma_reaction else 'Valider ce post' }} ({{ post.nb_reactions }})" {% if post.reacteurs %}title="{% for r in post.reacteurs %}{{ r.prenom }} {{ r.nom }}{% if not loop.last %}, {% endif %}{% endfor %}"{% endif %} class="post-action" style="background:{{ 'var(--hover-bg)' if post.ma_reaction else 'transparent' }};">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> <span class="post-reaction-count">{{ post.nb_reactions }}</span>
       </button>
     </form>
@@ -266,7 +274,9 @@
        fil. Tâche seulement pour qui gère le projet ; sans projet
        (Information d'équipe), une Information seulement. Impossible sur un
        projet terminé ou abandonné (vérifié aussi par le serveur). #}
-    {% set projet_clos = post.projet_etat in ('termine', 'abandonne') %}
+    {# Un Client ne publie que sur un projet : pas de "Reposter" sur une
+       Information d'équipe sans projet (lot 7). #}
+    {% if post.projet_id or g.user.role != 'client' %}
     <button type="button" class="post-action" style="margin-left:auto;"
             data-open-post-dialog data-intent="information"
             data-intents="{{ ('tache,' if post.je_gere else '') ~ 'information,requete' if post.projet_id else 'information' }}"
@@ -279,6 +289,7 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
       Reposter
     </button>
+    {% endif %}
   </div>
 
   {# Commentaires toujours affichés (retour Fadhel, 2026-09-29) — les 3
@@ -297,5 +308,7 @@
       {% for c in commentaires[-3:] %}{{ commentaire(c, post, next_url) }}{% endfor %}
     </div>
   {% endif %}
+  {% if not projet_clos %}
   {{ composer_commentaire(post, next_url) }}
+  {% endif %}
 </div>

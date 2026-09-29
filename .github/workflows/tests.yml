@@ -90,3 +90,19 @@ jobs:
               psql -h localhost -U kairos -d montee_version -v ON_ERROR_STOP=1 -q -f "$fichier"
             done
           done
+
+      # Règles écrites en SQL (audit du 2026-09-29, point K) : visibilité
+      # des projets par rôle, garde-fous RH/Client... jouées sur la base
+      # neuve ET sur la base montée de version (tests/sql/, tout est annulé
+      # par un ROLLBACK en fin de script).
+      - name: Tests SQL (tests/sql)
+        env:
+          PGPASSWORD: kairos
+        run: |
+          set -e
+          for base in kairos montee_version; do
+            for fichier in tests/sql/*.sql; do
+              echo "--- $base : $fichier ---"
+              psql -h localhost -U kairos -d "$base" -v ON_ERROR_STOP=1 -q -f "$fichier"
+            done
+          done

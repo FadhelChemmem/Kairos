@@ -10,15 +10,26 @@ def list_actifs() -> list[dict]:
     (2026-09-16) : le RH ne peut être ni chef de projet ni intervenant —
     déjà garanti en base par les triggers trg_check_*_role (schema.sql),
     mais on évite de le proposer dans les listes pour ne pas faire
-    échouer l'action après coup avec une erreur peu lisible."""
+    échouer l'action après coup avec une erreur peu lisible.
+
+    Sert aussi aux personnes à taguer (@) : un Client y figure donc (on
+    peut le taguer), mais `role` permet de l'écarter des choix de chef de
+    projet / d'intervenant — voir list_affectables (migration 0011)."""
     return db.query_all(
         """
-        SELECT id, prenom, nom, poste
+        SELECT id, prenom, nom, poste, role
         FROM utilisateur
         WHERE actif = true AND role != 'rh'
         ORDER BY nom, prenom
         """
     )
+
+
+def list_affectables() -> list[dict]:
+    """Personnes pouvant être chef de projet, co-chef ou intervenant :
+    list_actifs sans les Clients (décision Fadhel, lot 7 — un Client voit
+    les projets de son équipe mais n'y est jamais rattaché)."""
+    return [u for u in list_actifs() if u.get("role") != "client"]
 
 
 def list_collaborateurs_recents(user_id: int, limit: int = 5) -> list[int]:

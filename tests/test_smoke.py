@@ -5474,10 +5474,12 @@ class TestRelectureLot6(SmokeBase):
         from app.repositories import posts as posts_repo
         self.assertIn("INSERT INTO post_equipe (post_id, equipe_code)", inspect.getsource(posts_repo.repost))
 
-    def test_projet_termine_publication_reservee_aux_chefs(self):
+    def test_projet_termine_publication_bloquee_meme_pour_les_chefs(self):
+        """Décision Fadhel (lot 7) : plus aucune publication sur un projet
+        clos, chef et co-chefs compris."""
         self._login()
         patchers = self._patched(**{"app.repositories.projets.get_projet": {**PROJET, "etat": "termine"},
-                                    "app.repositories.projets.user_can_manage": False})
+                                    "app.repositories.projets.user_can_manage": True})
         for p in patchers:
             p.start()
         try:
@@ -5588,6 +5590,262 @@ class TestAuditV3(SmokeBase):
             self.assertNotIn("JOIN v_projet_heures", src)
             self.assertNotIn("JOIN v_tache_heures", src)
             self.assertIn("LATERAL", src)
+
+
+
+RH = {**USER, "id": 7, "role": "rh", "prenom": "Rym", "nom": "Hadj", "equipe_code": None}
+CLIENT = {**USER, "id": 8, "role": "client", "prenom": "Karim", "nom": "Client", "equipe_code": "MIDGARD"}
+CHEF = {**USER, "id": 1, "role": "chef_de_projet"}
+PROJET_CLOS = {**PROJET, "etat": "termine", "date_cloture": datetime.date(2026, 9, 10)}
+
+
+class TestDecisionsLot7(SmokeBase):
+    """Rôles RH / Client, Informations d'équipe et projets clos (décisions
+    de Fadhel, lot 7)."""
+
+    def _requete(self, methode, chemin, data=None, espions=(), **overrides):
+        self._login()
+        patchers = self._patched(**overrides)
+        for p in patchers:
+            p.start()
+        mocks = {}
+        try:
+            for cible, valeur in espions:
+                pp = patch(cible, return_value=valeur)
+                mocks[cible] = pp.start()
+                patchers.append(pp)
+            resp = getattr(self.client, methode)(chemin, data=data or {})
+        finally:
+            for p in reversed(patchers):
+                p.stop()
+        return resp, mocks
+
+    # --- RH -------------------------------------------------------------
+    def test_rh_n_a_pas_acces_aux_projets_ni_au_daily_log(self):
+        for chemin in ("/projets", "/projets/export.xlsx", "/dailylog", "/deadlines"):
+            with self.subTest(chemin=chemin):
+                resp, _ = self._requete("get", chemin, **{"app.auth.get_user_by_id": RH})
+                self.assertEqual(resp.status_code, 302)
+                self.assertTrue(resp.headers["Location"].endswith("/accueil"))
+
+    def test_rh_accueil_sans_projets_mais_peut_publier_une_information(self):
+        resp, mocks = self._requete("get", "/accueil", espions=[("app.repositories.taches.list_deadlines", [])],
+                                    **{"app.auth.get_user_by_id": RH})
+        body = resp.data.decode()
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn('title="Tous les projets"', body)
+        self.assertNotIn('title="Deadlines"', body)
+        self.assertNotIn('title="Daily log"', body)
+        self.assertNotIn("Remplir mon Daily log", body)
+        self.assertNotIn("Mes tâches", body)
+        self.assertIn("+ Nouveau post</button>", body)
+        self.assertIn("Toutes les équipes", body)
+        mocks["app.repositories.taches.list_deadlines"].assert_not_called()
+
+    def test_pas_de_rappel_daily_log_pour_rh_ni_client(self):
+        import inspect
+        from app import auth
+        self.assertIn('if user["role"] not in ("rh", "client"):\n                _verifier_rappel_dailylog(user["id"])',
+                      inspect.getsource(auth.login))
+
+    def test_tests_sql_joues_par_la_ci(self):
+        import pathlib
+        racine = pathlib.Path(__file__).resolve().parent.parent
+        ci = (racine / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+        self.assertIn("for fichier in tests/sql/*.sql; do", ci)
+        self.assertIn("for base in kairos montee_version; do", ci)
+        self.assertTrue(list((racine / "tests" / "sql").glob("*.sql")))
+
+    def test_visibilite_sans_rh_et_client_limite_a_son_equipe(self):
+        import pathlib
+        racine = pathlib.Path(__file__).resolve().parent.parent
+        for fichier in ("schema.sql", "migrations/0011_roles_et_projets_clos.sql"):
+            with self.subTest(fichier=fichier):
+                sql = (racine / fichier).read_text(encoding="utf-8")
+                vue = sql[sql.index("VIEW v_projet_visibilite AS"):]
+                vue = vue[:vue.index(");")]
+                self.assertIn("AND u.role <> 'rh'", vue)
+                self.assertIn("u.role = 'admin'", vue)
+                self.assertIn("OR (u.role <> 'client' AND (", vue)
+                self.assertIn("rôle Client ne peut pas être", sql)
+        self.assertIn("('0011_roles_et_projets_clos')", (racine / "schema.sql").read_text(encoding="utf-8"))
+
+    # --- Client ---------------------------------------------------------
+    def test_client_sans_daily_log_mais_avec_les_projets(self):
+        for chemin in ("/dailylog", "/deadlines"):
+            resp, _ = self._requete("get", chemin, **{"app.auth.get_user_by_id": CLIENT})
+            self.assertEqual(resp.status_code, 302)
+        resp, mocks = self._requete(
+            "get", "/accueil",
+            espions=[("app.repositories.projets.list_projets", [{**MES_PROJETS[1], "mon_role": None}])],
+            **{"app.auth.get_user_by_id": CLIENT})
+        body = resp.data.decode()
+        self.assertIn('title="Tous les projets"', body)
+        self.assertNotIn('title="Daily log"', body)
+        self.assertNotIn('title="Deadlines"', body)
+        self.assertNotIn("Remplir mon Daily log", body)
+        self.assertNotIn("Mes tâches", body)
+        self.assertNotIn("Aucun projet — information d", body)
+        self.assertIn("Résidence Les Oliviers", body)
+        self.assertEqual(mocks["app.repositories.projets.list_projets"].call_args.kwargs["etats"], ["en_cours", "bloque"])
+
+    def test_client_n_envoie_que_requetes_et_informations_sur_un_projet(self):
+        cas = [
+            ({"projet_id": "1", "type_code": "requete", "contenu": "x"}, True),
+            ({"projet_id": "1", "type_code": "information", "contenu": "x"}, True),
+            ({"projet_id": "1", "type_code": "envoi", "contenu": "x"}, False),
+            ({"type_code": "information", "contenu": "x", "equipes": "MIDGARD"}, False),
+        ]
+        for data, attendu in cas:
+            with self.subTest(data=data):
+                _, mocks = self._requete("post", "/posts", data=data,
+                                         espions=[("app.repositories.posts.create_post", 101)],
+                                         **{"app.auth.get_user_by_id": CLIENT})
+                self.assertEqual(mocks["app.repositories.posts.create_post"].called, attendu)
+
+    def test_client_ne_rejoint_rien_et_n_est_jamais_intervenant(self):
+        for chemin, espion in (("/projets/1/rejoindre", "app.repositories.projets.add_intervenant"),
+                               ("/projets/1/taches/5/rejoindre", "app.repositories.taches.add_intervenant")):
+            with self.subTest(chemin=chemin):
+                _, mocks = self._requete("post", chemin, espions=[(espion, True)],
+                                         **{"app.auth.get_user_by_id": CLIENT})
+                mocks[espion].assert_not_called()
+        resp, _ = self._requete("post", "/fichiers/taches/5/upload", **{"app.auth.get_user_by_id": CLIENT})
+        self.assertEqual(resp.status_code, 403)
+        # Ajouté par un chef : refusé aussi.
+        _, mocks = self._requete("post", "/projets/1/intervenants", data={"utilisateur_id": "8"},
+                                 espions=[("app.repositories.projets.add_intervenant", None)],
+                                 **{"app.repositories.utilisateurs.get_utilisateur": {**UTILISATEUR_PROFIL, "id": 8, "role": "client"}})
+        mocks["app.repositories.projets.add_intervenant"].assert_not_called()
+        # Nouvelle tâche : le client est retiré des intervenants.
+        actifs = UTILISATEURS_ACTIFS + [{"id": 8, "prenom": "Karim", "nom": "Client", "poste": "", "role": "client"}]
+        _, mocks = self._requete("post", "/projets/1/taches", data={"titre": "T", "intervenants": ["3", "8"]},
+                                 espions=[("app.repositories.taches.create_tache", 9)],
+                                 **{"app.repositories.utilisateurs.list_actifs": actifs})
+        self.assertEqual(mocks["app.repositories.taches.create_tache"].call_args.kwargs["intervenant_ids"], [3])
+        # Et il n'est pas proposé dans la liste "+ Ajouter un intervenant".
+        resp, _ = self._requete("get", "/projets/1", **{"app.repositories.utilisateurs.list_actifs": actifs})
+        bloc = resp.data.decode().split('name="utilisateur_id"')[1].split("</select>")[0]
+        self.assertNotIn("Karim", bloc)
+
+    # --- Informations d'équipe -------------------------------------------
+    def test_information_sans_projet_vers_sa_seule_equipe_sauf_admin_et_rh(self):
+        cas = [
+            (CHEF, ["MIDGARD"], True), (CHEF, ["MIDGARD", "URBS"], False), (CHEF, ["URBS"], False),
+            (USER, ["MIDGARD", "URBS"], True), (RH, ["URBS", "SS"], True),
+        ]
+        for user, equipes, attendu in cas:
+            with self.subTest(role=user["role"], equipes=equipes):
+                _, mocks = self._requete("post", "/posts",
+                                         data={"type_code": "information", "contenu": "x", "equipes": equipes},
+                                         espions=[("app.repositories.posts.create_post", 101)],
+                                         **{"app.auth.get_user_by_id": user})
+                self.assertEqual(mocks["app.repositories.posts.create_post"].called, attendu)
+
+    def test_composeur_propose_seulement_son_equipe_hors_admin_rh(self):
+        body = self._requete("get", "/accueil", **{"app.auth.get_user_by_id": CHEF})[0].data.decode()
+        equipes = body.split('id="dialog-equipes-information"')[1].split("</select>")[0]
+        self.assertIn('value="MIDGARD" selected', equipes)
+        self.assertNotIn('value="URBS"', equipes)
+        self.assertNotIn("Toutes les équipes", body)
+
+    # --- Projets clos -----------------------------------------------------
+    def test_projet_clos_bloque_toutes_les_interventions(self):
+        cas = [
+            ("/projets/1/taches", {"titre": "T"}, "app.repositories.taches.create_tache"),
+            ("/projets/1/taches/5/etat", {"etat": "en_cours"}, "app.repositories.taches.set_etat"),
+            ("/projets/1/taches/5/titre", {"titre": "Nouveau"}, "app.repositories.taches.set_titre"),
+            ("/projets/1/taches/5/cloturer", {"type_code": "envoi"}, "app.repositories.taches.close_tache"),
+            ("/projets/1/intervenants", {"utilisateur_id": "3"}, "app.repositories.projets.add_intervenant"),
+            ("/projets/1/rejoindre", {}, "app.repositories.projets.add_co_chef"),
+            ("/projets/1/taches/5/rejoindre", {}, "app.repositories.taches.add_intervenant"),
+            ("/posts", {"projet_id": "1", "type_code": "requete", "contenu": "x"}, "app.repositories.posts.create_post"),
+            ("/fichiers/taches/5/upload", "fichier", "app.routes.fichiers.save_upload"),
+        ]
+        import io
+        for chemin, data, espion in cas:
+            if data == "fichier":
+                data = {"fichier": (io.BytesIO(b"x"), "note.pdf")}
+            with self.subTest(chemin=chemin):
+                _, mocks = self._requete(
+                    "post", chemin, data=data, espions=[(espion, ("note.pdf", "taches/5/x.pdf"))],
+                    **{"app.auth.get_user_by_id": CHEF,
+                       "app.repositories.projets.get_projet": PROJET_CLOS,
+                       "app.repositories.taches.get_tache": {**TACHE_POUR_FICHIERS, "projet_etat": "termine"},
+                       "app.repositories.utilisateurs.get_utilisateur": {**UTILISATEUR_PROFIL, "id": 3, "role": "intervenant"}})
+                mocks[espion].assert_not_called()
+
+    def test_posts_d_un_projet_clos_figes(self):
+        post_clos = {**POST_POUR_ACCES, "projet_etat": "abandonne"}
+        commentaire = {"id": 4, "post_id": 1, "parent_commentaire_id": None, "auteur_id": 1, "contenu": "a",
+                       "projet_id": 1, "projet_etat": "termine"}
+        cas = [
+            ("/posts/1/reagir", {"reaction_code": "pouce"}, "app.repositories.posts.react"),
+            ("/posts/1/reagir/supprimer", {}, "app.repositories.posts.remove_reaction"),
+            ("/posts/1/commenter", {"contenu": "x"}, "app.repositories.posts.add_comment"),
+            ("/posts/commentaires/4/modifier", {"contenu": "b"}, "app.repositories.posts.modifier_commentaire"),
+            ("/posts/1/reposter", {}, "app.repositories.posts.repost"),
+        ]
+        for chemin, data, espion in cas:
+            with self.subTest(chemin=chemin):
+                _, mocks = self._requete(
+                    "post", chemin, data=data, espions=[(espion, None),
+                                                        ("app.repositories.posts.peut_voir", True),
+                                                        ("app.repositories.posts.get_commentaire", commentaire)],
+                    **{"app.repositories.posts.get_post": post_clos})
+                mocks[espion].assert_not_called()
+
+    def test_page_d_un_projet_clos_sans_actions_sauf_informations(self):
+        feed = [{**FEED_POST_MANUEL, "projet_etat": "termine"}]
+        body = self._requete("get", "/projets/1", **{"app.repositories.projets.get_projet": PROJET_CLOS,
+                                                     "app.repositories.posts.list_feed_projet": feed})[0].data.decode()
+        self.assertIn("Clôturé le", body)
+        self.assertNotIn("+ Nouveau post</button>", body)
+        self.assertNotIn("Créer une tâche sur ce projet", body)
+        self.assertNotIn("+ Ajouter un intervenant", body)
+        self.assertNotIn("Rejoindre ce projet", body)
+        self.assertNotIn('class="task-join-form"', body)
+        self.assertNotIn("data-comment-composer", body)
+        self.assertNotIn("/upload", body)
+        self.assertIn("data-open-informations-dialog", body)
+
+    def test_date_de_cloture_posee_et_effacee_automatiquement(self):
+        import inspect
+        from app.repositories import projets as projets_repo
+        src = inspect.getsource(projets_repo.update_projet)
+        self.assertIn("date_cloture = CASE WHEN %s IN ('termine', 'abandonne')", src)
+        self.assertIn("THEN COALESCE(date_cloture, CURRENT_DATE) END", src)
+        self.assertIn("honoraires, client, etat, projet_id)", src)
+
+    def test_daily_log_refuse_apres_la_cloture(self):
+        self._login()
+        patchers = self._patched(**{"app.repositories.projets.get_projet": PROJET_CLOS})
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.dailylog.remplacer_jour") as remplacer:
+                self.client.post("/dailylog", data={"date": "2026-09-15", "duree": "8", "ligne_projet_id": ["1"],
+                                                    "ligne_tache_id": [""], "ligne_heures": ["8"]})
+                remplacer.assert_not_called()
+                # Jour de la clôture : encore permis.
+                self.client.post("/dailylog", data={"date": "2026-09-10", "duree": "8", "ligne_projet_id": ["1"],
+                                                    "ligne_tache_id": [""], "ligne_heures": ["8"]})
+                remplacer.assert_called_once()
+        finally:
+            for p in reversed(patchers):
+                p.stop()
+
+    # --- Co-chef ------------------------------------------------------------
+    def test_rejoindre_comme_co_chef_previent_le_chef(self):
+        _, mocks = self._requete(
+            "post", "/projets/1/rejoindre",
+            espions=[("app.repositories.projets.add_co_chef", None), ("app.repositories.notifications.creer", 1)],
+            **{"app.auth.get_user_by_id": {**CHEF, "id": 5, "prenom": "Sami", "nom": "B"},
+               "app.repositories.projets.get_projet": {**PROJET, "chef_projet_id": 1}})
+        mocks["app.repositories.projets.add_co_chef"].assert_called_once()
+        args = mocks["app.repositories.notifications.creer"].call_args.args
+        self.assertEqual(args[0], 1)
+        self.assertIn("Sami B a rejoint votre projet « Tour Meridian » comme co-chef", args[2])
 
 
 if __name__ == "__main__":

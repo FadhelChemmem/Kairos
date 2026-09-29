@@ -4,7 +4,7 @@ import datetime
 
 from flask import Blueprint, g, render_template
 
-from ..auth import login_required
+from ..auth import role_required
 from ..repositories import taches
 from ..utils import build_gantt, jours_utiles_gantt
 
@@ -12,7 +12,8 @@ bp = Blueprint("deadlines", __name__, url_prefix="/deadlines")
 
 
 @bp.route("")
-@login_required
+# Ni le RH (aucun accès aux projets) ni un Client (pas de tâches) — lot 7.
+@role_required("admin", "chef_de_projet", "intervenant")
 def liste():
     mes_taches = taches.list_deadlines(g.user["id"], limit=200)
     aujourdhui = datetime.date.today()

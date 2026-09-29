@@ -13,6 +13,8 @@
    (titre, "Voir tout", chaque ligne) mène toujours à /deadlines — un <a>
    ne peut pas en contenir un autre, il fallait donc arrêter d'envelopper
    toute la bannière dans un unique lien. #}
+{# Ni RH ni Client : pas d'échéances (lot 7). #}
+{% if not sans_projets and g.user.role != 'client' %}
 <div class="deadline-banner">
   <a href="{{ url_for('deadlines.liste') }}" class="deadline-banner-head" style="color:inherit; text-decoration:none;">
     <span class="deadline-banner-title">
@@ -40,11 +42,14 @@
     <a href="{{ url_for('deadlines.liste') }}" class="deadline-banner-empty" style="color:inherit; text-decoration:none;">Aucune échéance à venir.</a>
   {% endif %}
 </div>
+{% endif %}
 
 <div class="page-body">
 
   <!-- Colonne gauche -->
   <div class="col">
+    {# RH (lot 7) : ni projets ni Daily log. #}
+    {% if not sans_projets %}
 
     <div class="card">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
@@ -54,12 +59,12 @@
       <div style="display:flex; flex-direction:column; gap:10px;">
         {% for p in mes_projets %}
           {% set st = projet_etat_style(p.etat) %}
-          {% set role_label = {'chef_de_projet': 'Chef de projet', 'co_chef': 'Co-chef', 'intervenant': 'Intervenant'}[p.mon_role] %}
+          {% set role_label = {'chef_de_projet': 'Chef de projet', 'co_chef': 'Co-chef', 'intervenant': 'Intervenant'}.get(p.mon_role, '') %}
           <a href="{{ url_for('projets.detail', projet_id=p.id) }}" style="display:flex; align-items:center; gap:9px; color:inherit;">
             <span style="width:8px; height:8px; border-radius:999px; background:{{ st.dot }}; flex-shrink:0;"></span>
             <div style="min-width:0;">
               <div style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.code }}_{{ p.nom }}</div>
-              <div style="font-size:11.5px; color:var(--text-muted);">{{ p.phase }} · {{ role_label }}</div>
+              <div style="font-size:11.5px; color:var(--text-muted);">{{ p.phase }}{% if role_label %} · {{ role_label }}{% endif %}</div>
             </div>
           </a>
         {% else %}
@@ -76,6 +81,8 @@
     {# Variante B (retour Fadhel, 2026-09-28) : carte blanche + liseré rouge
        en alerte, au lieu de l'ancien dégradé rouge plein — donc texte/bouton
        sombres sur fond blanc en alerte, plutôt que blancs sur fond coloré. #}
+    {# Pas de Daily log pour un Client (lot 7). #}
+    {% if g.user.role != 'client' %}
     <div class="card {{ 'card-cta-alert' if dailylog_jours_manques else 'card-cta' }}">
       {# var(--text-strong), pas un gris fixe : sinon illisible en thème
          sombre (bug trouvé à la vérification Playwright, 2026-09-28). #}
@@ -89,6 +96,8 @@
       {% endif %}
       <a href="{{ url_for('dailylog.formulaire') }}" class="btn-primary" style="display:block; text-align:center; text-decoration:none; {{ 'background:var(--error-text); color:#fff;' if dailylog_jours_manques }}">Remplir mon Daily log</a>
     </div>
+    {% endif %}
+    {% endif %}
 
   </div>
 
@@ -99,7 +108,7 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input type="text" id="filtre-fil" autocomplete="off" aria-label="Filtrer le fil d'actualité" placeholder="Filtrer le fil d'actualité…" style="flex:1; border:none; outline:none; background:none; font-size:13.5px; font-family:inherit;">
       </div>
-      {% if projets_postables %}
+      {% if peut_publier %}
       <button type="button" data-open-post-dialog data-intent="{{ intent_par_defaut }}" class="btn-secondary" style="width:auto; padding:10px 16px; flex-shrink:0;">+ Nouveau post</button>
       {% endif %}
     </div>
@@ -123,6 +132,8 @@
 
   <!-- Colonne droite -->
   <div class="col">
+    {# Ni RH ni Client : pas de tâches (lot 7). #}
+    {% if not sans_projets and g.user.role != 'client' %}
     <div class="card">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
         <span style="font-size:14px; font-weight:700;">Mes tâches</span>
@@ -143,6 +154,7 @@
         {% endfor %}
       </div>
     </div>
+    {% endif %}
   </div>
 
 </div>

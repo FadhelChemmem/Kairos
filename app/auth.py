@@ -301,7 +301,9 @@ def login():
             # Empreinte du mot de passe actuel (PROMPT_CORRECTIONS.md P2 #17)
             # — voir password_fingerprint().
             session["pw_fingerprint"] = password_fingerprint(user["mot_de_passe_hash"])
-            _verifier_rappel_dailylog(user["id"])
+            # Pas de Daily log pour le RH ni un Client (lot 7).
+            if user["role"] not in ("rh", "client"):
+                _verifier_rappel_dailylog(user["id"])
             # Ouverture de redirection (PROMPT_CORRECTIONS.md P0 #5) : ?next=
             # n'est jamais fiable tel quel (lien envoyé par un tiers) — voir
             # is_safe_next() dans utils.py.

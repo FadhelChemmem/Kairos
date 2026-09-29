@@ -36,6 +36,32 @@ LOTS_VALIDES = {"CM", "GO"}
 ETATS_PROJET_VALIDES = {"en_cours", "bloque", "termine", "abandonne"}
 
 
+MESSAGE_PROJET_CLOS = (
+    "Ce projet est clos (terminé ou abandonné) : plus aucune intervention n'est "
+    "possible tant que son chef ou un co-chef ne change pas son état."
+)
+
+
+def _refus_si_clos(projet_id: int):
+    """Projet terminé ou abandonné (décision Fadhel, lot 7) : toute
+    intervention est refusée, pour tout le monde — chef et co-chefs compris
+    —, sauf la fenêtre "Informations" qui permet de le rouvrir. Renvoie la
+    redirection à retourner, ou None si le projet est ouvert."""
+    projet = projets.get_projet(projet_id)
+    if projet is not None and projet["etat"] in projets.ETATS_CLOS:
+        flash(MESSAGE_PROJET_CLOS, "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+    return None
+
+
+def _refus_rh():
+    """Le RH n'a pas accès aux projets (décision Fadhel, lot 7)."""
+    if g.user["role"] == "rh":
+        flash("Le RH n'a pas accès aux projets.", "error")
+        return redirect(url_for("main.accueil"))
+    return None
+
+
 def _message_erreur_intervenant(exc: Exception, action: str) -> str:
     """Message d'erreur à afficher quand l'ajout d'intervenant(s) échoue en
     base. Seul le garde-fou RH (trg_check_*_intervenant_role, qui lève
@@ -45,6 +71,8 @@ def _message_erreur_intervenant(exc: Exception, action: str) -> str:
     maintenant journalisée et signalée comme une erreur générique."""
     if "rôle RH" in str(exc):
         return f"Impossible {action} : un RH ne peut pas être intervenant."
+    if "rôle Client" in str(exc):
+        return f"Impossible {action} : un client ne peut pas être intervenant."
     current_app.logger.exception("Échec inattendu (%s)", action)
     return f"Impossible {action} (erreur inattendue, réessayez)."
 
@@ -108,6 +136,9 @@ def _filtres_liste():
 @bp.route("")
 @login_required
 def liste():
+    refus = _refus_rh()
+    if refus:
+        return refus
     etats, phases, chef_ids, lots, q, chefs_de_projet = _filtres_liste()
     tous = projets.list_projets(
         user_id=g.user["id"], etats=etats, phases=phases, chef_ids=chef_ids, lots=lots, q=q,
@@ -133,7 +164,7 @@ def liste():
     # ce formulaire de création doit lister TOUS les actifs (n'importe qui
     # de non-RH peut se voir confier un nouveau projet), d'où un nom dédié.
     if g.user["role"] in ("admin", "chef_de_projet"):
-        contexte["utilisateurs_creation_projet"] = utilisateurs.list_actifs()
+        contexte["utilisateurs_creation_projet"] = utilisateurs.list_affectables()
         contexte["phases_creation"] = PHASES
         contexte["phase_initiale_dialog"] = "EXE"
         contexte["code_propose_dialog"] = projets.propose_code("EXE")
@@ -153,6 +184,9 @@ def export_excel():
     from openpyxl.styles import Font
     from openpyxl.utils import get_column_letter
 
+    refus = _refus_rh()
+    if refus:
+        return refus
     etats, phases, chef_ids, lots, q, _ = _filtres_liste()
     lignes = projets.list_projets(
         user_id=g.user["id"], etats=etats, phases=phases, chef_ids=chef_ids, lots=lots, q=q, limit=5000,
@@ -211,7 +245,8 @@ def creer():
         flash("Seuls les chefs de projet et l'admin peuvent créer un projet.", "error")
         return redirect(url_for("projets.liste"))
 
-    utilisateurs_actifs = utilisateurs.list_actifs()
+    # Chef de projet : ni RH ni Client (migration 0011).
+    utilisateurs_actifs = utilisateurs.list_affectables()
     saisie = {}
     if request.method == "POST":
         nom = request.form.get("nom", "").strip()
@@ -339,8 +374,11 @@ def detail(projet_id: int):
     # à qui voit déjà le projet (garanti ici, voir plus haut) mais n'y est
     # pas encore formellement rattaché, et jamais à un compte RH (qui ne
     # peut pas être intervenant — contrainte déjà en base, voir schema.sql).
+    # Ni RH ni Client (migration 0011), et jamais sur un projet clos.
+    projet_clos = projet["etat"] in projets.ETATS_CLOS
     peut_rejoindre_projet = (
-        g.user["role"] != "rh" and not projets.user_est_rattache(projet_id, g.user["id"])
+        g.user["role"] not in ("rh", "client") and not projet_clos
+        and not projets.user_est_rattache(projet_id, g.user["id"])
     )
 
     contexte = dict(
@@ -351,9 +389,11 @@ def detail(projet_id: int):
         fil=fil,
         peut_gerer=peut_gerer,
         peut_rejoindre_projet=peut_rejoindre_projet,
+        projet_clos=projet_clos,
         nb_taches=nb_taches,
         nb_en_cours=nb_en_cours,
         utilisateurs_actifs=utilisateurs_actifs,
+        utilisateurs_affectables=[u for u in utilisateurs_actifs if u.get("role") != "client"],
         collaborateurs_recents=utilisateurs.list_collaborateurs_recents(g.user["id"]),
     )
 
@@ -442,6 +482,9 @@ def creer_tache(projet_id: int):
     if not projets.user_can_manage(projet_id, g.user["id"]):
         flash("Seul le chef de projet ou un co-chef peut créer une tâche sur ce projet.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
+    refus = _refus_si_clos(projet_id)
+    if refus:
+        return refus
 
     titre = request.form.get("titre", "").strip()
     if not titre:
@@ -463,9 +506,11 @@ def creer_tache(projet_id: int):
     # Seules des personnes qui voient déjà le projet peuvent y être
     # affectées (même règle que les mentions dans routes/posts.py) — un id
     # inexistant est ainsi écarté ici au lieu de faire échouer l'INSERT.
+    # Jamais un Client (migration 0011).
+    affectables = {u["id"] for u in utilisateurs.list_affectables()}
     intervenant_ids = [
         int(v) for v in request.form.getlist("intervenants")
-        if v.isdigit() and projets.user_can_view(projet_id, int(v))
+        if v.isdigit() and int(v) in affectables and projets.user_can_view(projet_id, int(v))
     ]
 
     # Un rebond doit pointer vers un post du MÊME projet (même contrôle que
@@ -477,11 +522,6 @@ def creer_tache(projet_id: int):
         parent = posts.get_post(parent_post_id)
         if parent is None or parent["projet_id"] != projet_id:
             abort(404)
-        # "Reposter" (retour Fadhel, 2026-09-29, P2) : pas sur un projet
-        # terminé ou abandonné (même règle que routes/posts.py:creer).
-        if parent.get("projet_etat") in ("termine", "abandonne"):
-            flash("Ce projet est terminé : on ne peut plus y reposter.", "error")
-            return redirect(url_for("projets.detail", projet_id=projet_id))
 
     try:
         tache_id = taches.create_tache(
@@ -536,6 +576,9 @@ def changer_etat_tache(projet_id: int, tache_id: int):
     if not autorise:
         flash("Seul le chef de projet, un co-chef ou un intervenant de cette tâche peut changer son état.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
+    refus = _refus_si_clos(projet_id)
+    if refus:
+        return refus
 
     etat = request.form.get("etat")
     etats_valides = {"en_cours", "bloque", "verifie", "arret", "abandonne"}
@@ -566,6 +609,9 @@ def modifier_titre_tache(projet_id: int, tache_id: int):
     if not autorise:
         flash("Seul le chef de projet, un co-chef ou un intervenant de cette tâche peut la renommer.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
+    refus = _refus_si_clos(projet_id)
+    if refus:
+        return refus
     titre = request.form.get("titre", "").strip()
     if not titre or len(titre) > 255:
         flash("Titre invalide.", "error")
@@ -596,6 +642,9 @@ def cloturer_tache(projet_id: int, tache_id: int):
     if not autorise:
         flash("Seul le chef de projet, un co-chef ou un intervenant de cette tâche peut la clôturer.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
+    refus = _refus_si_clos(projet_id)
+    if refus:
+        return refus
 
     type_code = request.form.get("type_code", "envoi")
     if type_code not in TYPES_CLOTURE_VALIDES:
@@ -619,6 +668,9 @@ def ajouter_intervenant(projet_id: int):
     if not projets.user_can_manage(projet_id, g.user["id"]):
         flash("Seul le chef de projet ou un co-chef peut ajouter un intervenant.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
+    refus = _refus_si_clos(projet_id)
+    if refus:
+        return refus
 
     utilisateur_id = request.form.get("utilisateur_id", type=int)
     if not utilisateur_id:
@@ -635,6 +687,9 @@ def ajouter_intervenant(projet_id: int):
     candidat = utilisateurs.get_utilisateur(utilisateur_id)
     if candidat is None or not candidat["actif"]:
         flash("Utilisateur invalide.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+    if candidat.get("role") == "client":
+        flash("Un client ne peut pas être intervenant.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
 
     try:
@@ -664,12 +719,16 @@ def rejoindre(projet_id: int):
     ajout immédiat de l'utilisateur connecté comme intervenant, sans
     validation d'un chef/co-chef — à la différence de ajouter_intervenant
     ci-dessus (qui ajoute QUELQU'UN D'AUTRE et exige user_can_manage), ici
-    on ne s'ajoute que SOI-MÊME, donc aucune notification n'est nécessaire."""
+    on ne s'ajoute que SOI-MÊME. Un chef de projet qui rejoint comme
+    co-chef est signalé au chef du projet (décision Fadhel, lot 7)."""
     if not projets.user_can_view(projet_id, g.user["id"]):
         abort(404)
-    if g.user["role"] == "rh":
-        flash("Un RH ne peut pas être intervenant sur un projet.", "error")
+    if g.user["role"] in ("rh", "client"):
+        flash("Votre rôle ne permet pas de rejoindre un projet.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
+    refus = _refus_si_clos(projet_id)
+    if refus:
+        return refus
     if projets.user_est_rattache(projet_id, g.user["id"]):
         flash("Vous êtes déjà rattaché à ce projet.", "success")
         return redirect(url_for("projets.detail", projet_id=projet_id))
@@ -685,6 +744,13 @@ def rejoindre(projet_id: int):
     except Exception as exc:
         flash(_message_erreur_intervenant(exc, "de rejoindre ce projet"), "error")
     else:
+        if comme_co_chef:
+            projet = projets.get_projet(projet_id)
+            if projet and projet["chef_projet_id"] != g.user["id"]:
+                notifications_repo.creer(
+                    projet["chef_projet_id"], "projet",
+                    f"{g.user['prenom']} {g.user['nom']} a rejoint votre projet « {projet['nom']} » comme co-chef.",
+                )
         flash("Vous avez rejoint le projet comme co-chef." if comme_co_chef else "Vous avez rejoint le projet.", "success")
     return redirect(url_for("projets.detail", projet_id=projet_id))
 
@@ -698,9 +764,12 @@ def rejoindre_tache(projet_id: int, tache_id: int):
     intervenant de la tâche, sans validation."""
     if not projets.user_can_view(projet_id, g.user["id"]):
         abort(404)
-    if g.user["role"] == "rh":
-        flash("Un RH ne peut pas être intervenant sur une tâche.", "error")
+    if g.user["role"] in ("rh", "client"):
+        flash("Votre rôle ne permet pas de rejoindre une tâche.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
+    refus = _refus_si_clos(projet_id)
+    if refus:
+        return refus
     if taches.user_est_intervenant(tache_id, g.user["id"]):
         flash("Vous êtes déjà intervenant sur cette tâche.", "success")
         return redirect(url_for("projets.detail", projet_id=projet_id))

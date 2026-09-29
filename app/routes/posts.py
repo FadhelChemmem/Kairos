@@ -18,12 +18,28 @@ bp = Blueprint("posts", __name__, url_prefix="/posts")
 
 TYPES_VALIDES = {"envoi", "reponse", "question", "requete", "information"}
 EQUIPES_VALIDES = {code for code, _ in EQUIPE_CHOICES}
-PROJET_CLOS = ("termine", "abandonne")
+PROJET_CLOS = projets_repo.ETATS_CLOS
+MESSAGE_PROJET_CLOS = (
+    "Ce projet est clos (terminé ou abandonné) : plus aucune intervention n'est "
+    "possible tant que son chef ou un co-chef ne change pas son état."
+)
+# Un Client n'envoie que des Requêtes et des Informations, sur les projets de
+# son équipe (décision Fadhel, lot 7).
+TYPES_CLIENT = {"requete", "information"}
 REACTIONS_VALIDES = {"ok", "pouce"}
 
 
 def _safe_redirect(default_endpoint="main.accueil"):
     return redirect_vers_next(default_endpoint)
+
+
+def _refus_si_clos(post: dict):
+    """Post d'un projet terminé ou abandonné : plus de commentaire, de
+    réaction ni de repost, pour personne (décision Fadhel, lot 7)."""
+    if post.get("projet_etat") in PROJET_CLOS:
+        flash(MESSAGE_PROJET_CLOS, "error")
+        return _safe_redirect()
+    return None
 
 
 def _post_visible_ou_404(post_id: int) -> dict:
@@ -74,23 +90,31 @@ def creer():
     if type_code not in TYPES_VALIDES or not contenu or (not projet_id and type_code != "information"):
         flash("Message invalide.", "error")
         return _safe_redirect()
+    if g.user["role"] == "client" and (type_code not in TYPES_CLIENT or not projet_id):
+        flash("Vous pouvez envoyer des Requêtes et des Informations sur les projets de votre équipe.", "error")
+        return _safe_redirect()
     if projet_id:
         equipe_codes = []  # un post de projet suit la visibilité du projet
     elif not equipe_codes and not parent_post_id:
         flash("Choisissez un projet ou au moins une équipe destinataire.", "error")
+        return _safe_redirect()
+    # Information sans projet (décision Fadhel, lot 7) : seuls l'Admin et le
+    # RH s'adressent à n'importe quelle équipe ; les autres, à la leur.
+    if (not projet_id and not parent_post_id and g.user["role"] not in ("admin", "rh")
+            and set(equipe_codes) != {g.user.get("equipe_code")}):
+        flash("Une Information sans projet ne peut viser que votre équipe.", "error")
         return _safe_redirect()
 
     # Contrôle d'accès (IDOR, PROMPT_CORRECTIONS.md P0 #1) : on ne peut
     # publier que sur un projet qu'on voit déjà.
     if projet_id and not projets_repo.user_can_view(projet_id, g.user["id"]):
         abort(404)
-    # Projet terminé ou abandonné : seuls son chef et ses co-chefs peuvent
-    # encore y publier (relecture du 2026-09-29).
+    # Projet terminé ou abandonné : plus aucune publication, pour personne
+    # — chef et co-chefs compris (décision Fadhel, lot 7).
     if projet_id:
         projet = projets_repo.get_projet(projet_id)
-        if (projet and projet["etat"] in PROJET_CLOS
-                and not projets_repo.user_can_manage(projet_id, g.user["id"])):
-            flash("Ce projet est terminé : on ne peut plus y publier.", "error")
+        if projet and projet["etat"] in PROJET_CLOS:
+            flash(MESSAGE_PROJET_CLOS, "error")
             return _safe_redirect()
 
     # Un rebond doit obligatoirement pointer vers un post du MÊME projet —
@@ -104,9 +128,9 @@ def creer():
             abort(404)
         # "Reposter" (retour Fadhel, 2026-09-29, P2) : bloqué sur un
         # projet terminé ou abandonné.
-        if parent.get("projet_etat") in PROJET_CLOS:
-            flash("Ce projet est terminé : on ne peut plus y reposter.", "error")
-            return _safe_redirect()
+        refus = _refus_si_clos(parent)
+        if refus:
+            return refus
         # Réponse à une Information d'équipe (sans projet) : elle va aux
         # MÊMES équipes que le post d'origine — sinon le bloc "En réponse
         # à" montrerait ce post à d'autres équipes (relecture 2026-09-29).
@@ -187,7 +211,9 @@ def creer():
 def reagir(post_id: int):
     # Contrôle d'accès (IDOR, PROMPT_CORRECTIONS.md P0 #1) : impossible de
     # réagir à un post qu'on ne voit pas.
-    _post_visible_ou_404(post_id)
+    refus = _refus_si_clos(_post_visible_ou_404(post_id))
+    if refus:
+        return refus
     reaction_code = request.form.get("reaction_code")
     if reaction_code not in REACTIONS_VALIDES:
         abort(400)
@@ -198,7 +224,9 @@ def reagir(post_id: int):
 @bp.route("/<int:post_id>/reagir/supprimer", methods=["POST"])
 @login_required
 def retirer_reaction(post_id: int):
-    _post_visible_ou_404(post_id)
+    refus = _refus_si_clos(_post_visible_ou_404(post_id))
+    if refus:
+        return refus
     posts_repo.remove_reaction(post_id, g.user["id"])
     return _safe_redirect()
 
@@ -213,6 +241,9 @@ def commenter(post_id: int):
     commentaire" que pour "répondre à un commentaire" (voir
     post-comments.js/post_card.html)."""
     post = _post_visible_ou_404(post_id)
+    refus = _refus_si_clos(post)
+    if refus:
+        return refus
     contenu = request.form.get("contenu", "").strip()
     if not contenu:
         flash("Le commentaire ne peut pas être vide.", "error")
@@ -302,6 +333,9 @@ def modifier_commentaire(commentaire_id: int):
         abort(404)
     if commentaire["auteur_id"] != g.user["id"]:
         abort(403)
+    refus = _refus_si_clos(commentaire)
+    if refus:
+        return refus
     contenu = request.form.get("contenu", "").strip()
     if not contenu:
         flash("Le commentaire ne peut pas être vide.", "error")
@@ -342,9 +376,9 @@ def reposter(post_id: int):
     la fenêtre Nouveau post liée, voir creer()) — gardé pour les anciens
     liens, avec la même règle : pas sur un projet terminé/abandonné."""
     post = _post_visible_ou_404(post_id)
-    if post.get("projet_etat") in PROJET_CLOS:
-        flash("Ce projet est terminé : on ne peut plus y reposter.", "error")
-        return _safe_redirect()
+    refus = _refus_si_clos(post)
+    if refus:
+        return refus
     contenu = request.form.get("contenu", "").strip() or None
     posts_repo.repost(post_id, g.user["id"], contenu)
     flash("Reposté.", "success")

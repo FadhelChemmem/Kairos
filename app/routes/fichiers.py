@@ -28,6 +28,13 @@ def upload_tache(tache_id: int):
     tache = taches_repo.get_tache(tache_id)
     if tache is None or not projets_repo.user_can_view(tache["projet_id"], g.user["id"]):
         abort(404)
+    # Décisions Fadhel (lot 7) : un Client n'intervient pas sur les tâches,
+    # et plus rien ne s'ajoute à un projet terminé ou abandonné.
+    if g.user["role"] == "client":
+        abort(403)
+    if tache.get("projet_etat") in projets_repo.ETATS_CLOS:
+        flash("Ce projet est clos (terminé ou abandonné) : on ne peut plus y ajouter de fichier.", "error")
+        return _safe_redirect()
 
     fichier = request.files.get("fichier")
     if not fichier or not fichier.filename:
