@@ -435,6 +435,24 @@ class SmokeTestCase(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"Se connecter", resp.data)
 
+    def test_favicon_du_logo_sur_toutes_les_pages(self):
+        """Icône d'onglet (retour Fadhel, 2026-09-29) : déclarée dans
+        base.html — donc aussi sur la page de connexion — et servie."""
+        for url in ("/connexion", "/accueil"):
+            with self.subTest(url=url):
+                resp = self._get(url) if url != "/connexion" else self.client.get(url)
+                self.assertEqual(resp.status_code, 200)
+                self.assertIn(b'rel="icon" type="image/svg+xml" href="/static/img/favicon.svg"', resp.data)
+                self.assertIn(b'href="/static/img/favicon.ico"', resp.data)
+                self.assertIn(b'rel="apple-touch-icon"', resp.data)
+        for fichier, debut in (("favicon.svg", b"<svg"), ("favicon.ico", b"\x00\x00\x01\x00"),
+                               ("apple-touch-icon.png", b"\x89PNG")):
+            with self.subTest(fichier=fichier):
+                resp = self.client.get(f"/static/img/{fichier}")
+                self.assertEqual(resp.status_code, 200)
+                self.assertTrue(resp.data.startswith(debut))
+                resp.close()
+
     def test_accueil_renders_with_full_feed(self):
         resp = self._get("/accueil")
         self.assertEqual(resp.status_code, 200, resp.data[:2000])

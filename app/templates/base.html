@@ -58,6 +58,14 @@
     })();
   </script>
   <title>{% block title %}Kairos{% endblock %}</title>
+  {# Icône d'onglet (favicon) tirée du logo Kairos (retour Fadhel,
+     2026-09-29). SVG en priorité (déclaré après le .ico, recette
+     habituelle pour que Chrome/Firefox le choisissent) : son K passe en blanc quand le
+     navigateur est en mode sombre ; .ico pour les navigateurs qui
+     ne lisent pas le SVG, apple-touch-icon pour l'écran d'accueil iOS. #}
+  <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}" sizes="32x32">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   <script src="{{ url_for('static', filename='js/chip-select.js') }}" defer></script>
