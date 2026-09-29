@@ -99,6 +99,42 @@ class StorageTestCase(unittest.TestCase):
         self.assertNotIn("مخطط", nom_stocke)
         self.assertEqual(len(nom_stocke), 32)  # uuid4().hex
 
+    # --- delete_upload() (audit externe P0-3, garde-fou ajouté lors de la
+    #     revérification du 2026-09-29) ---
+
+    def test_delete_upload_supprime_le_fichier_enregistre(self):
+        _, chemin = storage.save_upload(FakeFileStorage("plan.pdf"), "posts/projet-1")
+        absolu = Path(self._tmpdir.name) / chemin
+        self.assertTrue(absolu.exists())
+
+        storage.delete_upload(chemin)
+
+        self.assertFalse(absolu.exists())
+
+    def test_delete_upload_ne_leve_jamais(self):
+        """Best-effort : fichier déjà absent ou chemin vide — aucune
+        exception, pour ne jamais masquer l'erreur d'origine."""
+        storage.delete_upload(None)
+        storage.delete_upload("")
+        storage.delete_upload("posts/projet-1/inexistant.pdf")
+
+    def test_delete_upload_refuse_de_sortir_du_dossier_uploads(self):
+        """Un fichier HORS d'UPLOAD_DIR ne doit jamais être supprimé, même
+        si on lui passe un chemin relatif remontant l'arborescence ou un
+        chemin absolu."""
+        with tempfile.TemporaryDirectory() as ailleurs:
+            victime = Path(ailleurs) / "a_garder.txt"
+            victime.write_text("important")
+            # Les deux dossiers temporaires ont le même parent : "../<nom>"
+            # depuis UPLOAD_DIR pointe donc bien sur la victime.
+            self.assertEqual(Path(ailleurs).parent, Path(self._tmpdir.name).parent)
+            relatif = str(Path("..") / Path(ailleurs).name / "a_garder.txt")
+
+            storage.delete_upload(relatif)
+            storage.delete_upload(str(victime))
+
+            self.assertTrue(victime.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

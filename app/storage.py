@@ -75,7 +75,18 @@ def delete_upload(rel_path: str | None) -> None:
     d'origine ni empêcher son propre appelant de la relever."""
     if not rel_path:
         return
-    abs_path = os.path.join(current_app.config["UPLOAD_DIR"], rel_path)
+    # Garde-fou (revérification du 2026-09-29) : ne jamais supprimer un
+    # fichier situé en dehors d'UPLOAD_DIR. Aujourd'hui rel_path vient
+    # toujours de save_upload() (sous-dossier construit avec des ids
+    # entiers + nom UUID), donc pas exploitable en l'état — mais un
+    # chemin du type "../../etc/passwd" passé par erreur par un futur
+    # appelant supprimerait réellement ce fichier (vérifié en bac à
+    # sable). On résout le chemin réel et on refuse tout ce qui sort du
+    # dossier d'uploads.
+    base = os.path.realpath(current_app.config["UPLOAD_DIR"])
+    abs_path = os.path.realpath(os.path.join(base, rel_path))
+    if os.path.commonpath([base, abs_path]) != base or abs_path == base:
+        return
     try:
         os.remove(abs_path)
     except OSError:
