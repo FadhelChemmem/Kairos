@@ -15,20 +15,7 @@ bp = Blueprint("main", __name__)
 @login_required
 def accueil():
     user_id = g.user["id"]
-    mes_projets = projets.list_mes_projets(user_id)
-    # Toutes les échéances (pas seulement les 6 affichées) pour trier "Mes
-    # projets" par échéance la plus proche (demandé par Fadhel, 2026-09-19) ;
-    # la bannière et le widget de la colonne gauche n'en montrent qu'un aperçu.
-    deadlines_toutes = taches.list_deadlines(user_id, limit=200)
-    prochaine_par_projet = {}
-    for d in deadlines_toutes:
-        if d["projet_id"] not in prochaine_par_projet:
-            prochaine_par_projet[d["projet_id"]] = d["date_echeance"]
-    mes_projets = sorted(
-        mes_projets,
-        key=lambda p: (prochaine_par_projet.get(p["id"]) is None, prochaine_par_projet.get(p["id"])),
-    )
-    deadlines = deadlines_toutes[:6]
+    deadlines = taches.list_deadlines(user_id, limit=6)
     # Bannière d'accueil (retour Fadhel, 2026-09-19) : mini-Gantt simplifié
     # (jours + barres, sans les filtres/légende de la page Deadlines) sur une
     # fenêtre courte pour ne jamais déborder de la largeur des 3 colonnes.
@@ -43,14 +30,18 @@ def accueil():
     # à affecter/taguer (elle n'était pas transmise : listes vides), et
     # l'onglet ouvert par défaut adapté — "Tâche" seulement pour qui gère au
     # moins un projet (sinon le formulaire était refusé à l'envoi).
-    projets_postables = [p for p in mes_projets if p["etat"] in ("en_cours", "bloque")]
-    gere_un_projet = any(p["mon_role"] in ("chef_de_projet", "co_chef") for p in projets_postables)
-
-    # Carte "Mes projets" (retour Fadhel, 2026-09-28) : 5 projets triés par
-    # MA dernière action dessus (pas l'activité de tout le monde), projets
-    # terminés exclus — distinct de `mes_projets` ci-dessus, qui reste
-    # l'ordre par échéance et sert au sélecteur de "+ Nouveau post".
-    mes_projets_recents = projets.list_mes_projets_recents(user_id, limit=5)
+    #
+    # Sélecteur de projet (retour Fadhel, 2026-09-29, N2/N6) : seulement MES
+    # projets (chef, co-chef, intervenant) en cours ou bloqués, triés par
+    # MA dernière action — le premier, présélectionné, est donc celui sur
+    # lequel j'ai travaillé le plus récemment (avant : l'échéance la plus
+    # proche). La carte "Mes projets" en affiche les 5 premiers.
+    projets_recents = projets.list_mes_projets_recents(user_id, limit=500)
+    projets_postables = [p for p in projets_recents if p["etat"] in ("en_cours", "bloque")]
+    mes_projets_recents = projets_recents[:5]
+    # Onglet ouvert par défaut : "Tâche" si je gère le projet présélectionné
+    # (post-dialog.js masque ensuite l'onglet selon le projet choisi).
+    gere_un_projet = bool(projets_postables) and projets_postables[0]["mon_role"] in ("chef_de_projet", "co_chef")
 
     return render_template(
         "accueil.html",
@@ -58,6 +49,7 @@ def accueil():
         projets_postables=projets_postables,
         intent_par_defaut="tache" if gere_un_projet else "requete",
         utilisateurs_actifs=utilisateurs.list_actifs(),
+        collaborateurs_recents=utilisateurs.list_collaborateurs_recents(user_id),
         deadlines=deadlines,
         deadlines_gantt=deadlines_gantt,
         mes_taches=mes_taches,

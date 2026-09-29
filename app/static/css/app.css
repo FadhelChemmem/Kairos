@@ -397,6 +397,16 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
   background: var(--surface); color: var(--text);
 }
 .post-dialog::backdrop { background: rgba(20, 30, 25, 0.45); }
+/* Taille fixe pour "Nouveau post" (retour Fadhel, 2026-09-29, N4) : la
+   fenêtre ne change plus de taille d'un onglet à l'autre ni quand on
+   cherche une personne — le contenu défile à l'intérieur. */
+#dialog-nouveau-post { height: min(700px, 88vh); }
+.post-dialog-parent {
+  display: flex; align-items: center; gap: 8px; margin: -4px 0 14px;
+  padding: 9px 12px; border-radius: 10px; background: var(--hover-bg);
+  font-size: 12px; color: var(--text-secondary);
+}
+.post-dialog-parent > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* --- Page Utilisateurs (liste), voir Utilisateurs.dc.html --- */
 .uhead, .urow {
@@ -871,3 +881,11 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
   .topbar-actions .avatar-lg { width: 30px; height: 30px; font-size: 11px; }
   .topbar-actions a[title] + a[style*="margin-left"] { margin-left: 2px !important; }
 }
+
+/* Bouton d'action en texte simple (ex. "Toutes les équipes" du composeur,
+   2026-09-29) — pas une icône (.linkbtn), pas un bouton plein. */
+.bouton-texte {
+  display: inline-block; width: auto; background: none; border: none; padding: 0;
+  font: inherit; font-size: 12px; font-weight: 700; color: var(--brand-text); cursor: pointer;
+}
+.bouton-texte:hover { text-decoration: underline; }

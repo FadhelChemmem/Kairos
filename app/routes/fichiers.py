@@ -62,7 +62,7 @@ def download_tache(piece_id: int):
 @login_required
 def upload_post(post_id: int):
     post = posts_repo.get_post(post_id)
-    if post is None or not projets_repo.user_can_view(post["projet_id"], g.user["id"]):
+    if post is None or not posts_repo.peut_voir(post["id"], post["projet_id"], g.user["id"]):
         abort(404)
 
     fichier = request.files.get("fichier")
@@ -84,7 +84,7 @@ def upload_post(post_id: int):
 @login_required
 def download_post(piece_id: int):
     piece = posts_repo.get_piece_jointe(piece_id)
-    if piece is None or not projets_repo.user_can_view(piece["projet_id"], g.user["id"]):
+    if piece is None or not posts_repo.peut_voir(piece["post_id"], piece["projet_id"], g.user["id"]):
         abort(404)
     return send_from_directory(
         current_app.config["UPLOAD_DIR"], piece["chemin"],
@@ -100,7 +100,7 @@ def upload_commentaire(commentaire_id: int):
     du fichier après coup (jamais appelée dans le flux normal, gardée pour
     la même raison que upload_tache/upload_post — cohérence de l'API)."""
     commentaire = posts_repo.get_commentaire(commentaire_id)
-    if commentaire is None or not projets_repo.user_can_view(commentaire["projet_id"], g.user["id"]):
+    if commentaire is None or not posts_repo.peut_voir(commentaire["post_id"], commentaire["projet_id"], g.user["id"]):
         abort(404)
     fichier = request.files.get("fichier")
     if not fichier or not fichier.filename:
@@ -124,7 +124,7 @@ def commentaire_piece_jointe(piece_id: int):
     c'est une image, pour l'aperçu direct dans le fil ; en téléchargement
     sinon, comme les autres pièces jointes de l'appli."""
     piece = posts_repo.get_piece_jointe_commentaire(piece_id)
-    if piece is None or not projets_repo.user_can_view(piece["projet_id"], g.user["id"]):
+    if piece is None or not posts_repo.peut_voir(piece["post_id"], piece["projet_id"], g.user["id"]):
         abort(404)
     if is_image_filename(piece["nom_fichier"]):
         return send_from_directory(current_app.config["UPLOAD_DIR"], piece["chemin"])

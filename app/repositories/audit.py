@@ -20,7 +20,8 @@ TABLES_AUDITEES = [
     "utilisateur", "projet", "projet_lot", "projet_co_chef",
     "projet_intervenant", "tache", "tache_intervenant",
     "tache_piece_jointe", "dailylog_entree", "dailylog_jour", "post", "post_piece_jointe",
-    "post_mention", "post_reaction", "post_commentaire", "post_commentaire_piece_jointe",
+    "post_mention", "post_equipe", "post_reaction", "post_commentaire", "post_commentaire_piece_jointe",
+    "post_commentaire_mention",
 ]
 
 ACTIONS_VALIDES = ["INSERT", "UPDATE", "DELETE"]

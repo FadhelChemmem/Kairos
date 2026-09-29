@@ -55,7 +55,7 @@
   </form>
 {% endmacro %}
 
-<div class="card">
+<div class="card post-card" id="post-{{ post.id }}">
   <div style="display:flex; align-items:center; gap:10px;">
     {# Pastille + nom du posteur, et nom du projet, cliquables (retour
        Fadhel, 2026-09-28). Le lien mène désormais à la page de profil
@@ -81,7 +81,9 @@
         <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a></div>
       {% endif %}
       <div style="font-size:11.5px; color:var(--text-muted);">
-        {% if show_projet %}<a href="{{ url_for('projets.detail', projet_id=post.projet_id) }}" style="color:inherit;">{{ post.projet_code }}_{{ post.projet_nom }}</a> · {% endif %}{{ post.created_at|il_y_a }}
+        {# Information d'équipe sans projet (migration 0009) : ses équipes
+           destinataires à la place du projet. #}
+        {% if post.projet_id is none %}<span>{{ 'Équipes' if post.equipes|default([])|length > 1 else 'Équipe' }} {{ post.equipes|default([])|join(', ') }}</span> · {% elif show_projet %}<a href="{{ url_for('projets.detail', projet_id=post.projet_id) }}" style="color:inherit;">{{ post.projet_code }}_{{ post.projet_nom }}</a> · {% endif %}{{ post.created_at|il_y_a }}
       </div>
     </div>
     {% if post.est_creation_tache %}
@@ -259,6 +261,7 @@
         <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">+</button>
       </form>
     </details>
+    {% if post.projet_id %}
     <details style="margin-left:2px; position:relative;">
       <summary class="linkbtn" title="Créer un post lié" aria-label="Créer un post lié" style="list-style:none; cursor:pointer;">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h6a3 3 0 0 1 3 3v3"/><path d="M13 7l3 3-3 3"/><path d="M7 17h4"/></svg>
@@ -284,5 +287,6 @@
         </div>
       </div>
     </details>
+    {% endif %}
   </div>
 </div>

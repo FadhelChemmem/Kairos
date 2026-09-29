@@ -1,9 +1,45 @@
 """Requêtes SQL liées au fil de posts (feed), réactions et commentaires."""
 from .. import db
 
+# Qui voit un post (migration 0009, posts "Information", retour Fadhel,
+# 2026-09-29) — `%(uid)s` est le lecteur :
+# - post d'un projet : ceux qui voient le projet (v_projet_visibilite,
+#   même règle que projets.user_can_view) ;
+# - post SANS projet (Information d'équipe) : les membres des équipes
+#   destinataires (post_equipe), l'auteur, les personnes taguées, et les
+#   Admin/RH.
+_POST_SANS_PROJET_VISIBLE = """
+    (p.projet_id IS NULL AND (
+        p.auteur_id = %(uid)s
+        OR EXISTS (SELECT 1 FROM post_mention pmv WHERE pmv.post_id = p.id AND pmv.utilisateur_id = %(uid)s)
+        OR EXISTS (
+            SELECT 1 FROM utilisateur uv
+            WHERE uv.id = %(uid)s AND uv.actif
+              AND (uv.role IN ('admin', 'rh')
+                   OR EXISTS (SELECT 1 FROM post_equipe pev
+                              WHERE pev.post_id = p.id AND pev.equipe_code = uv.equipe_code))
+        )
+    ))
+"""
+_POST_VISIBLE = """
+    (
+      (p.projet_id IS NOT NULL AND EXISTS (
+          SELECT 1 FROM v_projet_visibilite vv
+          WHERE vv.projet_id = p.projet_id AND vv.utilisateur_id = %(uid)s))
+      OR """ + _POST_SANS_PROJET_VISIBLE + """
+    )
+"""
+
 _FEED_SELECT = """
     SELECT p.id, p.type_code, p.contenu, p.lien, p.created_at, p.tache_id, p.parent_post_id,
-           p.projet_id, proj.code AS projet_code, proj.nom AS projet_nom,
+           p.projet_id, proj.code AS projet_code, proj.nom AS projet_nom, proj.etat AS projet_etat,
+           -- Équipes destinataires d'une Information sans projet (migration 0009).
+           COALESCE(
+             (SELECT json_agg(e.libelle ORDER BY e.libelle)
+              FROM post_equipe pe JOIN equipe e ON e.code = pe.equipe_code
+              WHERE pe.post_id = p.id),
+             '[]'
+           ) AS equipes,
            u.id AS auteur_id, u.prenom AS auteur_prenom, u.nom AS auteur_nom,
            u.avatar_chemin AS auteur_avatar_chemin,
            t.titre AS tache_titre, t.etat AS tache_etat,
@@ -24,10 +60,10 @@ _FEED_SELECT = """
            -- Sert à n'afficher "+ Tâche" (rebond) qu'à ceux qui pourront
            -- effectivement la créer (audit n°2 : le bouton était montré à
            -- tous, puis refusé par le serveur une fois le formulaire rempli).
-           (proj.chef_projet_id = %(uid)s OR EXISTS (
+           COALESCE(proj.chef_projet_id = %(uid)s OR EXISTS (
               SELECT 1 FROM projet_co_chef cc
               WHERE cc.projet_id = p.projet_id AND cc.utilisateur_id = %(uid)s
-           )) AS je_gere,
+           ), false) AS je_gere,
            (SELECT count(*) FROM post_reaction r WHERE r.post_id = p.id) AS nb_reactions,
            (SELECT count(*) FROM post_commentaire c WHERE c.post_id = p.id) AS nb_commentaires,
            (SELECT pr.reaction_code FROM post_reaction pr
@@ -52,6 +88,14 @@ _FEED_SELECT = """
                                 'auteur_avatar_chemin', cu.avatar_chemin,
                                 'mentionne_user_id', c.mentionne_user_id,
                                 'mentionne_prenom', mu2.prenom, 'mentionne_nom', mu2.nom,
+                                'modifie_le', c.modifie_le,
+                                -- @tags écrits dans le texte (migration 0009)
+                                'mentions', COALESCE(
+                                  (SELECT json_agg(json_build_object('id', cmu.id, 'prenom', cmu.prenom, 'nom', cmu.nom))
+                                   FROM post_commentaire_mention cm JOIN utilisateur cmu ON cmu.id = cm.utilisateur_id
+                                   WHERE cm.commentaire_id = c.id),
+                                  '[]'
+                                ),
                                 'pieces_jointes', COALESCE(
                                   (SELECT json_agg(json_build_object('id', cpj.id, 'nom_fichier', cpj.nom_fichier)
                                                     ORDER BY cpj.uploaded_at)
@@ -84,7 +128,7 @@ _FEED_SELECT = """
            parent_tache.titre AS parent_tache_titre
     FROM post p
     JOIN utilisateur u ON u.id = p.auteur_id
-    JOIN projet proj ON proj.id = p.projet_id
+    LEFT JOIN projet proj ON proj.id = p.projet_id
     LEFT JOIN tache t ON t.id = p.tache_id
     LEFT JOIN post parent ON parent.id = p.parent_post_id
     LEFT JOIN utilisateur parent_auteur ON parent_auteur.id = parent.auteur_id
@@ -126,16 +170,20 @@ def list_feed_projet(projet_id: int, current_user_id: int, limit: int = 30) -> l
 
 def list_feed_mes_projets(current_user_id: int, limit: int = 30) -> list[dict]:
     """Fil d'activité de l'accueil : tous les posts des projets où
-    l'utilisateur est chef, co-chef ou intervenant."""
+    l'utilisateur est chef, co-chef, intervenant — ou intervenant d'une
+    tâche seulement (retour Fadhel, 2026-09-29, P1 : ces personnes ne
+    voyaient rien du projet sur leur accueil) — plus les Informations
+    d'équipe qui lui sont destinées (migration 0009)."""
     sql = _FEED_SELECT + """
         WHERE p.projet_id IN (
             SELECT pj.id FROM projet pj
-            LEFT JOIN projet_co_chef cc ON cc.projet_id = pj.id AND cc.utilisateur_id = %(uid)s
-            LEFT JOIN projet_intervenant pi ON pi.projet_id = pj.id AND pi.utilisateur_id = %(uid)s
             WHERE pj.chef_projet_id = %(uid)s
-               OR cc.utilisateur_id IS NOT NULL
-               OR pi.utilisateur_id IS NOT NULL
+               OR EXISTS (SELECT 1 FROM projet_co_chef cc WHERE cc.projet_id = pj.id AND cc.utilisateur_id = %(uid)s)
+               OR EXISTS (SELECT 1 FROM projet_intervenant pi WHERE pi.projet_id = pj.id AND pi.utilisateur_id = %(uid)s)
+               OR EXISTS (SELECT 1 FROM tache tt JOIN tache_intervenant ti ON ti.tache_id = tt.id
+                          WHERE tt.projet_id = pj.id AND ti.utilisateur_id = %(uid)s)
         )
+        OR """ + _POST_SANS_PROJET_VISIBLE + """
         ORDER BY p.created_at DESC
         LIMIT %(limit)s
     """
@@ -154,10 +202,7 @@ def list_feed_auteur(auteur_id: int, viewer_id: int, limit: int = 8) -> list[dic
     aussi lui dont dépendent "je_gere"/"ma_reaction" dans _FEED_SELECT."""
     sql = _FEED_SELECT + """
         WHERE p.auteur_id = %(auteur_id)s
-          AND EXISTS (
-                SELECT 1 FROM v_projet_visibilite vv
-                WHERE vv.projet_id = p.projet_id AND vv.utilisateur_id = %(uid)s
-              )
+          AND """ + _POST_VISIBLE + """
         ORDER BY p.created_at DESC
         LIMIT %(limit)s
     """
@@ -167,18 +212,38 @@ def list_feed_auteur(auteur_id: int, viewer_id: int, limit: int = 8) -> list[dic
 
 
 def get_post(post_id: int) -> dict | None:
-    """Version minimale d'un post (id, projet, tâche, parent, auteur) —
-    utilisée pour les contrôles d'accès (visibilité du projet porteur)
-    avant de réagir/commenter/rebondir sur un post existant, voir
+    """Version minimale d'un post (id, projet, tâche, parent, auteur, type)
+    — utilisée pour les contrôles d'accès (voir peut_voir) avant de
+    réagir/commenter/reposter sur un post existant, voir
     PROMPT_CORRECTIONS.md P0 #1."""
     return db.query_one(
-        "SELECT id, projet_id, tache_id, parent_post_id, auteur_id FROM post WHERE id = %s",
+        """
+        SELECT p.id, p.projet_id, p.tache_id, p.parent_post_id, p.auteur_id, p.type_code,
+               proj.etat AS projet_etat
+        FROM post p LEFT JOIN projet proj ON proj.id = p.projet_id
+        WHERE p.id = %s
+        """,
         (post_id,),
     )
 
 
+def peut_voir(post_id: int, projet_id: int | None, user_id: int) -> bool:
+    """Contrôle d'accès DIRECT à un post (réagir, commenter, reposter,
+    télécharger une pièce jointe…) — même règle que les listes du fil
+    (_POST_VISIBLE). Un post de projet suit la visibilité du projet ; un
+    post sans projet (Information d'équipe, migration 0009) suit ses
+    destinataires."""
+    if projet_id is not None:
+        from . import projets as projets_repo
+        return projets_repo.user_can_view(projet_id, user_id)
+    return db.query_one(
+        "SELECT 1 FROM post p WHERE p.id = %(pid)s AND " + _POST_SANS_PROJET_VISIBLE,
+        {"pid": post_id, "uid": user_id},
+    ) is not None
+
+
 def create_post(
-    projet_id: int,
+    projet_id: int | None,
     auteur_id: int,
     type_code: str,
     contenu: str | None,
@@ -187,6 +252,7 @@ def create_post(
     lien: str | None = None,
     mentionne_ids: list[int] | None = None,
     piece_jointe: tuple[str, str] | None = None,
+    equipe_codes: list[str] | None = None,
 ) -> int:
     """Création manuelle d'un post (Envoi/Réponse/Question/Requête), ou
     d'un "rebond" quand parent_post_id est renseigné (voir spec : l'action
@@ -208,7 +274,11 @@ def create_post(
     ici, un échec de l'insertion fait échouer TOUT le bloc `with
     db.get_cursor()`, qui annule alors aussi la création du post lui-même
     (rollback automatique) — le fichier sur disque reste alors à nettoyer
-    par l'appelant (voir routes/posts.py)."""
+    par l'appelant (voir routes/posts.py).
+
+    `projet_id` None + `equipe_codes` : Information d'équipe sans projet
+    (migration 0009) — les équipes destinataires sont enregistrées dans la
+    même transaction."""
     with db.get_cursor(user_id=auteur_id) as cur:
         cur.execute(
             """
@@ -224,6 +294,12 @@ def create_post(
             cur.execute(
                 "INSERT INTO post_mention (post_id, utilisateur_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                 (post_id, uid),
+            )
+
+        for code in equipe_codes or []:
+            cur.execute(
+                "INSERT INTO post_equipe (post_id, equipe_code) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (post_id, code),
             )
 
         if piece_jointe is not None:
@@ -306,7 +382,7 @@ def get_commentaire(commentaire_id: int) -> dict | None:
     réponse — voir add_comment/routes/posts.py:commenter)."""
     return db.query_one(
         """
-        SELECT c.id, c.post_id, c.parent_commentaire_id, p.projet_id
+        SELECT c.id, c.post_id, c.parent_commentaire_id, c.auteur_id, c.contenu, p.projet_id
         FROM post_commentaire c
         JOIN post p ON p.id = c.post_id
         WHERE c.id = %s
@@ -334,7 +410,7 @@ def get_piece_jointe_commentaire(piece_id: int) -> dict | None:
     que get_piece_jointe ci-dessous."""
     return db.query_one(
         """
-        SELECT cpj.id, cpj.commentaire_id, cpj.nom_fichier, cpj.chemin, p.projet_id
+        SELECT cpj.id, cpj.commentaire_id, cpj.nom_fichier, cpj.chemin, p.projet_id, c.post_id
         FROM post_commentaire_piece_jointe cpj
         JOIN post_commentaire c ON c.id = cpj.commentaire_id
         JOIN post p ON p.id = c.post_id

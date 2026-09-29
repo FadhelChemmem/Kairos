@@ -55,6 +55,11 @@ def list_mes_projets_recents(user_id: int, limit: int = 5) -> list[dict]:
                      AND (t.created_by = %(user_id)s OR t.updated_by = %(user_id)s)),
                  (SELECT MAX(po.created_at) FROM post po
                    WHERE po.projet_id = p.id AND po.auteur_id = %(user_id)s),
+                 -- Un commentaire compte aussi comme une action (retour
+                 -- Fadhel, 2026-09-29, L1 — annoncé mais oublié jusqu'ici).
+                 (SELECT MAX(COALESCE(co.modifie_le, co.created_at)) FROM post_commentaire co
+                   JOIN post pc ON pc.id = co.post_id
+                   WHERE pc.projet_id = p.id AND co.auteur_id = %(user_id)s),
                  (SELECT MAX(de.created_at) FROM dailylog_entree de
                    WHERE de.projet_id = p.id AND de.utilisateur_id = %(user_id)s)
                ) AS ma_derniere_action

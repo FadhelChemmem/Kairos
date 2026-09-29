@@ -10,17 +10,29 @@ from ..auth import login_required
 from ..repositories import notifications as notifications_repo
 from ..repositories import posts as posts_repo
 from ..repositories import projets as projets_repo
+from ..repositories import utilisateurs as utilisateurs_repo
 from ..storage import delete_upload, save_upload
-from ..utils import is_lien_valide, redirect_vers_next
+from ..utils import EQUIPE_CHOICES, is_lien_valide, redirect_vers_next
 
 bp = Blueprint("posts", __name__, url_prefix="/posts")
 
-TYPES_VALIDES = {"envoi", "reponse", "question", "requete"}
+TYPES_VALIDES = {"envoi", "reponse", "question", "requete", "information"}
+EQUIPES_VALIDES = {code for code, _ in EQUIPE_CHOICES}
 REACTIONS_VALIDES = {"ok", "pouce"}
 
 
 def _safe_redirect(default_endpoint="main.accueil"):
     return redirect_vers_next(default_endpoint)
+
+
+def _post_visible_ou_404(post_id: int) -> dict:
+    """Post existant ET visible de l'utilisateur connecté (IDOR,
+    PROMPT_CORRECTIONS.md P0 #1) — posts de projet comme Informations
+    d'équipe sans projet (migration 0009), voir posts_repo.peut_voir."""
+    post = posts_repo.get_post(post_id)
+    if post is None or not posts_repo.peut_voir(post["id"], post["projet_id"], g.user["id"]):
+        abort(404)
+    return post
 
 
 @bp.route("", methods=["POST"])
@@ -54,28 +66,43 @@ def creer():
         lien = None
         lien_ignore = True
     mentionne_ids = [int(v) for v in request.form.getlist("mentions") if v.isdigit()]
+    # Information d'équipe (migration 0009, retour Fadhel, 2026-09-29) : le
+    # projet est optionnel ; sans projet, au moins une équipe destinataire.
+    equipe_codes = [c for c in dict.fromkeys(request.form.getlist("equipes")) if c in EQUIPES_VALIDES]
 
-    if not projet_id or type_code not in TYPES_VALIDES or not contenu:
+    if type_code not in TYPES_VALIDES or not contenu or (not projet_id and type_code != "information"):
         flash("Message invalide.", "error")
         return _safe_redirect()
+    if not projet_id and not equipe_codes:
+        flash("Choisissez un projet ou au moins une équipe destinataire.", "error")
+        return _safe_redirect()
+    if projet_id:
+        equipe_codes = []  # un post de projet suit la visibilité du projet
 
     # Contrôle d'accès (IDOR, PROMPT_CORRECTIONS.md P0 #1) : on ne peut
     # publier que sur un projet qu'on voit déjà.
-    if not projets_repo.user_can_view(projet_id, g.user["id"]):
+    if projet_id and not projets_repo.user_can_view(projet_id, g.user["id"]):
         abort(404)
 
     # Un rebond doit obligatoirement pointer vers un post du MÊME projet —
     # sinon on pourrait relier deux projets sans lien de visibilité entre
-    # eux (et laisser deviner l'existence d'un post d'un autre projet).
+    # eux (et laisser deviner l'existence d'un post d'un autre projet). Un
+    # post sans projet ne peut répondre qu'à un post sans projet qu'on voit.
     if parent_post_id:
         parent = posts_repo.get_post(parent_post_id)
-        if parent is None or parent["projet_id"] != projet_id:
+        if (parent is None or parent["projet_id"] != projet_id
+                or not posts_repo.peut_voir(parent["id"], parent["projet_id"], g.user["id"])):
             abort(404)
 
     # Idem pour les mentions : on ne peut taguer que des personnes qui
     # voient déjà ce projet (pas de fuite d'existence d'un utilisateur vers
-    # un projet auquel il n'a pas accès).
-    mentionne_ids = [uid for uid in mentionne_ids if projets_repo.user_can_view(projet_id, uid)]
+    # un projet auquel il n'a pas accès). Sans projet : toute personne
+    # active (la tagger la rend destinataire).
+    if projet_id:
+        mentionne_ids = [uid for uid in mentionne_ids if projets_repo.user_can_view(projet_id, uid)]
+    else:
+        actifs = {u["id"] for u in utilisateurs_repo.list_actifs()}
+        mentionne_ids = [uid for uid in mentionne_ids if uid in actifs]
 
     # Pièce jointe : sauvegardée sur disque AVANT la création du post, pour
     # pouvoir passer (nom_fichier, chemin) à create_post() et insérer les
@@ -93,7 +120,7 @@ def creer():
     piece_jointe = None
     chemin = None
     if fichier and fichier.filename:
-        nom_fichier, chemin = save_upload(fichier, f"posts/projet-{projet_id}")
+        nom_fichier, chemin = save_upload(fichier, f"posts/projet-{projet_id}" if projet_id else "posts/information")
         piece_jointe = (nom_fichier, chemin)
 
     try:
@@ -106,6 +133,7 @@ def creer():
             lien=lien,
             mentionne_ids=mentionne_ids,
             piece_jointe=piece_jointe,
+            equipe_codes=equipe_codes,
         )
     except Exception:
         if chemin:
@@ -134,10 +162,8 @@ def creer():
 @login_required
 def reagir(post_id: int):
     # Contrôle d'accès (IDOR, PROMPT_CORRECTIONS.md P0 #1) : impossible de
-    # réagir à un post d'un projet qu'on ne voit pas.
-    post = posts_repo.get_post(post_id)
-    if post is None or not projets_repo.user_can_view(post["projet_id"], g.user["id"]):
-        abort(404)
+    # réagir à un post qu'on ne voit pas.
+    _post_visible_ou_404(post_id)
     reaction_code = request.form.get("reaction_code")
     if reaction_code not in REACTIONS_VALIDES:
         abort(400)
@@ -148,9 +174,7 @@ def reagir(post_id: int):
 @bp.route("/<int:post_id>/reagir/supprimer", methods=["POST"])
 @login_required
 def retirer_reaction(post_id: int):
-    post = posts_repo.get_post(post_id)
-    if post is None or not projets_repo.user_can_view(post["projet_id"], g.user["id"]):
-        abort(404)
+    _post_visible_ou_404(post_id)
     posts_repo.remove_reaction(post_id, g.user["id"])
     return _safe_redirect()
 
@@ -164,16 +188,14 @@ def commenter(post_id: int):
     étapes comme pour un post), utilisé aussi bien pour "écrire un
     commentaire" que pour "répondre à un commentaire" (voir
     post-comments.js/post_card.html)."""
-    post = posts_repo.get_post(post_id)
-    if post is None or not projets_repo.user_can_view(post["projet_id"], g.user["id"]):
-        abort(404)
+    post = _post_visible_ou_404(post_id)
     contenu = request.form.get("contenu", "").strip()
     if not contenu:
         flash("Le commentaire ne peut pas être vide.", "error")
         return _safe_redirect()
 
     mentionne_user_id = request.form.get("mentionne_user_id", type=int)
-    if mentionne_user_id and not projets_repo.user_can_view(post["projet_id"], mentionne_user_id):
+    if mentionne_user_id and not posts_repo.peut_voir(post["id"], post["projet_id"], mentionne_user_id):
         mentionne_user_id = None
 
     # Réponse en ligne (IDOR, PROMPT_CORRECTIONS.md P0 #1) : le commentaire
@@ -231,9 +253,7 @@ def reposter(post_id: int):
     """"Reposter" (Lot 5, retour Fadhel, 2026-09-28) — un clic, sans
     composeur, voir posts_repo.repost(). Un commentaire court est optionnel
     (façon "citer")."""
-    post = posts_repo.get_post(post_id)
-    if post is None or not projets_repo.user_can_view(post["projet_id"], g.user["id"]):
-        abort(404)
+    _post_visible_ou_404(post_id)
     contenu = request.form.get("contenu", "").strip() or None
     posts_repo.repost(post_id, g.user["id"], contenu)
     flash("Reposté.", "success")

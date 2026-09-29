@@ -237,7 +237,8 @@ TACHE_SANS_HEURES = {
 # tache_id=5/post_id=1, rattachés au projet_id=1, pour correspondre aux
 # autres fixtures/appels de test_write_routes_redirect_without_crashing.
 TACHE_POUR_FICHIERS = {**TACHE_SANS_HEURES, "id": 5, "projet_id": 1}
-POST_POUR_ACCES = {"id": 1, "projet_id": 1, "tache_id": None, "parent_post_id": None, "auteur_id": 2}
+POST_POUR_ACCES = {"id": 1, "projet_id": 1, "tache_id": None, "parent_post_id": None, "auteur_id": 2,
+                   "type_code": "envoi", "projet_etat": "en_cours"}
 PIECE_JOINTE_TACHE = {"id": 1, "tache_id": 5, "nom_fichier": "note_calcul.pdf", "chemin": "taches/5/x.pdf", "projet_id": 1}
 PIECE_JOINTE_POST = {"id": 1, "post_id": 1, "nom_fichier": "plan.pdf", "chemin": "posts/1/x.pdf", "projet_id": 1}
 
@@ -340,7 +341,11 @@ AUDIT_ENTREES = [
 AUDIT_AUTEURS = [{"id": 1, "prenom": "Foulen", "nom": "Chedly"}]
 
 
-class SmokeTestCase(unittest.TestCase):
+class SmokeBase(unittest.TestCase):
+    """Outils communs (app de test, connexion, mocks par défaut) — sans
+    test à lui : une classe de tests qui en hérite ne relance pas toute la
+    suite de SmokeTestCase (2026-09-29)."""
+
     def setUp(self):
         self.app = create_app(TestConfig)
         self.client = self.app.test_client()
@@ -383,6 +388,7 @@ class SmokeTestCase(unittest.TestCase):
             "app.repositories.posts.get_post": POST_POUR_ACCES,
             "app.repositories.posts.get_piece_jointe": PIECE_JOINTE_POST,
             "app.repositories.utilisateurs.list_actifs": UTILISATEURS_ACTIFS,
+            "app.repositories.utilisateurs.list_collaborateurs_recents": [3],
             "app.repositories.dailylog.list_projets_pour_dailylog": DAILYLOG_PROJETS,
             "app.repositories.dailylog.list_entrees_jour": DAILYLOG_ENTREES,
             "app.repositories.dailylog.list_lignes_suggerees": DAILYLOG_SUGGESTIONS,
@@ -430,6 +436,8 @@ class SmokeTestCase(unittest.TestCase):
             for p in patchers:
                 p.stop()
 
+
+class SmokeTestCase(SmokeBase):
     def test_login_page_renders(self):
         resp = self.client.get("/connexion")
         self.assertEqual(resp.status_code, 200)
@@ -4619,7 +4627,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
         """"Aperçu image" : une image est servie EN LIGNE (pas de
         as_attachment), pour l'aperçu direct dans le fil."""
         piece_image = {"id": 1, "commentaire_id": 1, "nom_fichier": "photo.jpg",
-                        "chemin": "posts/1/commentaires/1/x.jpg", "projet_id": 1}
+                        "chemin": "posts/1/commentaires/1/x.jpg", "projet_id": 1, "post_id": 1}
         patchers = self._patched(**{"app.repositories.posts.get_piece_jointe_commentaire": piece_image})
         for p in patchers:
             p.start()
@@ -4635,7 +4643,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
 
     def test_fichiers_commentaire_piece_jointe_fichier_servi_en_telechargement(self):
         piece_pdf = {"id": 2, "commentaire_id": 1, "nom_fichier": "plan.pdf",
-                     "chemin": "posts/1/commentaires/1/y.pdf", "projet_id": 1}
+                     "chemin": "posts/1/commentaires/1/y.pdf", "projet_id": 1, "post_id": 1}
         patchers = self._patched(**{"app.repositories.posts.get_piece_jointe_commentaire": piece_pdf})
         for p in patchers:
             p.start()
@@ -4651,7 +4659,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
         self.assertEqual(mock_send.call_args.kwargs.get("download_name"), "plan.pdf")
 
     def test_fichiers_commentaire_piece_jointe_404_si_projet_non_visible(self):
-        piece = {"id": 3, "commentaire_id": 1, "nom_fichier": "x.jpg", "chemin": "y", "projet_id": 1}
+        piece = {"id": 3, "commentaire_id": 1, "nom_fichier": "x.jpg", "chemin": "y", "projet_id": 1, "post_id": 1}
         patchers = self._patched(**{
             "app.repositories.posts.get_piece_jointe_commentaire": piece,
             "app.repositories.projets.user_can_view": False,
@@ -4756,6 +4764,181 @@ class TestProposeCode(unittest.TestCase):
 
         with patch("app.db.query_all", return_value=[]):
             self.assertEqual(projets_repo.propose_code("BIDON", annee=2026), "26001X")
+
+
+
+FEED_POST_INFORMATION_EQUIPE = {
+    **FEED_POST_MANUEL, "id": 9, "type_code": "information", "contenu": "Bureau fermé le 25.",
+    "projet_id": None, "projet_code": None, "projet_nom": None, "projet_etat": None,
+    "equipes": ["Midgard", "URBS"], "je_gere": False,
+}
+
+
+class TestInformationEtComposeur(SmokeBase):
+    """Retours Fadhel du 2026-09-29 (claude/kairos-ecarts-2026-09-29.md) :
+    posts "Information" publiables, sans projet destinés à des équipes
+    (N5) ; composeur limité à mes projets, le plus récent présélectionné
+    (N2/N6) ; ~5 collaborateurs récents + recherche (N4) ; fil de
+    l'accueil ouvert aux intervenants d'une tâche seulement (P1). Les
+    requêtes SQL sont vérifiées à part sur un vrai PostgreSQL."""
+
+    def _poster(self, data, **overrides):
+        self._login()
+        patchers = self._patched(**overrides)
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.create_post", return_value=101) as mock_create:
+                resp = self.client.post("/posts", data=data)
+        finally:
+            for p in patchers:
+                p.stop()
+        return resp, mock_create
+
+    def _flashes(self):
+        with self.client.session_transaction() as sess:
+            return [msg for _, msg in sess.get("_flashes", [])]
+
+    def test_information_sans_projet_vers_des_equipes(self):
+        resp, mock_create = self._poster({
+            "type_code": "information", "contenu": "Bureau fermé le 25.",
+            "equipes": ["MIDGARD", "URBS", "BIDON", "URBS"], "mentions": ["3", "999"],
+        })
+        self.assertEqual(resp.status_code, 302)
+        kwargs = mock_create.call_args.kwargs
+        self.assertIsNone(kwargs["projet_id"])
+        self.assertEqual(kwargs["type_code"], "information")
+        self.assertEqual(kwargs["equipe_codes"], ["MIDGARD", "URBS"])
+        self.assertEqual(kwargs["mentionne_ids"], [3])  # 999 : pas une personne active
+
+    def test_information_sans_projet_ni_equipe_refusee(self):
+        resp, mock_create = self._poster({"type_code": "information", "contenu": "X"})
+        self.assertEqual(resp.status_code, 302)
+        mock_create.assert_not_called()
+        self.assertTrue(any("équipe" in m for m in self._flashes()))
+
+    def test_requete_sans_projet_refusee(self):
+        resp, mock_create = self._poster({"type_code": "requete", "contenu": "X", "equipes": ["MIDGARD"]})
+        mock_create.assert_not_called()
+
+    def test_information_de_projet_ignore_les_equipes(self):
+        resp, mock_create = self._poster({
+            "projet_id": "1", "type_code": "information", "contenu": "X", "equipes": ["MIDGARD"],
+        })
+        self.assertEqual(mock_create.call_args.kwargs["projet_id"], 1)
+        self.assertEqual(mock_create.call_args.kwargs["equipe_codes"], [])
+
+    def test_information_de_projet_404_si_projet_non_visible(self):
+        resp, mock_create = self._poster(
+            {"projet_id": "1", "type_code": "information", "contenu": "X"},
+            **{"app.repositories.projets.user_can_view": False},
+        )
+        self.assertEqual(resp.status_code, 404)
+        mock_create.assert_not_called()
+
+    def test_reponse_sans_projet_a_un_post_de_projet_refusee(self):
+        resp, mock_create = self._poster({
+            "type_code": "information", "contenu": "X", "equipes": ["MIDGARD"], "parent_post_id": "1",
+        })
+        self.assertEqual(resp.status_code, 404)
+        mock_create.assert_not_called()
+
+    def test_reagir_a_une_information_d_equipe_suit_ses_destinataires(self):
+        """Un post sans projet n'a pas de projet dont suivre la visibilité :
+        routes/posts.py passe par posts_repo.peut_voir (destinataires)."""
+        self._login()
+        post = {**POST_POUR_ACCES, "id": 9, "projet_id": None}
+        for visible, attendu in ((False, 404), (True, 302)):
+            with self.subTest(visible=visible):
+                patchers = self._patched(**{"app.repositories.posts.get_post": post})
+                for p in patchers:
+                    p.start()
+                try:
+                    with patch("app.repositories.posts.peut_voir", return_value=visible) as mock_voir, \
+                         patch("app.repositories.posts.react"):
+                        resp = self.client.post("/posts/9/reagir", data={"reaction_code": "pouce"})
+                finally:
+                    for p in patchers:
+                        p.stop()
+                self.assertEqual(resp.status_code, attendu)
+                mock_voir.assert_called_once_with(9, None, 1)
+
+    def test_composeur_accueil_information_publiable(self):
+        resp = self._get("/accueil")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.data.decode()
+        self.assertIn("Publier l'information", body)
+        self.assertNotIn("pas encore publiables", body)
+        self.assertIn('value="aucun" data-sans-projet="1"', body)
+        self.assertIn('name="equipes"', body)
+        # Onglet Tâche selon le projet choisi : MES_PROJETS[0] = chef, [1] = intervenant
+        self.assertIn('<option value="1" data-gere="1">', body)
+        self.assertIn('<option value="2" data-gere="0">', body)
+
+    def test_composeur_projets_tries_par_ma_derniere_action(self):
+        """N2/N6 : l'ordre (et donc le projet présélectionné) est celui de
+        list_mes_projets_recents, projets terminés/abandonnés exclus."""
+        recents = [
+            {**MES_PROJETS[1], "etat": "en_cours"},
+            {**MES_PROJETS[0], "id": 7, "code": "26007X", "etat": "abandonne"},
+            MES_PROJETS[0],
+        ]
+        resp = self._get("/accueil", **{"app.repositories.projets.list_mes_projets_recents": recents})
+        body = resp.data.decode()
+        options = re.findall(r'<option value="(\d+)" data-gere=', body)
+        self.assertEqual(options, ["2", "1"])
+
+    def test_composeur_collaborateurs_recents_en_tete(self):
+        resp = self._get("/accueil")
+        body = resp.data.decode()
+        bloc = body[body.index('id="dialog-intervenants-tache"'):]
+        bloc = bloc[:bloc.index("</select>")]
+        self.assertLess(bloc.index('value="3" data-recent="1"'), bloc.index('value="1"'))
+        self.assertIn('data-chip-recent="1"', body)
+
+    def test_fil_affiche_les_equipes_d_une_information_sans_projet(self):
+        resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [FEED_POST_INFORMATION_EQUIPE]})
+        self.assertEqual(resp.status_code, 200, resp.data[:3000])
+        body = resp.data.decode()
+        self.assertIn("Équipes Midgard, URBS", body)
+        self.assertIn("Bureau fermé le 25.", body)
+        self.assertIn('id="post-9"', body)
+
+    def test_notification_d_une_information_sans_projet_ouvre_l_accueil(self):
+        notif = {**NOTIFICATION_UNE, "post_id": 9, "post_projet_id": None, "tache_projet_id": None}
+        self._login()
+        patchers = self._patched(**{"app.repositories.notifications.get_notification": notif})
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.post(f"/notifications/{notif['id']}/ouvrir")
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertTrue(resp.headers["Location"].endswith("/accueil#post-9"))
+
+    def test_sql_fil_accueil_inclut_intervenants_de_tache_et_informations(self):
+        from app.repositories import posts as posts_repo
+        with patch("app.db.get_cursor") as mock_cur:
+            cur = mock_cur.return_value.__enter__.return_value
+            cur.fetchall.return_value = []
+            posts_repo.list_feed_mes_projets(1)
+        sql = cur.execute.call_args.args[0]
+        self.assertIn("tache_intervenant ti", sql)
+        self.assertIn("post_equipe pev", sql)
+        self.assertIn("LEFT JOIN projet proj", sql)
+
+    def test_personnes_recentes_d_abord(self):
+        from app.utils import personnes_recentes_d_abord
+        personnes = [{"id": 1, "nom": "A"}, {"id": 2, "nom": "B"}, {"id": 3, "nom": "C"}]
+        res = personnes_recentes_d_abord(personnes, [3, 99, 1])
+        self.assertEqual([(p["id"], p["recent"]) for p in res], [(3, True), (1, True), (2, False)])
+        self.assertEqual([p["id"] for p in personnes_recentes_d_abord(personnes, None)], [1, 2, 3])
+
+    def test_fenetre_nouveau_post_de_taille_fixe(self):
+        import pathlib
+        css = (pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / "css" / "app.css").read_text(encoding="utf-8")
+        self.assertIn("#dialog-nouveau-post { height: min(700px, 88vh); }", css)
 
 
 if __name__ == "__main__":

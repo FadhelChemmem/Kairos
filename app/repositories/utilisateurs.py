@@ -21,6 +21,47 @@ def list_actifs() -> list[dict]:
     )
 
 
+def list_collaborateurs_recents(user_id: int, limit: int = 5) -> list[int]:
+    """Ids des ~5 personnes avec qui `user_id` a travaillé le plus
+    récemment (retour Fadhel, 2026-09-29, N4 : le choix des intervenants
+    et des personnes à taguer montre ces quelques personnes, et une
+    recherche pour les autres) : co-intervenants d'une même tâche,
+    intervenants des tâches que j'ai créées, et personnes qui ont
+    commenté mes posts ou dont j'ai commenté les posts. Personnes
+    actives seulement, hors RH (même règle que list_actifs)."""
+    rows = db.query_all(
+        """
+        SELECT u.id
+        FROM (
+            SELECT ti.utilisateur_id AS uid, t.created_at AS quand
+            FROM tache t JOIN tache_intervenant ti ON ti.tache_id = t.id
+            WHERE t.created_by = %(uid)s
+               OR EXISTS (SELECT 1 FROM tache_intervenant moi
+                          WHERE moi.tache_id = t.id AND moi.utilisateur_id = %(uid)s)
+            UNION ALL
+            SELECT t.created_by, t.created_at
+            FROM tache t JOIN tache_intervenant moi ON moi.tache_id = t.id
+            WHERE moi.utilisateur_id = %(uid)s
+            UNION ALL
+            SELECT c.auteur_id, c.created_at
+            FROM post_commentaire c JOIN post p ON p.id = c.post_id
+            WHERE p.auteur_id = %(uid)s
+            UNION ALL
+            SELECT p.auteur_id, c.created_at
+            FROM post_commentaire c JOIN post p ON p.id = c.post_id
+            WHERE c.auteur_id = %(uid)s
+        ) x
+        JOIN utilisateur u ON u.id = x.uid
+        WHERE u.id <> %(uid)s AND u.actif AND u.role <> 'rh'
+        GROUP BY u.id
+        ORDER BY MAX(x.quand) DESC
+        LIMIT %(limit)s
+        """,
+        {"uid": user_id, "limit": limit},
+    )
+    return [r["id"] for r in rows]
+
+
 def search(q: str, limit: int = 6) -> list[dict]:
     """Recherche de personnes pour la barre de recherche topbar (Lot 5,
     retour Fadhel, 2026-09-28 — jusqu'ici différée, voir l'ancien

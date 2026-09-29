@@ -31,6 +31,10 @@ def ouvrir(notification_id: int):
     projet_id = notif["post_projet_id"] or notif["tache_projet_id"]
     if projet_id:
         return redirect(url_for("projets.detail", projet_id=projet_id))
+    # Information d'équipe sans projet (migration 0009) : le post est dans
+    # le fil de l'accueil.
+    if notif.get("post_id"):
+        return redirect(url_for("main.accueil") + f"#post-{notif['post_id']}")
     return redirect(url_for("notifications.liste"))
 
 

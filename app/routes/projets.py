@@ -268,6 +268,7 @@ def detail(projet_id: int):
         nb_taches=nb_taches,
         nb_en_cours=nb_en_cours,
         utilisateurs_actifs=utilisateurs_actifs,
+        collaborateurs_recents=utilisateurs.list_collaborateurs_recents(g.user["id"]),
     )
 
     # Fenêtre "Informations" (retour Fadhel, 2026-09-28, Lot 5) : liste des

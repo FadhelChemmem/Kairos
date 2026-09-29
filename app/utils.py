@@ -97,7 +97,9 @@ _POST_TYPE_STYLE = {
     "reponse": {"bg": "#eaf1fd", "fg": "#3b7de0", "label": "Réponse"},
     "question": {"bg": "#f2f4f0", "fg": "#55605a", "label": "Question"},
     "requete": {"bg": "#fdeee4", "fg": "#a3480d", "label": "Requête"},
-    "information": {"bg": "#f2f4f0", "fg": "#55605a", "label": "Information"},
+    # Teinte propre (2026-09-29) : Information est publiable depuis la
+    # migration 0009 et ne doit plus se confondre avec "Question".
+    "information": {"bg": "#efecfd", "fg": "#5f52d1", "label": "Information"},
 }
 
 # Pill "Tâche" utilisée pour les posts système de création de tâche
@@ -268,6 +270,38 @@ def build_gantt(taches: list[dict], today, window_days: int = 21) -> dict:
     return {"days": days, "rows": rows, "window_days": window_days}
 
 
+def personnes_recentes_d_abord(personnes: list[dict], recents_ids: list[int] | None) -> list[dict]:
+    """Liste des personnes pour les sélecteurs du composeur (retour Fadhel,
+    2026-09-29, N4) : les collaborateurs récents d'abord, dans leur ordre,
+    marqués `recent` (chip-select.js n'affiche qu'eux tant qu'on ne
+    cherche pas), puis tous les autres."""
+    recents_ids = list(recents_ids or [])
+    par_id = {p["id"]: p for p in personnes}
+    devant = [{**par_id[i], "recent": True} for i in recents_ids if i in par_id]
+    deja = {p["id"] for p in devant}
+    return devant + [{**p, "recent": False} for p in personnes if p["id"] not in deja]
+
+
+def texte_avec_mentions(contenu: str | None, mentions: list[dict] | None):
+    """Texte d'un commentaire, échappé, où chaque "@Prénom Nom" d'une
+    personne réellement taguée (post_commentaire_mention, migration 0009)
+    est mis en évidence — le tag s'écrit directement dans le texte (retour
+    Fadhel, 2026-09-29). Les noms les plus longs d'abord, pour qu'un
+    "@Ali Ben Salah" ne soit pas coupé par un "@Ali Ben"."""
+    from markupsafe import Markup, escape
+
+    html = str(escape(contenu or ""))
+    noms = sorted(
+        {f"@{m.get('prenom', '')} {m.get('nom', '')}".strip() for m in (mentions or [])},
+        key=len, reverse=True,
+    )
+    for i, nom in enumerate(noms):
+        html = html.replace(str(escape(nom)), f"\x00{i}\x00")
+    for i, nom in enumerate(noms):
+        html = html.replace(f"\x00{i}\x00", f'<span class="post-comment-mention">{escape(nom)}</span>')
+    return Markup(html)
+
+
 def register(app):
     """Rend ces helpers disponibles directement dans les templates Jinja2."""
     app.jinja_env.globals.update(
@@ -284,6 +318,8 @@ def register(app):
         notif_categorie_style=notif_categorie_style,
         is_lien_valide=is_lien_valide,
         is_image_filename=is_image_filename,
+        personnes_recentes_d_abord=personnes_recentes_d_abord,
+        texte_avec_mentions=texte_avec_mentions,
         zip=zip,
         # Date du jour côté serveur (retour Fadhel, 2026-09-28) — appelée
         # dans les templates comme today() pour préremplir l'échéance de

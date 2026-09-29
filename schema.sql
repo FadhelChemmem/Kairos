@@ -122,8 +122,8 @@ INSERT INTO lot (code, libelle) VALUES
   ('GO', 'Gros Œuvre');
 
 -- Types de post ("tags", au sens de Fadhel : catégorisation, pas de
--- logique dédiée). Information est réservé à l'étape 2 (posts RH /
--- hors-projet) et désactivé pour l'instant.
+-- logique dédiée). Information : publiable depuis la migration 0009
+-- (projet optionnel ; sans projet, destiné à des équipes — post_equipe).
 CREATE TABLE post_type (
   code       VARCHAR(20) PRIMARY KEY,
   libelle    VARCHAR(100) NOT NULL,
@@ -134,7 +134,7 @@ INSERT INTO post_type (code, libelle, actif) VALUES
   ('reponse',     'Réponse',     true),
   ('question',    'Question',    true),
   ('requete',     'Requête',     true),
-  ('information', 'Information', false); -- étape 2
+  ('information', 'Information', true);  -- migration 0009
 
 -- Types de réaction sur un post (façon réseau social)
 CREATE TABLE reaction_type (
@@ -458,7 +458,12 @@ CREATE TABLE post (
   -- 'repost' ajouté en migration 0007 (Lot 5, retour Fadhel, 2026-09-28) :
   -- un post créé par posts.repost(), toujours avec parent_post_id renseigné
   -- (le post reposté) — même colonne que "rebondir", évènement différent.
-  evenement      VARCHAR(20) CHECK (evenement IS NULL OR evenement IN ('creation_tache', 'cloture_tache', 'repost')),
+  -- Migration 0009 (retour Fadhel, 2026-09-29, P1) : posts automatiques de
+  -- création de projet, changement d'état de tâche/projet et modification
+  -- du titre d'une tâche.
+  evenement      VARCHAR(20) CONSTRAINT post_evenement_check CHECK (evenement IS NULL OR evenement IN (
+                   'creation_tache', 'cloture_tache', 'repost',
+                   'creation_projet', 'etat_tache', 'etat_projet', 'titre_tache')),
   updated_by     BIGINT REFERENCES utilisateur(id), -- si le post est modifié après publication
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -494,6 +499,17 @@ CREATE TABLE post_mention (
 );
 CREATE INDEX idx_post_mention_utilisateur ON post_mention(utilisateur_id);
 
+-- Équipes destinataires d'un post "Information" SANS projet (migration
+-- 0009, retour Fadhel, 2026-09-29) : visible des membres de ces équipes,
+-- de l'auteur, des personnes taguées et des Admin/RH.
+CREATE TABLE post_equipe (
+  id          BIGSERIAL PRIMARY KEY,
+  post_id     BIGINT NOT NULL REFERENCES post(id) ON DELETE CASCADE,
+  equipe_code VARCHAR(20) NOT NULL REFERENCES equipe(code),
+  CONSTRAINT post_equipe_unique UNIQUE (post_id, equipe_code)
+);
+CREATE INDEX idx_post_equipe_equipe ON post_equipe(equipe_code);
+
 -- Réactions (une réaction par utilisateur par post, modifiable)
 CREATE TABLE post_reaction (
   post_id        BIGINT NOT NULL REFERENCES post(id) ON DELETE CASCADE,
@@ -518,7 +534,8 @@ CREATE TABLE post_commentaire (
   -- premier niveau (parent_commentaire_id IS NULL), pour garder un rendu
   -- simple (façon Facebook/Twitter, pas de fil imbriqué à l'infini).
   parent_commentaire_id BIGINT REFERENCES post_commentaire(id) ON DELETE CASCADE,
-  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  modifie_le            TIMESTAMPTZ -- modifié par son auteur (migration 0009), affiché "modifié"
 );
 CREATE INDEX idx_post_commentaire_post ON post_commentaire(post_id);
 CREATE INDEX idx_post_commentaire_parent ON post_commentaire(parent_commentaire_id);
@@ -535,6 +552,17 @@ CREATE TABLE post_commentaire_piece_jointe (
   uploaded_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_post_commentaire_pj_commentaire ON post_commentaire_piece_jointe(commentaire_id);
+
+-- Personnes taguées avec "@Prénom Nom" dans le texte d'un commentaire
+-- (migration 0009) — plusieurs possibles ; mentionne_user_id ci-dessus
+-- reste pour les commentaires plus anciens (un seul tag, champ séparé).
+CREATE TABLE post_commentaire_mention (
+  id             BIGSERIAL PRIMARY KEY,
+  commentaire_id BIGINT NOT NULL REFERENCES post_commentaire(id) ON DELETE CASCADE,
+  utilisateur_id BIGINT NOT NULL REFERENCES utilisateur(id),
+  CONSTRAINT post_commentaire_mention_unique UNIQUE (commentaire_id, utilisateur_id)
+);
+CREATE INDEX idx_post_commentaire_mention_utilisateur ON post_commentaire_mention(utilisateur_id);
 
 
 -- =====================================================================
@@ -649,6 +677,8 @@ CREATE TRIGGER trg_audit_post_piece_jointe AFTER INSERT OR UPDATE OR DELETE ON p
 CREATE TRIGGER trg_audit_post_mention AFTER INSERT OR UPDATE OR DELETE ON post_mention FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
 CREATE TRIGGER trg_audit_post_commentaire AFTER INSERT OR UPDATE OR DELETE ON post_commentaire FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
 CREATE TRIGGER trg_audit_post_commentaire_piece_jointe AFTER INSERT OR UPDATE OR DELETE ON post_commentaire_piece_jointe FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
+CREATE TRIGGER trg_audit_post_equipe AFTER INSERT OR UPDATE OR DELETE ON post_equipe FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
+CREATE TRIGGER trg_audit_post_commentaire_mention AFTER INSERT OR UPDATE OR DELETE ON post_commentaire_mention FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
 -- post_reaction est volontairement exclue par défaut (très haute fréquence,
 -- faible valeur de débogage) — à activer de la même façon si tu la veux :
 -- CREATE TRIGGER trg_audit_post_reaction AFTER INSERT OR UPDATE OR DELETE ON post_reaction FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
@@ -805,5 +835,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0005_integrite_et_performance'),
   ('0006_heures_par_role'),
   ('0007_commentaires_reseau_social'),
-  ('0008_dailylog_jour')
+  ('0008_dailylog_jour'),
+  ('0009_fil_information_commentaires')
 ON CONFLICT (version) DO NOTHING;
