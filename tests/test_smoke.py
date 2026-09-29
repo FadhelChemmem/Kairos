@@ -5541,6 +5541,30 @@ class TestAuditV3(SmokeBase):
         self.assertIn("choisir(trouves[actif])", js)
         self.assertIn("ArrowDown", js)
 
+    def test_connexions_sans_jit(self):
+        """JIT Postgres coupé pour les connexions de l'appli (page profil lente)."""
+        from unittest import mock as _mock
+        from app import db as _db
+        ancien = _db._pool
+        _db._pool = None
+        try:
+            with _mock.patch.object(_db, "ThreadedConnectionPool") as pool:
+                _db.init_pool("postgresql://x@y/z")
+            self.assertEqual(pool.call_args.kwargs.get("options"), "-c jit=off")
+        finally:
+            _db._pool = ancien
+
+    def test_page_projet_n_agrege_plus_tout_le_dailylog(self):
+        """Les heures de l'en-tête projet et des tâches sont calculées pour ce
+        projet/ces tâches seulement, plus via les vues globales."""
+        import inspect
+        from app.repositories import projets as _p, taches as _t
+        for f in (_p.get_projet, _t.list_taches_projet, _t.get_tache):
+            src = inspect.getsource(f)
+            self.assertNotIn("JOIN v_projet_heures", src)
+            self.assertNotIn("JOIN v_tache_heures", src)
+            self.assertIn("LATERAL", src)
+
 
 if __name__ == "__main__":
     unittest.main()

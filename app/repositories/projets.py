@@ -275,13 +275,27 @@ def get_projet(projet_id: int) -> dict | None:
                u.prenom AS chef_prenom, u.nom AS chef_nom,
                u.avatar_chemin AS chef_avatar_chemin,
                pl.code AS phase_liee_code, pl.nom AS phase_liee_nom,
-               vh.heures_cumulees,
-               vhr.heures_chef, vhr.heures_intervenant
+               h.heures_cumulees, h.heures_chef, h.heures_intervenant
         FROM projet p
         JOIN utilisateur u ON u.id = p.chef_projet_id
         LEFT JOIN projet pl ON pl.id = p.phase_liee_id
-        LEFT JOIN v_projet_heures vh ON vh.projet_id = p.id
-        LEFT JOIN v_projet_heures_par_role vhr ON vhr.projet_id = p.id
+        -- Sous-requête limitée au projet plutôt que les vues
+        -- v_projet_heures / v_projet_heures_par_role (audit, lot 7) : même
+        -- calcul, mais seulement sur les lignes de CE projet
+        -- (idx_dailylog_projet) au lieu de tout le DailyLog.
+        LEFT JOIN LATERAL (
+          SELECT SUM(de.heures) AS heures_cumulees,
+                 SUM(CASE WHEN de.utilisateur_id = p.chef_projet_id
+                            OR EXISTS (SELECT 1 FROM projet_co_chef pc
+                                       WHERE pc.projet_id = p.id AND pc.utilisateur_id = de.utilisateur_id)
+                          THEN de.heures ELSE 0 END) AS heures_chef,
+                 SUM(CASE WHEN de.utilisateur_id = p.chef_projet_id
+                            OR EXISTS (SELECT 1 FROM projet_co_chef pc
+                                       WHERE pc.projet_id = p.id AND pc.utilisateur_id = de.utilisateur_id)
+                          THEN 0 ELSE de.heures END) AS heures_intervenant
+          FROM dailylog_entree de
+          WHERE de.projet_id = p.id
+        ) h ON true
         WHERE p.id = %s
     """
     return db.query_one(sql, (projet_id,))

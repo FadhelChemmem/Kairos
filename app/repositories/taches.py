@@ -15,8 +15,7 @@ def list_taches_projet(projet_id: int) -> list[dict]:
         SELECT t.id, t.projet_id, t.titre, t.etat, t.type_deadline,
                t.date_debut, t.date_echeance, t.date_fin, t.dossier_lien,
                t.created_at, t.updated_at,
-               vh.heures_cumulees,
-               vhr.heures_chef, vhr.heures_intervenant,
+               h.heures_cumulees, h.heures_chef, h.heures_intervenant,
                COALESCE(
                  (SELECT json_agg(json_build_object('id', u.id, 'prenom', u.prenom, 'nom', u.nom,
                                                      'avatar_chemin', u.avatar_chemin)
@@ -34,8 +33,24 @@ def list_taches_projet(projet_id: int) -> list[dict]:
                  '[]'
                ) AS pieces_jointes
         FROM tache t
-        LEFT JOIN v_tache_heures vh ON vh.tache_id = t.id
-        LEFT JOIN v_tache_heures_par_role vhr ON vhr.tache_id = t.id
+        -- Heures de la tâche calculées pour CETTE tâche seulement (audit,
+        -- lot 7) plutôt que via v_tache_heures / v_tache_heures_par_role,
+        -- qui agrégeaient tout le DailyLog : même calcul, rôle évalué sur
+        -- le projet de la tâche.
+        LEFT JOIN LATERAL (
+          SELECT SUM(de.heures) AS heures_cumulees,
+                 SUM(CASE WHEN de.utilisateur_id = pr.chef_projet_id
+                            OR EXISTS (SELECT 1 FROM projet_co_chef pc
+                                       WHERE pc.projet_id = t.projet_id AND pc.utilisateur_id = de.utilisateur_id)
+                          THEN de.heures ELSE 0 END) AS heures_chef,
+                 SUM(CASE WHEN de.utilisateur_id = pr.chef_projet_id
+                            OR EXISTS (SELECT 1 FROM projet_co_chef pc
+                                       WHERE pc.projet_id = t.projet_id AND pc.utilisateur_id = de.utilisateur_id)
+                          THEN 0 ELSE de.heures END) AS heures_intervenant
+          FROM dailylog_entree de
+          JOIN projet pr ON pr.id = t.projet_id
+          WHERE de.tache_id = t.id
+        ) h ON true
         WHERE t.projet_id = %s
         ORDER BY (t.etat NOT IN ('termine', 'abandonne')) DESC,
                  t.date_echeance NULLS LAST,
@@ -47,12 +62,27 @@ def list_taches_projet(projet_id: int) -> list[dict]:
 def get_tache(tache_id: int) -> dict | None:
     sql = """
         SELECT t.*, p.nom AS projet_nom, p.code AS projet_code,
-               vh.heures_cumulees,
-               vhr.heures_chef, vhr.heures_intervenant
+               h.heures_cumulees, h.heures_chef, h.heures_intervenant
         FROM tache t
         JOIN projet p ON p.id = t.projet_id
-        LEFT JOIN v_tache_heures vh ON vh.tache_id = t.id
-        LEFT JOIN v_tache_heures_par_role vhr ON vhr.tache_id = t.id
+        -- Heures de la tâche calculées pour CETTE tâche seulement (audit,
+        -- lot 7) plutôt que via v_tache_heures / v_tache_heures_par_role,
+        -- qui agrégeaient tout le DailyLog : même calcul, rôle évalué sur
+        -- le projet de la tâche.
+        LEFT JOIN LATERAL (
+          SELECT SUM(de.heures) AS heures_cumulees,
+                 SUM(CASE WHEN de.utilisateur_id = pr.chef_projet_id
+                            OR EXISTS (SELECT 1 FROM projet_co_chef pc
+                                       WHERE pc.projet_id = t.projet_id AND pc.utilisateur_id = de.utilisateur_id)
+                          THEN de.heures ELSE 0 END) AS heures_chef,
+                 SUM(CASE WHEN de.utilisateur_id = pr.chef_projet_id
+                            OR EXISTS (SELECT 1 FROM projet_co_chef pc
+                                       WHERE pc.projet_id = t.projet_id AND pc.utilisateur_id = de.utilisateur_id)
+                          THEN 0 ELSE de.heures END) AS heures_intervenant
+          FROM dailylog_entree de
+          JOIN projet pr ON pr.id = t.projet_id
+          WHERE de.tache_id = t.id
+        ) h ON true
         WHERE t.id = %s
     """
     return db.query_one(sql, (tache_id,))

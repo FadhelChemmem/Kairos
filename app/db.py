@@ -42,7 +42,12 @@ def init_pool(database_url: str, minconn: int = 1, maxconn: int = 10) -> None:
     global _pool
     if _pool is not None:
         return
-    _pool = ThreadedConnectionPool(minconn, maxconn, dsn=database_url)
+    # jit=off (audit, lot 7) : sur nos petites requêtes, la compilation JIT
+    # de Postgres coûtait plus qu'elle ne rapportait (page profil lente,
+    # plusieurs centaines de ms passées à compiler). Réglé ici pour
+    # chaque connexion de l'appli, sans toucher à la configuration du
+    # serveur Postgres.
+    _pool = ThreadedConnectionPool(minconn, maxconn, dsn=database_url, options="-c jit=off")
     logger.info("Pool de connexions Postgres initialisé (min=%s, max=%s)", minconn, maxconn)
 
 
