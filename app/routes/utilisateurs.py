@@ -154,6 +154,13 @@ def profil_personne(user_id: int):
         # liste que sur l'accueil/la page projet (voir main.accueil /
         # projets.detail) — sinon le champ de tag serait vide ici.
         utilisateurs_actifs=utilisateurs_repo.list_actifs(),
+        # "Reposter" ouvre la fenêtre "Nouveau post" (2026-09-29) : mêmes
+        # données que sur l'accueil (voir main.accueil).
+        projets_postables=[
+            p for p in projets_repo.list_mes_projets_recents(viewer_id, limit=500)
+            if p["etat"] in ("en_cours", "bloque")
+        ],
+        collaborateurs_recents=utilisateurs_repo.list_collaborateurs_recents(viewer_id),
     )
 
 

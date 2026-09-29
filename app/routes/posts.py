@@ -18,6 +18,7 @@ bp = Blueprint("posts", __name__, url_prefix="/posts")
 
 TYPES_VALIDES = {"envoi", "reponse", "question", "requete", "information"}
 EQUIPES_VALIDES = {code for code, _ in EQUIPE_CHOICES}
+PROJET_CLOS = ("termine", "abandonne")
 REACTIONS_VALIDES = {"ok", "pouce"}
 
 
@@ -93,6 +94,11 @@ def creer():
         if (parent is None or parent["projet_id"] != projet_id
                 or not posts_repo.peut_voir(parent["id"], parent["projet_id"], g.user["id"])):
             abort(404)
+        # "Reposter" (retour Fadhel, 2026-09-29, P2) : bloqué sur un
+        # projet terminé ou abandonné.
+        if parent.get("projet_etat") in PROJET_CLOS:
+            flash("Ce projet est terminé : on ne peut plus y reposter.", "error")
+            return _safe_redirect()
 
     # Idem pour les mentions : on ne peut taguer que des personnes qui
     # voient déjà ce projet (pas de fuite d'existence d'un utilisateur vers
@@ -194,9 +200,12 @@ def commenter(post_id: int):
         flash("Le commentaire ne peut pas être vide.", "error")
         return _safe_redirect()
 
+    # Ancien champ "@ Taguer" séparé (avant le 2026-09-29) — encore accepté.
     mentionne_user_id = request.form.get("mentionne_user_id", type=int)
     if mentionne_user_id and not posts_repo.peut_voir(post["id"], post["projet_id"], mentionne_user_id):
         mentionne_user_id = None
+    # Tags "@Prénom Nom" écrits dans le texte (retour Fadhel, 2026-09-29).
+    mention_ids = _tags_du_texte(post, contenu)
 
     # Réponse en ligne (IDOR, PROMPT_CORRECTIONS.md P0 #1) : le commentaire
     # visé DOIT appartenir à CE post (pas un id deviné d'un autre post/
@@ -229,21 +238,78 @@ def commenter(post_id: int):
     try:
         commentaire_id = posts_repo.add_comment(
             post_id, g.user["id"], contenu, mentionne_user_id, parent_commentaire_id,
-            piece_jointe=piece_jointe,
+            piece_jointe=piece_jointe, mention_ids=mention_ids,
         )
     except Exception:
         if chemin:
             delete_upload(chemin)
         raise
 
-    if mentionne_user_id and mentionne_user_id != g.user["id"]:
-        auteur = f"{g.user['prenom']} {g.user['nom']}"
-        notifications_repo.creer(
-            mentionne_user_id, "projet",
-            f"{auteur} vous a mentionné dans un commentaire.",
-            post_id=post_id,
+    a_notifier = set(mention_ids)
+    if mentionne_user_id:
+        a_notifier.add(mentionne_user_id)
+    _notifier_tags(sorted(a_notifier), post_id)
+    return _safe_redirect()
+
+
+def _tags_du_texte(post: dict, contenu: str) -> list[int]:
+    """Personnes taguées "@Prénom Nom" dans `contenu`, parmi celles qui
+    voient le post (on ne tague pas quelqu'un qui ne pourrait pas le lire),
+    sans soi-même."""
+    candidats = [u for u in utilisateurs_repo.list_actifs() if u["id"] != g.user["id"]]
+    return [
+        uid for uid in posts_repo.personnes_taguees(contenu, candidats)
+        if posts_repo.peut_voir(post["id"], post["projet_id"], uid)
+    ]
+
+
+def _notifier_tags(user_ids: list[int], post_id: int) -> None:
+    ids = [uid for uid in user_ids if uid != g.user["id"]]
+    if ids:
+        notifications_repo.creer_pour_plusieurs(
+            ids, "projet",
+            f"{g.user['prenom']} {g.user['nom']} vous a mentionné dans un commentaire.",
+            post_id=post_id, exclure_id=g.user["id"],
         )
 
+
+@bp.route("/commentaires/<int:commentaire_id>/modifier", methods=["POST"])
+@login_required
+def modifier_commentaire(commentaire_id: int):
+    """Modification d'un commentaire par SON AUTEUR seulement (retour
+    Fadhel, 2026-09-29). Les @tags sont recalculés ; seules les personnes
+    nouvellement taguées sont notifiées."""
+    commentaire = posts_repo.get_commentaire(commentaire_id)
+    if commentaire is None or not posts_repo.peut_voir(commentaire["post_id"], commentaire["projet_id"], g.user["id"]):
+        abort(404)
+    if commentaire["auteur_id"] != g.user["id"]:
+        abort(403)
+    contenu = request.form.get("contenu", "").strip()
+    if not contenu:
+        flash("Le commentaire ne peut pas être vide.", "error")
+        return _safe_redirect()
+    post = {"id": commentaire["post_id"], "projet_id": commentaire["projet_id"]}
+    nouveaux = posts_repo.modifier_commentaire(commentaire_id, g.user["id"], contenu, _tags_du_texte(post, contenu))
+    if nouveaux is None:
+        abort(404)
+    _notifier_tags(nouveaux, commentaire["post_id"])
+    return _safe_redirect()
+
+
+@bp.route("/commentaires/<int:commentaire_id>/supprimer", methods=["POST"])
+@login_required
+def supprimer_commentaire(commentaire_id: int):
+    """Suppression d'un commentaire (et de ses réponses) — réservée aux
+    admins (retour Fadhel, 2026-09-29). Les fichiers joints sont effacés du
+    disque après la suppression en base."""
+    if g.user["role"] != "admin":
+        abort(403)
+    commentaire = posts_repo.get_commentaire(commentaire_id)
+    if commentaire is None:
+        abort(404)
+    for chemin in posts_repo.supprimer_commentaire(commentaire_id, g.user["id"]):
+        delete_upload(chemin)
+    flash("Commentaire supprimé.", "success")
     return _safe_redirect()
 
 
@@ -252,8 +318,15 @@ def commenter(post_id: int):
 def reposter(post_id: int):
     """"Reposter" (Lot 5, retour Fadhel, 2026-09-28) — un clic, sans
     composeur, voir posts_repo.repost(). Un commentaire court est optionnel
-    (façon "citer")."""
-    _post_visible_ou_404(post_id)
+    (façon "citer").
+
+    Plus proposé dans l'interface depuis le 2026-09-29 ("Reposter" ouvre
+    la fenêtre Nouveau post liée, voir creer()) — gardé pour les anciens
+    liens, avec la même règle : pas sur un projet terminé/abandonné."""
+    post = _post_visible_ou_404(post_id)
+    if post.get("projet_etat") in PROJET_CLOS:
+        flash("Ce projet est terminé : on ne peut plus y reposter.", "error")
+        return _safe_redirect()
     contenu = request.form.get("contenu", "").strip() or None
     posts_repo.repost(post_id, g.user["id"], contenu)
     flash("Reposté.", "success")

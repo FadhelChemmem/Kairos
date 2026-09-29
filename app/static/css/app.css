@@ -765,20 +765,82 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
   margin: 8px 0 0 0; padding-left: 18px; border-left: 2px solid var(--border-soft);
   display: flex; flex-direction: column; gap: 8px;
 }
-.post-comment-reply-toggle { margin-top: 4px; }
-.post-comment-reply-toggle > summary {
-  cursor: pointer; list-style: none; font-size: 11px; font-weight: 700;
-  color: var(--text-muted);
+/* Fil façon réseau social, suite (retours Fadhel, 2026-09-29) : actions
+   du post (valider / commentaires / Reposter), commentaires toujours
+   affichés avec leur champ, @tag, fichier glissé, modification,
+   suppression, visionneuse — voir post_card.html, comment-composer.js,
+   lightbox.js. */
+/* L'attribut hidden l'emporte toujours sur un display: défini plus bas
+   (champ d'édition/de réponse d'un commentaire, puces…). */
+[hidden] { display: none !important; }
+.post-actions { display: flex; align-items: center; gap: 6px; margin-left: 46px; flex-wrap: wrap; }
+.post-action {
+  display: inline-flex; align-items: center; gap: 5px; width: auto;
+  background: transparent; border: none; border-radius: 8px; padding: 6px 10px;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--text-secondary); cursor: pointer;
 }
-.post-comment-reply-toggle > summary:hover { color: var(--text-secondary); }
-.post-comment-reply-toggle > summary::-webkit-details-marker { display: none; }
+.post-action:hover:not([disabled]) { background: var(--hover-bg); }
+.post-action[disabled] { opacity: 0.45; cursor: not-allowed; }
+.post-comments-plus > summary {
+  cursor: pointer; list-style: none; font-size: 11.5px; font-weight: 700; color: var(--text-muted);
+}
+.post-comments-plus > summary::-webkit-details-marker { display: none; }
+.post-comment-texte { white-space: pre-wrap; word-break: break-word; }
+.post-comment-meta { display: flex; align-items: center; gap: 10px; margin: 3px 0 0 11px; font-size: 11px; color: var(--text-faint); flex-wrap: wrap; }
+.post-comment-action {
+  background: none; border: none; padding: 0; width: auto; font: inherit; font-size: 11px;
+  font-weight: 700; color: var(--text-muted); cursor: pointer; list-style: none;
+}
+.post-comment-action:hover { color: var(--text-secondary); }
+.post-comment-action.danger { color: #e3512c; }
+.post-comment-supprimer > summary::-webkit-details-marker { display: none; }
+.post-comment-supprimer[open] > summary { display: none; }
+.post-comment-supprimer form { display: inline-flex; gap: 8px; align-items: center; }
+.post-comment-reply { margin-top: 8px; }
+.post-comment-reply .comment-composer { margin: 0; }
 
-.post-comment-form { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 0 46px; }
-.post-comment-reply-toggle .post-comment-form { margin: 8px 0 0 0; }
-.post-comment-form-row { display: flex; gap: 6px; align-items: center; }
-.post-comment-form-row input[type="text"] { flex: 1; min-width: 0; }
-.post-comment-tag-wrap { width: 150px; flex-shrink: 0; }
-.post-comment-tag-wrap select[data-search-combobox] { display: none; }
+.comment-composer {
+  display: flex; align-items: flex-end; gap: 6px; flex-wrap: wrap;
+  margin: 10px 0 0 46px; border-radius: 12px;
+}
+.comment-composer.comment-edit { margin: 6px 0 0 0; }
+.comment-composer.dragover .comment-input { border-color: #4a7c59; background: var(--brand-bg-soft); }
+.comment-input { position: relative; flex: 1; min-width: 0; display: flex; align-items: flex-end;
+  border: 1px solid var(--border); border-radius: 18px; background: var(--surface); padding: 0 6px 0 12px; }
+.comment-input textarea {
+  flex: 1; min-width: 0; border: none; outline: none; background: none; resize: none;
+  font: inherit; font-size: 12.5px; line-height: 1.45; padding: 7px 0; min-height: 32px; max-height: 180px; color: var(--text);
+}
+.comment-input:focus-within { border-color: #4a7c59; }
+.comment-attach { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 30px;
+  color: var(--text-muted); cursor: pointer; flex-shrink: 0; }
+.comment-attach:hover { color: var(--text-secondary); }
+.comment-attach input { display: none; }
+.comment-send {
+  width: auto; flex-shrink: 0; border: none; border-radius: 16px; padding: 7px 14px; height: 32px;
+  background: #4a7c59; color: #fff; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.comment-send[disabled] { opacity: 0.6; cursor: default; }
+.comment-file { flex-basis: 100%; display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-secondary); padding-left: 12px; }
+.comment-file[hidden] { display: none; }
+.comment-file img { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; }
+.comment-file-retirer { background: none; border: none; width: auto; padding: 0 4px; font-size: 16px; line-height: 1; color: var(--text-muted); cursor: pointer; }
+.mention-liste {
+  position: absolute; left: 8px; top: calc(100% + 4px); z-index: 30; min-width: 200px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(20, 30, 25, 0.14); padding: 4px; display: flex; flex-direction: column;
+}
+.mention-liste[hidden] { display: none; }
+.mention-choix { background: none; border: none; width: 100%; text-align: left; padding: 7px 10px; border-radius: 7px; font: inherit; font-size: 12.5px; color: var(--text); cursor: pointer; }
+.mention-choix.actif, .mention-choix:hover { background: var(--hover-bg); }
+.post-comment-attachment-img { cursor: zoom-in; }
+
+/* Visionneuse (lightbox.js) */
+.lightbox { border: none; padding: 0; background: transparent; max-width: 94vw; max-height: 92vh; overflow: visible; }
+.lightbox::backdrop { background: rgba(10, 14, 12, 0.82); }
+.lightbox img { display: block; max-width: 94vw; max-height: 92vh; border-radius: 8px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4); }
+.lightbox-fermer { position: fixed; top: 14px; right: 18px; width: 38px; height: 38px; border-radius: 999px; border: none;
+  background: rgba(255, 255, 255, 0.14); color: #fff; font-size: 24px; line-height: 1; cursor: pointer; }
 .dropzone-sm { padding: 7px 10px; font-size: 11px; gap: 6px; }
 .dropzone-preview { max-width: 56px; max-height: 56px; border-radius: 6px; object-fit: cover; }
 

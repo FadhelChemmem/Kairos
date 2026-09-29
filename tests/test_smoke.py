@@ -2322,33 +2322,37 @@ class SmokeTestCase(SmokeBase):
         self.assertIn("Bien reçu, merci.".encode(), resp.data)
         self.assertIn("Écrire un commentaire".encode(), resp.data)
 
-    def test_post_card_propose_tache_info_requete_lies_au_rebond(self):
-        """Le rebond ouvre la fenêtre flottante partagée (retour Fadhel,
-        2026-09-19) — un rebond est lui-même un post (Tâche/Info/Requête),
-        jamais un lien vers une page séparée ni un champ texte libre."""
-        feed_gere = [{**p, "je_gere": True} for p in FEED]
+    def test_post_card_reposter_ouvre_la_fenetre_a_trois_options(self):
+        """"Reposter" (retour Fadhel, 2026-09-29, P2) remplace le trombone
+        et la flèche : il ouvre la fenêtre flottante partagée (Tâche /
+        Information / Requête) liée au post — jamais un champ texte libre."""
+        feed_gere = [{**p, "je_gere": True, "projet_etat": "en_cours"} for p in FEED]
         resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": feed_gere})
         self.assertEqual(resp.status_code, 200)
         body = resp.data.decode()
-        self.assertIn("+ Tâche", body)
-        # "+ Info" retiré tant que les posts Information ne sont pas
-        # publiables (étape 2) — audit n°2.
-        self.assertNotIn("+ Info", body)
-        self.assertIn("+ Requête", body)
-        self.assertIn('data-open-post-dialog', body)
-        self.assertIn('data-parent-post-id="1"', body)
-        # Le rebond n'est plus un lien vers une page séparée.
-        self.assertNotIn('href="/projets/1/nouveau-post', body)
-        # Plus de mini-formulaire "Répondre à ce post…" en texte libre.
-        self.assertNotIn("Répondre à ce post", body)
+        bouton = re.search(r'<button[^>]*data-parent-post-id="1"[^>]*>', body, re.S).group(0)
+        self.assertIn("data-open-post-dialog", bouton)
+        self.assertIn('data-intents="tache,information,requete"', bouton)
+        self.assertIn('data-projet-id="1"', bouton)
+        self.assertNotIn("disabled", bouton)
+        self.assertIn("Reposter", body)
+        # Plus de trombone "Joindre un fichier" ni de flèche "Créer un post lié".
+        self.assertNotIn('title="Joindre un fichier"', body)
+        self.assertNotIn("Créer un post lié", body)
+        self.assertNotIn("/upload", body)
 
-    def test_rebond_tache_masque_si_on_ne_gere_pas_le_projet(self):
-        """Audit n°2 : "+ Tâche" était proposé à tous, puis refusé par le
-        serveur (seuls chef/co-chef créent des tâches)."""
-        feed = [{**p, "je_gere": False} for p in FEED]
+    def test_reposter_sans_tache_si_on_ne_gere_pas_le_projet(self):
+        feed = [{**p, "je_gere": False, "projet_etat": "en_cours"} for p in FEED]
         body = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": feed}).data.decode()
-        self.assertNotIn("+ Tâche", body)
-        self.assertIn("+ Requête", body)
+        bouton = re.search(r'<button[^>]*data-parent-post-id="1"[^>]*>', body, re.S).group(0)
+        self.assertIn('data-intents="information,requete"', bouton)
+
+    def test_reposter_desactive_sur_un_projet_termine(self):
+        feed = [{**FEED_POST_MANUEL, "projet_etat": "termine"}]
+        body = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": feed}).data.decode()
+        bouton = re.search(r'<button[^>]*data-parent-post-id="1"[^>]*>', body, re.S).group(0)
+        self.assertIn("disabled", bouton)
+        self.assertIn("Projet terminé", bouton)
 
     def test_accueil_fenetre_post_liste_les_personnes(self):
         """Audit n°2 : utilisateurs_actifs n'était pas transmis à l'accueil —
@@ -4524,16 +4528,21 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
         self.assertIn("Répondre", body)
         self.assertIn("Reposter", body)
 
-    def test_composeur_commentaire_exclut_lutilisateur_courant_du_tag(self):
-        """"@ Taguer" ne doit pas proposer de se taguer soi-même (USER, id=1)."""
-        resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [FEED_POST_MANUEL]})
-        self.assertEqual(resp.status_code, 200)
-        body = resp.data.decode()
-        m = re.search(r'name="mentionne_user_id".*?</select>', body, re.S)
-        self.assertIsNotNone(m)
-        select_html = m.group(0)
-        self.assertNotIn('value="1"', select_html)
-        self.assertIn('value="3"', select_html)
+    def test_tag_de_soi_meme_ignore(self):
+        """"@" dans le texte (2026-09-29) : se taguer soi-même (USER, id=1)
+        ne crée ni tag ni notification ; taguer Omar (id=3) oui."""
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.add_comment", return_value=42) as mock_add, \
+                 patch("app.repositories.notifications.creer_pour_plusieurs") as mock_notif:
+                self.client.post("/posts/1/commenter", data={"contenu": "@Foulen Chedly et @omar aziz, ok ?"})
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(mock_add.call_args.kwargs["mention_ids"], [3])
+        self.assertEqual(mock_notif.call_args.args[0], [3])
 
     # --- Réponse en ligne : un seul niveau, imposé côté serveur (IDOR,
     #     PROMPT_CORRECTIONS.md P0 #1) — verrou de non-régression. ---
@@ -4552,7 +4561,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
             for p in patchers:
                 p.stop()
         self.assertEqual(resp.status_code, 302)
-        mock_add.assert_called_once_with(1, 1, "Réponse", None, 3, piece_jointe=None)
+        mock_add.assert_called_once_with(1, 1, "Réponse", None, 3, piece_jointe=None, mention_ids=[])
 
     def test_repondre_a_une_reponse_est_ignore(self):
         """Verrou de non-régression : pas de 3e niveau — répondre à un
@@ -4572,7 +4581,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
             for p in patchers:
                 p.stop()
         self.assertEqual(resp.status_code, 302)
-        mock_add.assert_called_once_with(1, 1, "x", None, None, piece_jointe=None)
+        mock_add.assert_called_once_with(1, 1, "x", None, None, piece_jointe=None, mention_ids=[])
 
     def test_repondre_a_un_commentaire_dun_autre_post_est_ignore(self):
         """IDOR (PROMPT_CORRECTIONS.md P0 #1) : un id de commentaire deviné
@@ -4591,7 +4600,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
             for p in patchers:
                 p.stop()
         self.assertEqual(resp.status_code, 302)
-        mock_add.assert_called_once_with(1, 1, "x", None, None, piece_jointe=None)
+        mock_add.assert_called_once_with(1, 1, "x", None, None, piece_jointe=None, mention_ids=[])
 
     # --- Pièce jointe de commentaire (glisser-déposer + aperçu image) ---
 
@@ -4620,7 +4629,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
         mock_save.assert_called_once()
         mock_add.assert_called_once_with(
             1, 1, "Voici", None, None,
-            piece_jointe=("photo.jpg", "posts/1/commentaires/xyz.jpg"),
+            piece_jointe=("photo.jpg", "posts/1/commentaires/xyz.jpg"), mention_ids=[],
         )
 
     def test_fichiers_commentaire_piece_jointe_image_servie_en_ligne(self):
@@ -4939,6 +4948,130 @@ class TestInformationEtComposeur(SmokeBase):
         import pathlib
         css = (pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / "css" / "app.css").read_text(encoding="utf-8")
         self.assertIn("#dialog-nouveau-post { height: min(700px, 88vh); }", css)
+
+
+
+class TestCommentairesLot6(SmokeBase):
+    """Commentaires (retours Fadhel, 2026-09-29) : toujours affichés avec
+    leur champ, "@Prénom Nom" dans le texte, modification par l'auteur,
+    suppression par un admin, images en visionneuse, fichier glissé sur le
+    champ (comportement navigateur vérifié sous Playwright)."""
+
+    COMMENTAIRE = {"id": 4, "post_id": 1, "parent_commentaire_id": None, "auteur_id": 1,
+                   "contenu": "Avant", "projet_id": 1}
+
+    def _post(self, url, data=None, **overrides):
+        self._login()
+        patchers = self._patched(**overrides)
+        for p in patchers:
+            p.start()
+        try:
+            return self.client.post(url, data=data or {})
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_commentaires_affiches_sans_clic_et_champ_toujours_visible(self):
+        post = {**FEED_POST_MANUEL, "commentaires": [
+            {"id": i, "contenu": f"Com {i}", "auteur_id": 3, "auteur_prenom": "Omar", "auteur_nom": "Aziz",
+             "parent_commentaire_id": None, "mentions": [], "pieces_jointes": [], "replies": []}
+            for i in range(1, 6)
+        ]}
+        body = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [post]}).data.decode()
+        self.assertNotIn("<details style=\"display:inline;\">", body)
+        self.assertIn('id="commentaire-post-1"', body)
+        self.assertIn("Voir les 2 commentaires précédents", body)
+        for i in range(1, 6):
+            self.assertIn(f"Com {i}", body)
+        # Plus de bandeau "Glisser une image…" ni de champ "Taguer" séparé.
+        self.assertNotIn("Glisser une image ou un fichier", body)
+        self.assertNotIn('name="mentionne_user_id"', body)
+        self.assertIn('id="kairos-personnes"', body)
+        self.assertIn("js/comment-composer.js", body)
+        self.assertIn("js/lightbox.js", body)
+
+    def test_image_de_commentaire_ouverte_en_visionneuse(self):
+        post = {**FEED_POST_MANUEL, "commentaires": [{
+            "id": 1, "contenu": "Photo", "auteur_id": 3, "auteur_prenom": "Omar", "auteur_nom": "Aziz",
+            "parent_commentaire_id": None, "pieces_jointes": [{"id": 7, "nom_fichier": "chantier.jpg"}], "replies": [],
+        }]}
+        body = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [post]}).data.decode()
+        self.assertRegex(body, r'<a href="/fichiers/posts/commentaires/7"[^>]*data-lightbox>')
+
+    def test_tag_dans_le_texte_surligne(self):
+        post = {**FEED_POST_MANUEL, "commentaires": [{
+            "id": 1, "contenu": "Vu avec @omar aziz <b>", "auteur_id": 1, "auteur_prenom": "Foulen", "auteur_nom": "Chedly",
+            "parent_commentaire_id": None, "mentions": [{"id": 3, "prenom": "Omar", "nom": "Aziz"}],
+            "pieces_jointes": [], "replies": [],
+        }]}
+        body = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [post]}).data.decode()
+        self.assertIn('Vu avec <span class="post-comment-mention">@omar aziz</span> &lt;b&gt;', body)
+        # Mon commentaire : "Modifier" ; admin (USER) : "Supprimer".
+        self.assertIn('data-modifier="1"', body)
+        self.assertIn("/posts/commentaires/1/supprimer", body)
+
+    def test_modifier_son_commentaire(self):
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.posts.get_commentaire", return_value=self.COMMENTAIRE), \
+                 patch("app.repositories.posts.modifier_commentaire", return_value=[3]) as mock_mod, \
+                 patch("app.repositories.notifications.creer_pour_plusieurs") as mock_notif:
+                resp = self.client.post("/posts/commentaires/4/modifier",
+                                        data={"contenu": "Après, vu @Omar Aziz", "next": "/accueil#post-1"})
+        finally:
+            for p in patchers:
+                p.stop()
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(resp.headers["Location"].endswith("/accueil#post-1"))
+        mock_mod.assert_called_once_with(4, 1, "Après, vu @Omar Aziz", [3])
+        self.assertEqual(mock_notif.call_args.args[0], [3])
+
+    def test_modifier_le_commentaire_d_un_autre_interdit(self):
+        with patch("app.repositories.posts.get_commentaire", return_value={**self.COMMENTAIRE, "auteur_id": 3}), \
+             patch("app.repositories.posts.modifier_commentaire") as mock_mod:
+            resp = self._post("/posts/commentaires/4/modifier", {"contenu": "Pirate"})
+        self.assertEqual(resp.status_code, 403)
+        mock_mod.assert_not_called()
+
+    def test_modifier_un_commentaire_non_visible_404(self):
+        with patch("app.repositories.posts.get_commentaire", return_value=self.COMMENTAIRE), \
+             patch("app.repositories.posts.modifier_commentaire") as mock_mod:
+            resp = self._post("/posts/commentaires/4/modifier", {"contenu": "x"},
+                              **{"app.repositories.projets.user_can_view": False})
+        self.assertEqual(resp.status_code, 404)
+        mock_mod.assert_not_called()
+
+    def test_supprimer_reserve_aux_admins(self):
+        with patch("app.repositories.posts.get_commentaire", return_value=self.COMMENTAIRE), \
+             patch("app.repositories.posts.supprimer_commentaire", return_value=["posts/1/commentaires/a.png"]) as mock_sup, \
+             patch("app.routes.posts.delete_upload") as mock_del:
+            resp = self._post("/posts/commentaires/4/supprimer",
+                              **{"app.auth.get_user_by_id": {**USER, "role": "chef_de_projet"}})
+            self.assertEqual(resp.status_code, 403)
+            mock_sup.assert_not_called()
+            resp = self._post("/posts/commentaires/4/supprimer")
+        self.assertEqual(resp.status_code, 302)
+        mock_sup.assert_called_once_with(4, 1)
+        mock_del.assert_called_once_with("posts/1/commentaires/a.png")
+
+    def test_reposter_bloque_sur_projet_termine(self):
+        with patch("app.repositories.posts.create_post") as mock_create:
+            resp = self._post("/posts", {"projet_id": "1", "type_code": "requete", "contenu": "x", "parent_post_id": "1"},
+                              **{"app.repositories.posts.get_post": {**POST_POUR_ACCES, "projet_etat": "termine"}})
+        self.assertEqual(resp.status_code, 302)
+        mock_create.assert_not_called()
+
+    def test_personnes_taguees(self):
+        from app.repositories.posts import personnes_taguees
+        candidats = [{"id": 1, "prenom": "Ali", "nom": "Ben"}, {"id": 2, "prenom": "Ali", "nom": "Ben Salah"},
+                     {"id": 3, "prenom": "Omar", "nom": "Aziz"}]
+        self.assertEqual(personnes_taguees("Merci @Ali Ben Salah !", candidats), [2])
+        self.assertEqual(sorted(personnes_taguees("@ali ben et @Ali Ben Salah", candidats)), [1, 2])
+        self.assertEqual(personnes_taguees("@Ali Bennani", candidats), [])
+        self.assertEqual(personnes_taguees("omar aziz sans arobase", candidats), [])
 
 
 if __name__ == "__main__":

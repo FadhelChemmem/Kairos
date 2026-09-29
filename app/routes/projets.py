@@ -386,6 +386,11 @@ def creer_tache(projet_id: int):
         parent = posts.get_post(parent_post_id)
         if parent is None or parent["projet_id"] != projet_id:
             abort(404)
+        # "Reposter" (retour Fadhel, 2026-09-29, P2) : pas sur un projet
+        # terminé ou abandonné (même règle que routes/posts.py:creer).
+        if parent.get("projet_etat") in ("termine", "abandonne"):
+            flash("Ce projet est terminé : on ne peut plus y reposter.", "error")
+            return redirect(url_for("projets.detail", projet_id=projet_id))
 
     try:
         tache_id = taches.create_tache(

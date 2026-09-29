@@ -288,6 +288,8 @@ def texte_avec_mentions(contenu: str | None, mentions: list[dict] | None):
     est mis en évidence — le tag s'écrit directement dans le texte (retour
     Fadhel, 2026-09-29). Les noms les plus longs d'abord, pour qu'un
     "@Ali Ben Salah" ne soit pas coupé par un "@Ali Ben"."""
+    import re
+
     from markupsafe import Markup, escape
 
     html = str(escape(contenu or ""))
@@ -295,10 +297,11 @@ def texte_avec_mentions(contenu: str | None, mentions: list[dict] | None):
         {f"@{m.get('prenom', '')} {m.get('nom', '')}".strip() for m in (mentions or [])},
         key=len, reverse=True,
     )
-    for i, nom in enumerate(noms):
-        html = html.replace(str(escape(nom)), f"\x00{i}\x00")
-    for i, nom in enumerate(noms):
-        html = html.replace(f"\x00{i}\x00", f'<span class="post-comment-mention">{escape(nom)}</span>')
+    if noms:
+        motif = re.compile(
+            "(" + "|".join(re.escape(str(escape(n))) for n in noms) + r")(?!\w)", re.IGNORECASE,
+        )
+        html = motif.sub(lambda m: f'<span class="post-comment-mention">{m.group(1)}</span>', html)
     return Markup(html)
 
 
@@ -327,5 +330,6 @@ def register(app):
         # de l'appli) pour rester juste après minuit.
         today=datetime.date.today,
     )
+    app.jinja_env.filters["personne_mentionnable"] = lambda u: {"id": u["id"], "prenom": u["prenom"], "nom": u["nom"]}
     app.jinja_env.filters["il_y_a"] = il_y_a
     app.jinja_env.filters["date_courte"] = date_courte

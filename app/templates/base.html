@@ -82,6 +82,10 @@
      où ils sont rencontrés dans le document, pas leur position physique
      tête/corps. #}
   <script src="{{ url_for('static', filename='js/floating-window.js') }}" defer></script>
+  {# Fil d'activité (retours Fadhel, 2026-09-29) : champ de commentaire
+     (@tag, fichier glissé) et visionneuse d'images — voir post_card.html. #}
+  <script src="{{ url_for('static', filename='js/comment-composer.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/lightbox.js') }}" defer></script>
 </head>
 <body>
 
@@ -277,5 +281,10 @@
 
 {% block body %}{% endblock %}
 
+{# Personnes proposées après "@" dans un commentaire (comment-composer.js)
+   — seulement sur les pages qui affichent le fil. #}
+{% if utilisateurs_actifs is defined and utilisateurs_actifs %}
+<script type="application/json" id="kairos-personnes">{{ utilisateurs_actifs|map('personne_mentionnable')|list|tojson }}</script>
+{% endif %}
 </body>
 </html>

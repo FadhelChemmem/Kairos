@@ -93,4 +93,8 @@
   </div>
 
 </div>
+{# "Reposter" depuis le profil (2026-09-29) : même fenêtre que l'accueil. #}
+{% with projet_id=None, projets_choix=projets_postables, next_url=url_for('utilisateurs.profil_personne', user_id=utilisateur.id) %}
+  {% include "partials/post_dialog.html" %}
+{% endwith %}
 {% endblock %}

@@ -340,6 +340,7 @@ def add_comment(
     post_id: int, auteur_id: int, contenu: str,
     mentionne_user_id: int | None = None, parent_commentaire_id: int | None = None,
     piece_jointe: tuple[str, str] | None = None,
+    mention_ids: list[int] | None = None,
 ) -> int:
     """`parent_commentaire_id` (Lot 5, retour Fadhel, 2026-09-28 : "réponse
     en ligne") DOIT déjà avoir été validé par l'appelant — voir
@@ -351,7 +352,10 @@ def add_comment(
     create_post() ci-dessus — insérée dans LA MÊME transaction que le
     commentaire, pour qu'un échec de cette insertion annule aussi le
     commentaire plutôt que de laisser un commentaire sans sa pièce jointe
-    (audit sécurité/qualité externe, 2026-09-28, suivi P0-3 round 2)."""
+    (audit sécurité/qualité externe, 2026-09-28, suivi P0-3 round 2).
+
+    `mention_ids` (migration 0009) : personnes taguées "@Prénom Nom" dans
+    le texte, déjà filtrées par l'appelant (routes/posts.py)."""
     with db.get_cursor(user_id=auteur_id) as cur:
         cur.execute(
             """
@@ -362,6 +366,15 @@ def add_comment(
             (post_id, auteur_id, contenu, mentionne_user_id, parent_commentaire_id),
         )
         commentaire_id = cur.fetchone()["id"]
+
+        for uid in mention_ids or []:
+            cur.execute(
+                """
+                INSERT INTO post_commentaire_mention (commentaire_id, utilisateur_id)
+                VALUES (%s, %s) ON CONFLICT DO NOTHING
+                """,
+                (commentaire_id, uid),
+            )
 
         if piece_jointe is not None:
             nom_fichier, chemin = piece_jointe
@@ -374,6 +387,63 @@ def add_comment(
             )
 
         return commentaire_id
+
+
+def modifier_commentaire(commentaire_id: int, auteur_id: int, contenu: str, mention_ids: list[int]) -> list[int] | None:
+    """Modification d'un commentaire PAR SON AUTEUR (retour Fadhel,
+    2026-09-29) — `auteur_id` au WHERE : l'appelant a déjà vérifié, mais
+    la requête ne touche de toute façon que les commentaires de cette
+    personne. Les @tags sont recalculés depuis le nouveau texte. Retourne
+    les personnes NOUVELLEMENT taguées (à notifier), ou None si le
+    commentaire n'existe pas / n'est pas de cet auteur."""
+    with db.get_cursor(user_id=auteur_id) as cur:
+        cur.execute(
+            """
+            UPDATE post_commentaire SET contenu = %s, modifie_le = now()
+            WHERE id = %s AND auteur_id = %s
+            RETURNING id
+            """,
+            (contenu, commentaire_id, auteur_id),
+        )
+        if cur.fetchone() is None:
+            return None
+        cur.execute(
+            "SELECT utilisateur_id FROM post_commentaire_mention WHERE commentaire_id = %s",
+            (commentaire_id,),
+        )
+        avant = {int(r["utilisateur_id"]) for r in cur.fetchall()}
+        cur.execute(
+            "DELETE FROM post_commentaire_mention WHERE commentaire_id = %s AND NOT (utilisateur_id = ANY(%s::bigint[]))",
+            (commentaire_id, list(mention_ids)),
+        )
+        for uid in mention_ids:
+            cur.execute(
+                """
+                INSERT INTO post_commentaire_mention (commentaire_id, utilisateur_id)
+                VALUES (%s, %s) ON CONFLICT DO NOTHING
+                """,
+                (commentaire_id, uid),
+            )
+        return [uid for uid in mention_ids if uid not in avant]
+
+
+def supprimer_commentaire(commentaire_id: int, current_user_id: int) -> list[str]:
+    """Suppression d'un commentaire (réservée aux admins — contrôlé par la
+    route, retour Fadhel, 2026-09-29), avec ses réponses, leurs @tags et
+    leurs pièces jointes (ON DELETE CASCADE). Retourne les chemins des
+    fichiers à effacer du disque APRÈS la validation de la transaction."""
+    with db.get_cursor(user_id=current_user_id) as cur:
+        cur.execute(
+            """
+            SELECT cpj.chemin FROM post_commentaire_piece_jointe cpj
+            JOIN post_commentaire c ON c.id = cpj.commentaire_id
+            WHERE c.id = %(id)s OR c.parent_commentaire_id = %(id)s
+            """,
+            {"id": commentaire_id},
+        )
+        chemins = [r["chemin"] for r in cur.fetchall()]
+        cur.execute("DELETE FROM post_commentaire WHERE id = %s", (commentaire_id,))
+        return chemins
 
 
 def get_commentaire(commentaire_id: int) -> dict | None:
@@ -418,6 +488,25 @@ def get_piece_jointe_commentaire(piece_id: int) -> dict | None:
         """,
         (piece_id,),
     )
+
+
+def personnes_taguees(texte: str, candidats: list[dict]) -> list[int]:
+    """Ids des personnes de `candidats` dont "@Prénom Nom" figure dans
+    `texte` (tag écrit directement dans le commentaire, retour Fadhel,
+    2026-09-29) — insensible à la casse, et jamais un préfixe d'un nom plus
+    long ("@Ali Ben" ne tague pas "Ali Ben Salah" quand c'est lui qu'on a
+    écrit : le nom le plus long l'emporte)."""
+    import re
+
+    reste = texte or ""
+    trouves = []
+    for p in sorted(candidats, key=lambda c: -len(f"{c['prenom']} {c['nom']}")):
+        motif = re.compile(re.escape(f"@{p['prenom']} {p['nom']}") + r"(?!\w)", re.IGNORECASE)
+        if not motif.search(reste):
+            continue
+        trouves.append(p["id"])
+        reste = motif.sub(" ", reste)
+    return trouves
 
 
 def repost(post_id: int, auteur_id: int, contenu: str | None = None) -> int:

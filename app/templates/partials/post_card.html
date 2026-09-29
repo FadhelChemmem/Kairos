@@ -1,15 +1,26 @@
 {# Attend dans le contexte : post, show_projet (bool), next_url,
-   utilisateurs_actifs (Lot 5, retour Fadhel, 2026-09-28 — "@ Taguer" dans
-   le composeur de commentaire ; voir main.accueil / projets.detail /
-   utilisateurs.profil_personne, les trois routes qui incluent ce partial). #}
+   utilisateurs_actifs (liste des personnes mentionnables avec "@", voir
+   base.html — main.accueil / projets.detail / utilisateurs.profil_personne,
+   les trois routes qui incluent ce partial).
+
+   Fil façon réseau social (retours Fadhel, 2026-09-28/29) : commentaires
+   toujours affichés sous le post avec leur champ de saisie, "@Prénom Nom"
+   directement dans le texte, fichier glissé sur le champ, modification par
+   l'auteur, suppression par un admin, images ouvertes dans une visionneuse
+   (lightbox.js), et "Reposter" qui ouvre la fenêtre "Nouveau post" liée à
+   ce post (post_dialog.html). #}
 {% import "partials/avatar.html" as avatarm %}
 
 {# --- Pièce jointe de commentaire : image affichée en ligne (aperçu),
    tout autre fichier en lien de téléchargement (Lot 5, "aperçu image"). #}
 {% macro piece_jointe_commentaire(pj) %}
   {% if is_image_filename(pj.nom_fichier) %}
-    <a href="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" target="_blank" rel="noopener">
-      <img src="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" alt="{{ pj.nom_fichier }}" class="post-comment-attachment-img">
+    {# Visionneuse (retour Fadhel, 2026-09-29) : l'image s'ouvre dans une
+       fenêtre flottante, un clic à côté ramène au même endroit du fil —
+       voir app/static/js/lightbox.js. Le lien reste un vrai lien (nouvel
+       onglet) sans JavaScript. #}
+    <a href="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" target="_blank" rel="noopener" data-lightbox>
+      <img src="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" alt="{{ pj.nom_fichier }}" class="post-comment-attachment-img" loading="lazy">
     </a>
   {% else %}
     <a href="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" class="post-comment-attachment-file">
@@ -19,40 +30,91 @@
   {% endif %}
 {% endmacro %}
 
-{# --- Composeur de commentaire, réutilisé tel quel pour "écrire un
-   commentaire" (parent_commentaire_id vide) ET pour "répondre" à un
-   commentaire de premier niveau (parent_commentaire_id renseigné) — un
-   seul formulaire multipart (texte + tag + pièce jointe optionnelle en un
-   seul envoi), voir routes/posts.py:commenter. #}
-{% macro composer_commentaire(post, next_url, utilisateurs_actifs, current_user_id, parent_commentaire_id=none, placeholder='Écrire un commentaire…') %}
-  <form method="post" action="{{ url_for('posts.commenter', post_id=post.id) }}" enctype="multipart/form-data" class="post-comment-form">
+{# --- Champ de commentaire (retour Fadhel, 2026-09-29) : toujours
+   visible sous le post ; "@" propose les personnes (le tag s'écrit dans le
+   texte, le serveur retrouve les "@Prénom Nom" — routes/posts.py) ; un
+   fichier se glisse directement sur le champ (ou se colle, ou se choisit
+   avec le trombone du champ) ; Entrée envoie, Maj+Entrée va à la ligne.
+   Sert aussi pour "Répondre" à un commentaire de premier niveau
+   (parent_commentaire_id) — voir comment-composer.js. #}
+{% macro composer_commentaire(post, next_url, parent_commentaire_id=none, placeholder='Écrire un commentaire…', autofocus=false) %}
+  <form method="post" action="{{ url_for('posts.commenter', post_id=post.id) }}" enctype="multipart/form-data" class="comment-composer" data-comment-composer>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="next" value="{{ next_url }}">
+    <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
     {% if parent_commentaire_id %}<input type="hidden" name="parent_commentaire_id" value="{{ parent_commentaire_id }}">{% endif %}
-    <div class="post-comment-form-row">
-      <input type="text" name="contenu" placeholder="{{ placeholder }}" aria-label="Commentaire" required>
-      {# "@ Taguer" (Lot 5) : mentionne_user_id était déjà entièrement câblé
-         côté serveur (add_comment/commenter) — seul ce champ manquait.
-         Réutilise search-combobox.js tel quel (aucun changement JS requis) :
-         un <select> normal, cette fois à sélection unique et optionnelle. #}
-      <div class="post-comment-tag-wrap">
-        <select name="mentionne_user_id" data-search-combobox data-search-placeholder="Taguer une personne…" aria-label="Taguer une personne dans ce commentaire">
-          <option value="">@ Taguer…</option>
-          {% for u in utilisateurs_actifs %}
-            {% if u.id != current_user_id %}<option value="{{ u.id }}">{{ u.prenom }} {{ u.nom }}</option>{% endif %}
-          {% endfor %}
-        </select>
-      </div>
-      <button type="submit" class="btn-secondary" style="width:auto; padding:7px 12px;">Envoyer</button>
+    <div class="comment-input">
+      <textarea name="contenu" rows="1" placeholder="{{ placeholder }}" aria-label="Commentaire" required data-mention-input{% if not parent_commentaire_id %} id="commentaire-post-{{ post.id }}"{% endif %}{% if autofocus %} autofocus{% endif %}></textarea>
+      <label class="comment-attach" title="Joindre un fichier (ou le glisser sur le champ)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+        <input type="file" name="fichier" aria-label="Joindre un fichier" data-comment-file>
+      </label>
     </div>
-    {# Glisser-déposer + aperçu image (Lot 5) — voir app/static/js/dropzone.js
-       (générique, s'initialise seul) et .dropzone/.dropzone-sm dans app.css. #}
-    <div class="dropzone dropzone-sm" data-dropzone>
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
-      <span class="dropzone-label" data-dropzone-label>Glisser une image ou un fichier, ou cliquer</span>
-      <input type="file" name="fichier" class="dropzone-input">
-    </div>
+    <button type="submit" class="comment-send">Envoyer</button>
+    <div class="comment-file" data-comment-file-chip hidden></div>
   </form>
+{% endmacro %}
+
+{# --- Un commentaire (ou une réponse, `reponse=true` : pas de "Répondre",
+   un seul niveau de profondeur imposé par le serveur). #}
+{% macro commentaire(c, post, next_url, reponse=false) %}
+  <div class="post-comment" id="commentaire-{{ c.id }}">
+    {{ avatarm.avatar(c.auteur_id, c.auteur_prenom, c.auteur_nom, c.auteur_avatar_chemin, css_class='avatar avatar-sm', style='flex-shrink:0;') }}
+    <div style="flex:1; min-width:0;">
+      <div class="post-comment-body">
+        <div>
+          <a href="{{ url_for('utilisateurs.profil_personne', user_id=c.auteur_id) }}" style="font-weight:700; color:inherit;">{{ c.auteur_prenom }} {{ c.auteur_nom }}</a>
+          {# Ancien tag (champ séparé, avant le 2026-09-29) #}
+          {% if c.mentionne_prenom %}<span class="post-comment-mention">@{{ c.mentionne_prenom }} {{ c.mentionne_nom }}</span>{% endif %}
+          <span class="post-comment-texte">{{ texte_avec_mentions(c.contenu, c.mentions|default([])) }}</span>
+        </div>
+        {# `|default([])` : les commentaires passés par les fixtures de
+           tests n'ont pas forcément ces clés. #}
+        {% for pj in c.pieces_jointes|default([]) %}{{ piece_jointe_commentaire(pj) }}{% endfor %}
+      </div>
+      <div class="post-comment-meta">
+        {% if c.created_at %}<span>{{ c.created_at|il_y_a }}</span>{% endif %}
+        {% if c.modifie_le %}<span title="Modifié {{ c.modifie_le|il_y_a }}">· modifié</span>{% endif %}
+        {# Répondre à une réponse : même fil (un seul niveau), la personne
+           est taguée d'office. #}
+        <button type="button" class="post-comment-action" data-repondre="{{ c.parent_commentaire_id if reponse else c.id }}"{% if reponse and c.auteur_id != g.user.id %} data-mention="@{{ c.auteur_prenom }} {{ c.auteur_nom }} "{% endif %}>Répondre</button>
+        {% if c.auteur_id == g.user.id %}
+          <button type="button" class="post-comment-action" data-modifier="{{ c.id }}">Modifier</button>
+        {% endif %}
+        {% if g.user.role == 'admin' %}
+          <details class="post-comment-supprimer">
+            <summary class="post-comment-action">Supprimer</summary>
+            <form method="post" action="{{ url_for('posts.supprimer_commentaire', commentaire_id=c.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
+              <span>Supprimer{{ ' ce commentaire et ses réponses' if c.replies else ' ce commentaire' }} ?</span>
+              <button type="submit" class="post-comment-action danger">Oui, supprimer</button>
+            </form>
+          </details>
+        {% endif %}
+      </div>
+      {% if c.auteur_id == g.user.id %}
+        <form method="post" action="{{ url_for('posts.modifier_commentaire', commentaire_id=c.id) }}" class="comment-composer comment-edit" data-comment-edit="{{ c.id }}" hidden>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
+          <div class="comment-input">
+            <textarea name="contenu" rows="1" aria-label="Modifier le commentaire" required data-mention-input>{{ c.contenu }}</textarea>
+          </div>
+          <button type="submit" class="comment-send">Enregistrer</button>
+          <button type="button" class="post-comment-action" data-annuler-modif>Annuler</button>
+        </form>
+      {% endif %}
+      {% if not reponse %}
+        {% if c.replies %}
+          <div class="post-comment-replies">
+            {% for r in c.replies|default([]) %}{{ commentaire(r, post, next_url, reponse=true) }}{% endfor %}
+          </div>
+        {% endif %}
+        <div class="post-comment-reply" data-reponse-a="{{ c.id }}" hidden>
+          {{ composer_commentaire(post, next_url, parent_commentaire_id=c.id, placeholder='Répondre à ' ~ c.auteur_prenom ~ '…') }}
+        </div>
+      {% endif %}
+    </div>
+  </div>
 {% endmacro %}
 
 <div class="card post-card" id="post-{{ post.id }}">
@@ -71,7 +133,7 @@
         <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a créé une tâche</div>
       {% elif post.est_cloture_tache %}
         <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a terminé une tâche</div>
-      {% elif post.est_repost %}
+      {% elif post.est_repost or post.parent_post_id %}
         {# "Reposter" (Lot 5, retour Fadhel, 2026-09-28) : distinct du rebond
            normal — voir posts_repo.repost(). Le post d'origine cité
            s'affiche automatiquement plus bas via le bloc parent_post_id,
@@ -139,7 +201,7 @@
     <div style="margin:0 0 12px 46px; background:var(--bg-subtle-1); border:1px solid var(--border-soft); border-radius:12px; padding:12px 14px;">
       <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h6a3 3 0 0 1 3 3v3"/><path d="M13 7l3 3-3 3"/><path d="M7 17h4"/></svg>
-        <span style="font-size:11.5px; color:var(--text-muted);">{{ post.parent_auteur_prenom }} {{ post.parent_auteur_nom }}</span>
+        <span style="font-size:11.5px; color:var(--text-muted);">En réponse à <a href="#post-{{ post.parent_post_id }}" style="color:inherit; font-weight:700;">{{ post.parent_auteur_prenom }} {{ post.parent_auteur_nom }}</a></span>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
         {% if post.parent_tache_titre %}
@@ -155,138 +217,62 @@
   {% endif %}
 
   <div class="divider"></div>
-  <div style="display:flex; align-items:center; gap:6px; margin-left:46px;">
+  <div class="post-actions">
     {# Le formulaire pointe vers "retirer" quand on a déjà réagi, vers
-       "ajouter" sinon (PROMPT_CORRECTIONS.md P2 #20) : avant ce correctif,
-       le bouton postait toujours sur posts.reagir, qui ne fait qu'un
-       upsert (voir posts_repo.react) — impossible de retirer sa réaction
-       une fois posée, le seul bouton ne pouvait que la reconfirmer.
-
-       post-reaction.js (retour Fadhel, 2026-09-28 — bouton "(V)")
-       intercepte l'envoi pour ne mettre à jour QUE ce bouton en AJAX, sans
-       recharger toute la page (donc sans remonter en haut) ; les deux URLs
-       sont passées en data-* pour que le script bascule de l'une à l'autre
-       après chaque clic sans avoir besoin d'une réponse du serveur. Le
-       formulaire reste un <form> normal : sans JavaScript, il continue de
-       fonctionner exactement comme avant (rechargement complet via next). #}
+       "ajouter" sinon (PROMPT_CORRECTIONS.md P2 #20) ; post-reaction.js
+       (retour Fadhel, 2026-09-28 — bouton "(V)") met à jour ce seul bouton
+       en AJAX, sans recharger la page. Sans JavaScript, le formulaire
+       fonctionne comme avant (rechargement complet via next). #}
     <form method="post" action="{{ url_for('posts.retirer_reaction' if post.ma_reaction else 'posts.reagir', post_id=post.id) }}"
           class="post-reaction-form" style="display:inline;"
           data-reagir-url="{{ url_for('posts.reagir', post_id=post.id) }}"
           data-retirer-url="{{ url_for('posts.retirer_reaction', post_id=post.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="next" value="{{ next_url }}">
+      <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
       {% if not post.ma_reaction %}<input type="hidden" name="reaction_code" value="pouce">{% endif %}
-      <button type="submit" aria-pressed="{{ 'true' if post.ma_reaction else 'false' }}" aria-label="{{ 'Retirer ma validation' if post.ma_reaction else 'Valider ce post' }} ({{ post.nb_reactions }})" {% if post.reacteurs %}title="{% for r in post.reacteurs %}{{ r.prenom }} {{ r.nom }}{% if not loop.last %}, {% endif %}{% endfor %}"{% endif %} style="display:flex; align-items:center; gap:5px; background:{{ 'var(--hover-bg)' if post.ma_reaction else 'transparent' }}; border:none; border-radius:8px; padding:6px 10px; font-size:12px; font-weight:600; color:var(--text-secondary); cursor:pointer;">
+      <button type="submit" aria-pressed="{{ 'true' if post.ma_reaction else 'false' }}" aria-label="{{ 'Retirer ma validation' if post.ma_reaction else 'Valider ce post' }} ({{ post.nb_reactions }})" {% if post.reacteurs %}title="{% for r in post.reacteurs %}{{ r.prenom }} {{ r.nom }}{% if not loop.last %}, {% endif %}{% endfor %}"{% endif %} class="post-action" style="background:{{ 'var(--hover-bg)' if post.ma_reaction else 'transparent' }};">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> <span class="post-reaction-count">{{ post.nb_reactions }}</span>
       </button>
     </form>
-    <details style="display:inline;">
-      <summary style="list-style:none; cursor:pointer; display:flex; align-items:center; gap:5px; padding:6px 10px; font-size:12px; font-weight:600; color:var(--text-muted);">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="4"/><path d="M8.5 17 6.5 20v-3"/></svg> {{ post.nb_commentaires }} commentaire{{ 's' if post.nb_commentaires != 1 else '' }}
-      </summary>
-      <div class="post-comments">
-        {% for c in post.commentaires %}
-          <div class="post-comment">
-            {{ avatarm.avatar(c.auteur_id, c.auteur_prenom, c.auteur_nom, c.auteur_avatar_chemin, css_class='avatar avatar-sm', style='flex-shrink:0;') }}
-            <div class="post-comment-body">
-              <div>
-                <span style="font-weight:700;">{{ c.auteur_prenom }} {{ c.auteur_nom }}</span>
-                {% if c.mentionne_prenom %}<span class="post-comment-mention">@{{ c.mentionne_prenom }} {{ c.mentionne_nom }}</span>{% endif %}
-                {{ c.contenu }}
-              </div>
-              {# `|default([])` : les commentaires passés par les fixtures de
-                 tests (constitués à la main, pas via _structurer_commentaires)
-                 n'ont pas forcément ces clés — itérer sur Undefined lève une
-                 UndefinedError en Jinja (contrairement à un simple {% if %}). #}
-              {% for pj in c.pieces_jointes|default([]) %}{{ piece_jointe_commentaire(pj) }}{% endfor %}
-
-              {# "Répondre" — réponse en ligne, UN SEUL niveau (imposé côté
-                 serveur, voir routes/posts.py:commenter) : pas de "Répondre"
-                 sur une réponse elle-même (c.replies ci-dessous n'en a pas). #}
-              <details class="post-comment-reply-toggle">
-                <summary>Répondre</summary>
-                {{ composer_commentaire(post, next_url, utilisateurs_actifs, g.user.id, parent_commentaire_id=c.id, placeholder='Répondre à ' ~ c.auteur_prenom ~ '…') }}
-              </details>
-
-              {% if c.replies %}
-                <div class="post-comment-replies">
-                  {% for r in c.replies|default([]) %}
-                    <div class="post-comment">
-                      {{ avatarm.avatar(r.auteur_id, r.auteur_prenom, r.auteur_nom, r.auteur_avatar_chemin, css_class='avatar avatar-sm', style='flex-shrink:0;') }}
-                      <div class="post-comment-body">
-                        <div>
-                          <span style="font-weight:700;">{{ r.auteur_prenom }} {{ r.auteur_nom }}</span>
-                          {% if r.mentionne_prenom %}<span class="post-comment-mention">@{{ r.mentionne_prenom }} {{ r.mentionne_nom }}</span>{% endif %}
-                          {{ r.contenu }}
-                        </div>
-                        {% for pj in r.pieces_jointes|default([]) %}{{ piece_jointe_commentaire(pj) }}{% endfor %}
-                      </div>
-                    </div>
-                  {% endfor %}
-                </div>
-              {% endif %}
-            </div>
-          </div>
-        {% else %}
-          <div style="font-size:12px; color:var(--text-faint);">Aucun commentaire pour l'instant.</div>
-        {% endfor %}
-      </div>
-      {{ composer_commentaire(post, next_url, utilisateurs_actifs, g.user.id) }}
-    </details>
-    {# "Reposter" (Lot 5, retour Fadhel, 2026-09-28) : un clic, pas de
-       fenêtre — un commentaire court est optionnel (façon "citer"), voir
-       posts_repo.repost()/routes/posts.py:reposter. Distinct du rebond
-       ("Créer un post lié" ci-dessous), qui ouvre le composeur complet. #}
-    <details style="position:relative;">
-      <summary class="linkbtn" title="Reposter" aria-label="Reposter" style="list-style:none; cursor:pointer;">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-      </summary>
-      <div style="position:absolute; left:0; top:calc(100% + 4px); background: var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px; min-width:220px; box-shadow:0 4px 12px rgba(20,30,25,0.08); z-index:10;">
-        <form method="post" action="{{ url_for('posts.reposter', post_id=post.id) }}" style="display:flex; flex-direction:column; gap:6px;">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="next" value="{{ next_url }}">
-          <input type="text" name="contenu" placeholder="Ajouter un commentaire (optionnel)…" aria-label="Commentaire de repost" style="font-size:11.5px;">
-          <button type="submit" class="btn-secondary" style="width:auto; align-self:flex-end; padding:6px 12px; font-size:11.5px;">Reposter</button>
-        </form>
-      </div>
-    </details>
-    <details style="margin-left:auto;">
-      <summary class="linkbtn" title="Joindre un fichier" aria-label="Joindre un fichier" style="list-style:none; cursor:pointer;">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
-      </summary>
-      <form method="post" action="{{ url_for('fichiers.upload_post', post_id=post.id) }}" enctype="multipart/form-data" class="post-upload-form" style="display:flex; gap:6px; margin-top:8px;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="next" value="{{ next_url }}">
-        <input type="file" name="fichier" aria-label="Fichier à joindre" style="flex:1; font-size:11px;">
-        <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">+</button>
-      </form>
-    </details>
-    {% if post.projet_id %}
-    <details style="margin-left:2px; position:relative;">
-      <summary class="linkbtn" title="Créer un post lié" aria-label="Créer un post lié" style="list-style:none; cursor:pointer;">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h6a3 3 0 0 1 3 3v3"/><path d="M13 7l3 3-3 3"/><path d="M7 17h4"/></svg>
-      </summary>
-      {# Rebond : un rebond est lui-même un post (Tâche, Information ou
-         Requête liée à ce post ET à son projet) — jamais un simple champ
-         texte libre (retour Fadhel, 2026-09-19). Ouvre la fenêtre flottante
-         partagée (voir partials/post_dialog.html) préremplie avec le
-         projet et le post d'origine, sans quitter la page. #}
-      <div style="position:absolute; right:0; top:calc(100% + 4px); background: var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px; min-width:220px; box-shadow:0 4px 12px rgba(20,30,25,0.08); z-index:10;">
-        {# "+ Tâche" seulement pour le chef/co-chef du projet (seuls eux
-           peuvent créer une tâche) ; "+ Info" retiré tant que les posts
-           Information ne sont pas publiables (étape 2) — audit n°2. #}
-        <div style="display:flex; gap:6px;">
-          {% if post.je_gere %}
-          <button type="button" class="btn-secondary" style="width:auto; flex:1; padding:7px 4px; text-align:center; font-size:11.5px;"
-                  data-open-post-dialog data-intent="tache" data-parent-post-id="{{ post.id }}"
-                  data-projet-id="{{ post.projet_id }}" data-projet-label="{{ post.projet_code }}_{{ post.projet_nom }}">+ Tâche</button>
-          {% endif %}
-          <button type="button" class="btn-secondary" style="width:auto; flex:1; padding:7px 4px; text-align:center; font-size:11.5px;"
-                  data-open-post-dialog data-intent="requete" data-parent-post-id="{{ post.id }}"
-                  data-projet-id="{{ post.projet_id }}" data-projet-label="{{ post.projet_code }}_{{ post.projet_nom }}">+ Requête</button>
-        </div>
-      </div>
-    </details>
-    {% endif %}
+    <label for="commentaire-post-{{ post.id }}" class="post-action" style="color:var(--text-muted);">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="4"/><path d="M8.5 17 6.5 20v-3"/></svg> {{ post.nb_commentaires }} commentaire{{ 's' if post.nb_commentaires != 1 else '' }}
+    </label>
+    {# "Reposter" (retour Fadhel, 2026-09-29, P2) : remplace le trombone et
+       la flèche. Ouvre la fenêtre "Nouveau post" (Tâche / Information /
+       Requête) liée à ce post, qui s'affichera "en réponse à" lui dans le
+       fil. Tâche seulement pour qui gère le projet ; sans projet
+       (Information d'équipe), une Information seulement. Impossible sur un
+       projet terminé ou abandonné (vérifié aussi par le serveur). #}
+    {% set projet_clos = post.projet_etat in ('termine', 'abandonne') %}
+    <button type="button" class="post-action" style="margin-left:auto;"
+            data-open-post-dialog data-intent="information"
+            data-intents="{{ ('tache,' if post.je_gere else '') ~ 'information,requete' if post.projet_id else 'information' }}"
+            data-gere="{{ '1' if post.je_gere else '0' }}"
+            data-parent-post-id="{{ post.id }}"
+            data-parent-label="{{ post.auteur_prenom }} {{ post.auteur_nom }} — {{ (post.contenu or post.tache_titre or '')|truncate(70, true, '…') }}"
+            data-projet-id="{{ post.projet_id or 'aucun' }}"
+            data-projet-label="{{ (post.projet_code ~ '_' ~ post.projet_nom) if post.projet_id else 'Aucun projet — information d\'équipe' }}"
+            {% if projet_clos %}disabled title="Projet {{ 'terminé' if post.projet_etat == 'termine' else 'abandonné' }} : on ne peut plus y reposter"{% else %}title="Reposter : répondre à ce post par une tâche, une information ou une requête"{% endif %}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+      Reposter
+    </button>
   </div>
+
+  {# Commentaires toujours affichés (retour Fadhel, 2026-09-29) — les 3
+     derniers, les plus anciens repliés au-delà. #}
+  {% set commentaires = post.commentaires|default([]) %}
+  {% if commentaires %}
+    <div class="post-comments">
+      {% if commentaires|length > 3 %}
+        <details class="post-comments-plus">
+          <summary>Voir {{ 'le commentaire précédent' if commentaires|length == 4 else 'les ' ~ (commentaires|length - 3) ~ ' commentaires précédents' }}</summary>
+          <div class="post-comments" style="margin:8px 0 0 0;">
+            {% for c in commentaires[:-3] %}{{ commentaire(c, post, next_url) }}{% endfor %}
+          </div>
+        </details>
+      {% endif %}
+      {% for c in commentaires[-3:] %}{{ commentaire(c, post, next_url) }}{% endfor %}
+    </div>
+  {% endif %}
+  {{ composer_commentaire(post, next_url) }}
 </div>

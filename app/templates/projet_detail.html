@@ -113,7 +113,7 @@
            posts, plus bas — seul "+ Tâche" reste, raccourci utile juste
            au-dessus du tableau qu'il alimente. #}
         <div style="display:flex; align-items:center; gap:6px;">
-          <button type="button" data-open-post-dialog data-intent="tache" class="quickadd quickadd-primary" title="Créer une tâche sur ce projet">
+          <button type="button" data-open-post-dialog data-intent="tache" data-gere="1" class="quickadd quickadd-primary" title="Créer une tâche sur ce projet">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
             Tâche
           </button>
@@ -243,9 +243,10 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input type="search" id="filtre-posts" placeholder="Filtrer les posts de ce projet…" aria-label="Filtrer les posts de ce projet" style="border:none; outline:none; background:none; padding:0; flex:1; min-width:0; font:inherit; font-size:13.5px;">
         </label>
-        {% if peut_gerer %}
-        <button type="button" data-open-post-dialog data-intent="tache" class="btn-secondary" style="width:auto; padding:10px 16px; flex-shrink:0;">+ Nouveau post</button>
-        {% endif %}
+        {# Ouvert à tous ceux qui voient le projet (2026-09-29) : une
+           Information ou une Requête n'est pas réservée au chef de projet ;
+           l'onglet Tâche n'apparaît que pour qui gère le projet (data-gere). #}
+        <button type="button" data-open-post-dialog data-intent="{{ 'tache' if peut_gerer else 'information' }}" data-gere="{{ '1' if peut_gerer else '0' }}" class="btn-secondary" style="width:auto; padding:10px 16px; flex-shrink:0;">+ Nouveau post</button>
       </div>
 
       <div id="fil-posts" style="display:flex; flex-direction:column; gap:14px;">

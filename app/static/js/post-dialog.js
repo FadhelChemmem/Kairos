@@ -17,6 +17,9 @@
 //                           d'équipe)
 //   data-projet-label    : libellé "Code_nom" à afficher quand le projet
 //                           est imposé
+//   data-gere            : "1"/"0" — je gère (ou non) le projet du
+//                           déclencheur : décide de l'onglet Tâche quand le
+//                           projet est imposé ou fixé par la page
 //
 // Règles du sélecteur de projet (retour Fadhel, 2026-09-29) :
 // - "Tâche" seulement pour un projet que je gère (option data-gere="1") ;
@@ -39,6 +42,7 @@
   var parentLabel = dialog.querySelector('[data-post-dialog-parent-label]');
   var tacheActionTemplate = tacheForm ? tacheForm.getAttribute('data-action-template') : null;
   var intentsAutorises = null; // null = tous
+  var gereForce = null;        // data-gere du déclencheur, s'il y en a un
 
   function radio(intent) { return dialog.querySelector('#intent-' + intent); }
   function onglet(intent) { return dialog.querySelector('.seg label[for="intent-' + intent + '"]'); }
@@ -58,7 +62,16 @@
   function projetCourant() {
     return projetSelect ? projetSelect.value : null;
   }
-  function choisirProjet(pid) {
+  function choisirProjet(pid, label) {
+    // Projet imposé absent de la liste (Reposter un post d'un projet que je
+    // vois sans en être membre) : option ajoutée pour que la valeur tienne.
+    if (!optionProjet(pid)) {
+      var o = document.createElement('option');
+      o.value = pid;
+      o.textContent = label || pid;
+      o.dataset.gere = '0';
+      projetSelect.appendChild(o);
+    }
     projetSelect.value = pid;
     // Sans bulles : resynchronise le texte affiché du combobox, et notre
     // propre écouteur (plus bas) le distingue d'un choix de l'utilisateur.
@@ -70,7 +83,8 @@
     var pid = projetCourant();
     var opt = pid ? optionProjet(pid) : null;
     var sansProjet = pid === AUCUN;
-    var gere = !projetSelect || (opt && opt.dataset.gere === '1');
+    var gere = gereForce !== null ? gereForce === '1'
+      : (!projetSelect || (opt && opt.dataset.gere === '1'));
     ['tache', 'information', 'requete'].forEach(function (intent) {
       var ok = !intentsAutorises || intentsAutorises.indexOf(intent) !== -1;
       if (intent === 'tache' && (sansProjet || !gere)) ok = false;
@@ -119,6 +133,7 @@
       definirParent(btn.getAttribute('data-parent-post-id'), btn.getAttribute('data-parent-label'));
       var intents = btn.getAttribute('data-intents');
       intentsAutorises = intents ? intents.split(',') : null;
+      gereForce = btn.getAttribute('data-gere');
 
       var intent = btn.getAttribute('data-intent') || 'tache';
       var r = radio(intent);
@@ -127,7 +142,7 @@
       var pidImpose = btn.getAttribute('data-projet-id');
       if (projetSelect) {
         if (pidImpose) {
-          choisirProjet(pidImpose);
+          choisirProjet(pidImpose, btn.getAttribute('data-projet-label'));
           if (projetRow) projetRow.style.display = 'none';
           if (projetFigee) {
             projetFigee.style.display = '';
@@ -155,6 +170,7 @@
     projetSelect.addEventListener('change', function (e) {
       // Choix de l'utilisateur dans le combobox (évènement à bulles, voir
       // search-combobox.js) : "Aucun projet" ⇒ onglet Information.
+      if (e.bubbles) gereForce = null; // l'utilisateur a changé de projet
       if (e.bubbles && projetSelect.value === AUCUN && radio('information')) {
         radio('information').disabled = false;
         radio('information').checked = true;
