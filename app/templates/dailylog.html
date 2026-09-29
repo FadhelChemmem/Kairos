@@ -3,13 +3,13 @@
 {% block body %}
 
 <div class="subbar">
-  <div class="subbar-inner" style="max-width:720px;">
+  <div class="subbar-inner" style="max-width:880px;">
     <span style="font-size:14px; font-weight:700;">DailyLog</span>
     <span style="font-size:12.5px; color:var(--text-muted);">Répartissez les heures de votre journée entre vos projets</span>
   </div>
 </div>
 
-<div class="dailylog-wrap" style="max-width:720px; margin:24px auto 60px;">
+<div class="dailylog-wrap" style="max-width:880px; margin:24px auto 60px;">
 
   <!-- Navigation par date -->
   <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:16px; position:relative;">
@@ -32,7 +32,7 @@
       </span>
       {% endif %}
 
-      <div id="cal-popup" class="card" style="display:none; position:absolute; top:44px; left:42px; z-index:60; padding:12px; width:240px;">
+      <div id="cal-popup" class="card" style="display:none; position:absolute; top:44px; left:42px; z-index:60; padding:12px; width:262px; max-width:calc(100vw - 32px); box-sizing:border-box;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
           <button type="button" class="iconbtn" id="cal-prev-month" aria-label="Mois précédent" style="width:26px; height:26px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
           <span id="cal-month-label" style="font-size:12.5px; font-weight:700;"></span>
@@ -42,18 +42,16 @@
           {% for l in ('L','M','M','J','V','S','D') %}<span style="text-align:center; font-size:10px; color:var(--text-faint); font-weight:700;">{{ l }}</span>{% endfor %}
         </div>
         <div id="cal-grid" style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px;"></div>
-        {# Légende des 3 pastilles (Lot 5, retour Fadhel, 2026-09-28 :
-           "calendrier à pastilles vert/bleu/rouge") — voir
-           dailylog.etats_jours_mois pour la définition exacte de chaque
-           état. #}
+        {# Légende des 3 pastilles (Daily log v2, retour Fadhel, 2026-09-29 :
+           vert = rempli, bleu = absent, rouge = rien de rempli, pas de
+           pastille le week-end) — voir dailylog.etats_jours_mois. #}
         <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin-top:10px; font-size:10.5px; color:var(--text-muted);">
           <span style="display:flex; align-items:center; gap:5px;"><span style="width:6px; height:6px; border-radius:999px; background:#4a7c59;"></span> rempli</span>
-          <span style="display:flex; align-items:center; gap:5px;"><span style="width:6px; height:6px; border-radius:999px; background:var(--info-text);"></span> partiel</span>
-          <span style="display:flex; align-items:center; gap:5px;"><span style="width:6px; height:6px; border-radius:999px; background:var(--error-text);"></span> manqué</span>
+          <span style="display:flex; align-items:center; gap:5px;"><span style="width:6px; height:6px; border-radius:999px; background:var(--info-text);"></span> absent</span>
+          <span style="display:flex; align-items:center; gap:5px;"><span style="width:6px; height:6px; border-radius:999px; background:var(--error-text);"></span> non rempli</span>
         </div>
       </div>
     </div>
-    <span style="font-size:11.5px; color:var(--text-faint);">Journée type : {{ standard_hours }}h</span>
   </div>
 
   {% if rappel_hier %}
@@ -67,14 +65,31 @@
   <form method="post" action="{{ url_for('dailylog.enregistrer') }}" id="dailylog-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="date" value="{{ date.isoformat() }}">
+    <input type="hidden" name="duree" id="champ-duree" value="">
+    <input type="hidden" name="absent" id="champ-absent" value="">
     <div id="lignes-hidden"></div>
 
-    <!-- Barre visuelle du jour (cliquable : cliquer un segment augmente et
-         fixe sa part, comme l'appui double/long sur une ligne plus bas) -->
-    <div class="card" style="padding:16px 16px 14px;">
+    <!-- Barre du jour (Daily log v2) : code + heures de chaque projet, limites
+         déplaçables entre deux projets voisins, graduation en heures ; la
+         durée au bout de la graduation se modifie par double-clic. -->
+    <div class="card" style="padding:16px 16px 12px; position:relative;">
       <div id="day-bar-title" style="font-size:12px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em; margin-bottom:10px;">Journée du {{ date.strftime('%d/%m') }}</div>
-      <div id="day-bar" style="display:flex; border-radius:8px; overflow:hidden; margin-bottom:6px;"></div>
-      <div style="font-size:11px; color:var(--text-faint);">Touchez un nom/pastille pour (dé)sélectionner un projet — le temps se répartit à parts égales entre les projets sélectionnés. Appui double ou long sur un nom augmente sa part et la fixe. Le curseur se glisse aussi directement. Au clavier : Tab jusqu'à un curseur, puis flèches (±5 %), Début/Fin.</div>
+      <div id="day-bar-wrap" style="position:relative;"><div id="day-bar" style="display:flex; border-radius:8px; overflow:hidden;"></div></div>
+      <div id="graduation" class="grad"></div>
+
+      <div id="duree-popup" class="card" role="dialog" aria-label="Durée de cette journée" style="display:none;">
+        <div style="font-size:12px; font-weight:700; margin-bottom:8px;">Durée de cette journée</div>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+          <button type="button" class="duree-step" id="duree-moins" aria-label="Diminuer d'une demi-heure">−</button>
+          <span id="duree-val" style="font-size:16px; font-weight:800; min-width:58px; text-align:center;">8 h</span>
+          <button type="button" class="duree-step" id="duree-plus" aria-label="Augmenter d'une demi-heure">+</button>
+        </div>
+        <div style="font-size:10.5px; color:var(--text-faint); margin-bottom:10px;">De 4 h à 10 h, par demi-heure.</div>
+        <div style="display:flex; gap:6px;">
+          <button type="button" class="duree-btn" id="duree-absent">Absent</button>
+          <button type="button" class="duree-btn duree-btn-ok" id="duree-ok">OK</button>
+        </div>
+      </div>
     </div>
 
     <!-- Lignes -->
@@ -108,12 +123,8 @@
       <div style="font-size:11px; color:var(--text-faint); margin-top:8px;">Double-appui (ou appui long) sur un projet grisé pour l'ajouter ponctuellement aujourd'hui.</div>
     </div>
 
-    <!-- Total + enregistrer -->
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:18px; padding:14px 4px 0; border-top:1px solid var(--border);">
-      <div style="display:flex; align-items:center; gap:8px;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--brand-text)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-        <span id="total-line" style="font-size:12.5px; color:var(--brand-text-strong); font-weight:600;"></span>
-      </div>
+    <!-- Enregistrer -->
+    <div style="display:flex; align-items:center; justify-content:flex-end; margin-top:18px; padding:14px 4px 0; border-top:1px solid var(--border);">
       <button type="submit" class="btn-primary" style="width:auto; padding:10px 18px; background:#4a7c59; color:#fff; display:inline-flex; align-items:center; gap:6px;">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
         Enregistrer
@@ -125,7 +136,9 @@
 
 <script id="dailylog-data" type="application/json">
 {{ {
-  "standardHours": standard_hours,
+  "duree": duree,
+  "absent": absent,
+  "lignesEnregistrees": lignes_enregistrees,
   "dateIso": date.isoformat(),
   "todayIso": aujourdhui.isoformat(),
   "lignesInitiales": lignes_initiales,
@@ -142,116 +155,192 @@
 <script>
 (function () {
   var DATA = JSON.parse(document.getElementById('dailylog-data').textContent);
-  var STANDARD_HOURS = DATA.standardHours;
-  // Teintes assez foncées pour le % écrit en blanc dessus (contraste ≥ 4,5:1, audit n°2).
+  // Daily log v2 (maquette validée par Fadhel le 2026-09-29, voir
+  // claude/kairos-dailylog-v2.md) : les heures sont manipulées en MINUTES,
+  // au quart d'heure — plus de virgules à l'affichage, total toujours égal
+  // à la durée de la journée.
+  var PAS = 15;
+  var DUREE_MIN = 4, DUREE_MAX = 10;
+  var state = { heures: DATA.duree, absent: DATA.absent };
+  // Teintes assez foncées pour le texte blanc dessus (contraste ≥ 4,5:1, audit n°2).
   var PALETTE = ['#4a7c59', '#b8520f', '#2f65b8', '#5f52d1', '#c0401d', '#1f7a55', '#8a6a1f', '#35707f'];
   var colorIndex = 0;
   function nextColor() { return PALETTE[(colorIndex++) % PALETTE.length]; }
 
-  var lines = DATA.lignesInitiales.map(function (l) {
-    return {
-      projetId: l.projet_id, tacheId: l.tache_id, nom: l.nom, tacheTitre: l.tache_titre,
-      // locked: true (audit n°2) — la répartition déjà enregistrée doit
-      // être conservée : non verrouillées, le moindre ajout/clic sur une
-      // ligne redistribuait tout à parts égales (5 h enregistrées -> 50/50).
-      color: nextColor(), selected: true, locked: true, pct: l.pct, adhoc: false,
-    };
-  });
-  var nbLignesInitiales = lines.length;
-
-  function fmtPct(p) { return (Math.round(p * 10) / 10) + '%'; }
-  function fmtHours(p) {
-    return (Math.round(p / 100 * STANDARD_HOURS * 100) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + ' h';
+  function T() { return Math.round(state.heures * 60); }
+  function snap(m) { return Math.round(m / PAS) * PAS; }
+  function somme(liste) { return liste.reduce(function (s, l) { return s + l.min; }, 0); }
+  function selected() { return lines.filter(function (l) { return l.selected; }); }
+  function fmtH(m) {
+    m = Math.round(m);
+    var h = Math.floor(m / 60), mn = m - h * 60;
+    if (!mn) return h + ' h';
+    return (h ? h + ' h ' : '') + (mn < 10 ? '0' : '') + mn + (h ? '' : ' min');
   }
+  function pct(m) { return T() ? Math.round(m / T() * 100) : 0; }
 
-  // Contrôle XSS (PROMPT_CORRECTIONS.md P0 #4) : les lignes ci-dessous
-  // (render(), renderSuggestionRow()) construisent leur markup en
-  // concaténant des chaînes puis en les affectant à innerHTML — nécessaire
-  // ici vu la mise en forme (styles inline, imbrication) — mais toute
-  // valeur qui vient des données (nom de projet/tâche, saisis par un chef
-  // de projet) DOIT passer par escapeHtml() avant d'être insérée : un nom
-  // de projet contenant du HTML/JS s'exécuterait sinon pour TOUS les
-  // utilisateurs qui voient cette ligne ou ce catalogue (« Récemment
-  // travaillés » liste les projets de toute l'entreprise, pas seulement
-  // les siens), admin compris.
+  // Contrôle XSS (PROMPT_CORRECTIONS.md P0 #4) : tout ce qui vient des
+  // données (codes, noms de projet/tâche) passe par escapeHtml() avant
+  // d'être inséré via innerHTML.
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
 
-  function headroom(forLine) {
-    var otherLocked = 0;
-    lines.forEach(function (l) { if (l !== forLine && l.selected && l.locked) otherLocked += l.pct; });
-    return Math.max(0, 100 - otherLocked);
+  var lines = DATA.lignesInitiales.map(function (l) {
+    return {
+      projetId: l.projet_id, tacheId: l.tache_id, code: l.code, nom: l.nom, tacheTitre: l.tache_titre,
+      color: nextColor(), selected: true, adhoc: false, rang: null,
+      min: l.minutes == null ? null : l.minutes,
+    };
+  });
+  var nbLignesInitiales = DATA.lignesEnregistrees ? lines.length : 0;
+  // Journée jamais saisie : lignes proposées par défaut, à parts égales.
+  if (lines.some(function (l) { return l.min == null; })) {
+    lines.forEach(function (l) { l.min = 0; });
+    repartirSur(lines, T());
   }
 
-  function redistribute() {
-    var lockedSum = 0, unlocked = [];
-    lines.forEach(function (l) {
-      if (!l.selected) { l.pct = 0; return; }
-      if (l.locked) { lockedSum += l.pct; } else { unlocked.push(l); }
+  // Répartit `total` minutes sur `liste` au prorata des valeurs actuelles
+  // (à parts égales si elles sont toutes à 0), par quarts d'heure, sans
+  // perdre une minute (méthode du plus fort reste).
+  function repartirSur(liste, total) {
+    if (!liste.length) return;
+    var s = somme(liste), unites = Math.round(total / PAS);
+    var bruts = liste.map(function (l) { return s > 0 ? l.min / s * unites : unites / liste.length; });
+    var entiers = bruts.map(Math.floor);
+    var reste = unites - entiers.reduce(function (a, b) { return a + b; }, 0);
+    bruts.map(function (b, i) { return { i: i, f: b - Math.floor(b) }; })
+      .sort(function (a, b) { return b.f - a.f; })
+      .slice(0, Math.max(0, reste)).forEach(function (x) { entiers[x.i] += 1; });
+    liste.forEach(function (l, i) { l.min = entiers[i] * PAS; });
+  }
+
+  // ---- Règle de répartition (même règle de 2 à n projets) ----
+  // - Au départ, tous les projets se règlent.
+  // - L'ordre qui compte est celui dans lequel on TOUCHE les projets
+  //   (l'ordre de la liste à l'écran ne bouge pas) : un projet touché avant
+  //   n'est plus modifié par les suivants — il bloque leur curseur.
+  // - Le temps est pris sur les projets pas encore touchés (du bas vers le
+  //   haut), puis sur ceux touchés après celui qu'on règle.
+  // - Une fois n-1 projets touchés, l'ordre est figé : le dernier garde son
+  //   curseur mais n'échange plus du temps qu'avec l'avant-dernier touché.
+  var compteurTouches = 0;
+  function nonTouches() { return selected().filter(function (l) { return l.rang == null; }); }
+  function reserve() {
+    if (selected().length < 2) return null;
+    var nt = nonTouches();
+    return nt.length === 1 ? nt[0] : null;
+  }
+  function avantDernier() {
+    var t = selected().filter(function (l) { return l.rang != null; });
+    return t.length ? t.sort(function (a, b) { return b.rang - a.rang; })[0] : null;
+  }
+  function maxPour(ligne) {
+    if (ligne === reserve()) { var ad = avantDernier(); return ligne.min + (ad ? ad.min : 0); }
+    var proteges = selected().filter(function (l) {
+      return l !== ligne && l.rang != null && (ligne.rang == null || l.rang < ligne.rang);
     });
-    var remaining = Math.max(0, 100 - lockedSum);
-    if (unlocked.length) {
-      var share = remaining / unlocked.length;
-      unlocked.forEach(function (l) { l.pct = share; });
+    return T() - somme(proteges);
+  }
+  function absorbeurs(ligne) {
+    var sel = selected();
+    var jamais = sel.filter(function (l) { return l !== ligne && l.rang == null; }).reverse();
+    var apres = sel.filter(function (l) { return l !== ligne && l.rang != null && ligne.rang != null && l.rang > ligne.rang; })
+      .sort(function (a, b) { return b.rang - a.rang; });
+    return jamais.concat(apres);
+  }
+  function regler(ligne, minutes) {
+    if (!ligne.selected || state.absent) return;
+    if (ligne === reserve()) {
+      var ad = avantDernier();
+      if (!ad) return;
+      var paire = ligne.min + ad.min;
+      ligne.min = Math.max(0, Math.min(paire, snap(minutes)));
+      ad.min = paire - ligne.min;
+      return;
+    }
+    var max = maxPour(ligne);
+    var premiereFois = ligne.rang == null;
+    if (premiereFois) ligne.rang = ++compteurTouches;
+    var abs = absorbeurs(ligne);
+    if (!abs.length) {
+      // Seul projet sélectionné : il fait toute la journée.
+      if (premiereFois) { ligne.rang = null; compteurTouches--; }
+      ligne.min = T();
+      return;
+    }
+    var v = Math.max(0, Math.min(max, snap(minutes)));
+    var delta = v - ligne.min;
+    ligne.min = v;
+    if (delta < 0) { abs[0].min += -delta; return; }
+    abs.forEach(function (l) {
+      if (delta <= 0) return;
+      var pris = Math.min(l.min, delta);
+      l.min -= pris; delta -= pris;
+    });
+  }
+  // Limite de la barre du haut entre deux projets voisins : seuls ces deux
+  // projets changent.
+  function deplacerLimite(i, minutesCumulees) {
+    var sel = selected(), a = sel[i], b = sel[i + 1];
+    var avant = somme(sel.slice(0, i)), paire = a.min + b.min;
+    a.min = Math.max(0, Math.min(paire, snap(minutesCumulees - avant)));
+    b.min = paire - a.min;
+  }
+  // Temps libéré par une ligne retirée/désélectionnée : au dernier projet
+  // non touché de la liste, sinon au dernier touché.
+  function rendre(part) {
+    var sel = selected();
+    if (!sel.length || part <= 0) return;
+    var nt = sel.filter(function (l) { return l.rang == null; });
+    var cible = nt.length ? nt[nt.length - 1] : sel.slice().sort(function (a, b) { return b.rang - a.rang; })[0];
+    cible.min += part;
+  }
+  function toggleSelect(ligne) {
+    if (ligne.selected) {
+      var part = ligne.min;
+      ligne.selected = false; ligne.min = 0; ligne.rang = null;
+      rendre(part);
+    } else {
+      ligne.selected = true; ligne.min = 0; ligne.rang = null;
+      if (selected().length === 1) ligne.min = T();
     }
     render();
   }
-
-  function toggleSelect(line) {
-    if (line.selected) { line.selected = false; line.locked = false; line.pct = 0; }
-    else { line.selected = true; line.locked = false; }
-    redistribute();
+  function removeLine(ligne) {
+    var idx = lines.indexOf(ligne);
+    if (idx === -1) return;
+    var part = ligne.selected ? ligne.min : 0;
+    lines.splice(idx, 1);
+    rendre(part);
+    render();
   }
-
-  function bump(line, step) {
-    if (!line.selected) { line.selected = true; line.locked = false; line.pct = 0; }
-    line.locked = true;
-    var max = headroom(line);
-    line.pct = Math.min(max, line.pct + step);
-    redistribute();
-  }
-
-  function removeLine(line) {
-    var idx = lines.indexOf(line);
-    if (idx !== -1) lines.splice(idx, 1);
-    redistribute();
-  }
-
   function addLine(proto, adhoc) {
-    // Bug corrigé (2026-09-27, retour Fadhel) : refuse les doublons — sans
-    // ce garde-fou, un appui long resté actif après le retrait de la page
-    // (voir le correctif d'attachTapAndHold ci-dessous) ajoutait la même
-    // ligne en boucle.
+    // Refuse les doublons (bug corrigé le 2026-09-27, retour Fadhel).
     var key = proto.projet_id + '-' + (proto.tache_id || 0);
     if (lines.some(function (l) { return (l.projetId + '-' + (l.tacheId || 0)) === key; })) return;
-    lines.push({
-      projetId: proto.projet_id, tacheId: proto.tache_id, nom: proto.nom, tacheTitre: proto.tache_titre,
-      color: nextColor(), selected: true, locked: false, pct: 0, adhoc: !!adhoc,
-    });
-    redistribute();
+    var ligne = {
+      projetId: proto.projet_id, tacheId: proto.tache_id, code: proto.code, nom: proto.nom, tacheTitre: proto.tache_titre,
+      color: nextColor(), selected: true, adhoc: !!adhoc, rang: null, min: 0,
+    };
+    lines.push(ligne);
+    // Première ligne de la journée : elle fait toute la journée ; sinon
+    // elle arrive à 0 h et se règle (heures cliquables ou curseur).
+    if (selected().length === 1) ligne.min = T();
+    render();
   }
 
   function attachTapAndHold(el, onTap, onHold) {
     var pressTimer = null, held = false, clickTimer = null;
-
     function cancelPress() {
-      clearTimeout(pressTimer);
-      clearInterval(pressTimer);
-      pressTimer = null;
+      clearTimeout(pressTimer); clearInterval(pressTimer); pressTimer = null;
       document.removeEventListener('pointerup', onRelease);
       document.removeEventListener('pointercancel', onRelease);
     }
-    // Bug corrigé (2026-09-27, retour Fadhel — appui long qui ne s'arrête
-    // jamais, tâches/projets ajoutés en boucle) : le relâchement était
-    // écouté sur `el` lui-même, or `el` est retiré du DOM dès le premier
-    // onHold() (render() reconstruit toute la liste de lignes), donc son
-    // pointerup ne se déclenche plus jamais et l'intervalle tournait à
-    // l'infini. On écoute désormais sur `document`, qui survit au
-    // rafraîchissement, quel que soit l'élément physiquement sous le
-    // doigt/curseur au moment du relâchement.
+    // Relâchement écouté sur `document` (bug corrigé le 2026-09-27 : `el`
+    // est retiré du DOM par render() et son pointerup ne venait jamais).
     function onRelease() {
       cancelPress();
       if (!held) {
@@ -262,198 +351,278 @@
     el.addEventListener('pointerdown', function (evt) {
       evt.preventDefault();
       held = false;
-      pressTimer = setTimeout(function () {
-        held = true;
-        onHold();
-        pressTimer = setInterval(onHold, 450);
-      }, 500);
+      pressTimer = setTimeout(function () { held = true; onHold(); }, 500);
       document.addEventListener('pointerup', onRelease);
       document.addEventListener('pointercancel', onRelease);
     });
   }
 
+  // Glisser : la position/largeur de la piste est capturée UNE fois au
+  // début du geste — render() reconstruit le DOM à chaque mouvement (bug
+  // corrigé le 2026-09-27 : une piste détachée a une largeur de 0).
+  function glisser(getRect, onValeur) {
+    return function (evt) {
+      evt.preventDefault();
+      var rect = getRect();
+      function bouger(e) { onValeur(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * T()); render(); }
+      bouger(evt);
+      function fin() { document.removeEventListener('pointermove', bouger); document.removeEventListener('pointerup', fin); }
+      document.addEventListener('pointermove', bouger);
+      document.addEventListener('pointerup', fin);
+    };
+  }
+
+  // Pourcentages affichés arrondis de sorte que leur somme fasse 100.
+  var pctAffiche = new Map();
+  function calculerPctAffiches() {
+    pctAffiche = new Map();
+    var sel = selected();
+    if (!T()) return;
+    var bruts = sel.map(function (l) { return l.min / T() * 100; });
+    var ent = bruts.map(Math.floor), reste = 100 - ent.reduce(function (a, b) { return a + b; }, 0);
+    bruts.map(function (b, i) { return { i: i, f: b - Math.floor(b) }; }).sort(function (a, b) { return b.f - a.f; })
+      .slice(0, Math.max(0, reste)).forEach(function (x) { ent[x.i] += 1; });
+    sel.forEach(function (l, i) { pctAffiche.set(l, ent[i]); });
+  }
+  function fmtPctL(l) { return (pctAffiche.has(l) ? pctAffiche.get(l) : pct(l.min)) + ' %'; }
+
+  var focusApresRendu = null;
+
   function render() {
+    calculerPctAffiches();
     var bar = document.getElementById('day-bar');
+    var barWrap = document.getElementById('day-bar-wrap');
+    var grad = document.getElementById('graduation');
     bar.innerHTML = '';
-    var used = 0;
-    lines.forEach(function (l) {
-      if (!l.selected || l.pct < 0.05) return;
-      used += l.pct;
-      var seg = document.createElement('div');
-      seg.className = 'dayseg';
-      seg.style.width = Math.min(l.pct, 100) + '%';
-      seg.style.background = l.color;
-      seg.style.cursor = 'pointer';
-      seg.title = l.nom + ' — cliquer pour augmenter et fixer sa part';
-      seg.textContent = fmtPct(l.pct);
-      // La barre du haut permet aussi d'agrandir/fixer la part d'un
-      // projet par simple clic (retour Fadhel, 2026-09-19) — même geste
-      // que l'appui double/long sur une ligne plus bas.
-      seg.addEventListener('click', function () { bump(l, 5); });
-      bar.appendChild(seg);
-    });
-    if (used < 99.9) {
-      var rest = document.createElement('div');
-      rest.className = 'dayseg';
-      rest.style.width = (100 - used) + '%';
-      rest.style.background = 'repeating-linear-gradient(45deg, var(--border), var(--border) 5px, var(--hover-bg) 5px, var(--hover-bg) 10px)';
-      rest.style.color = 'var(--text-faint)';
-      bar.appendChild(rest);
+    Array.prototype.slice.call(barWrap.querySelectorAll('.bar-handle')).forEach(function (h) { h.remove(); });
+
+    if (state.absent) {
+      var segA = document.createElement('div');
+      segA.className = 'dayseg'; segA.style.width = '100%'; segA.style.background = '#2f65b8'; segA.textContent = 'Absent';
+      bar.appendChild(segA);
+    } else {
+      var sel = selected(), cumul = 0;
+      if (!sel.length) {
+        var vide = document.createElement('div');
+        vide.className = 'dayseg'; vide.style.width = '100%'; vide.style.background = 'var(--border-soft)';
+        bar.appendChild(vide);
+      }
+      sel.forEach(function (l, i) {
+        var s = document.createElement('div');
+        s.className = 'dayseg';
+        s.style.width = (T() ? l.min / T() * 100 : 0) + '%';
+        s.style.background = l.color;
+        // Code du projet + heures quand la place le permet, sinon les
+        // heures seules, sinon rien ; détail complet au survol.
+        s.innerHTML = '<span class="seg-code">' + escapeHtml(l.code || '') + '</span><span class="seg-h">' + fmtH(l.min) + '</span>';
+        s.title = (l.code ? l.code + ' ' : '') + l.nom + ' — ' + fmtH(l.min) + ' (' + fmtPctL(l) + ')';
+        bar.appendChild(s);
+        if (s.scrollWidth > s.clientWidth) s.querySelector('.seg-code').remove();
+        if (s.scrollWidth > s.clientWidth) s.innerHTML = '';
+        // Un segment vide (projet à 0 h, ou trop étroit pour son texte) ne
+        // garde pas ses marges : sinon une fine bande restait visible et
+        // décalée par rapport aux limites.
+        if (!s.textContent) s.style.padding = '0';
+        if (l.min === 0) s.style.display = 'none';
+        cumul += l.min;
+        if (i < sel.length - 1) {
+          var h = document.createElement('div');
+          h.className = 'bar-handle';
+          h.setAttribute('role', 'separator');
+          h.setAttribute('aria-label', 'Limite entre ' + l.nom + ' et ' + sel[i + 1].nom);
+          h.tabIndex = 0;
+          h.style.left = (T() ? cumul / T() * 100 : 0) + '%';
+          h.style.zIndex = 50 - i;   // limites superposées (projet à 0 h) : la plus à gauche reste attrapable
+          h.title = 'Glisser pour déplacer la limite entre ' + l.nom + ' et ' + sel[i + 1].nom;
+          h.addEventListener('pointerdown', glisser(function () { return bar.getBoundingClientRect(); }, function (m) { deplacerLimite(i, m); }));
+          (function (i, positionMin) {
+            h.addEventListener('keydown', function (evt) {
+              var pas = { ArrowRight: PAS, ArrowLeft: -PAS }[evt.key];
+              if (pas === undefined) return;
+              evt.preventDefault();
+              deplacerLimite(i, positionMin + pas);
+              focusApresRendu = { limite: i };
+              render();
+            });
+          })(i, cumul);
+          barWrap.appendChild(h);
+        }
+      });
     }
 
+    // Graduation du haut : 0 → durée du jour ; la durée se modifie par
+    // double-clic (ou double appui sur téléphone).
+    grad.innerHTML = '';
+    var H = state.heures;
+    for (var hh = 0; hh < H && !state.absent; hh++) {
+      var t = document.createElement('span');
+      t.className = 'tick';
+      t.style.left = (hh / H * 100) + '%';
+      t.innerHTML = '<i></i><b>' + hh + '</b>';
+      grad.appendChild(t);
+    }
+    var fin = document.createElement('button');
+    fin.type = 'button'; fin.id = 'duree-fin'; fin.className = 'tick-fin';
+    fin.title = 'Double-cliquez pour modifier la durée de cette journée, ou la marquer absente';
+    fin.setAttribute('aria-label', 'Durée de la journée : ' + (state.absent ? 'absent' : fmtH(T())) + '. Double-cliquer pour la modifier');
+    fin.innerHTML = '<i></i><b>' + (state.absent ? 'Absent' : fmtH(T())) + '</b>';
+    attacherDoubleAppui(fin, ouvrirDuree);
+    fin.addEventListener('keydown', function (evt) {
+      if (evt.key === 'Enter' || evt.key === ' ') { evt.preventDefault(); ouvrirDuree(evt); }
+    });
+    grad.appendChild(fin);
+    grad.style.opacity = state.absent ? 0.5 : 1;
+
+    // Lignes
     var container = document.getElementById('lines-container');
     container.innerHTML = '';
     if (!lines.length) {
       container.innerHTML = '<div style="padding:20px 16px; font-size:12.5px; color:var(--text-muted);">Aucune ligne pour l\'instant — ajoutez un projet ci-dessous.</div>';
     }
     lines.forEach(function (l, idx) {
+      var on = l.selected && !state.absent;
+      var p = on && T() ? l.min / T() * 100 : 0;
       var row = document.createElement('div');
       row.className = 'lrow';
-      row.style.cssText = (idx < lines.length - 1 ? 'border-bottom:1px solid var(--border-soft);' : '') + (l.selected ? '' : 'opacity:0.5;');
+      row.style.cssText = (idx < lines.length - 1 ? 'border-bottom:1px solid var(--border-soft);' : '') + (on ? '' : 'opacity:0.45;');
+
+      // Heures en un clic : 1 h … (durée − 1) h — ni 0 ni la durée totale,
+      // évidents. Valeurs impossibles grisées.
+      var rapides = '';
+      if (on) {
+        var max = maxPour(l);
+        for (var k = 1; k * 60 < T(); k++) {
+          var actif = l.min === k * 60, ok = k * 60 <= max;
+          rapides += '<button type="button" class="hq' + (actif ? ' hq-on' : '') + '" data-h="' + k + '"' + (ok ? '' : ' disabled') +
+            ' style="left:' + (k * 60 / T() * 100) + '%;' + (actif ? 'color:' + l.color + ';' : '') + '"' +
+            ' title="' + (ok ? 'Mettre ' + k + ' h sur ce projet' : 'Pas assez de temps disponible') + '">' + k + ' h</button>';
+        }
+      }
+
       row.innerHTML =
         '<span class="lrow-dot" style="width:10px; height:10px; border-radius:3px; background:' + l.color + '; flex-shrink:0; cursor:pointer;"></span>' +
         '<div class="lrow-info" role="button" tabindex="0" aria-pressed="' + (l.selected ? 'true' : 'false') + '" style="cursor:pointer;">' +
-          {# Retour Fadhel (2026-09-27) : plus d'icône "🔒" — aucune ligne
-             ne doit paraître "verrouillée" pour l'utilisateur. Le
-             comportement voulu (modifier une ligne ne touche jamais une
-             autre ligne déjà ajustée manuellement) reste géré en interne
-             par `l.locked`, simplement sans indicateur visuel. #}
-          '<div style="font-size:13px; font-weight:700; line-height:1.3;">' + escapeHtml(l.nom) + (l.adhoc ? ' <span class="pill" style="background:var(--hover-bg); color:var(--text-muted); font-size:10px; padding:1px 7px;">ponctuel</span>' : '') + '</div>' +
+          '<div style="font-size:13px; font-weight:700; line-height:1.3;">' + (l.code ? '<span class="lrow-code">' + escapeHtml(l.code) + '</span>' : '') + escapeHtml(l.nom) +
+            (l.adhoc ? ' <span class="pill" style="background:var(--hover-bg); color:var(--text-muted); font-size:10px; padding:1px 7px;">ponctuel</span>' : '') + '</div>' +
           '<div style="font-size:11.5px; color:' + (l.tacheTitre ? 'var(--text-muted)' : 'var(--text-disabled)') + '; line-height:1.3;' + (l.tacheTitre ? '' : 'font-style:italic;') + '">' + escapeHtml(l.tacheTitre || 'Projet seul (pas de tâche précise)') + '</div>' +
         '</div>' +
-        '<div class="lrow-track" role="slider" tabindex="0" aria-label="Part de ' + escapeHtml(l.nom) + (l.tacheTitre ? ' — ' + escapeHtml(l.tacheTitre) : '') + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(l.selected ? l.pct : 0) + '" aria-valuetext="' + (l.selected ? fmtPct(l.pct) + ', ' + fmtHours(l.pct) : 'non sélectionné') + '" style="position:relative; flex:1; height:8px; border-radius:999px; background:var(--border-soft); cursor:pointer;">' +
-          '<div class="lrow-fill" style="position:absolute; left:0; top:0; bottom:0; border-radius:999px; width:' + (l.selected ? Math.min(l.pct, 100) : 0) + '%; background:' + l.color + '; opacity:' + (l.selected ? 1 : 0.3) + ';"></div>' +
-          // Toujours blanc (comme .toggle-knob dans app.css) : la poignée doit
-        // rester visible quelle que soit la couleur de la tâche ET le thème.
-        '<div class="lrow-thumb" style="position:absolute; top:50%; left:' + (l.selected ? Math.min(l.pct, 100) : 0) + '%; width:16px; height:16px; border-radius:999px; background:#ffffff; border:3px solid ' + l.color + '; transform:translate(-50%,-50%); box-shadow:0 1px 3px rgba(20,30,25,0.2); cursor:ew-resize;' + (l.selected ? '' : 'display:none;') + '"></div>' +
+        '<div class="lrow-col">' +
+          '<div class="lrow-track" role="slider" tabindex="0" aria-label="Heures sur ' + escapeHtml(l.nom) + (l.tacheTitre ? ' — ' + escapeHtml(l.tacheTitre) : '') + '"' +
+            ' aria-valuemin="0" aria-valuemax="' + T() + '" aria-valuenow="' + (on ? l.min : 0) + '" aria-valuetext="' + (on ? fmtH(l.min) : 'non sélectionné') + '"' +
+            ' style="position:relative; height:8px; border-radius:999px; background:var(--border-soft); cursor:pointer;">' +
+            '<div style="position:absolute; left:0; top:0; bottom:0; border-radius:999px; width:' + p + '%; background:' + l.color + ';"></div>' +
+            // Poignée toujours blanche : visible quelle que soit la couleur et le thème.
+            '<div class="lrow-thumb" style="position:absolute; top:50%; left:' + p + '%; width:16px; height:16px; border-radius:999px; background:#ffffff; border:3px solid ' + l.color + '; transform:translate(-50%,-50%); box-shadow:0 1px 3px rgba(20,30,25,0.2); cursor:ew-resize;' + (on ? '' : 'display:none;') + '"></div>' +
+          '</div>' +
+          '<div class="hq-row">' + rapides + '</div>' +
         '</div>' +
-        '<div class="lrow-pct" style="color:' + (l.selected ? 'var(--text)' : 'var(--text-disabled)') + ';">' + (l.selected ? fmtPct(l.pct) : '—') + '</div>' +
-        '<div class="lrow-hours" style="color:var(--text-muted);">' + (l.selected ? fmtHours(l.pct) : '') + '</div>' +
+        '<div class="lrow-pct-hover">' + (on ? fmtPctL(l) : '') + '</div>' +
+        '<div class="lrow-h">' + (on ? fmtH(l.min) : '—') + '</div>' +
         '<button type="button" class="iconbtn lrow-remove" aria-label="Retirer ' + escapeHtml(l.nom) + '" title="Retirer cette ligne" style="width:28px; height:28px; color:var(--text-disabled);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>';
       container.appendChild(row);
 
       var dot = row.querySelector('.lrow-dot');
       var info = row.querySelector('.lrow-info');
-      var removeBtn = row.querySelector('.lrow-remove');
       var track = row.querySelector('.lrow-track');
-      var thumb = row.querySelector('.lrow-thumb');
-
-      attachTapAndHold(dot, function () { toggleSelect(l); }, function () { bump(l, 5); });
-      attachTapAndHold(info, function () { toggleSelect(l); }, function () { bump(l, 5); });
-      removeBtn.addEventListener('click', function (evt) { evt.stopPropagation(); removeLine(l); });
-
-      function pctFromEvent(evt, rect) {
-        var x = evt.clientX - rect.left;
-        var raw = Math.max(0, Math.min(1, x / rect.width)) * 100;
-        return Math.min(raw, headroom(l));
-      }
-
-      // Glisser le curseur (thumb) : un simple appui SANS déplacement le
-      // fige à sa valeur actuelle, un vrai glisser le repositionne. Avant
-      // ce correctif (retour Fadhel, 2026-09-19), le moindre appui sur le
-      // curseur le faisait sauter à la position exacte du clic (souvent
-      // proche de 100% vu la taille réduite du curseur) au lieu de le
-      // figer.
-      //
-      // Bug corrigé (2026-09-27, retour Fadhel — le glisser sautait à 100%
-      // dès le premier déplacement) : `redistribute()` appelle `render()`,
-      // qui reconstruit toute la liste de lignes — la ligne (et sa piste
-      // `track`) qu'on est en train de glisser est donc retirée du DOM dès
-      // le premier mouvement. Recalculer `track.getBoundingClientRect()`
-      // sur un élément détaché renvoie une largeur de 0, et x / 0 = Infini
-      // → la valeur saute à 100%. On capture désormais la position/largeur
-      // de la piste UNE SEULE FOIS, avant tout redistribute(), et on la
-      // réutilise pour tout le geste (la piste ne change pas de place
-      // pendant qu'on la glisse).
-      function startDragThumb(evt) {
-        evt.preventDefault();
-        evt.stopPropagation();
-        if (!l.selected) l.selected = true;
-        var rect = track.getBoundingClientRect();
-        var startX = evt.clientX, moved = false;
-        function onMove(moveEvt) {
-          if (!moved && Math.abs(moveEvt.clientX - startX) > 3) moved = true;
-          if (moved) { l.locked = true; l.pct = pctFromEvent(moveEvt, rect); redistribute(); }
-        }
-        function stopDrag() {
-          document.removeEventListener('pointermove', onMove);
-          document.removeEventListener('pointerup', stopDrag);
-          if (!moved) { l.locked = true; redistribute(); }
-        }
-        document.addEventListener('pointermove', onMove);
-        document.addEventListener('pointerup', stopDrag);
-      }
-      // Cliquer ailleurs sur la piste (pas sur le curseur lui-même) reste
-      // un vrai "aller à cette position" façon slider classique — un seul
-      // calcul, avant tout redistribute(), donc pas concerné par le bug
-      // ci-dessus.
-      function seekTrack(evt) {
-        evt.preventDefault();
-        if (!l.selected) l.selected = true;
-        l.locked = true;
-        l.pct = pctFromEvent(evt, track.getBoundingClientRect());
-        redistribute();
-      }
-      thumb.addEventListener('pointerdown', startDragThumb);
-
-      // Clavier (audit n°2 — la page n'était utilisable qu'à la souris ou
-      // au doigt) : Entrée/Espace sur le nom (dé)sélectionne la ligne ;
-      // flèches sur le curseur = ±5 %, Début/Fin = 0 %/maximum. Le focus
-      // est rendu à l'élément équivalent après le rafraîchissement.
+      row.querySelector('.lrow-remove').addEventListener('click', function (evt) { evt.stopPropagation(); removeLine(l); });
+      if (state.absent) return;
+      dot.addEventListener('click', function () { toggleSelect(l); });
+      info.addEventListener('click', function () { toggleSelect(l); });
       info.addEventListener('keydown', function (evt) {
         if (evt.key !== 'Enter' && evt.key !== ' ') return;
         evt.preventDefault();
         focusApresRendu = { index: idx, cible: '.lrow-info' };
         toggleSelect(l);
       });
+      if (!on) return;
+      track.addEventListener('pointerdown', glisser(function () { return track.getBoundingClientRect(); }, function (m) { regler(l, m); }));
+      // Clavier (audit n°2) : flèches = ± un quart d'heure, Début/Fin = 0/maximum.
       track.addEventListener('keydown', function (evt) {
-        var pas = { ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5 }[evt.key];
+        var pas = { ArrowRight: PAS, ArrowUp: PAS, ArrowLeft: -PAS, ArrowDown: -PAS }[evt.key];
         var cible;
-        if (pas !== undefined) cible = (l.selected ? l.pct : 0) + pas;
+        if (pas !== undefined) cible = l.min + pas;
         else if (evt.key === 'Home') cible = 0;
-        else if (evt.key === 'End') cible = headroom(l);
+        else if (evt.key === 'End') cible = maxPour(l);
         else return;
         evt.preventDefault();
-        if (!l.selected) l.selected = true;
-        l.locked = true;
-        l.pct = Math.max(0, Math.min(cible, headroom(l)));
+        regler(l, cible);
         focusApresRendu = { index: idx, cible: '.lrow-track' };
-        redistribute();
+        render();
       });
-      track.addEventListener('pointerdown', function (evt) { if (evt.target === thumb) return; seekTrack(evt); });
+      row.querySelectorAll('.hq').forEach(function (b) {
+        b.addEventListener('click', function () { regler(l, +b.dataset.h * 60); render(); });
+      });
     });
 
     if (focusApresRendu) {
-      var rangee = container.children[focusApresRendu.index];
-      var el = rangee && rangee.querySelector(focusApresRendu.cible);
+      var el = null;
+      if (focusApresRendu.limite != null) el = barWrap.querySelectorAll('.bar-handle')[focusApresRendu.limite];
+      else {
+        var rangee = container.children[focusApresRendu.index];
+        el = rangee && rangee.querySelector(focusApresRendu.cible);
+      }
       if (el) el.focus();
       focusApresRendu = null;
     }
 
-    var total = lines.reduce(function (s, l) { return s + (l.selected ? l.pct : 0); }, 0);
-    document.getElementById('total-line').textContent = fmtPct(Math.round(total * 10) / 10) + ' réparti · ' + fmtHours(total) + ' sur ' + STANDARD_HOURS + ' h';
-
-    // Régression corrigée (2026-09-19, retour Fadhel) : supprimer une ligne
-    // (bouton "×") ne rafraîchissait pas le catalogue "Ajouter une ligne"
-    // en dessous — le projet retiré restait affiché "déjà ajouté" (grisé,
-    // impossible à recliquer) puisque `lineKeys` n'était recalculé que par
-    // renderSuggestions(), jamais appelée après une suppression. On la
-    // rappelle systématiquement ici, à chaque render(), pour que le
-    // catalogue soit toujours cohérent avec les lignes du jour.
+    // Catalogue toujours cohérent avec les lignes du jour (régression
+    // corrigée le 2026-09-19 : une ligne retirée restait "déjà ajoutée").
     renderSuggestions();
-    // Idem pour les résultats de recherche affichés (audit n°2 : une ligne
-    // retirée par × y restait marquée "déjà ajouté").
     if (dernierResultatsRecherche && dernierResultatsRecherche.length) {
       renderRechercheResultats(dernierResultatsRecherche);
     }
   }
-  var focusApresRendu = null;
+
+  // ---- Durée de la journée / absent (double-clic sur la durée) ----
+  function attacherDoubleAppui(el, action) {
+    el.addEventListener('dblclick', action);
+    // Double appui sur téléphone (le dblclick n'y est pas fiable).
+    var dernier = 0;
+    el.addEventListener('pointerup', function (evt) {
+      if (evt.pointerType !== 'touch') return;
+      var maintenant = Date.now();
+      if (maintenant - dernier < 350) { dernier = 0; action(evt); }
+      else dernier = maintenant;
+    });
+  }
+  var popupDuree = document.getElementById('duree-popup');
+  var brouillon = state.heures;
+  function majPopup() { document.getElementById('duree-val').textContent = fmtH(brouillon * 60); }
+  function ouvrirDuree(evt) {
+    if (evt && evt.stopPropagation) evt.stopPropagation();
+    brouillon = Math.min(DUREE_MAX, Math.max(DUREE_MIN, state.heures));
+    majPopup();
+    popupDuree.style.display = 'block';
+    document.getElementById('duree-ok').focus();
+  }
+  document.getElementById('duree-moins').addEventListener('click', function () { brouillon = Math.max(DUREE_MIN, brouillon - 0.5); majPopup(); });
+  document.getElementById('duree-plus').addEventListener('click', function () { brouillon = Math.min(DUREE_MAX, brouillon + 0.5); majPopup(); });
+  document.getElementById('duree-ok').addEventListener('click', function () {
+    state.heures = brouillon; state.absent = false;
+    popupDuree.style.display = 'none';
+    // Mêmes proportions sur la nouvelle durée (à parts égales en revenant
+    // d'une absence, les lignes étant alors à 0).
+    repartirSur(selected(), T());
+    render();
+  });
+  document.getElementById('duree-absent').addEventListener('click', function () {
+    state.absent = true; popupDuree.style.display = 'none'; render();
+  });
+  document.addEventListener('keydown', function (evt) {
+    if (evt.key === 'Escape' && popupDuree.style.display === 'block') popupDuree.style.display = 'none';
+  });
+  document.addEventListener('click', function (evt) {
+    var finEl = document.getElementById('duree-fin');
+    if (popupDuree.style.display === 'block' && !popupDuree.contains(evt.target) && !(finEl && finEl.contains(evt.target))) {
+      popupDuree.style.display = 'none';
+    }
+  });
 
   // ---- Catalogue "Ajouter une ligne" ----
   var searchTerm = '';
   function matches(item) {
     if (!searchTerm) return true;
-    var hay = (item.nom + ' ' + (item.tache_titre || '')).toLowerCase();
+    var hay = ((item.code || '') + ' ' + item.nom + ' ' + (item.tache_titre || '')).toLowerCase();
     return hay.indexOf(searchTerm) !== -1;
   }
   function suggestionKey(item) { return item.projet_id + '-' + (item.tache_id || 0); }
@@ -468,7 +637,7 @@
     row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px;' +
       (pointillee ? 'border:1px dashed var(--border-hover); opacity:' + (deja ? '0.4' : '0.75') + ';' : 'background:var(--bg-subtle-1);' + (deja ? 'opacity:0.4;' : ''));
     row.innerHTML =
-      '<span style="font-size:12.5px; font-weight:600;">' + escapeHtml(item.nom) + '</span>' +
+      '<span style="font-size:12.5px; font-weight:600;">' + (item.code ? '<span class="lrow-code">' + escapeHtml(item.code) + '</span>' : '') + escapeHtml(item.nom) + '</span>' +
       '<span style="font-size:11.5px; color:var(--text-muted);">' + (item.tache_titre ? '— ' + escapeHtml(item.tache_titre) : '(projet seul, sans tâche)') + '</span>' +
       '<span style="margin-left:auto; font-size:11px; font-weight:700; color:' + (pointillee ? 'var(--text-disabled)' : '#4a7c59') + ';">' + (deja ? 'déjà ajouté' : (pointillee ? '+ ajouter (ponctuel)' : '+ ajouter')) + '</span>';
     if (!deja) {
@@ -573,11 +742,11 @@
   var FR_MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
   var todayIso = DATA.todayIso;
   var selectedIso = DATA.dateIso;
-  // {iso: 'rempli' | 'partiel' | 'manque'} — voir dailylog.etats_jours_mois
-  // (Lot 5, retour Fadhel, 2026-09-28 : "calendrier à pastilles vert/bleu/
-  // rouge"). Un jour absent du dict n'a pas de pastille (neutre).
+  // {iso: 'rempli' | 'absent' | 'manque'} — voir dailylog.etats_jours_mois
+  // (Daily log v2, 2026-09-29 : vert = rempli, bleu = absent, rouge = rien
+  // de rempli). Un jour hors du dict n'a pas de pastille (neutre).
   var etatsJours = DATA.etatsJours || {};
-  var COULEUR_PASTILLE = { rempli: '#4a7c59', partiel: 'var(--info-text)', manque: 'var(--error-text)' };
+  var COULEUR_PASTILLE = { rempli: '#4a7c59', absent: 'var(--info-text)', manque: 'var(--error-text)' };
   var calYear = parseInt(DATA.moisAffiche.split('-')[0], 10);
   var calMonth = parseInt(DATA.moisAffiche.split('-')[1], 10) - 1;
 
@@ -649,22 +818,22 @@
     if (pop.style.display !== 'none' && !pop.contains(evt.target)) pop.style.display = 'none';
   });
 
-  // ---- Soumission : convertit les lignes en champs cachés juste avant l'envoi ----
+  // ---- Soumission : lignes, durée et absence en champs cachés ----
   document.getElementById('dailylog-form').addEventListener('submit', function (evt) {
+    var aEnvoyer = state.absent ? [] : selected().filter(function (l) { return l.min > 0; });
     // Enregistrer une journée vide efface les heures déjà saisies ce
     // jour-là : on demande confirmation (audit n°2).
-    var aEnvoyer = lines.filter(function (l) { return l.selected && l.pct >= 0.05; });
-    if (!aEnvoyer.length && nbLignesInitiales &&
+    if (!state.absent && !aEnvoyer.length && nbLignesInitiales &&
         !window.confirm('Aucune heure à enregistrer : les heures déjà saisies pour ce jour seront effacées. Continuer ?')) {
       evt.preventDefault();
       return;
     }
+    document.getElementById('champ-duree').value = state.heures;
+    document.getElementById('champ-absent').value = state.absent ? '1' : '';
     var wrap = document.getElementById('lignes-hidden');
     wrap.innerHTML = '';
-    lines.forEach(function (l) {
-      if (!l.selected || l.pct < 0.05) return;
-      var heures = Math.round(l.pct / 100 * STANDARD_HOURS * 100) / 100;
-      [['ligne_projet_id', l.projetId], ['ligne_tache_id', l.tacheId || ''], ['ligne_heures', heures]].forEach(function (pair) {
+    aEnvoyer.forEach(function (l) {
+      [['ligne_projet_id', l.projetId], ['ligne_tache_id', l.tacheId || ''], ['ligne_heures', l.min / 60]].forEach(function (pair) {
         var input = document.createElement('input');
         input.type = 'hidden'; input.name = pair[0]; input.value = pair[1];
         wrap.appendChild(input);
@@ -673,7 +842,6 @@
   });
 
   render();
-  renderSuggestions();
 })();
 </script>
 {% endblock %}

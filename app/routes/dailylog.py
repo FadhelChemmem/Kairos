@@ -56,25 +56,28 @@ def formulaire():
 
     entrees = dailylog.list_entrees_jour(g.user["id"], date)
     suggestions = dailylog.list_lignes_suggerees(g.user["id"])
+    # Daily log v2 (2026-09-29) : durée du jour (4-10 h, réglable par
+    # double-clic) et absence ; pour une journée saisie avant cette version,
+    # la durée vaut le total de ses heures (option B, heures inchangées).
+    duree, absent = dailylog.duree_et_absence(g.user["id"], date, entrees)
 
     if entrees:
         lignes_initiales = [
             {
                 "projet_id": e["projet_id"], "tache_id": e["tache_id"],
-                "nom": e["projet_nom"], "tache_titre": e["tache_titre"],
-                "pct": round(float(e["heures"]) / STANDARD_HOURS * 100, 2),
+                "code": e.get("projet_code"), "nom": e["projet_nom"], "tache_titre": e["tache_titre"],
+                "minutes": round(float(e["heures"]) * 60),
             }
             for e in entrees
         ]
     else:
         # Rien d'enregistré ce jour : projets en cours proposés par défaut
-        # (lignes "projet seul" du catalogue), répartis à parts égales
-        # (voir spec DailyLog).
+        # (lignes "projet seul" du catalogue), répartis à parts égales par
+        # la page (minutes = None).
         defauts = [m for m in suggestions["mine"] if m["tache_id"] is None]
-        part = round(100 / len(defauts), 2) if defauts else 0
         lignes_initiales = [
-            {"projet_id": p["projet_id"], "tache_id": None, "nom": p["nom"],
-             "tache_titre": None, "pct": part}
+            {"projet_id": p["projet_id"], "tache_id": None, "code": p.get("code"), "nom": p["nom"],
+             "tache_titre": None, "minutes": None}
             for p in defauts
         ]
 
@@ -85,7 +88,7 @@ def formulaire():
     # rappel automatique à la connexion, voir auth._verifier_rappel_dailylog).
     rappel_hier = (
         est_aujourdhui and hier.weekday() < 5
-        and not dailylog.list_entrees_jour(g.user["id"], hier)
+        and not dailylog.jour_renseigne(g.user["id"], hier)
     )
 
     mois_ref = date.replace(day=1)
@@ -97,8 +100,9 @@ def formulaire():
         "dailylog.html",
         date=date, aujourdhui=aujourdhui, est_aujourdhui=est_aujourdhui,
         hier=hier, demain=demain, rappel_hier=rappel_hier,
-        lignes_initiales=lignes_initiales, suggestions=suggestions,
-        etats_jours=etats_du_mois, standard_hours=STANDARD_HOURS,
+        lignes_initiales=lignes_initiales, lignes_enregistrees=bool(entrees),
+        suggestions=suggestions, etats_jours=etats_du_mois,
+        duree=duree, absent=absent,
     )
 
 
@@ -140,6 +144,19 @@ def enregistrer():
     # date future en soumettant directement ce formulaire.
     date = _parser_date(request.form.get("date"))
     date_str = date.isoformat()
+
+    # Daily log v2 : durée de la journée (l'écran propose 4-10 h par
+    # demi-heure ; on accepte aussi la durée d'une ancienne journée, option
+    # B, d'où la borne large 0-24 h au quart d'heure) et absence.
+    absent = request.form.get("absent") == "1"
+    try:
+        duree = float(request.form.get("duree") or STANDARD_HOURS)
+    except ValueError:
+        duree = None
+    if duree is None or not math.isfinite(duree) or duree <= 0 or duree > MAX_HEURES_PAR_LIGNE \
+            or abs(duree * 4 - round(duree * 4)) > 1e-6:
+        flash("Durée de journée invalide.", "error")
+        return redirect(url_for("dailylog.formulaire", date=date_str))
 
     projet_ids = request.form.getlist("ligne_projet_id")
     tache_ids = request.form.getlist("ligne_tache_id")
@@ -211,9 +228,19 @@ def enregistrer():
             "heures": heures,
         })
 
+    # Total toujours = durée de la journée (Daily log v2 : "toujours
+    # 100 %"). La page le garantit ; ce contrôle protège d'une requête
+    # forgée. Ignoré si des lignes ont été refusées (leur ancienne valeur
+    # est conservée, le total ne peut donc pas être vérifié ici).
+    if not absent and lignes and not refusees:
+        total = round(sum(l["heures"] for l in lignes), 2)
+        if abs(total - duree) > 0.02:
+            flash("La journée doit être répartie à 100 % : rien n'a été enregistré.", "error")
+            return redirect(url_for("dailylog.formulaire", date=date_str))
+
     dailylog.remplacer_jour(
         g.user["id"], date_str, lignes, current_user_id=g.user["id"],
-        conserver=refusees,
+        conserver=refusees, duree_heures=duree, absent=absent,
     )
     if refusees:
         flash(
@@ -221,6 +248,8 @@ def enregistrer():
             "ou sur un projet auquel vous n'avez plus accès : leur valeur "
             "précédente a été conservée.", "error",
         )
+    elif absent:
+        flash("Journée enregistrée comme absente.", "success")
     else:
         flash("Daily log enregistré.", "success")
     return redirect(url_for("dailylog.formulaire", date=date_str))

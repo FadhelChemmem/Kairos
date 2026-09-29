@@ -163,7 +163,8 @@ def _verifier_rappel_dailylog(user_id: int, aujourdhui: "datetime.date | None" =
     # samedi — weekday() 5 = samedi, 6 = dimanche.
     if hier.weekday() >= 5:
         return
-    if dailylog_repo.list_entrees_jour(user_id, hier):
+    # Heures saisies OU journée marquée absente (Daily log v2) : pas d'oubli.
+    if dailylog_repo.jour_renseigne(user_id, hier):
         return
     if notifications_repo.a_deja_un_rappel_dailylog(user_id, aujourdhui):
         return

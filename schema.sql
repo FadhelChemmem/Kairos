@@ -407,6 +407,29 @@ CREATE INDEX idx_dailylog_tache ON dailylog_entree(tache_id);
 CREATE UNIQUE INDEX idx_dailylog_unique
   ON dailylog_entree (utilisateur_id, date, projet_id, COALESCE(tache_id, 0));
 
+-- Durée de la journée / absence, jour par jour (Daily log v2, retour
+-- Fadhel, 2026-09-29 — migration 0008) : double-clic sur « 8 h » pour
+-- régler la journée de 4 h à 10 h, ou la marquer « Absent » (pastille
+-- bleue du calendrier). Sans ligne ici, la journée vaut 8 h, ou pour une
+-- journée saisie avant cette version, le total de ses heures (on ne
+-- modifie jamais des heures déjà enregistrées). La contrainte accepte
+-- jusqu'à 24 h pour ces anciennes journées ; l'écran, lui, borne à 4-10 h.
+CREATE TABLE dailylog_jour (
+  id             BIGSERIAL PRIMARY KEY,
+  utilisateur_id BIGINT NOT NULL REFERENCES utilisateur(id),
+  date           DATE NOT NULL,
+  duree_heures   NUMERIC(4,2) NOT NULL DEFAULT 8,
+  absent         BOOLEAN NOT NULL DEFAULT false,
+  updated_by     BIGINT REFERENCES utilisateur(id),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT dailylog_jour_duree_valide CHECK (duree_heures > 0 AND duree_heures <= 24),
+  CONSTRAINT dailylog_jour_unique UNIQUE (utilisateur_id, date)
+);
+CREATE TRIGGER trg_dailylog_jour_updated_at
+  BEFORE UPDATE ON dailylog_jour
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at_and_by();
+
 -- Un rappel de saisie (notification) est déclenché côté appli quand un
 -- utilisateur n'a pas rempli son DailyLog la veille — pas de table dédiée
 -- ici, voir la table notification générique plus bas.
@@ -620,6 +643,7 @@ CREATE TRIGGER trg_audit_tache AFTER INSERT OR UPDATE OR DELETE ON tache FOR EAC
 CREATE TRIGGER trg_audit_tache_intervenant AFTER INSERT OR UPDATE OR DELETE ON tache_intervenant FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
 CREATE TRIGGER trg_audit_tache_piece_jointe AFTER INSERT OR UPDATE OR DELETE ON tache_piece_jointe FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
 CREATE TRIGGER trg_audit_dailylog AFTER INSERT OR UPDATE OR DELETE ON dailylog_entree FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
+CREATE TRIGGER trg_audit_dailylog_jour AFTER INSERT OR UPDATE OR DELETE ON dailylog_jour FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
 CREATE TRIGGER trg_audit_post AFTER INSERT OR UPDATE OR DELETE ON post FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
 CREATE TRIGGER trg_audit_post_piece_jointe AFTER INSERT OR UPDATE OR DELETE ON post_piece_jointe FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
 CREATE TRIGGER trg_audit_post_mention AFTER INSERT OR UPDATE OR DELETE ON post_mention FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
@@ -778,5 +802,8 @@ INSERT INTO schema_migrations (version) VALUES
   ('0002_avatar_chemin'),
   ('0003_reset_password_et_securite'),
   ('0004_post_evenement_tache'),
-  ('0005_integrite_et_performance')
+  ('0005_integrite_et_performance'),
+  ('0006_heures_par_role'),
+  ('0007_commentaires_reseau_social'),
+  ('0008_dailylog_jour')
 ON CONFLICT (version) DO NOTHING;

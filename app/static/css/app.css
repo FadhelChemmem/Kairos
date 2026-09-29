@@ -462,10 +462,50 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
 .lrow-info:focus-visible, .lrow-track:focus-visible, .add-suggestion:focus-visible, #date-pill:focus-visible {
   outline: 2px solid #4a7c59; outline-offset: 2px; border-radius: 8px;
 }
-.lrow-info { width: 220px; flex-shrink: 0; }
+.lrow-info { width: 290px; flex-shrink: 0; min-width: 0; }
 .lrow-track { touch-action: none; }
 .lrow-pct { width: 52px; text-align: right; font-size: 12.5px; font-weight: 700; flex-shrink: 0; }
 .lrow-hours { width: 56px; text-align: right; font-size: 11.5px; flex-shrink: 0; }
+
+/* --- Daily log v2 (maquette validée par Fadhel le 2026-09-29, voir
+   claude/kairos-dailylog-v2.md) --- */
+.dayseg { gap: 6px; padding: 0 6px; box-sizing: border-box; min-width: 0; flex-shrink: 0; }
+.seg-code { font-size: 10.5px; font-weight: 700; opacity: 0.85; letter-spacing: 0.02em; }
+.seg-h { font-weight: 800; }
+/* Limite entre deux projets voisins dans la barre du jour (déplaçable). */
+.bar-handle { position: absolute; top: 0; bottom: 0; width: 14px; margin-left: -7px; cursor: ew-resize; z-index: 5; touch-action: none; display: flex; justify-content: center; }
+.bar-handle::before { content: ""; width: 2px; border-radius: 2px; background: rgba(255,255,255,0.95); box-shadow: 0 0 0 0.5px rgba(0,0,0,0.25); }
+.bar-handle:hover::before, .bar-handle:focus-visible::before { width: 3px; }
+.bar-handle:focus-visible { outline: none; }
+/* Graduation en heures sous la barre du jour ; la durée au bout se
+   modifie par double-clic. */
+.grad { position: relative; height: 36px; margin-top: 4px; }
+.grad .tick { position: absolute; top: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; }
+.grad .tick:first-child { transform: none; align-items: flex-start; }
+.grad .tick i, .grad .tick-fin i { display: block; width: 1px; height: 6px; background: var(--text-disabled); }
+.grad .tick b { font-size: 10.5px; font-weight: 600; color: var(--text-faint); margin-top: 2px; }
+.grad .tick-fin { position: absolute; right: 0; top: 0; display: flex; flex-direction: column; align-items: flex-end; background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; }
+.grad .tick-fin b { font-size: 11.5px; font-weight: 800; color: var(--brand-text-strong); margin-top: 2px; border-bottom: 1px dashed var(--brand-text); line-height: 1.2; }
+.grad .tick-fin:hover b { color: var(--brand-text); }
+#duree-popup { position: absolute; right: 12px; top: 96px; z-index: 50; padding: 12px; width: 210px; box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
+.duree-step { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 18px; font-weight: 700; cursor: pointer; font-family: inherit; }
+.duree-step:hover { background: var(--hover-bg); }
+.duree-btn { flex: 1; font-family: inherit; font-size: 12px; font-weight: 700; padding: 7px 12px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+.duree-btn:hover { background: var(--hover-bg); }
+.duree-btn-ok { background: #4a7c59; border-color: #4a7c59; color: #fff; }
+.duree-btn-ok:hover { background: #3a6247; }
+/* Ligne de projet : curseur + heures cliquables en dessous. */
+.lrow-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding-top: 14px; }
+.hq-row { position: relative; height: 18px; margin: 0 2px; }
+.hq { position: absolute; top: 0; transform: translateX(-50%); font-family: inherit; font-size: 10.5px; font-weight: 600; color: var(--text-faint); background: none; border: none; padding: 1px 4px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+.hq:hover:not(:disabled) { background: var(--hover-bg); color: var(--text); }
+.hq:disabled { color: var(--text-disabled); opacity: 0.45; cursor: not-allowed; }
+.hq-on { font-weight: 800; background: var(--hover-bg); }
+.lrow-code { display: inline-block; font-size: 11px; font-weight: 800; color: var(--text-muted); background: var(--hover-bg); border-radius: 5px; padding: 0 5px; margin-right: 6px; letter-spacing: 0.02em; }
+/* Fin de ligne : les heures ; le % n'apparaît qu'au survol de la ligne. */
+.lrow-h { width: 64px; text-align: right; font-size: 13px; font-weight: 800; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.lrow-pct-hover { width: 40px; text-align: right; font-size: 11px; color: var(--text-muted); flex-shrink: 0; opacity: 0; transition: opacity .12s; }
+.lrow:hover .lrow-pct-hover, .lrow:focus-within .lrow-pct-hover { opacity: 1; }
 .add-suggestion:hover { filter: brightness(0.97); }
 .cal-day {
   display: flex; align-items: center; justify-content: center;
@@ -806,9 +846,15 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
      largeurs fixes desktop — on réduit le nom et on masque la colonne
      "heures" (le %, plus lisible d'un coup d'œil, reste affiché). */
   .dailylog-wrap { padding-left: 16px; padding-right: 16px; }
-  .lrow { gap: 8px; padding: 12px 10px; }
-  .lrow-info { width: 120px; }
-  .lrow-hours { display: none; }
+  /* Daily log v2 (retour Fadhel, 2026-09-29) : sur téléphone on garde la
+     liste complète — nom et heures sur une ligne, curseur et heures
+     cliquables en dessous, assez grands pour un doigt. */
+  .lrow { gap: 8px; padding: 12px 10px; flex-wrap: wrap; }
+  .lrow-info { width: calc(100% - 136px); }
+  .lrow-col { order: 5; flex-basis: 100%; padding-top: 4px; }
+  .lrow-pct-hover { display: none; }
+  .hq { font-size: 12px; padding: 6px 5px; }
+  .hq-row { height: 28px; }
 }
 
 @media (max-width: 480px) {

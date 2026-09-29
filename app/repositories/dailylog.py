@@ -31,7 +31,7 @@ def list_projets_pour_dailylog(user_id: int) -> list[dict]:
 def list_entrees_jour(user_id: int, date) -> list[dict]:
     sql = """
         SELECT d.id, d.projet_id, d.tache_id, d.heures,
-               p.nom AS projet_nom, t.titre AS tache_titre
+               p.code AS projet_code, p.nom AS projet_nom, t.titre AS tache_titre
         FROM dailylog_entree d
         JOIN projet p ON p.id = d.projet_id
         LEFT JOIN tache t ON t.id = d.tache_id
@@ -39,6 +39,57 @@ def list_entrees_jour(user_id: int, date) -> list[dict]:
         ORDER BY d.id
     """
     return db.query_all(sql, (user_id, date))
+
+
+DUREE_TYPE = 8  # heures — journée type par défaut (voir spec DailyLog)
+
+
+def get_jour(user_id: int, date) -> dict | None:
+    """Réglage de la journée (Daily log v2, migration 0008) : durée et
+    absence, ou None si la journée n'a jamais été enregistrée depuis."""
+    return db.query_one(
+        "SELECT duree_heures, absent FROM dailylog_jour WHERE utilisateur_id = %s AND date = %s",
+        (user_id, date),
+    )
+
+
+def duree_et_absence(user_id: int, date, entrees: list[dict]) -> tuple[float, bool]:
+    """Durée (heures) et absence à afficher pour ce jour.
+
+    Sans réglage enregistré : 8 h, sauf pour une journée déjà saisie
+    avant le Daily log v2 — sa durée vaut alors le total de ses heures
+    (option B, 2026-09-29 : on ne modifie jamais des heures déjà
+    enregistrées, même quand elles ne faisaient pas une journée
+    complète)."""
+    jour = get_jour(user_id, date)
+    if jour is not None:
+        return float(jour["duree_heures"]), bool(jour["absent"])
+    total = round(sum(float(e["heures"]) for e in entrees), 2)
+    if total > 0:
+        return min(total, 24.0), False
+    return float(DUREE_TYPE), False
+
+
+def jours_renseignes(user_id: int, jours: list) -> set:
+    """Jours (parmi `jours`) où l'utilisateur a saisi des heures OU s'est
+    marqué absent — utilisé partout où l'on cherche un jour "oublié"
+    (rappel de connexion, bandeau d'hier, carte de l'accueil,
+    calendrier)."""
+    if not jours:
+        return set()
+    rows = db.query_all(
+        """
+        SELECT DISTINCT date FROM dailylog_entree WHERE utilisateur_id = %s AND date = ANY(%s)
+        UNION
+        SELECT date FROM dailylog_jour WHERE utilisateur_id = %s AND date = ANY(%s) AND absent
+        """,
+        (user_id, list(jours), user_id, list(jours)),
+    )
+    return {r["date"] for r in rows}
+
+
+def jour_renseigne(user_id: int, date) -> bool:
+    return date in jours_renseignes(user_id, [date])
 
 
 def list_projets_recents(user_id: int, exclude_ids: list[int], limit: int = 5) -> list[dict]:
@@ -164,39 +215,40 @@ def list_lignes_suggerees(user_id: int) -> dict:
 
 
 def etats_jours_mois(user_id: int, annee: int, mois: int, standard_hours: float = 8) -> dict:
-    """État de chaque jour "notable" du mois donné, pour les pastilles du
-    calendrier DailyLog (Lot 5, retour Fadhel, 2026-09-28 : "calendrier à
-    pastilles vert/bleu/rouge" — reprend enfin la pastille "manquant" que
-    l'implémentation du 2026-09-18 avait volontairement laissée de côté) :
+    """État de chaque jour "notable" du mois, pour les pastilles du
+    calendrier DailyLog (Daily log v2, retour Fadhel, 2026-09-29 : "vert =
+    rempli, bleu = absent, rouge = rien de rempli, sauf week-end") :
 
-    - 'rempli' (vert) : total des heures du jour >= la journée type (8h).
-    - 'partiel' (bleu) : au moins une ligne enregistrée, mais total < 8h.
-    - 'manque' (rouge) : jour ouvré SANS AUCUNE ligne, dans la fenêtre de
-      `jours_manques_recents` (même fonction que la carte DailyLog de
-      l'accueil — même heuristique lun-ven, pas de notion de jour férié/
-      absence/date d'embauche, non modélisées ; "aujourd'hui" ne compte
-      comme manqué qu'à partir de 16h, retour Fadhel, 2026-09-28 : "ne pas
-      mettre en rouge dès le matin"). Volontairement bornée à cette même
-      fenêtre glissante (pas tout le mois affiché) : sans elle, naviguer
-      vers un mois passé peindrait en rouge des semaines entières d'avant
-      la création du compte — même simplification assumée que pour la
-      carte d'accueil.
+    - 'rempli' (vert) : au moins une ligne d'heures enregistrée. Depuis le
+      v2 une journée enregistrée fait toujours 100 % de sa durée : plus
+      d'état "partiel".
+    - 'absent' (bleu) : journée marquée absente (dailylog_jour.absent).
+    - 'manque' (rouge) : jour ouvré sans rien, dans la fenêtre de
+      `jours_manques_recents` (même règle que la carte de l'accueil, dont
+      le délai de grâce jusqu'à 16 h le jour même) — bornée à cette
+      fenêtre pour ne pas peindre en rouge des mois entiers d'avant la
+      création du compte.
 
-    Un jour futur, un week-end, ou un jour sans ligne hors de cette
-    fenêtre : pas d'entrée dans le dict (neutre, pas de pastille)."""
+    Un jour futur, un week-end, ou un jour vide hors de cette fenêtre :
+    pas d'entrée (pas de pastille). `standard_hours` n'est plus utilisé,
+    gardé pour compatibilité d'appel."""
     rows = db.query_all(
         """
-        SELECT date, SUM(heures) AS total
-        FROM dailylog_entree
+        SELECT DISTINCT date FROM dailylog_entree
         WHERE utilisateur_id = %s AND EXTRACT(YEAR FROM date) = %s AND EXTRACT(MONTH FROM date) = %s
-        GROUP BY date
         """,
         (user_id, annee, mois),
     )
-    etats = {
-        r["date"].isoformat(): ("rempli" if float(r["total"]) >= standard_hours else "partiel")
-        for r in rows
-    }
+    etats = {r["date"].isoformat(): "rempli" for r in rows}
+    absents = db.query_all(
+        """
+        SELECT date FROM dailylog_jour
+        WHERE utilisateur_id = %s AND absent AND EXTRACT(YEAR FROM date) = %s AND EXTRACT(MONTH FROM date) = %s
+        """,
+        (user_id, annee, mois),
+    )
+    for r in absents:
+        etats[r["date"].isoformat()] = "absent"
     for jour in jours_manques_recents(user_id):
         if jour.year == annee and jour.month == mois:
             etats.setdefault(jour.isoformat(), "manque")
@@ -240,19 +292,14 @@ def jours_manques_recents(
     if not jours_ouvres:
         return []
 
-    remplis = db.query_all(
-        """
-        SELECT DISTINCT date FROM dailylog_entree
-        WHERE utilisateur_id = %s AND date = ANY(%s)
-        """,
-        (user_id, jours_ouvres),
-    )
-    jours_remplis = {r["date"] for r in remplis}
+    # Un jour marqué absent (Daily log v2) n'est pas un oubli.
+    jours_remplis = jours_renseignes(user_id, jours_ouvres)
     return sorted(j for j in jours_ouvres if j not in jours_remplis)
 
 
 def remplacer_jour(user_id: int, date, lignes: list[dict], current_user_id: int,
-                   conserver: set | None = None) -> None:
+                   conserver: set | None = None, duree_heures: float | None = None,
+                   absent: bool = False) -> None:
     """Remplace en une fois toutes les lignes DailyLog d'un utilisateur pour
     un jour donné : les lignes absentes de `lignes` sont supprimées, les
     autres insérées/mises à jour — cohérent avec la sauvegarde explicite
@@ -264,7 +311,11 @@ def remplacer_jour(user_id: int, date, lignes: list[dict], current_user_id: int,
     refusées par la validation de la route — une valeur déjà enregistrée
     pour ces clés n'est jamais supprimée (audit n°2 : une ligne refusée
     disparaissait auparavant en silence). Deux lignes soumises avec la
-    même clé sont additionnées au lieu que la dernière écrase l'autre."""
+    même clé sont additionnées au lieu que la dernière écrase l'autre.
+
+    `duree_heures` / `absent` (Daily log v2, migration 0008) : réglage de
+    la journée, enregistré dans la même transaction que ses lignes. Une
+    journée marquée absente perd toutes ses lignes d'heures."""
     conserver = conserver or set()
     fusionnees: dict = {}
     for ligne in lignes:
@@ -276,7 +327,20 @@ def remplacer_jour(user_id: int, date, lignes: list[dict], current_user_id: int,
         else:
             fusionnees[cle] = dict(ligne)
     lignes = list(fusionnees.values())
+    if absent:
+        lignes, conserver = [], set()
     with db.get_cursor(user_id=current_user_id) as cur:
+        if duree_heures is not None or absent:
+            cur.execute(
+                """
+                INSERT INTO dailylog_jour (utilisateur_id, date, duree_heures, absent, updated_by)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (utilisateur_id, date)
+                DO UPDATE SET duree_heures = EXCLUDED.duree_heures, absent = EXCLUDED.absent,
+                              updated_by = EXCLUDED.updated_by
+                """,
+                (user_id, date, duree_heures if duree_heures is not None else DUREE_TYPE, absent, current_user_id),
+            )
         cur.execute(
             "SELECT id, projet_id, tache_id FROM dailylog_entree WHERE utilisateur_id = %s AND date = %s",
             (user_id, date),
