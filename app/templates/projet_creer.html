@@ -58,6 +58,18 @@
       <label for="date_debut">Date de début</label>
       <input type="date" id="date_debut" name="date_debut" value="{{ saisie.date_debut if saisie else date_du_jour }}">
     </div>
+    <div class="form-row">
+      <label for="phase_liee_id">Phase liée <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+      {# Lier le nouveau projet à un projet existant dès sa création (ex. le
+         EXE qui suit un DCE) — retour Fadhel, lot 7 ; même champ que la
+         fenêtre Informations. #}
+      <select id="phase_liee_id" name="phase_liee_id" data-search-combobox data-search-placeholder="Rechercher un projet…">
+        <option value=""></option>
+        {% for p in projets_phase_liee|default([]) %}
+          <option value="{{ p.id }}"{{ ' selected' if p.id == saisie.phase_liee_id }}>{{ p.code }}_{{ p.nom }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <button type="submit" class="btn-primary" style="background:#4a7c59; color:#fff;">Créer le projet</button>
   </form>
 </div>

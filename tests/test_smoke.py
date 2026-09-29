@@ -5723,6 +5723,25 @@ class TestDecisionsLot7(SmokeBase):
                        "app.repositories.taches.user_est_intervenant": intervenant})
                 self.assertEqual(mocks["app.routes.fichiers.save_upload"].called, attendu)
 
+    def test_phase_liee_des_la_creation_du_projet(self):
+        """Retour Fadhel (lot 7) : lier un projet existant à la création."""
+        candidats = [{"id": 2, "code": "25014D", "nom": "Résidence Les Oliviers"}]
+        for chemin in ("/projets", "/projets/nouveau"):
+            with self.subTest(chemin=chemin):
+                body = self._requete("get", chemin, **{"app.repositories.projets.search": candidats})[0].data.decode()
+                bloc = body.split('name="phase_liee_id"')[1].split("</select>")[0]
+                self.assertIn('<option value="2">25014D_Résidence Les Oliviers</option>', bloc)
+        donnees = {"nom": "Tour B", "code": "26100X", "phase": "EXE", "chef_projet_id": "1", "phase_liee_id": "2"}
+        _, mocks = self._requete("post", "/projets/nouveau", data=donnees,
+                                 espions=[("app.repositories.projets.create_projet", 77)],
+                                 **{"app.repositories.utilisateurs.list_actifs": UTILISATEURS_ACTIFS})
+        self.assertEqual(mocks["app.repositories.projets.create_projet"].call_args.kwargs["phase_liee_id"], 2)
+        # Projet lié invisible : refusé.
+        _, mocks = self._requete("post", "/projets/nouveau", data=donnees,
+                                 espions=[("app.repositories.projets.create_projet", 77)],
+                                 **{"app.repositories.projets.user_can_view": False})
+        mocks["app.repositories.projets.create_projet"].assert_not_called()
+
     # --- Informations d'équipe -------------------------------------------
     def test_information_sans_projet_vers_sa_seule_equipe_sauf_admin_et_rh(self):
         cas = [

@@ -169,6 +169,9 @@ def liste():
         contexte["phase_initiale_dialog"] = "EXE"
         contexte["code_propose_dialog"] = projets.propose_code("EXE")
         contexte["date_du_jour"] = datetime.date.today().isoformat()
+        # « Phase liée » dès la création (retour Fadhel, lot 7) : mêmes
+        # candidats que dans la fenêtre Informations (projets visibles).
+        contexte["projets_phase_liee"] = projets.search(g.user["id"], "", limit=200)
 
     return render_template("projets_liste.html", **contexte)
 
@@ -256,12 +259,14 @@ def creer():
         date_debut = request.form.get("date_debut") or None
         lots = request.form.getlist("lots")
         client, honoraires = _client_et_honoraires()
+        phase_liee_id = request.form.get("phase_liee_id", type=int) or None
         # Saisie renvoyée au formulaire en cas d'erreur (audit n°2 : tout
         # était perdu, phase revenue à EXE et code reproposé pour EXE).
         saisie = {
             "nom": nom, "code": code, "phase": phase, "chef_projet_id": chef_projet_id,
             "date_debut": date_debut or "", "lots": lots,
             "client": client, "honoraires": request.form.get("honoraires", ""),
+            "phase_liee_id": phase_liee_id,
         }
 
         try:
@@ -279,6 +284,9 @@ def creer():
             flash("Lot invalide.", "error")
         elif chef_projet_id not in {u["id"] for u in utilisateurs_actifs}:
             flash("Chef de projet invalide.", "error")
+        elif phase_liee_id is not None and not projets.user_can_view(phase_liee_id, g.user["id"]):
+            # Même contrôle IDOR que dans la fenêtre Informations.
+            flash("Projet lié invalide.", "error")
         elif phase not in PHASES:
             # PROMPT_CORRECTIONS.md P2 #22 : `phase` n'était pas validée —
             # une valeur hors de phase_enum (schema.sql) plantait l'INSERT
@@ -301,7 +309,7 @@ def creer():
                 projet_id = projets.create_projet(
                     code=code, nom=nom, phase=phase, chef_projet_id=chef_projet_id,
                     lots=lots, date_debut=date_debut_valide, current_user_id=g.user["id"],
-                    honoraires=honoraires, client=client,
+                    honoraires=honoraires, client=client, phase_liee_id=phase_liee_id,
                 )
             except Exception as exc:
                 # Seule une violation d'unicité du code justifie ce message ;
@@ -327,6 +335,7 @@ def creer():
         phase_initiale=phase_initiale,
         phases=PHASES,
         saisie=saisie,
+        projets_phase_liee=projets.search(g.user["id"], "", limit=200),
         # Pré-rempli avec la date du jour, modifiable — demandé par Fadhel
         # (2026-09-19), le champ apparaissait vide (jj/mm/aaaa).
         date_du_jour=datetime.date.today().isoformat(),

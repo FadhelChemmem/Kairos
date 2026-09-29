@@ -69,9 +69,21 @@
         <input type="text" id="dialog-projet-honoraires" name="honoraires" inputmode="decimal" placeholder="12 500,00">
       </div>
     </div>
-    <div class="form-row" style="margin-bottom:0;">
+    <div class="form-row">
       <label for="dialog-projet-debut">Date de début</label>
       <input type="date" id="dialog-projet-debut" name="date_debut" value="{{ date_du_jour }}">
+    </div>
+    <div class="form-row" style="margin-bottom:0;">
+      <label for="dialog-projet-phase-liee">Phase liée <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+      {# Lier le nouveau projet à un projet existant dès sa création (ex. le
+         EXE qui suit un DCE) — retour Fadhel, lot 7 ; même champ que la
+         fenêtre Informations. #}
+      <select id="dialog-projet-phase-liee" name="phase_liee_id" data-search-combobox data-search-placeholder="Rechercher un projet…">
+        <option value=""></option>
+        {% for p in projets_phase_liee|default([]) %}
+          <option value="{{ p.id }}">{{ p.code }}_{{ p.nom }}</option>
+        {% endfor %}
+      </select>
     </div>
 
     <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border-soft);">
