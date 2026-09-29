@@ -74,9 +74,9 @@ def _parser_date_tache(date_str: str | None):
     return datetime.date.fromisoformat(date_str)
 
 
-@bp.route("")
-@login_required
-def liste():
+def _filtres_liste():
+    """Filtres de "Tous les projets" (liste, rafraîchissement AJAX et
+    export Excel utilisent exactement les mêmes)."""
     # Filtres à puces (voir projets_liste.html) : tant que le formulaire n'a
     # pas été soumis une première fois (marqueur filtres_actifs), on
     # applique les valeurs par défaut demandées par Fadhel (2026-09-19) —
@@ -86,7 +86,7 @@ def liste():
     # Bug corrigé (2026-09-27, retour Fadhel) : le filtre "Chef de projet"
     # listait tout le monde (Intervenants, Clients...) via
     # utilisateurs.list_actifs() — voir list_chefs_de_projet().
-    chefs_de_projet = projets.list_chefs_de_projet()
+    chefs_de_projet = projets.list_chefs_de_projet(g.user["id"])
     if request.args.get("filtres_actifs"):
         etats = request.args.getlist("etat") or None
         phases = request.args.getlist("phase") or None
@@ -102,7 +102,13 @@ def liste():
         chef_ids = [g.user["id"]] if est_chef else None
         lots = None
     q = request.args.get("q") or None
+    return etats, phases, chef_ids, lots, q, chefs_de_projet
 
+
+@bp.route("")
+@login_required
+def liste():
+    etats, phases, chef_ids, lots, q, chefs_de_projet = _filtres_liste()
     tous = projets.list_projets(
         user_id=g.user["id"], etats=etats, phases=phases, chef_ids=chef_ids, lots=lots, q=q,
     )
@@ -134,6 +140,66 @@ def liste():
         contexte["date_du_jour"] = datetime.date.today().isoformat()
 
     return render_template("projets_liste.html", **contexte)
+
+
+@bp.route("/export.xlsx")
+@login_required
+def export_excel():
+    """« Télécharger en Excel » (retour Fadhel, 2026-09-29) : la liste
+    affichée, avec les mêmes filtres et le même ordre, en .xlsx."""
+    import io
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
+
+    etats, phases, chef_ids, lots, q, _ = _filtres_liste()
+    lignes = projets.list_projets(
+        user_id=g.user["id"], etats=etats, phases=phases, chef_ids=chef_ids, lots=lots, q=q, limit=5000,
+    )
+    classeur = Workbook()
+    feuille = classeur.active
+    feuille.title = "Projets"
+    entetes = ["Code", "Nom", "Phase", "Lots", "Chef de projet", "Client", "Honoraires",
+               "Heures intervenants", "Heures chef de projet", "Prochain rendu", "Tâche du rendu",
+               "Prochaine échéance", "Tâche de l'échéance", "État", "Début"]
+    feuille.append(entetes)
+    for cellule in feuille[1]:
+        cellule.font = Font(bold=True)
+    etat_libelle = {"en_cours": "En cours", "bloque": "Bloqué", "termine": "Terminé", "abandonne": "Abandonné"}
+
+    def nombre(v):
+        return float(v) if v is not None else None
+
+    def texte(v):
+        # Jamais de formule : une cellule qui commence par = + - @ est
+        # préfixée d'une apostrophe (injection de formule dans Excel).
+        v = "" if v is None else str(v)
+        return "'" + v if v[:1] in ("=", "+", "-", "@") else v
+
+    for p in lignes:
+        feuille.append([
+            texte(p["code"]), texte(p["nom"]), p["phase"], texte(p.get("lots")),
+            texte(f"{p['chef_prenom']} {p['chef_nom']}"), texte(p.get("client")), nombre(p.get("honoraires")),
+            nombre(p.get("heures_intervenant")) or 0, nombre(p.get("heures_chef")) or 0,
+            p.get("prochain_rendu"), texte(p.get("prochain_rendu_titre")),
+            p.get("prochaine_deadline"), texte(p.get("prochaine_deadline_titre")),
+            etat_libelle.get(p["etat"], p["etat"]), p.get("date_debut"),
+        ])
+    for i, largeur in enumerate([10, 40, 8, 10, 24, 18, 14, 12, 12, 14, 36, 14, 36, 11, 12], start=1):
+        feuille.column_dimensions[get_column_letter(i)].width = largeur
+    for colonne in ("J", "L", "O"):
+        for cellule in feuille[colonne][1:]:
+            cellule.number_format = "DD/MM/YYYY"
+    feuille.freeze_panes = "A2"
+
+    tampon = io.BytesIO()
+    classeur.save(tampon)
+    nom = f"projets-kairos-{datetime.date.today().isoformat()}.xlsx"
+    return tampon.getvalue(), 200, {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": f'attachment; filename="{nom}"',
+    }
 
 
 @bp.route("/nouveau", methods=["GET", "POST"])

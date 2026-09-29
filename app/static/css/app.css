@@ -536,10 +536,13 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
 .cal-dot { position: absolute; bottom: 3px; width: 4px; height: 4px; border-radius: 999px; }
 
 /* --- Vue Deadlines (calendrier/Gantt à défilement horizontal) --- */
+/* Colonnes des jours élastiques (2026-09-29) : elles remplissent la carte,
+   et la barre de défilement n'apparaît que si elles deviendraient plus
+   étroites que 44px (échéances lointaines) — voir jours_utiles_gantt. */
 .gantt {
   display: grid;
-  grid-template-columns: 260px repeat(var(--gantt-days, 21), 58px);
-  min-width: max-content;
+  grid-template-columns: 260px repeat(var(--gantt-days, 21), minmax(44px, 1fr));
+  min-width: calc(260px + var(--gantt-days, 21) * 44px);
 }
 .g-label {
   position: sticky; left: 0; z-index: 5;
@@ -558,7 +561,7 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
 .g-row-track {
   grid-column: 2 / span var(--gantt-days, 21);
   display: grid;
-  grid-template-columns: repeat(var(--gantt-days, 21), 58px);
+  grid-template-columns: repeat(var(--gantt-days, 21), minmax(44px, 1fr));
   border-bottom: 1px solid var(--border-soft);
   position: relative;
   min-height: 54px;
@@ -572,6 +575,9 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
   align-self: center;
   height: 26px;
 }
+/* En retard : barre d'un jour, dont le libellé déborde sur les jours
+   suivants (vides) au lieu d'être coupé ("◀ en reta…"). */
+.g-bar.g-bar-retard { width: max-content; justify-self: start; overflow: visible; position: relative; z-index: 1; }
 
 /* --- Cloche de notifications (topbar) + page /notifications --- */
 .iconbtn-badge {
@@ -750,6 +756,16 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
 .filtres-ligne { display: flex; flex-wrap: wrap; gap: 22px 28px; }
 .filtre-groupe { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .filtre-groupe .chip-cloud { row-gap: 8px; }
+/* "Tous les projets" : les quatre filtres sur une seule ligne (2026-09-29) ;
+   le groupe des chefs de projet prend la place restante. */
+/* Utilisateurs : recherche et filtres sur une seule ligne (2026-09-29) —
+   les <select> sont en pleine largeur par défaut dans l'appli. */
+.filtres-utilisateurs { flex-wrap: nowrap !important; }
+.filtres-utilisateurs select { width: auto; flex: 0 0 auto; min-width: 150px; }
+@media (max-width: 860px) { .filtres-utilisateurs { flex-wrap: wrap !important; } .filtres-utilisateurs select { flex: 1 1 140px; } }
+.filtres-une-ligne { flex-wrap: nowrap; }
+.filtres-une-ligne .filtre-groupe:last-child { flex: 1; }
+@media (max-width: 860px) { .filtres-une-ligne { flex-wrap: wrap; } }
 
 /* --- Commentaires sur un post (accueil / page projet) — refonte "façon
    réseau social" (Lot 5, retour Fadhel, 2026-09-28) : réponse en ligne (un
@@ -944,6 +960,23 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
   .topbar-actions .iconbtn { width: 30px; height: 30px; }
   .topbar-actions .avatar-lg { width: 30px; height: 30px; font-size: 11px; }
   .topbar-actions a[title] + a[style*="margin-left"] { margin-left: 2px !important; }
+  /* Admin (9 icônes + avatar) : encore 406px pour 390 — icônes à 28px,
+     sans espace entre elles, logo un peu plus petit (2026-09-29). */
+  .topbar-actions { gap: 0; }
+  .topbar-actions .iconbtn { width: 28px; height: 28px; }
+  .topbar-actions .avatar-lg { width: 28px; height: 28px; font-size: 10.5px; }
+  .topbar img { height: 16px; }
+}
+@media (max-width: 370px) {
+  .topbar-inner { padding-left: 6px; padding-right: 6px; gap: 2px; }
+  .topbar-actions .iconbtn { width: 26px; height: 26px; }
+  .topbar-actions .iconbtn svg { width: 16px; height: 16px; }
+  .topbar-actions .avatar-lg { width: 26px; height: 26px; font-size: 10px; }
+  .topbar img { height: 14px; }
+}
+@media (max-width: 340px) {
+  .topbar-actions .iconbtn { width: 24px; height: 24px; }
+  .topbar-actions .avatar-lg { width: 24px; height: 24px; font-size: 9.5px; }
 }
 
 /* Bouton d'action en texte simple (ex. "Toutes les équipes" du composeur,

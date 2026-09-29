@@ -6,7 +6,7 @@ from flask import Blueprint, g, render_template
 
 from ..auth import login_required
 from ..repositories import taches
-from ..utils import build_gantt
+from ..utils import build_gantt, jours_utiles_gantt
 
 bp = Blueprint("deadlines", __name__, url_prefix="/deadlines")
 
@@ -15,5 +15,6 @@ bp = Blueprint("deadlines", __name__, url_prefix="/deadlines")
 @login_required
 def liste():
     mes_taches = taches.list_deadlines(g.user["id"], limit=200)
-    gantt = build_gantt(mes_taches, datetime.date.today(), window_days=21)
+    aujourdhui = datetime.date.today()
+    gantt = build_gantt(mes_taches, aujourdhui, window_days=jours_utiles_gantt(mes_taches, aujourdhui))
     return render_template("deadlines.html", gantt=gantt, nb_taches=len(mes_taches))

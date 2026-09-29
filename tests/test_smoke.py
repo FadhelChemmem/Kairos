@@ -5311,5 +5311,98 @@ class TestProjetClientHonoraires(SmokeBase):
         self.assertEqual(heures_interv_chef(7.25, None), "7,2/0 h")
 
 
+
+class TestPagesLot6(SmokeBase):
+    """Retours Fadhel du 2026-09-29 sur les pages : Deadlines (barre de
+    défilement seulement si besoin), Tous les projets (CM/GO, filtres sur
+    une ligne, chefs sans projet masqués, export Excel, tri par date de
+    rendu avec le nom de la tâche en infobulle), Utilisateurs (filtres sur
+    une ligne). Rendu réel vérifié sous Playwright."""
+
+    PROJET_LIGNE = {
+        "id": 1, "code": "26099X", "nom": "Tour Meridian", "phase": "EXE", "etat": "en_cours",
+        "date_debut": datetime.date(2026, 1, 5), "date_fin": None, "client": "IPCO", "honoraires": 12500,
+        "chef_prenom": "Foulen", "chef_nom": "Chedly", "chef_id": 1, "lots": "CM · GO",
+        "heures_cumulees": 13.0, "heures_chef": 5.0, "heures_intervenant": 8.0,
+        "prochaine_echeance": datetime.date(2026, 10, 2),
+        "prochain_rendu": datetime.date(2026, 10, 2), "prochain_rendu_titre": "Note de calcul",
+        "prochaine_deadline": datetime.date(2026, 10, 2), "prochaine_deadline_titre": "Note de calcul",
+        "prochaine_deadline_type": "rendu_client",
+    }
+
+    def test_jours_utiles_gantt(self):
+        from app.utils import jours_utiles_gantt
+        today = datetime.date(2026, 9, 29)
+        t = lambda j: {"date_echeance": today + datetime.timedelta(days=j)}
+        self.assertEqual(jours_utiles_gantt([], today), 14)
+        self.assertEqual(jours_utiles_gantt([t(-3), t(5)], today), 14)
+        self.assertEqual(jours_utiles_gantt([t(30)], today), 31)
+        self.assertEqual(jours_utiles_gantt([t(400)], today), 90)
+
+    def test_deadlines_aide_de_defilement_et_retard(self):
+        body = self._get("/deadlines").data.decode()
+        self.assertIn('id="gantt-aide-defilement" hidden', body)
+        self.assertIn("--gantt-days:14;", body)
+        self.assertIn("g-bar g-bar-retard", body)  # DEADLINES[0] : 18 sept., en retard
+
+    def test_tous_les_projets_cm_go_excel_et_rendu(self):
+        body = self._get("/projets", **{"app.repositories.projets.list_projets": [self.PROJET_LIGNE]}).data.decode()
+        self.assertIn('<option value="CM" title="Charpente Métallique" >CM</option>', body)
+        self.assertIn('id="export-excel" href="/projets/export.xlsx"', body)
+        self.assertIn('title="Rendu : Note de calcul"', body)
+        self.assertIn("filtres-une-ligne", body)
+
+    def test_chefs_de_projet_limites_a_ceux_qui_ont_des_projets_actifs(self):
+        with patch("app.repositories.projets.list_chefs_de_projet", return_value=CHEFS_DE_PROJET) as mock_chefs:
+            self._login()
+            patchers = [p for p in self._patched() if p.attribute != "list_chefs_de_projet"]
+            for p in patchers:
+                p.start()
+            try:
+                self.client.get("/projets")
+            finally:
+                for p in reversed(patchers):
+                    p.stop()
+        mock_chefs.assert_called_with(1)
+        from app.repositories import projets as projets_repo
+        import inspect
+        source = inspect.getsource(projets_repo.list_chefs_de_projet)
+        self.assertIn("p.etat IN ('en_cours', 'bloque')", source)
+
+    def test_tri_par_date_de_rendu(self):
+        import inspect
+        from app.repositories import projets as projets_repo
+        source = inspect.getsource(projets_repo.list_projets)
+        self.assertIn("ORDER BY (pr.date_echeance IS NULL), pr.date_echeance,", source)
+        self.assertIn("t.type_deadline = 'rendu_client'", source)
+
+    def test_export_excel(self):
+        import openpyxl
+        self._login()
+        patchers = self._patched(**{"app.repositories.projets.list_projets": [
+            self.PROJET_LIGNE, {**self.PROJET_LIGNE, "id": 2, "code": "26100X", "nom": "=HYPERLINK(1)",
+                                "prochain_rendu": None, "prochain_rendu_titre": None}]})
+        for p in patchers:
+            p.start()
+        try:
+            resp = self.client.get("/projets/export.xlsx?filtres_actifs=1&etat=en_cours")
+        finally:
+            for p in reversed(patchers):
+                p.stop()
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("attachment", resp.headers["Content-Disposition"])
+        feuille = openpyxl.load_workbook(io.BytesIO(resp.data)).active
+        lignes = list(feuille.iter_rows(values_only=True))
+        self.assertEqual(lignes[0][:3], ("Code", "Nom", "Phase"))
+        self.assertEqual(lignes[1][0], "26099X")
+        self.assertEqual(lignes[1][10], "Note de calcul")
+        self.assertEqual(lignes[2][1], "'=HYPERLINK(1)")  # jamais de formule
+
+    def test_utilisateurs_filtres_sur_une_ligne(self):
+        import pathlib
+        css = (pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / "css" / "app.css").read_text(encoding="utf-8")
+        self.assertIn(".filtres-utilisateurs { flex-wrap: nowrap !important; }", css)
+
+
 if __name__ == "__main__":
     unittest.main()

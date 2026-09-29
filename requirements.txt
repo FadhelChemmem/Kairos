@@ -27,3 +27,6 @@ gunicorn==23.0.0
 # uniquement CSRFProtect, aucun formulaire WTForms n'est utilisé.
 Flask-WTF==1.2.2
 WTForms==3.2.2
+# « Télécharger en Excel » sur "Tous les projets" (retour Fadhel,
+# 2026-09-29) — écriture d'un vrai .xlsx.
+openpyxl==3.1.5

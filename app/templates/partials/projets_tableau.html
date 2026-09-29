@@ -11,7 +11,7 @@
 
 <div class="card table-scroll" style="padding:8px 18px;">
   <div style="display:grid; grid-template-columns:1.2fr 80px 130px 1fr 90px 110px 90px; gap:10px; padding:10px 4px; font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em; border-bottom:1px solid var(--border-soft);">
-    <span>Projet</span><span>Phase</span><span>Lots</span><span>Chef de projet</span><span title="Heures intervenants / heures chef de projet">Heures i/c</span><span>Deadlines</span><span>État</span>
+    <span>Projet</span><span>Phase</span><span>Lots</span><span>Chef de projet</span><span title="Heures intervenants / heures chef de projet">Heures i/c</span><span title="Prochain rendu client (tri de la liste)">Rendu</span><span>État</span>
   </div>
   {% for p in projets %}
     {% set st = projet_etat_style(p.etat) %}
@@ -28,7 +28,16 @@
       </span>
       {# "8/5 h" = heures intervenants / heures chef de projet (PR4). #}
       <span style="font-size:12.5px; color:var(--text-muted); white-space:nowrap;" title="{{ heures_courtes(p.heures_intervenant) }} h intervenants / {{ heures_courtes(p.heures_chef) }} h chef de projet">{{ heures_interv_chef(p.heures_intervenant, p.heures_chef) }}</span>
-      <span style="font-size:12px; color:var(--text-muted);">{% if p.prochaine_echeance %}{{ p.prochaine_echeance|date_courte }}{% endif %}</span>
+      {# Prochain rendu client (sinon prochaine échéance interne, en gris) ;
+         le nom de la tâche en infobulle (retour Fadhel, 2026-09-29). La
+         liste est triée par cette date (projets.list_projets). #}
+      {% if p.prochain_rendu %}
+        <span style="font-size:12px; color:var(--text-secondary); font-weight:600;" title="Rendu : {{ p.prochain_rendu_titre }}">{{ p.prochain_rendu|date_courte }}</span>
+      {% elif p.prochaine_deadline %}
+        <span style="font-size:12px; color:var(--text-faint);" title="Échéance interne : {{ p.prochaine_deadline_titre }}">{{ p.prochaine_deadline|date_courte }} <span style="font-size:10.5px;">#interne</span></span>
+      {% else %}
+        <span></span>
+      {% endif %}
       <span class="pill" style="background:{{ st.bg }}; color:{{ st.fg }}; width:fit-content;">{{ st.label }}</span>
     </a>
   {% else %}

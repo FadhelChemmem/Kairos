@@ -77,6 +77,7 @@
       chip.className = 'chip-opt' + (avatarMode ? ' chip-avatar' : '') + (opt.selected ? ' chip-selected' : '');
       chip.setAttribute('aria-pressed', opt.selected ? 'true' : 'false');
       chip.dataset.label = opt.textContent.trim().toLowerCase();
+      if (opt.title) chip.title = opt.title;
       chip._opt = opt;
 
       if (avatarMode) {

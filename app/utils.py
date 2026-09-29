@@ -265,9 +265,21 @@ def build_gantt(taches: list[dict], today, window_days: int = 21) -> dict:
             else:
                 couleur = "#4a7c59"
             label_barre = echeance.strftime("%d/%m")
-        rows.append({**t, "span": span, "couleur": couleur, "label_barre": label_barre})
+        rows.append({**t, "span": span, "couleur": couleur, "label_barre": label_barre,
+                     "en_retard": offset < 0})
 
     return {"days": days, "rows": rows, "window_days": window_days}
+
+
+def jours_utiles_gantt(taches: list[dict], today, minimum: int = 14, maximum: int = 90) -> int:
+    """Nombre de jours à afficher dans la vue Deadlines (retour Fadhel,
+    2026-09-29 : « n'afficher la barre [de défilement] que si besoin, des
+    tâches qui se terminent en dehors du champ visible ») : juste de quoi
+    montrer l'échéance la plus lointaine, au moins `minimum` jours — les
+    colonnes s'élargissent alors pour remplir la carte, et la barre de
+    défilement n'apparaît que si elles deviendraient trop étroites."""
+    derniers = [(t["date_echeance"] - today).days + 1 for t in taches if t.get("date_echeance")]
+    return max(minimum, min(maximum, max(derniers, default=0)))
 
 
 def personnes_recentes_d_abord(personnes: list[dict], recents_ids: list[int] | None) -> list[dict]:

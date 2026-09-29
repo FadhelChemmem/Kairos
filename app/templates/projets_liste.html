@@ -7,11 +7,20 @@
     <span style="font-size:18px; font-weight:800;">Tous les projets</span>
     {# Même règle que la route projets.creer (admin, chef de projet) — le
        bouton était montré à tous (audit n°2). #}
-    {% if g.user.role in ('admin', 'chef_de_projet') %}
-    {# Fenêtre flottante depuis le 2026-09-28 (retour Fadhel), même principe
-       que "+ Nouveau post" — voir partials/projet_dialog.html. #}
-    <button type="button" data-open-projet-dialog class="btn-secondary" style="width:auto; padding:9px 16px;">+ Nouveau projet</button>
-    {% endif %}
+    <div style="display:flex; align-items:center; gap:8px;">
+      {# « Télécharger en Excel » (retour Fadhel, 2026-09-29) : la liste
+         affichée, avec les filtres en cours (lien mis à jour à chaque
+         rafraîchissement, voir le script plus bas). #}
+      <a id="export-excel" href="{{ url_for('projets.export_excel', **request.args) }}" class="btn-secondary" style="width:auto; padding:9px 14px; display:inline-flex; align-items:center; gap:6px;" download>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        Télécharger en Excel
+      </a>
+      {% if g.user.role in ('admin', 'chef_de_projet') %}
+      {# Fenêtre flottante depuis le 2026-09-28 (retour Fadhel), même principe
+         que "+ Nouveau post" — voir partials/projet_dialog.html. #}
+      <button type="button" data-open-projet-dialog class="btn-secondary" style="width:auto; padding:9px 16px;">+ Nouveau projet</button>
+      {% endif %}
+    </div>
   </div>
 
   <form method="get" id="filtres-projets">
@@ -31,7 +40,10 @@
        personne…" pour ce filtre : avec des puces aussi compactes, l'équipe
        Midgard (une quinzaine de personnes) tient déjà d'un coup d'œil. #}
     <div class="card" style="padding:14px 18px; margin-bottom:14px;">
-      <div class="filtres-ligne">
+      {# Une seule ligne, chefs de projet compris (retour Fadhel,
+         2026-09-29) — les avatars passent à la ligne DANS leur groupe si
+         besoin. #}
+      <div class="filtres-ligne filtres-une-ligne">
         <div class="filtre-groupe">
           <div style="font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em;">État</div>
           <select name="etat" multiple data-chip-select>
@@ -52,8 +64,10 @@
         <div class="filtre-groupe">
           <div style="font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em;">Lots</div>
           <select name="lot" multiple data-chip-select>
-            <option value="CM" {{ 'selected' if 'CM' in lots }}>CM — Charpente Métallique</option>
-            <option value="GO" {{ 'selected' if 'GO' in lots }}>GO — Gros Œuvre</option>
+            {# "CM"/"GO" seulement (retour Fadhel, 2026-09-29) — libellé
+               complet au survol. #}
+            <option value="CM" title="Charpente Métallique" {{ 'selected' if 'CM' in lots }}>CM</option>
+            <option value="GO" title="Gros Œuvre" {{ 'selected' if 'GO' in lots }}>GO</option>
           </select>
         </div>
         <div class="filtre-groupe">
@@ -105,6 +119,8 @@
         if (html === null) return;
         resultats.innerHTML = html;
         window.history.replaceState(null, '', url);
+        var lien = document.getElementById('export-excel');
+        if (lien) lien.href = lien.pathname + '?' + params.toString();
       })
       .catch(function () { form.submit(); });
   }

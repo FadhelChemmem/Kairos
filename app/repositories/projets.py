@@ -133,9 +133,27 @@ def list_projets(
                ) AS heures_intervenant,
                (SELECT min(t.date_echeance) FROM tache t
                  WHERE t.projet_id = p.id AND t.etat NOT IN ('termine', 'abandonne')
-                   AND t.date_echeance IS NOT NULL) AS prochaine_echeance
+                   AND t.date_echeance IS NOT NULL) AS prochaine_echeance,
+               -- Prochain rendu client et prochaine échéance, avec le nom
+               -- de la tâche (infobulle de la colonne Deadlines, retour
+               -- Fadhel, 2026-09-29) — tâches encore ouvertes seulement.
+               pr.date_echeance AS prochain_rendu, pr.titre AS prochain_rendu_titre,
+               pe.date_echeance AS prochaine_deadline, pe.titre AS prochaine_deadline_titre,
+               pe.type_deadline AS prochaine_deadline_type
         FROM projet p
         JOIN utilisateur u ON u.id = p.chef_projet_id
+        LEFT JOIN LATERAL (
+            SELECT t.date_echeance, t.titre FROM tache t
+            WHERE t.projet_id = p.id AND t.etat NOT IN ('termine', 'verifie', 'abandonne')
+              AND t.date_echeance IS NOT NULL AND t.type_deadline = 'rendu_client'
+            ORDER BY t.date_echeance, t.id LIMIT 1
+        ) pr ON true
+        LEFT JOIN LATERAL (
+            SELECT t.date_echeance, t.titre, t.type_deadline FROM tache t
+            WHERE t.projet_id = p.id AND t.etat NOT IN ('termine', 'verifie', 'abandonne')
+              AND t.date_echeance IS NOT NULL
+            ORDER BY t.date_echeance, (t.type_deadline <> 'rendu_client'), t.id LIMIT 1
+        ) pe ON true
         WHERE (%(etats)s IS NULL OR p.etat::text = ANY(%(etats)s))
           AND (%(phases)s IS NULL OR p.phase::text = ANY(%(phases)s))
           AND (%(chef_ids)s IS NULL OR p.chef_projet_id = ANY(%(chef_ids)s))
@@ -180,7 +198,13 @@ def list_projets(
                 SELECT 1 FROM v_projet_visibilite vv
                 WHERE vv.projet_id = p.id AND vv.utilisateur_id = %(user_id)s
               )
-        ORDER BY p.updated_at DESC
+        -- Tri (retour Fadhel, 2026-09-29) : d'abord les projets qui ont un
+        -- rendu client, du plus proche au plus lointain (en retard en
+        -- tête), puis ceux qui n'ont qu'une échéance interne, puis les
+        -- autres (les plus récemment modifiés d'abord).
+        ORDER BY (pr.date_echeance IS NULL), pr.date_echeance,
+                 (pe.date_echeance IS NULL), pe.date_echeance,
+                 p.updated_at DESC
         LIMIT %(limit)s
     """
     params = {
@@ -194,7 +218,7 @@ def list_projets(
         return [dict(r) for r in cur.fetchall()]
 
 
-def list_chefs_de_projet() -> list[dict]:
+def list_chefs_de_projet(user_id: int | None = None) -> list[dict]:
     """Personnes ayant effectivement été chef de projet d'au moins un
     projet — alimente le filtre "Chef de projet" de /projets.
 
@@ -206,14 +230,23 @@ def list_chefs_de_projet() -> list[dict]:
     des personnes réellement chef de projet d'un projet existant. On
     requête donc directement les `chef_projet_id` distincts de la table
     `projet`, plutôt que de filtrer par rôle (un Admin peut légitimement
-    être chef de projet, ce que `role = 'chef_de_projet'` exclurait)."""
+    être chef de projet, ce que `role = 'chef_de_projet'` exclurait).
+
+    `user_id` (retour Fadhel, 2026-09-29 : « ne pas montrer les chefs de
+    projets sans projets ») : seulement les chefs d'au moins un projet en
+    cours ou bloqué que cette personne voit."""
     sql = """
-        SELECT DISTINCT u.id, u.prenom, u.nom
+        SELECT DISTINCT u.id, u.prenom, u.nom, u.avatar_chemin
         FROM utilisateur u
         JOIN projet p ON p.chef_projet_id = u.id
+        WHERE (%(user_id)s::bigint IS NULL OR (
+                p.etat IN ('en_cours', 'bloque')
+                AND EXISTS (SELECT 1 FROM v_projet_visibilite vv
+                            WHERE vv.projet_id = p.id AND vv.utilisateur_id = %(user_id)s)
+              ))
         ORDER BY u.nom, u.prenom
     """
-    return db.query_all(sql)
+    return db.query_all(sql, {"user_id": user_id})
 
 
 def search(user_id: int, q: str, limit: int = 8) -> list[dict]:
