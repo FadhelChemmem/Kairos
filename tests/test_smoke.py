@@ -5516,6 +5516,14 @@ class TestAuditV3(SmokeBase):
         body = self._get("/projets?filtres_actifs=1&phase=APS&phase=EXE&etat=en_cours").data.decode()
         self.assertIn('href="/projets/export.xlsx?filtres_actifs=1&amp;phase=APS&amp;phase=EXE&amp;etat=en_cours"', body)
 
+    def test_migrations_appliquees_au_demarrage(self):
+        """Plus de fenêtre entre le --build et `flask migrer` où personne ne
+        peut se connecter : le conteneur migre avant de lancer gunicorn."""
+        import pathlib
+        dockerfile = (pathlib.Path(__file__).resolve().parent.parent / "Dockerfile").read_text(encoding="utf-8")
+        cmd = [l for l in dockerfile.splitlines() if l.startswith("CMD")][0]
+        self.assertLess(cmd.index("flask migrer &&"), cmd.index("exec gunicorn"))
+
     def test_recherche_de_projet_entree_choisit(self):
         import pathlib
         js = (pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / "js" / "search-combobox.js").read_text(encoding="utf-8")

@@ -104,11 +104,17 @@ docker compose exec web flask migrer
 
 `flask migrer` (voir `migrations/`) applique les changements de schéma
 qui ne sont pas déjà dans `schema.sql` d'une installation neuve —
-renommage d'une équipe, nouvelle colonne, etc. C'est la seule commande à
-ne pas oublier ; elle ne fait rien si tout est déjà à jour, et peut être
-relancée sans risque. L'ordre avec `docker compose up -d --build`
-n'a pas d'importance particulière, mais autant prendre l'habitude de
-toujours lancer la migration juste après.
+renommage d'une équipe, nouvelle colonne, etc. Depuis le 2026-09-29, le
+conteneur `web` la lance lui-même à chaque démarrage, AVANT de servir
+l'appli (voir le `CMD` du Dockerfile) : une mise à jour faite depuis
+l'interface d'un NAS, sans terminal, applique donc aussi les migrations.
+La commande manuelle reste utile pour voir ce qui a été appliqué ; elle
+ne fait rien si tout est déjà à jour et peut être relancée sans risque.
+
+Si une migration échoue, le conteneur `web` ne démarre pas (il
+redémarre en boucle) : l'erreur se lit dans `docker compose logs web`.
+Avant cette date, l'ordre comptait : entre le `--build` et la migration,
+plus personne ne pouvait se connecter.
 
 ### Dépannage : "Permission denied" sur l'upload d'une photo/pièce jointe
 
