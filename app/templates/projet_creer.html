@@ -44,6 +44,16 @@
         {% endfor %}
       </select>
     </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <div class="form-row">
+        <label for="client">Client</label>
+        <input type="text" id="client" name="client" value="{{ saisie.client if saisie else 'IPCO' }}" maxlength="150">
+      </div>
+      <div class="form-row">
+        <label for="honoraires">Honoraires <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+        <input type="text" id="honoraires" name="honoraires" inputmode="decimal" placeholder="12 500,00" value="{{ saisie.honoraires if saisie else '' }}">
+      </div>
+    </div>
     <div class="form-row">
       <label for="date_debut">Date de début</label>
       <input type="date" id="date_debut" name="date_debut" value="{{ saisie.date_debut if saisie else date_du_jour }}">

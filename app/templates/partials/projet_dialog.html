@@ -57,6 +57,18 @@
         {% endfor %}
       </select>
     </div>
+    {# Client (« IPCO » par défaut) et honoraires — retour Fadhel,
+       Remarques du 2026-09-28, migration 0010. #}
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <div class="form-row">
+        <label for="dialog-projet-client">Client</label>
+        <input type="text" id="dialog-projet-client" name="client" value="IPCO" maxlength="150">
+      </div>
+      <div class="form-row">
+        <label for="dialog-projet-honoraires">Honoraires <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+        <input type="text" id="dialog-projet-honoraires" name="honoraires" inputmode="decimal" placeholder="12 500,00">
+      </div>
+    </div>
     <div class="form-row" style="margin-bottom:0;">
       <label for="dialog-projet-debut">Date de début</label>
       <input type="date" id="dialog-projet-debut" name="date_debut" value="{{ date_du_jour }}">

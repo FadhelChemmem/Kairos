@@ -8,6 +8,7 @@ from flask import Blueprint, abort, current_app, flash, g, redirect, render_temp
 from ..auth import login_required
 from ..repositories import notifications as notifications_repo
 from ..repositories import posts, projets, taches, utilisateurs
+from ..utils import parser_montant
 
 bp = Blueprint("projets", __name__, url_prefix="/projets")
 
@@ -46,6 +47,18 @@ def _message_erreur_intervenant(exc: Exception, action: str) -> str:
         return f"Impossible {action} : un RH ne peut pas être intervenant."
     current_app.logger.exception("Échec inattendu (%s)", action)
     return f"Impossible {action} (erreur inattendue, réessayez)."
+
+
+def _client_et_honoraires():
+    """Champs Client et Honoraires d'un projet (migration 0010) : client
+    "IPCO" par défaut s'il est laissé vide ; honoraires optionnels
+    (montant à la française) — False si la saisie est invalide."""
+    client = (request.form.get("client") or "").strip()[:150] or "IPCO"
+    try:
+        honoraires = parser_montant(request.form.get("honoraires"))
+    except ValueError:
+        honoraires = False
+    return client, honoraires
 
 
 def _parser_date_tache(date_str: str | None):
@@ -139,11 +152,13 @@ def creer():
         chef_projet_id = request.form.get("chef_projet_id", type=int) or g.user["id"]
         date_debut = request.form.get("date_debut") or None
         lots = request.form.getlist("lots")
+        client, honoraires = _client_et_honoraires()
         # Saisie renvoyée au formulaire en cas d'erreur (audit n°2 : tout
         # était perdu, phase revenue à EXE et code reproposé pour EXE).
         saisie = {
             "nom": nom, "code": code, "phase": phase, "chef_projet_id": chef_projet_id,
             "date_debut": date_debut or "", "lots": lots,
+            "client": client, "honoraires": request.form.get("honoraires", ""),
         }
 
         try:
@@ -155,6 +170,8 @@ def creer():
             flash("Le code et le nom du projet sont obligatoires.", "error")
         elif date_debut_valide is False:
             flash("Date de début invalide.", "error")
+        elif honoraires is False:
+            flash("Honoraires invalides (un montant positif, ex. 12 500,00).", "error")
         elif any(l not in LOTS_VALIDES for l in lots):
             flash("Lot invalide.", "error")
         elif chef_projet_id not in {u["id"] for u in utilisateurs_actifs}:
@@ -181,6 +198,7 @@ def creer():
                 projet_id = projets.create_projet(
                     code=code, nom=nom, phase=phase, chef_projet_id=chef_projet_id,
                     lots=lots, date_debut=date_debut_valide, current_user_id=g.user["id"],
+                    honoraires=honoraires, client=client,
                 )
             except Exception as exc:
                 # Seule une violation d'unicité du code justifie ce message ;
@@ -303,7 +321,11 @@ def editer_informations(projet_id: int):
     date_debut = request.form.get("date_debut") or None
     date_fin = request.form.get("date_fin") or None
     phase_liee_id = request.form.get("phase_liee_id", type=int) or None
+    client, honoraires = _client_et_honoraires()
 
+    if honoraires is False:
+        flash("Honoraires invalides (un montant positif, ex. 12 500,00).", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
     if not nom:
         flash("Le nom du projet est obligatoire.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
@@ -333,6 +355,7 @@ def editer_informations(projet_id: int):
             projet_id, nom=nom, etat=etat, lots=lots,
             date_debut=date_debut_valide, date_fin=date_fin_valide,
             phase_liee_id=phase_liee_id, current_user_id=g.user["id"],
+            honoraires=honoraires, client=client,
         )
     except Exception:
         current_app.logger.exception("Échec inattendu de modification des informations (projet %s)", projet_id)

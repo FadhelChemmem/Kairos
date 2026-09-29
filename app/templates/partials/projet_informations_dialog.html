@@ -1,5 +1,5 @@
 {# Fenêtre flottante "Informations" du projet (retour Fadhel, 2026-09-28,
-   Lot 5) : édite nom/état/lots/dates/phase liée — réservée au chef de
+   Lot 5) : édite nom/client/honoraires/état/lots/dates/phase liée — réservée au chef de
    projet/co-chef (voir peut_gerer dans projet_detail.html, même règle que
    la création de tâche). Même principe que post_dialog.html/projet_dialog.html
    : un clic sur [data-open-informations-dialog] l'ouvre par-dessus la
@@ -38,6 +38,16 @@
       <div class="form-row">
         <label>Phase <span style="font-weight:400; color:var(--text-faint);">— fixe</span></label>
         <div style="font-size:13px; font-weight:600; padding:8px 0;">{{ projet.phase }}</div>
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <div class="form-row">
+        <label for="dialog-info-client">Client</label>
+        <input type="text" id="dialog-info-client" name="client" value="{{ projet.client or 'IPCO' }}" maxlength="150">
+      </div>
+      <div class="form-row">
+        <label for="dialog-info-honoraires">Honoraires</label>
+        <input type="text" id="dialog-info-honoraires" name="honoraires" inputmode="decimal" placeholder="12 500,00" value="{{ montant_fr(projet.honoraires) }}">
       </div>
     </div>
     <div class="form-row">

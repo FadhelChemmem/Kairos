@@ -38,13 +38,6 @@
           <span style="font-size:20px; font-weight:800; letter-spacing:-0.01em;">{{ projet.code }}_{{ projet.nom }}</span>
           <span class="pill" style="background:var(--hover-bg); color:var(--text-secondary);">{{ projet.phase }}</span>
           <span class="pill" style="background:{{ petat.bg }}; color:{{ petat.fg }};">{{ petat.label }}</span>
-          {# Fenêtre "Informations" (retour Fadhel, 2026-09-28, Lot 5) :
-             chef de projet/co-chef seulement, même règle que "+ Tâche". #}
-          {% if peut_gerer %}
-          <button type="button" data-open-informations-dialog title="Modifier les informations du projet" aria-label="Modifier les informations du projet" style="background:none; border:none; cursor:pointer; color:var(--text-faint); padding:2px; display:flex;">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-          </button>
-          {% endif %}
         </div>
         <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; font-size:12.5px; color:var(--text-muted);">
           <span>Lot {% for l in lots %}<strong style="color:var(--text-secondary);">{{ l.code }}</strong>{% if not loop.last %} · {% endif %}{% endfor %}</span>
@@ -62,7 +55,7 @@
           {# Répartition par rôle (retour Fadhel, 2026-09-28, Lot 5) — voir
              v_projet_heures_par_role (schema.sql) : heures loguées par le
              chef/co-chef vs par les autres (intervenants). #}
-          <div style="font-size:10.5px; color:var(--text-faint); margin-top:3px;" title="Réparties par rôle sur ce projet">{{ projet.heures_chef|default(0, true)|round(1) }}h chef · {{ projet.heures_intervenant|default(0, true)|round(1) }}h interv.</div>
+          <div style="font-size:10.5px; color:var(--text-faint); margin-top:3px;" title="{{ heures_courtes(projet.heures_intervenant) }} h intervenants / {{ heures_courtes(projet.heures_chef) }} h chef de projet">{{ heures_interv_chef(projet.heures_intervenant, projet.heures_chef) }} <span style="opacity:0.8;">interv./chef</span></div>
         </div>
         <div style="width:1px; height:32px; background:var(--border-soft);"></div>
         <div>
@@ -81,9 +74,20 @@
 
   <!-- Colonne gauche -->
   <div class="col">
-    <div class="card">
-      <div style="font-size:14px; font-weight:700; margin-bottom:12px;">Informations</div>
+    {# Panneau Informations (retour Fadhel, 2026-09-28/29, PR5/PR6) :
+       client, honoraires et heures "intervenants/chef" en clair ; pour le
+       chef de projet/co-chef, un clic sur le panneau ouvre la fenêtre de
+       modification (à la place de l'ancien crayon de l'en-tête). #}
+    <div class="card{% if peut_gerer %} carte-cliquable{% endif %}"{% if peut_gerer %} data-open-informations-dialog role="button" tabindex="0" title="Modifier les informations du projet"{% endif %}>
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <span style="font-size:14px; font-weight:700;">Informations</span>
+        {% if peut_gerer %}<span style="font-size:11.5px; font-weight:700; color:var(--brand-text);">Modifier</span>{% endif %}
+      </div>
       <div style="display:flex; flex-direction:column; gap:10px; font-size:12.5px;">
+        <div style="display:flex; justify-content:space-between; gap:10px;"><span style="color:var(--text-muted);">Client</span><span style="font-weight:600; text-align:right;">{{ projet.client or 'IPCO' }}</span></div>
+        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Honoraires</span><span style="font-weight:600;">{{ montant_fr(projet.honoraires) or '—' }}</span></div>
+        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Heures intervenants</span><span style="font-weight:600;">{{ heures_courtes(projet.heures_intervenant) }} h</span></div>
+        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Heures chef de projet</span><span style="font-weight:600;">{{ heures_courtes(projet.heures_chef) }} h</span></div>
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Phase</span><span style="font-weight:600;">{{ projet.phase }}</span></div>
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Lot</span><span style="font-weight:600;">{{ lots|map(attribute='code')|join(' · ') }}</span></div>
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">État</span><span style="font-weight:600; color:{{ petat.fg }};">{{ petat.label }}</span></div>
@@ -159,10 +163,9 @@
             {% if t.date_echeance %}{{ t.date_echeance|date_courte }}{% endif %}
             {% if t.type_deadline == 'interne' %}<span style="color:var(--text-faint);">#interne</span>{% endif %}
           </span>
-          {# Répartition par rôle en infobulle (retour Fadhel, 2026-09-28,
-             Lot 5) — pas assez de place dans la ligne pour l'afficher en
-             clair, voir v_tache_heures_par_role (schema.sql). #}
-          <span style="font-size:12px; color:var(--text-muted);" title="{{ t.heures_chef|default(0, true)|round(1) }}h chef · {{ t.heures_intervenant|default(0, true)|round(1) }}h interv.">{{ t.heures_cumulees|default(0, true)|round(1) }} h</span>
+          {# "8/5 h" en clair = heures intervenants / heures chef de projet
+             (retour Fadhel, J.docx, PR4) — voir v_tache_heures_par_role. #}
+          <span style="font-size:12px; color:var(--text-muted); white-space:nowrap;" title="{{ heures_courtes(t.heures_intervenant) }} h intervenants / {{ heures_courtes(t.heures_chef) }} h chef de projet">{{ heures_interv_chef(t.heures_intervenant, t.heures_chef) }}</span>
           <span class="taskrow-ouvrir" aria-hidden="true">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
           </span>

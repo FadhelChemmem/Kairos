@@ -206,7 +206,8 @@ CREATE TABLE projet (
   chef_projet_id   BIGINT NOT NULL REFERENCES utilisateur(id),
   phase_liee_id    BIGINT REFERENCES projet(id), -- ex. le 24091X (EXE) pointe vers le 24091D (DCE)
   equipe_code      VARCHAR(20) REFERENCES equipe(code), -- équipe "propriétaire" du projet, pour la visibilité (2026-09-16, voir plus bas) ; proposée automatiquement (équipe du chef de projet) à la création, modifiable
-  honoraires       NUMERIC(12,2),           -- réservé, non exploité en étape 1
+  honoraires       NUMERIC(12,2),           -- montant des honoraires, saisi par le chef de projet (migration 0010)
+  client           VARCHAR(150) NOT NULL DEFAULT 'IPCO', -- migration 0010 (retour Fadhel : « IPCO » par défaut)
   created_by       BIGINT REFERENCES utilisateur(id),
   updated_by       BIGINT REFERENCES utilisateur(id),
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -836,5 +837,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0006_heures_par_role'),
   ('0007_commentaires_reseau_social'),
   ('0008_dailylog_jour'),
-  ('0009_fil_information_commentaires')
+  ('0009_fil_information_commentaires'),
+  ('0010_projet_client')
 ON CONFLICT (version) DO NOTHING;

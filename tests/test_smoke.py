@@ -2689,14 +2689,16 @@ class SmokeTestCase(SmokeBase):
         self.assertIn("v_tache_heures_par_role", inspect.getsource(taches_repo.get_tache))
 
     def test_repartition_heures_affichee_sur_la_page_projet(self):
-        """Rendu réel (pas juste la requête) : la répartition par rôle
-        apparaît bien dans l'en-tête (près du bouton Informations) et en
-        infobulle sur chaque ligne de tâche."""
+        """Rendu réel : "8/5 h" en clair = heures intervenants / heures chef
+        de projet (retour Fadhel, J.docx, PR4) — en-tête, panneau
+        Informations (PR5) et chaque ligne de tâche."""
         resp = self._get("/projets/1")
         self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"180.0h chef", resp.data)
-        self.assertIn(b"302.0h interv.", resp.data)
-        self.assertIn(b'title="4.0h chef', resp.data)
+        body = resp.data.decode()
+        self.assertIn("302/180 h", body)             # en-tête
+        self.assertIn("Heures intervenants", body)  # panneau Informations
+        self.assertIn("Heures chef de projet", body)
+        self.assertIn(">8/4 h<", body)              # tâche 5 : 8 h interv., 4 h chef
 
     def test_repartition_heures_affichee_sur_la_liste_projets(self):
         resp = self._get("/projets", **{
@@ -2709,7 +2711,7 @@ class SmokeTestCase(SmokeBase):
             }],
         })
         self.assertEqual(resp.status_code, 200)
-        self.assertIn(b'title="13.0h chef', resp.data)
+        self.assertIn(">15/13 h<", resp.data.decode())
 
     def test_repartition_heures_aucune_ligne_ne_plante_pas(self):
         """Même précaution que PROJET_SANS_HEURES/TACHE_SANS_HEURES pour
@@ -5216,6 +5218,97 @@ class TestPostsAutomatiquesEtProjet(SmokeBase):
         self.assertIn("2 dernières semaines", body)
         self.assertIn("semaines=3#posts", body)
         self.assertIn("semaines=3#dailylog", body)
+
+
+
+class TestProjetClientHonoraires(SmokeBase):
+    """Projet : client (« IPCO » par défaut) et honoraires, visibles de tous
+    ceux qui voient le projet ; panneau Informations cliquable pour le chef
+    de projet (retours Fadhel, Remarques du 2026-09-28 / J.docx — PR3,
+    PR5, PR6 ; migration 0010)."""
+
+    def _post(self, url, data, **overrides):
+        """Les mocks du test (create_projet/update_projet) sont démarrés
+        APRÈS les défauts de _patched, pour l'emporter sur eux."""
+        self._login()
+        patchers = self._patched(**overrides)
+        for p in patchers:
+            p.start()
+        try:
+            with patch("app.repositories.projets.create_projet", self.mock_create), \
+                 patch("app.repositories.projets.update_projet", self.mock_update):
+                return self.client.post(url, data=data)
+        finally:
+            for p in reversed(patchers):
+                p.stop()
+
+    def setUp(self):
+        super().setUp()
+        from unittest.mock import MagicMock
+        self.mock_create = MagicMock(return_value=42)
+        self.mock_update = MagicMock(return_value=None)
+
+    def test_creation_avec_client_et_honoraires(self):
+        resp = self._post("/projets/nouveau", {"nom": "Tour", "code": "26099X", "phase": "EXE",
+                                               "chef_projet_id": "1", "client": "  SOGEA ",
+                                               "honoraires": "12 500,5"})
+        self.assertEqual(resp.status_code, 302)
+        kwargs = self.mock_create.call_args.kwargs
+        self.assertEqual(kwargs["client"], "SOGEA")
+        self.assertEqual(str(kwargs["honoraires"]), "12500.50")
+
+    def test_creation_client_vide_devient_ipco(self):
+        self._post("/projets/nouveau", {"nom": "Tour", "code": "26099X", "phase": "EXE",
+                                        "chef_projet_id": "1", "client": "", "honoraires": ""})
+        self.assertEqual(self.mock_create.call_args.kwargs["client"], "IPCO")
+        self.assertIsNone(self.mock_create.call_args.kwargs["honoraires"])
+
+    def test_honoraires_invalides_refuses(self):
+        for valeur in ("abc", "-5", "1e30"):
+            with self.subTest(valeur=valeur):
+                self._post("/projets/nouveau", {"nom": "T", "code": "26099X", "phase": "EXE",
+                                                "chef_projet_id": "1", "honoraires": valeur})
+                self._post("/projets/1/informations", {"nom": "T", "etat": "en_cours", "honoraires": valeur})
+                self.mock_create.assert_not_called()
+                self.mock_update.assert_not_called()
+
+    def test_edition_des_informations_avec_client_et_honoraires(self):
+        self._post("/projets/1/informations", {"nom": "Tour", "etat": "en_cours", "lots": ["GO"],
+                                               "client": "IPCO", "honoraires": "8000"})
+        self.assertEqual(self.mock_update.call_args.kwargs["client"], "IPCO")
+        self.assertEqual(str(self.mock_update.call_args.kwargs["honoraires"]), "8000.00")
+
+    def test_panneau_informations_client_honoraires_et_clic(self):
+        projet = {**PROJET, "client": "SOGEA", "honoraires": 12500.5}
+        body = self._get("/projets/1", **{"app.repositories.projets.get_projet": projet}).data.decode()
+        self.assertIn("SOGEA", body)
+        self.assertIn("12\u202f500,50", body)
+        self.assertIn('card carte-cliquable" data-open-informations-dialog', body)
+        self.assertIn('name="client" value="SOGEA"', body)
+        self.assertIn('name="honoraires" inputmode="decimal" placeholder="12 500,00" value="12\u202f500,50"', body)
+        body = self._get("/projets/1", **{"app.repositories.projets.get_projet": projet,
+                                          "app.repositories.projets.user_can_manage": False}).data.decode()
+        self.assertIn("SOGEA", body)  # visible de tous ceux qui voient le projet
+        self.assertNotIn("data-open-informations-dialog", body)
+
+    def test_fenetre_nouveau_projet_client_ipco_par_defaut(self):
+        body = self._get("/projets").data.decode()
+        self.assertIn('id="dialog-projet-client" name="client" value="IPCO"', body)
+        self.assertIn('id="dialog-projet-honoraires"', body)
+
+    def test_formats(self):
+        from decimal import Decimal
+        from app.utils import heures_interv_chef, montant_fr, parser_montant
+        self.assertEqual(parser_montant("12 500,50 €"), Decimal("12500.50"))
+        self.assertEqual(parser_montant("7.5"), Decimal("7.50"))
+        self.assertIsNone(parser_montant("  "))
+        for mauvais in ("x", "-1", "nan", "inf"):
+            with self.assertRaises(ValueError):
+                parser_montant(mauvais)
+        self.assertEqual(montant_fr(Decimal("12500.00")), "12\u202f500")
+        self.assertEqual(montant_fr(None), "")
+        self.assertEqual(heures_interv_chef(8, 5), "8/5 h")
+        self.assertEqual(heures_interv_chef(7.25, None), "7,2/0 h")
 
 
 if __name__ == "__main__":

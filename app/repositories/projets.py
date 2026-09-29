@@ -101,6 +101,7 @@ def list_projets(
     """
     sql = """
         SELECT p.id, p.code, p.nom, p.phase, p.etat, p.date_debut, p.date_fin,
+               p.client, p.honoraires,
                u.prenom AS chef_prenom, u.nom AS chef_nom, u.id AS chef_id,
                u.avatar_chemin AS chef_avatar_chemin,
                COALESCE(
@@ -237,7 +238,7 @@ def get_projet(projet_id: int) -> dict | None:
     """Détail d'un projet (en-tête de la page projet)."""
     sql = """
         SELECT p.id, p.code, p.nom, p.phase, p.etat, p.date_debut, p.date_fin,
-               p.honoraires, p.chef_projet_id, p.phase_liee_id,
+               p.honoraires, p.client, p.chef_projet_id, p.phase_liee_id,
                u.prenom AS chef_prenom, u.nom AS chef_nom,
                u.avatar_chemin AS chef_avatar_chemin,
                pl.code AS phase_liee_code, pl.nom AS phase_liee_nom,
@@ -262,6 +263,8 @@ def update_projet(
     date_fin=None,
     phase_liee_id: int | None = None,
     current_user_id: int | None = None,
+    honoraires=None,
+    client: str = "IPCO",
 ) -> None:
     """Édition des informations du projet — fenêtre flottante
     "Informations" (retour Fadhel, 2026-09-28), réservée au chef de
@@ -283,10 +286,11 @@ def update_projet(
         cur.execute(
             """
             UPDATE projet
-            SET nom = %s, etat = %s, date_debut = %s, date_fin = %s, phase_liee_id = %s
+            SET nom = %s, etat = %s, date_debut = %s, date_fin = %s, phase_liee_id = %s,
+                honoraires = %s, client = %s
             WHERE id = %s
             """,
-            (nom, etat, date_debut, date_fin, phase_liee_id, projet_id),
+            (nom, etat, date_debut, date_fin, phase_liee_id, honoraires, client, projet_id),
         )
         # Post automatique quand l'état change (retour Fadhel, 2026-09-29,
         # P1), dans la même transaction.
@@ -520,6 +524,8 @@ def create_projet(
     phase_liee_id: int | None = None,
     equipe_code: str | None = None,
     current_user_id: int | None = None,
+    honoraires=None,
+    client: str = "IPCO",
 ) -> int:
     """`equipe_code` (2026-09-16) : équipe "propriétaire" du projet, utilisée
     pour la visibilité (voir v_projet_visibilite dans schema.sql). Si non
@@ -532,11 +538,13 @@ def create_projet(
     with db.get_cursor(user_id=current_user_id) as cur:
         cur.execute(
             """
-            INSERT INTO projet (code, nom, phase, chef_projet_id, date_debut, phase_liee_id, equipe_code, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO projet (code, nom, phase, chef_projet_id, date_debut, phase_liee_id, equipe_code,
+                                created_by, honoraires, client)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
-            (code, nom, phase, chef_projet_id, date_debut, phase_liee_id, equipe_code, current_user_id),
+            (code, nom, phase, chef_projet_id, date_debut, phase_liee_id, equipe_code, current_user_id,
+             honoraires, client),
         )
         projet_id = cur.fetchone()["id"]
         for lot_code in lots:

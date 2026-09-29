@@ -11,7 +11,7 @@
 
 <div class="card table-scroll" style="padding:8px 18px;">
   <div style="display:grid; grid-template-columns:1.2fr 80px 130px 1fr 90px 110px 90px; gap:10px; padding:10px 4px; font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em; border-bottom:1px solid var(--border-soft);">
-    <span>Projet</span><span>Phase</span><span>Lots</span><span>Chef de projet</span><span>Heures</span><span>Deadlines</span><span>État</span>
+    <span>Projet</span><span>Phase</span><span>Lots</span><span>Chef de projet</span><span title="Heures intervenants / heures chef de projet">Heures i/c</span><span>Deadlines</span><span>État</span>
   </div>
   {% for p in projets %}
     {% set st = projet_etat_style(p.etat) %}
@@ -26,10 +26,8 @@
         {{ avatarm.avatar(p.chef_id, p.chef_prenom, p.chef_nom, p.chef_avatar_chemin, css_class='avatar avatar-sm') }}
         {{ p.chef_prenom }} {{ p.chef_nom }}
       </span>
-      {# Répartition par rôle en infobulle (retour Fadhel, 2026-09-28, Lot
-         5) — pas assez de place en colonne pour l'afficher en clair, voir
-         v_projet_heures_par_role (schema.sql). #}
-      <span style="font-size:12.5px; color:var(--text-muted);" title="{{ p.heures_chef|default(0, true)|round(1) }}h chef · {{ p.heures_intervenant|default(0, true)|round(1) }}h interv.">{{ p.heures_cumulees|default(0, true)|round(1) }} h</span>
+      {# "8/5 h" = heures intervenants / heures chef de projet (PR4). #}
+      <span style="font-size:12.5px; color:var(--text-muted); white-space:nowrap;" title="{{ heures_courtes(p.heures_intervenant) }} h intervenants / {{ heures_courtes(p.heures_chef) }} h chef de projet">{{ heures_interv_chef(p.heures_intervenant, p.heures_chef) }}</span>
       <span style="font-size:12px; color:var(--text-muted);">{% if p.prochaine_echeance %}{{ p.prochaine_echeance|date_courte }}{% endif %}</span>
       <span class="pill" style="background:{{ st.bg }}; color:{{ st.fg }}; width:fit-content;">{{ st.label }}</span>
     </a>

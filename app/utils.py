@@ -305,6 +305,46 @@ def texte_avec_mentions(contenu: str | None, mentions: list[dict] | None):
     return Markup(html)
 
 
+def parser_montant(texte: str | None):
+    """Montant saisi à la française ("12 500,50", "12500.5", "12 500 €")
+    → Decimal arrondi au centime, None si vide. ValueError si invalide ou
+    négatif (honoraires du projet, migration 0010)."""
+    from decimal import Decimal, InvalidOperation
+
+    brut = (texte or "").strip()
+    if not brut:
+        return None
+    nettoye = "".join(c for c in brut if c not in " \u00a0\u202f€").replace(",", ".")
+    try:
+        valeur = Decimal(nettoye)
+    except InvalidOperation:
+        raise ValueError(texte) from None
+    if not valeur.is_finite() or valeur < 0 or valeur >= Decimal("10000000000"):
+        raise ValueError(texte)
+    return valeur.quantize(Decimal("0.01"))
+
+
+def montant_fr(valeur) -> str:
+    """12500.5 → "12 500,50" (espace fine insécable pour les milliers)."""
+    if valeur is None or valeur == "":
+        return ""
+    texte = f"{float(valeur):,.2f}".replace(",", "\u202f").replace(".", ",")
+    return texte[:-3] if texte.endswith(",00") else texte
+
+
+def heures_courtes(valeur) -> str:
+    """7.5 → "7,5" ; 8.0 → "8" (heures affichées "8/5 h")."""
+    v = round(float(valeur or 0), 1)
+    return (f"{v:.0f}" if v == int(v) else f"{v:.1f}".replace(".", ","))
+
+
+def heures_interv_chef(interv, chef) -> str:
+    """"8/5 h" = 8 h intervenants / 5 h chef de projet (retour Fadhel,
+    J.docx : « 8/5 h pour 8 heure intervenant et 5 heure chef de projet »)
+    — projets, tâches et panneau Informations."""
+    return f"{heures_courtes(interv)}/{heures_courtes(chef)} h"
+
+
 def register(app):
     """Rend ces helpers disponibles directement dans les templates Jinja2."""
     app.jinja_env.globals.update(
@@ -323,6 +363,9 @@ def register(app):
         is_image_filename=is_image_filename,
         personnes_recentes_d_abord=personnes_recentes_d_abord,
         texte_avec_mentions=texte_avec_mentions,
+        heures_interv_chef=heures_interv_chef,
+        heures_courtes=heures_courtes,
+        montant_fr=montant_fr,
         zip=zip,
         # Date du jour côté serveur (retour Fadhel, 2026-09-28) — appelée
         # dans les templates comme today() pour préremplir l'échéance de

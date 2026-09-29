@@ -11,12 +11,22 @@
   var dialog = document.getElementById('dialog-informations-projet');
   if (!dialog) return;
 
-  document.querySelectorAll('[data-open-informations-dialog]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      if (typeof dialog.showModal === 'function') {
-        dialog.showModal();
-      } else {
-        dialog.setAttribute('open', 'open');
+  function ouvrir() {
+    if (typeof dialog.showModal === 'function') {
+      dialog.showModal();
+    } else {
+      dialog.setAttribute('open', 'open');
+    }
+  }
+
+  // Déclencheur : le panneau "Informations" de la page projet lui-même
+  // (2026-09-29, PR6) — cliquable, et au clavier (Entrée/Espace).
+  document.querySelectorAll('[data-open-informations-dialog]').forEach(function (el) {
+    el.addEventListener('click', ouvrir);
+    el.addEventListener('keydown', function (e) {
+      if ((e.key === 'Enter' || e.key === ' ') && e.target === el) {
+        e.preventDefault();
+        ouvrir();
       }
     });
   });

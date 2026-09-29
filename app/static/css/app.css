@@ -238,7 +238,7 @@ a:hover { color: var(--brand-text-strong); }
 
 .taskrow, .thead {
   display: grid;
-  grid-template-columns: 1fr 96px 108px 118px 56px 34px;
+  grid-template-columns: 1fr 96px 108px 118px 72px 24px;
   align-items: center; gap: 10px;
 }
 .taskrow { padding: 11px 4px; border-bottom: 1px solid var(--border-soft); }
@@ -247,6 +247,9 @@ a:hover { color: var(--brand-text-strong); }
 .taskrow-cliquable:hover { background: var(--hover-bg); }
 .taskrow-cliquable:focus-visible { outline: 2px solid #4a7c59; outline-offset: -2px; }
 .taskrow-ouvrir { display: flex; justify-content: center; }
+.carte-cliquable { cursor: pointer; transition: border-color 0.12s; }
+.carte-cliquable:hover { border-color: var(--border-hover); }
+.carte-cliquable:focus-visible { outline: 2px solid #4a7c59; outline-offset: 2px; }
 .tache-dialog { max-width: 480px; }
 .tache-dialog-actions select { width: 100%; }
 .taskrow:last-child { border-bottom: none; }
