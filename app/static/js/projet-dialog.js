@@ -22,9 +22,9 @@
       dialog.close();
     });
   });
-  // Clic sur le fond (backdrop) : ferme, sauf si un texte a déjà été saisi
-  // (nom/code) — même règle commune que les autres fenêtres flottantes,
-  // voir floating-window.js.
+  // Clic sur le fond (backdrop) : ferme, sauf si un champ a été modifié
+  // depuis l'ouverture — le code proposé prérempli ne bloque plus la
+  // fermeture (retour Fadhel, 2026-09-29, N1) ; voir floating-window.js.
   window.KairosFloatingWindow.attacherFermetureAuFond(dialog);
 
   // Code proposé recalculé à chaque changement de phase (même logique que

@@ -2533,6 +2533,21 @@ class SmokeTestCase(unittest.TestCase):
         pos_post_dialog = body.index("js/post-dialog.js")
         self.assertLess(pos_floating, pos_post_dialog)
 
+    def test_fenetres_flottantes_comparent_a_l_ouverture(self):
+        """N1 (retour Fadhel, 2026-09-29) : une fenêtre dont un champ est
+        prérempli (code proposé, fiche projet) doit quand même se fermer au
+        clic extérieur tant que rien n'a été changé — la règle commune
+        compare à l'état capturé à l'ouverture, et les trois fenêtres
+        l'utilisent (comportement réel vérifié sous Playwright)."""
+        import pathlib
+        js = pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / "js"
+        commun = (js / "floating-window.js").read_text(encoding="utf-8")
+        self.assertIn("aEteModifiee", commun)
+        self.assertNotIn("aDuContenu", commun)
+        for fichier in ("post-dialog.js", "projet-dialog.js", "projet-informations-dialog.js"):
+            with self.subTest(fichier=fichier):
+                self.assertIn("attacherFermetureAuFond(dialog)", (js / fichier).read_text(encoding="utf-8"))
+
     def test_login_rend_la_session_permanente(self):
         """"Reste connecté" (retour Fadhel) : sans session.permanent = True,
         Flask pose un cookie qui expire à la fermeture du navigateur."""

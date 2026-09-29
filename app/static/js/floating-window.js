@@ -1,48 +1,69 @@
 // Règle commune à TOUTES les fenêtres flottantes de l'appli (retour
 // Fadhel, 2026-09-28 : "On fait ça sur toutes les fenêtres flottantes.") —
-// un clic à l'extérieur ne doit PAS fermer la fenêtre si elle contient du
-// texte saisi par l'utilisateur (on perdrait la saisie) : il faut alors
-// passer par le bouton de fermeture explicite (X / Annuler). Si elle est
-// vide, le clic extérieur ferme normalement, comme avant.
+// un clic à l'extérieur ne doit PAS fermer la fenêtre si l'utilisateur y a
+// changé quelque chose (on perdrait sa saisie) : il faut alors passer par
+// le bouton de fermeture explicite (X / Annuler). Sans modification, le
+// clic extérieur ferme normalement.
 //
-// Utilisé par post-dialog.js aujourd'hui (la fenêtre "Nouveau post"), et
-// à réutiliser par toute future fenêtre flottante du même genre (édition
-// "Informations" du projet, "Nouveau projet"…) plutôt que de réécrire
-// cette règle à chaque fois.
+// Revu le 2026-09-29 (retour Fadhel, point N1) : la version précédente
+// bloquait dès qu'un champ texte était NON VIDE — donc toujours, pour une
+// fenêtre dont un champ est prérempli (code proposé de "Nouveau projet",
+// valeurs actuelles d'une fiche…). On compare maintenant à l'état des
+// champs capturé à l'OUVERTURE de la fenêtre : seul un vrai changement
+// protège la fenêtre.
 window.KairosFloatingWindow = (function () {
-  // Compte comme "contenu" : un champ texte ou une zone de texte non vide
-  // (hors champs désactivés), ou un fichier choisi dans un champ file.
-  // Volontairement PAS les champs date/select/case à cocher/puces — préremplir
-  // l'échéance à aujourd'hui (voir post_dialog.html) ne doit pas, à lui
-  // seul, bloquer la fermeture d'une fenêtre par ailleurs vide.
-  function aDuContenu(container) {
-    var champsTexte = container.querySelectorAll(
-      'input[type="text"]:not([disabled]), input[type="url"]:not([disabled]), ' +
-      'input[type="email"]:not([disabled]), input[type="tel"]:not([disabled]), ' +
-      'textarea:not([disabled])'
-    );
-    for (var i = 0; i < champsTexte.length; i++) {
-      if (champsTexte[i].value.trim() !== '') return true;
-    }
-    var champsFichier = container.querySelectorAll('input[type="file"]');
-    for (var j = 0; j < champsFichier.length; j++) {
-      if (champsFichier[j].files && champsFichier[j].files.length > 0) return true;
-    }
-    return false;
+  // État de tous les champs de `container` : valeur des champs
+  // texte/date/select (sélection multiple triée), cases cochées, fichiers
+  // choisis. Les champs cachés sont ignorés (remplis par le code, pas
+  // par l'utilisateur).
+  function capturer(container) {
+    var etat = [];
+    container.querySelectorAll('input, select, textarea').forEach(function (el) {
+      if (el.type === 'hidden' || el.disabled) return;
+      var v;
+      if (el.type === 'checkbox' || el.type === 'radio') {
+        v = el.checked ? '1' : '0';
+      } else if (el.type === 'file') {
+        v = el.files ? String(el.files.length) : '0';
+      } else if (el.multiple) {
+        v = Array.prototype.map.call(el.selectedOptions, function (o) { return o.value; }).sort().join(',');
+      } else {
+        v = el.value;
+      }
+      etat.push((el.name || el.id || '') + '=' + v);
+    });
+    return etat.join('\u0001');
+  }
+
+  function memoriser(container) {
+    container._kairosInstantane = capturer(container);
+  }
+
+  function aEteModifiee(container) {
+    if (container._kairosInstantane === undefined) return false;
+    return capturer(container) !== container._kairosInstantane;
   }
 
   // Ferme `dialogEl` (un <dialog> natif) au clic sur son propre fond
-  // (backdrop) — sauf si elle contient du texte saisi, auquel cas seul un
-  // bouton de fermeture explicite marche. Le clic sur le backdrop d'un
-  // <dialog> se détecte via `e.target === dialogEl` (le contenu réel est
-  // toujours dans un élément enfant, jamais le <dialog> lui-même).
+  // (backdrop) — sauf si l'utilisateur y a changé quelque chose depuis
+  // l'ouverture. L'état de référence est capturé automatiquement à chaque
+  // ouverture (attribut `open`), après que le déclencheur a prérempli les
+  // champs ; setTimeout laisse chip-select.js/search-combobox.js finir
+  // d'initialiser leurs <select> masqués.
   function attacherFermetureAuFond(dialogEl) {
+    new MutationObserver(function () {
+      if (dialogEl.hasAttribute('open')) {
+        setTimeout(function () { memoriser(dialogEl); }, 0);
+      }
+    }).observe(dialogEl, { attributes: true, attributeFilter: ['open'] });
+    if (dialogEl.hasAttribute('open')) memoriser(dialogEl);
+
     dialogEl.addEventListener('click', function (e) {
       if (e.target !== dialogEl) return;
-      if (aDuContenu(dialogEl)) return;
+      if (aEteModifiee(dialogEl)) return;
       dialogEl.close();
     });
   }
 
-  return { aDuContenu: aDuContenu, attacherFermetureAuFond: attacherFermetureAuFond };
+  return { memoriser: memoriser, aEteModifiee: aEteModifiee, attacherFermetureAuFond: attacherFermetureAuFond };
 })();

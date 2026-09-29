@@ -86,10 +86,10 @@
       dialog.close();
     });
   });
-  // Clic sur le fond (backdrop) du <dialog> : ferme, SAUF si la fenêtre
-  // contient du texte saisi (retour Fadhel, 2026-09-28 — voir
-  // floating-window.js, règle commune à toutes les fenêtres flottantes).
-  // Il faut alors passer par "Annuler"/le X pour fermer explicitement.
+  // Clic sur le fond (backdrop) du <dialog> : ferme, SAUF si un champ a
+  // été modifié depuis l'ouverture (voir floating-window.js, règle commune
+  // à toutes les fenêtres flottantes). Il faut alors passer par
+  // "Annuler"/le X pour fermer explicitement.
   window.KairosFloatingWindow.attacherFermetureAuFond(dialog);
 
   // Retour visuel du glisser-déposer pour la pièce jointe (panneau Requête) —
