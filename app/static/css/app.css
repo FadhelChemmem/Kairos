@@ -1007,3 +1007,10 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
 .warn-banner-text { font-size: 12.5px; color: var(--warn-text); }
 .warn-banner a { font-size: 12.5px; font-weight: 700; margin-left: auto; color: var(--warn-text); text-decoration: underline; }
 .pill-warn { background: var(--warn-bg); color: var(--warn-text); }
+
+/* « avec » + pastilles des personnes ajoutées à un post (lot 8). */
+.post-avec { display: flex; align-items: center; gap: 8px; margin: 0 0 10px 46px; font-size: 12px; color: var(--text-muted); }
+.post-avec .avatar-stack { display: flex; align-items: center; }
+.post-avec .avatar-stack a { display: flex; }
+.post-avec .avatar-stack a + a .avatar-sm { margin-left: -6px; }
+.post-avec-nom { color: var(--text-secondary); font-weight: 600; }

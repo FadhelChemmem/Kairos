@@ -5884,5 +5884,38 @@ class TestDecisionsLot7(SmokeBase):
         self.assertIn("Sami B a rejoint votre projet « Tour Meridian » comme co-chef", args[2])
 
 
+
+class TestLot8(SmokeBase):
+    """Retours Fadhel du lot 8 : personnes « avec » d'un post, code de phase
+    liée, contrôle des saisies."""
+
+    def _requete(self, methode, chemin, data=None, espions=(), **overrides):
+        return TestDecisionsLot7._requete(self, methode, chemin, data, espions, **overrides)
+
+    def test_post_montre_avec_et_les_pastilles_des_personnes_ajoutees(self):
+        feed = [{**FEED_POST_MANUEL, "mentions": [
+            {"id": 3, "prenom": "Omar", "nom": "Aziz", "avatar_chemin": None},
+            {"id": 5, "prenom": "Rim", "nom": "Jlassi", "avatar_chemin": None}]}]
+        body = self._requete("get", "/accueil", **{"app.repositories.posts.list_feed_mes_projets": feed})[0].data.decode()
+        bloc = body.split('class="post-avec"')[1][:1500]
+        self.assertIn("<span>avec</span>", bloc)
+        self.assertIn('title="Omar Aziz">OA</div>', bloc)
+        self.assertIn('title="Rim Jlassi"', bloc)
+
+    def test_personnes_avec_incluent_les_intervenants_d_une_tache_creee(self):
+        from app.repositories import posts as posts_repo
+        self.assertIn("WHERE p.evenement = 'creation_tache' AND ti.tache_id = p.tache_id", posts_repo._FEED_SELECT)
+
+    def test_personnes_ajoutees_notifiees(self):
+        _, mocks = self._requete("post", "/posts", data={"projet_id": "1", "type_code": "requete", "contenu": "x", "mentions": ["3"]},
+                                 espions=[("app.repositories.posts.create_post", 101),
+                                          ("app.repositories.notifications.creer_pour_plusieurs", None)])
+        self.assertEqual(mocks["app.repositories.notifications.creer_pour_plusieurs"].call_args.args[0], [3])
+        _, mocks = self._requete("post", "/projets/1/taches", data={"titre": "T", "intervenants": ["3"]},
+                                 espions=[("app.repositories.taches.create_tache", 9),
+                                          ("app.repositories.notifications.creer_pour_plusieurs", None)])
+        self.assertEqual(mocks["app.repositories.notifications.creer_pour_plusieurs"].call_args.args[0], [3])
+
+
 if __name__ == "__main__":
     unittest.main()

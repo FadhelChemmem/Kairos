@@ -120,11 +120,22 @@ _FEED_SELECT = """
               FROM post_piece_jointe pj WHERE pj.post_id = p.id),
              '[]'
            ) AS pieces_jointes,
+           -- Personnes ajoutées au post, affichées « avec » + pastilles (retour
+           -- Fadhel, lot 8) : les personnes taguées d'une Information ou d'une
+           -- Requête, et pour la création d'une tâche ses intervenants.
            COALESCE(
-             (SELECT json_agg(json_build_object('id', mu.id, 'prenom', mu.prenom, 'nom', mu.nom)
-                               ORDER BY mu.nom)
-              FROM post_mention pm JOIN utilisateur mu ON mu.id = pm.utilisateur_id
-              WHERE pm.post_id = p.id),
+             (SELECT json_agg(json_build_object('id', x.id, 'prenom', x.prenom, 'nom', x.nom,
+                                                'avatar_chemin', x.avatar_chemin)
+                               ORDER BY x.nom, x.prenom)
+              FROM (
+                SELECT mu.id, mu.prenom, mu.nom, mu.avatar_chemin
+                FROM post_mention pm JOIN utilisateur mu ON mu.id = pm.utilisateur_id
+                WHERE pm.post_id = p.id
+                UNION
+                SELECT iu.id, iu.prenom, iu.nom, iu.avatar_chemin
+                FROM tache_intervenant ti JOIN utilisateur iu ON iu.id = ti.utilisateur_id
+                WHERE p.evenement = 'creation_tache' AND ti.tache_id = p.tache_id
+              ) x),
              '[]'
            ) AS mentions,
            parent.contenu AS parent_contenu, parent.type_code AS parent_type_code,

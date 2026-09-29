@@ -188,11 +188,19 @@
     <div style="font-size:13.5px; line-height:1.55; margin:12px 0 12px 46px;">{{ post.contenu }}</div>
   {% endif %}
 
+  {# « avec » + pastilles des personnes ajoutées au post (retour Fadhel,
+     lot 8) : personnes taguées, ou intervenants de la tâche créée — elles
+     reçoivent aussi une notification (routes/posts.py:creer,
+     routes/projets.py:creer_tache). Nom complet au survol. #}
   {% if post.mentions %}
-    <div style="display:flex; flex-wrap:wrap; gap:6px; margin:0 0 8px 46px;">
-      {% for m in post.mentions %}
-        <span class="pill pill-sm" style="background:var(--hover-bg); color:var(--text-secondary);">@{{ m.prenom }} {{ m.nom }}</span>
-      {% endfor %}
+    <div class="post-avec">
+      <span>avec</span>
+      <span class="avatar-stack">
+        {% for m in post.mentions %}
+          <a href="{{ url_for('utilisateurs.profil_personne', user_id=m.id) }}">{{ avatarm.avatar(m.id, m.prenom, m.nom, m.avatar_chemin, css_class='avatar avatar-sm', titre=(m.prenom ~ ' ' ~ m.nom)) }}</a>
+        {% endfor %}
+      </span>
+      {% if post.mentions|length == 1 %}<span class="post-avec-nom">{{ post.mentions[0].prenom }} {{ post.mentions[0].nom }}</span>{% endif %}
     </div>
   {% endif %}
 
