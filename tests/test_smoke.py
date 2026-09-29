@@ -2062,11 +2062,39 @@ class SmokeTestCase(unittest.TestCase):
         deja_rempli = jours_ouvres[:1]
         attendu = sorted(j for j in jours_ouvres if j not in deja_rempli)
 
+        # `maintenant` figé à 10h (revérification du 2026-09-29) : sans ce
+        # paramètre, jours_manques_recents() prend l'heure RÉELLE, et depuis
+        # le Lot 5 ("rouge à partir de 16h") ajoute aujourd'hui à la liste
+        # après 16h — ce test échouait donc seulement quand la suite était
+        # lancée l'après-midi/le soir. Le cas "après 16h" est couvert par le
+        # test suivant.
         with patch("app.repositories.dailylog.db.query_all", return_value=[{"date": j} for j in deja_rempli]):
-            resultat = dailylog_repo.jours_manques_recents(user_id=1, aujourdhui=aujourdhui, fenetre_jours=5)
+            resultat = dailylog_repo.jours_manques_recents(
+                user_id=1, aujourdhui=aujourdhui, fenetre_jours=5,
+                maintenant=datetime.datetime(2026, 9, 21, 10, 0),
+            )
 
         self.assertEqual(resultat, attendu)
         self.assertTrue(all(j.weekday() < 5 for j in resultat))
+
+    def test_jours_manques_recents_ajoute_aujourdhui_seulement_apres_16h(self):
+        """Lot 5 (retour Fadhel, 2026-09-28) : aujourd'hui ne compte comme
+        manquant qu'à partir de 16h, jamais le matin."""
+        from app.repositories import dailylog as dailylog_repo
+
+        lundi = datetime.date(2026, 9, 21)
+        with patch("app.repositories.dailylog.db.query_all", return_value=[]):
+            matin = dailylog_repo.jours_manques_recents(
+                user_id=1, aujourdhui=lundi, fenetre_jours=1,
+                maintenant=datetime.datetime(2026, 9, 21, 15, 59),
+            )
+            apres_16h = dailylog_repo.jours_manques_recents(
+                user_id=1, aujourdhui=lundi, fenetre_jours=1,
+                maintenant=datetime.datetime(2026, 9, 21, 16, 0),
+            )
+
+        self.assertNotIn(lundi, matin)
+        self.assertIn(lundi, apres_16h)
 
     # --- Lot 5 (retour Fadhel, 2026-09-28) : "calendrier à pastilles
     #     vert/bleu/rouge" — voir dailylog.etats_jours_mois. ---

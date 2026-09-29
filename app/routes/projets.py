@@ -167,8 +167,9 @@ def creer():
             flash("Phase invalide.", "error")
         else:
             try:
-                # date_debut_valide (déjà calculée ci-dessus, jamais None ni
-                # False à ce stade : le elif au-dessus intercepte le format
+                # date_debut_valide (déjà calculée ci-dessus : un objet
+                # datetime.date, ou None si le champ est laissé vide — jamais
+                # False à ce stade, le elif au-dessus intercepte le format
                 # invalide avant d'arriver ici) — pas la chaîne brute
                 # date_debut, par cohérence avec le reste du fichier
                 # (modifier_infos()/creer_tache() ci-dessous passent déjà la
