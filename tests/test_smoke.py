@@ -4283,6 +4283,29 @@ class TestJournalAudit(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"Journal d", resp.data)
 
+    def test_requete_type_les_dates_pour_postgres(self):
+        """Bug du 2026-09-29 ("l'onglet Log ne marche pas") : sans filtre de
+        date, « NULL + interval '1 day' » faisait échouer la requête dans
+        Postgres (500 à l'ouverture de la page). Les tests de fumée ne
+        touchent pas de vraie base : verrou textuel sur le correctif,
+        vérifié en réel sur PostgreSQL 16 à la livraison."""
+        import inspect
+        from app.repositories import audit
+        src = inspect.getsource(audit.list_entrees)
+        self.assertIn("%(date_fin)s::date + interval '1 day'", src)
+        self.assertIn("%(date_debut)s::date IS NULL", src)
+        self.assertNotIn("%(date_fin)s + interval", src)
+
+    def test_toutes_les_tables_auditees_sont_filtrables(self):
+        """Chaque table qui a un trigger d'audit dans schema.sql doit être
+        proposée dans le filtre "Table" de la page."""
+        import pathlib, re
+        from app.repositories import audit
+        schema = (pathlib.Path(__file__).resolve().parent.parent / "schema.sql").read_text(encoding="utf-8")
+        tables = set(re.findall(r"CREATE TRIGGER trg_audit_\w+ AFTER INSERT OR UPDATE OR DELETE ON (\w+)", schema))
+        self.assertTrue(tables)
+        self.assertEqual(tables - set(audit.TABLES_AUDITEES), set())
+
     def test_non_admin_refuse_et_nexecute_rien(self):
         """Un chef de projet (ou tout rôle non-admin) est redirigé par
         role_required AVANT d'atteindre le repository — vérifié via un

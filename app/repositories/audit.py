@@ -19,8 +19,8 @@ from .. import db
 TABLES_AUDITEES = [
     "utilisateur", "projet", "projet_lot", "projet_co_chef",
     "projet_intervenant", "tache", "tache_intervenant",
-    "tache_piece_jointe", "dailylog_entree", "post", "post_piece_jointe",
-    "post_mention", "post_commentaire", "post_commentaire_piece_jointe",
+    "tache_piece_jointe", "dailylog_entree", "dailylog_jour", "post", "post_piece_jointe",
+    "post_mention", "post_reaction", "post_commentaire", "post_commentaire_piece_jointe",
 ]
 
 ACTIONS_VALIDES = ["INSERT", "UPDATE", "DELETE"]
@@ -42,8 +42,13 @@ def list_entrees(
         WHERE (%(table_cible)s IS NULL OR a.table_cible = %(table_cible)s)
           AND (%(utilisateur_id)s IS NULL OR a.utilisateur_id = %(utilisateur_id)s)
           AND (%(action)s IS NULL OR a.action = %(action)s)
-          AND (%(date_debut)s IS NULL OR a.created_at >= %(date_debut)s)
-          AND (%(date_fin)s IS NULL OR a.created_at < %(date_fin)s + interval '1 day')
+          -- ::date obligatoire (bug corrigé le 2026-09-29, "l'onglet Log ne
+          -- marche pas") : sans filtre de date, psycopg2 envoie un NULL non
+          -- typé, et « NULL + interval '1 day' » fait échouer TOUTE la
+          -- requête côté Postgres (opérateur ambigu) — la page plantait en
+          -- 500 dès son ouverture.
+          AND (%(date_debut)s::date IS NULL OR a.created_at >= %(date_debut)s::date)
+          AND (%(date_fin)s::date IS NULL OR a.created_at < %(date_fin)s::date + interval '1 day')
         ORDER BY a.created_at DESC, a.id DESC
         LIMIT %(limit)s
     """
