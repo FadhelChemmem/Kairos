@@ -365,21 +365,8 @@ def supprimer_commentaire(commentaire_id: int):
     return _safe_redirect()
 
 
-@bp.route("/<int:post_id>/reposter", methods=["POST"])
-@login_required
-def reposter(post_id: int):
-    """"Reposter" (Lot 5, retour Fadhel, 2026-09-28) — un clic, sans
-    composeur, voir posts_repo.repost(). Un commentaire court est optionnel
-    (façon "citer").
-
-    Plus proposé dans l'interface depuis le 2026-09-29 ("Reposter" ouvre
-    la fenêtre Nouveau post liée, voir creer()) — gardé pour les anciens
-    liens, avec la même règle : pas sur un projet terminé/abandonné."""
-    post = _post_visible_ou_404(post_id)
-    refus = _refus_si_clos(post)
-    if refus:
-        return refus
-    contenu = request.form.get("contenu", "").strip() or None
-    posts_repo.repost(post_id, g.user["id"], contenu)
-    flash("Reposté.", "success")
-    return _safe_redirect()
+# Ancienne route « /posts/<id>/reposter » (repost en un clic) supprimée au
+# lot 7 : plus proposée dans l'interface depuis le 2026-09-29, elle
+# contournait les règles Client / équipe de creer() (le repost copiait le
+# type et les équipes du post d'origine). « Reposter » passe par creer()
+# avec parent_post_id.

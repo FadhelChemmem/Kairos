@@ -84,7 +84,11 @@
         list.appendChild(vide);
       }
       trouves = matches;
-      actif = matches.length ? 0 : -1;
+      // Sans filtre, le choix en cours reste surligné : Entrée juste après
+      // le focus ne change rien (avant : le premier projet de la liste était
+      // choisi en silence). Avec un filtre, le premier résultat.
+      var courant = matches.map(function (o) { return o.value; }).indexOf(select.value);
+      actif = f ? (matches.length ? 0 : -1) : courant;
       matches.forEach(function (o) {
         var item = document.createElement('button');
         item.type = 'button';
@@ -105,6 +109,11 @@
       // déjà réduit à une seule entrée.
       afficher(input.value === labelFor(select.value) ? '' : input.value);
     });
+    // Clic dans le champ déjà actif (liste refermée après un choix) : la
+    // rouvrir, comme au focus.
+    input.addEventListener('click', function () {
+      if (list.hidden) afficher(input.value === labelFor(select.value) ? '' : input.value);
+    });
     input.addEventListener('input', function () { afficher(input.value); });
     // Clavier (audit du 2026-09-29) : flèches pour parcourir, Entrée pour
     // CHOISIR le résultat surligné (avant, Entrée fermait seulement la
@@ -121,7 +130,7 @@
       } else if (evt.key === 'Enter') {
         evt.preventDefault();
         if (!list.hidden && actif >= 0 && trouves[actif]) choisir(trouves[actif]);
-        else { input.value = labelFor(select.value); fermer(); }
+        else { annulerSaisie(); fermer(); }
       } else if (evt.key === 'Escape') {
         input.value = labelFor(select.value);
         fermer();
@@ -136,9 +145,15 @@
     document.addEventListener('click', function (evt) {
       if (!wrap.contains(evt.target)) { fermer(); annulerSaisie(); }
     });
+    // Un clic dans la liste (résultat, barre de défilement) ne fait pas
+    // perdre le focus au champ : quitter le champ (Tab, clic ailleurs) veut
+    // donc toujours dire « abandonner la saisie » — liste fermée, texte
+    // ramené au choix en cours (avant, un Tab laissait la liste ouverte et
+    // « Olivi » affiché alors que l'ancien projet restait choisi).
+    list.addEventListener('mousedown', function (evt) { evt.preventDefault(); });
     input.addEventListener('blur', function () {
-      // Après un éventuel clic dans la liste (traité avant).
-      setTimeout(function () { if (list.hidden) annulerSaisie(); }, 150);
+      fermer();
+      annulerSaisie();
     });
 
     // Texte affiché initial = l'option déjà sélectionnée côté serveur.

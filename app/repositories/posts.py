@@ -54,7 +54,7 @@ _FEED_SELECT = """
            -- "Reposter" (Lot 5, retour Fadhel, 2026-09-28) : distingue au
            -- rendu un repost (post.evenement = 'repost') d'un rebond normal
            -- (parent_post_id renseigné mais evenement NULL) — voir
-           -- posts.repost() / post_card.html.
+           -- post_card.html (reposts faits avant le lot 7).
            (p.evenement = 'repost') AS est_repost,
            -- Posts automatiques (migration 0009) : creation_projet,
            -- etat_projet, etat_tache, titre_tache — voir post_card.html.
@@ -201,11 +201,16 @@ def list_feed_mes_projets(current_user_id: int, limit: int = 30) -> list[dict]:
     sql = _FEED_SELECT + """
         WHERE p.projet_id IN (
             SELECT pj.id FROM projet pj
-            WHERE pj.chef_projet_id = %(uid)s
+            WHERE (
+               -- Rattachements : jamais pour un Client (lot 7), même s'il en
+               -- reste d'avant la migration 0011.
+               NOT EXISTS (SELECT 1 FROM utilisateur ux WHERE ux.id = %(uid)s AND ux.role = 'client')
+               AND (pj.chef_projet_id = %(uid)s
                OR EXISTS (SELECT 1 FROM projet_co_chef cc WHERE cc.projet_id = pj.id AND cc.utilisateur_id = %(uid)s)
                OR EXISTS (SELECT 1 FROM projet_intervenant pi WHERE pi.projet_id = pj.id AND pi.utilisateur_id = %(uid)s)
                OR EXISTS (SELECT 1 FROM tache tt JOIN tache_intervenant ti ON ti.tache_id = tt.id
-                          WHERE tt.projet_id = pj.id AND ti.utilisateur_id = %(uid)s)
+                          WHERE tt.projet_id = pj.id AND ti.utilisateur_id = %(uid)s))
+            )
                -- Client (lot 7) : jamais rattaché, il suit les projets de son équipe.
                OR EXISTS (SELECT 1 FROM utilisateur uc
                           WHERE uc.id = %(uid)s AND uc.role = 'client' AND uc.equipe_code = pj.equipe_code)
@@ -536,42 +541,6 @@ def equipes_du_post(post_id: int) -> list[str]:
     """Codes des équipes destinataires d'une Information sans projet."""
     rows = db.query_all("SELECT equipe_code FROM post_equipe WHERE post_id = %s ORDER BY equipe_code", (post_id,))
     return [r["equipe_code"] for r in rows]
-
-
-def repost(post_id: int, auteur_id: int, contenu: str | None = None) -> int:
-    """"Reposter" (Lot 5, retour Fadhel, 2026-09-28) — distinct du
-    "rebond" (parent_post_id + composeur, une nouvelle Tâche/Requête/etc.
-    liée) : ici, un clic partage À NOUVEAU le post d'origine dans le même
-    projet, avec le même type, et un commentaire court optionnel ajouté
-    par le reposteur (façon "citer" un retweet) — jamais le contenu
-    d'origine dupliqué en clair, le rendu (voir post_card.html) va
-    chercher le post d'origine via parent_post_id, comme pour un rebond.
-    `evenement='repost'` (migration 0007) distingue ce cas d'un rebond
-    normal (evenement NULL) au rendu."""
-    original = get_post(post_id)
-    if original is None:
-        raise ValueError(f"Post {post_id} introuvable")
-    with db.get_cursor(user_id=auteur_id) as cur:
-        cur.execute(
-            """
-            INSERT INTO post (projet_id, parent_post_id, auteur_id, type_code, contenu, evenement)
-            SELECT projet_id, id, %(auteur_id)s, type_code, %(contenu)s, 'repost'
-            FROM post WHERE id = %(post_id)s
-            RETURNING id
-            """,
-            {"auteur_id": auteur_id, "contenu": contenu, "post_id": post_id},
-        )
-        nouveau_id = cur.fetchone()["id"]
-        # Information d'équipe sans projet : le repost va aux mêmes équipes
-        # (sinon seuls l'auteur et les Admin/RH le verraient).
-        cur.execute(
-            """
-            INSERT INTO post_equipe (post_id, equipe_code)
-            SELECT %s, equipe_code FROM post_equipe WHERE post_id = %s
-            """,
-            (nouveau_id, post_id),
-        )
-        return nouveau_id
 
 
 def get_piece_jointe(piece_id: int) -> dict | None:

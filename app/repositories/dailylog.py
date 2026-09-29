@@ -192,6 +192,9 @@ def list_lignes_suggerees(user_id: int) -> dict:
         FROM tache t
         JOIN projet p ON p.id = t.projet_id
         WHERE t.etat NOT IN ('termine', 'abandonne')
+          -- Même règle que les projets proposés (list_projets_pour_dailylog) :
+          -- pas les tâches d'un projet terminé/abandonné (lot 7).
+          AND p.etat = 'en_cours'
           AND EXISTS (
                 SELECT 1 FROM tache_intervenant ti
                 WHERE ti.tache_id = t.id AND ti.utilisateur_id = %s

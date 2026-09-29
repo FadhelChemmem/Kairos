@@ -4704,44 +4704,17 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
 
     # --- "Reposter" ---
 
-    def test_reposter_cree_le_repost_avec_commentaire_optionnel(self):
+    def test_ancienne_route_reposter_supprimee(self):
+        """Lot 7 : elle contournait les règles Client/équipe de creer()."""
         patchers = self._patched()
         for p in patchers:
             p.start()
         try:
-            with patch("app.repositories.posts.repost", return_value=55) as mock_repost:
-                resp = self.client.post("/posts/1/reposter", data={"contenu": "À suivre de près."})
-        finally:
-            for p in reversed(patchers):
-                p.stop()
-        self.assertEqual(resp.status_code, 302)
-        mock_repost.assert_called_once_with(1, 1, "À suivre de près.")
-
-    def test_reposter_sans_commentaire_passe_none(self):
-        patchers = self._patched()
-        for p in patchers:
-            p.start()
-        try:
-            with patch("app.repositories.posts.repost", return_value=55) as mock_repost:
-                resp = self.client.post("/posts/1/reposter", data={})
-        finally:
-            for p in reversed(patchers):
-                p.stop()
-        self.assertEqual(resp.status_code, 302)
-        mock_repost.assert_called_once_with(1, 1, None)
-
-    def test_reposter_404_si_projet_non_visible(self):
-        patchers = self._patched(**{"app.repositories.projets.user_can_view": False})
-        for p in patchers:
-            p.start()
-        try:
-            with patch("app.repositories.posts.repost", return_value=55) as mock_repost:
-                resp = self.client.post("/posts/1/reposter", data={})
+            resp = self.client.post("/posts/1/reposter", data={})
         finally:
             for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 404)
-        mock_repost.assert_not_called()
 
     def test_post_reposte_affiche_le_libelle_et_cite_le_post_dorigine(self):
         """post.est_repost (migration 0007) distingue le rendu d'un rebond
@@ -5469,11 +5442,6 @@ class TestRelectureLot6(SmokeBase):
         self.assertEqual(kwargs["equipe_codes"], ["SS"])  # pas l'équipe Q choisie
         self.assertEqual(kwargs["mentionne_ids"], [3, 1])
 
-    def test_repost_copie_les_equipes(self):
-        import inspect
-        from app.repositories import posts as posts_repo
-        self.assertIn("INSERT INTO post_equipe (post_id, equipe_code)", inspect.getsource(posts_repo.repost))
-
     def test_projet_termine_publication_bloquee_meme_pour_les_chefs(self):
         """Décision Fadhel (lot 7) : plus aucune publication sur un projet
         clos, chef et co-chefs compris."""
@@ -5546,6 +5514,10 @@ class TestAuditV3(SmokeBase):
         js = (pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / "js" / "search-combobox.js").read_text(encoding="utf-8")
         self.assertIn("choisir(trouves[actif])", js)
         self.assertIn("ArrowDown", js)
+        # Relecture lot 7 : Entrée sans saisie garde le choix en cours, et
+        # quitter le champ referme la liste en rétablissant le texte.
+        self.assertIn("actif = f ? (matches.length ? 0 : -1) : courant;", js)
+        self.assertIn("list.addEventListener('mousedown', function (evt) { evt.preventDefault(); });", js)
 
     def test_connexions_sans_jit(self):
         """JIT Postgres coupé pour les connexions de l'appli (page profil lente)."""
@@ -5784,7 +5756,6 @@ class TestDecisionsLot7(SmokeBase):
             ("/posts/1/reagir/supprimer", {}, "app.repositories.posts.remove_reaction"),
             ("/posts/1/commenter", {"contenu": "x"}, "app.repositories.posts.add_comment"),
             ("/posts/commentaires/4/modifier", {"contenu": "b"}, "app.repositories.posts.modifier_commentaire"),
-            ("/posts/1/reposter", {}, "app.repositories.posts.repost"),
         ]
         for chemin, data, espion in cas:
             with self.subTest(chemin=chemin):
