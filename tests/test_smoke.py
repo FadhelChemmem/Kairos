@@ -5567,7 +5567,7 @@ class TestAuditV3(SmokeBase):
 
     def test_rejoindre_tache_visible_sans_survol(self):
         """Écrans tactiles : le bouton "rejoindre la tâche" ne dépend plus du survol."""
-        import pathlib, re
+        import pathlib
         css = (pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / "css" / "app.css").read_text(encoding="utf-8")
         self.assertRegex(css, r"@media \(hover: none\) \{ \.task-join-form \{ opacity: 1; \} \}")
 
@@ -5904,6 +5904,12 @@ class TestLot8(SmokeBase):
 
     def _requete(self, methode, chemin, data=None, espions=(), **overrides):
         return TestDecisionsLot7._requete(self, methode, chemin, data, espions, **overrides)
+
+    def test_taches_du_projet_par_echeance_closes_en_bas(self):
+        import inspect
+        from app.repositories import taches as taches_repo
+        src = inspect.getsource(taches_repo.list_taches_projet)
+        self.assertIn("ORDER BY (t.etat IN ('termine', 'verifie', 'abandonne')),\n                 t.date_echeance NULLS LAST", src)
 
     def test_post_montre_avec_et_les_pastilles_des_personnes_ajoutees(self):
         feed = [{**FEED_POST_MANUEL, "mentions": [
