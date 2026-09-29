@@ -4878,6 +4878,10 @@ class TestInformationEtComposeur(SmokeBase):
         body = resp.data.decode()
         self.assertIn("Publier l'information", body)
         self.assertNotIn("pas encore publiables", body)
+        # Projet vide par défaut sur l'onglet Information, marqué optionnel,
+        # sans texte d'exemple (Remarques/J.docx).
+        self.assertIn("data-projet-optionnel", body)
+        self.assertNotIn("Ex. Le bureau sera fermé", body)
         self.assertIn('value="aucun" data-sans-projet="1"', body)
         self.assertIn('name="equipes"', body)
         # Onglet Tâche selon le projet choisi : MES_PROJETS[0] = chef, [1] = intervenant

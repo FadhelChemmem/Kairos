@@ -39,7 +39,9 @@
 
   {% if projet_id is none %}
     <div class="form-row" data-post-dialog-projet-row>
-      <label for="dialog-post-projet">Projet</label>
+      {# Information : projet vide par défaut, "optionnel" (retour Fadhel,
+         Remarques/J.docx) — voir post-dialog.js. #}
+      <label for="dialog-post-projet">Projet <span data-projet-optionnel style="display:none; font-weight:400; color:var(--text-faint);">— optionnel</span></label>
       {# Champ recherche (retour Fadhel, 2026-09-28) : la liste des
          projets s'allonge, un <select> natif devenait pénible à
          parcourir — voir app/static/js/search-combobox.js. Le <select>
@@ -133,7 +135,7 @@
 
         <div class="form-row">
           <label for="dialog-contenu-information">Information</label>
-          <textarea id="dialog-contenu-information" name="contenu" placeholder="Ex. Le bureau sera fermé le 25 pour jour férié…" required></textarea>
+          <textarea id="dialog-contenu-information" name="contenu" required></textarea>
         </div>
         {% if projet_id is none %}
         <div class="form-row" data-post-dialog-equipes style="display:none;">

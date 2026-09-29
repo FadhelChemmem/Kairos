@@ -23,9 +23,11 @@
 //
 // Règles du sélecteur de projet (retour Fadhel, 2026-09-29) :
 // - "Tâche" seulement pour un projet que je gère (option data-gere="1") ;
-// - "Aucun projet" seulement pour une Information (N5) — choisir "Aucun
-//   projet" bascule sur l'onglet Information, et quitter l'onglet
-//   Information revient au premier projet de la liste ;
+// - "Aucun projet" seulement pour une Information (N5) — c'est même le
+//   choix par défaut de l'onglet Information ("laisser le champ projet
+//   vide avec la possibilité de mettre un projet", marqué optionnel) ;
+//   choisir "Aucun projet" bascule sur l'onglet Information, et quitter
+//   l'onglet Information revient au premier projet de la liste ;
 // - sans projet, le choix des équipes destinataires apparaît.
 (function () {
   var dialog = document.getElementById('dialog-nouveau-post');
@@ -38,6 +40,8 @@
   var projetFigee = dialog.querySelector('[data-post-dialog-projet-figee]');
   var projetFigeeLabel = dialog.querySelector('[data-post-dialog-projet-figee-label]');
   var equipesRow = dialog.querySelector('[data-post-dialog-equipes]');
+  var projetOptionnel = dialog.querySelector('[data-projet-optionnel]');
+  var projetImpose = false;
   var parentBandeau = dialog.querySelector('[data-post-dialog-parent]');
   var parentLabel = dialog.querySelector('[data-post-dialog-parent-label]');
   var tacheActionTemplate = tacheForm ? tacheForm.getAttribute('data-action-template') : null;
@@ -81,14 +85,17 @@
   // Onglets visibles selon le projet choisi et le déclencheur.
   function majOnglets() {
     var pid = projetCourant();
-    var opt = pid ? optionProjet(pid) : null;
     var sansProjet = pid === AUCUN;
+    // Sans projet (onglet Information), Tâche/Requête restent proposés :
+    // les choisir revient au premier projet de la liste — c'est lui qui
+    // décide alors de l'onglet Tâche.
+    var opt = sansProjet ? optionProjet(premierProjet()) : (pid ? optionProjet(pid) : null);
     var gere = gereForce !== null ? gereForce === '1'
       : (!projetSelect || (opt && opt.dataset.gere === '1'));
     ['tache', 'information', 'requete'].forEach(function (intent) {
       var ok = !intentsAutorises || intentsAutorises.indexOf(intent) !== -1;
-      if (intent === 'tache' && (sansProjet || !gere)) ok = false;
-      if (intent === 'requete' && sansProjet) ok = false;
+      if (intent === 'tache' && !gere) ok = false;
+      if (intent !== 'information' && sansProjet && !premierProjet()) ok = false;
       var lab = onglet(intent);
       if (lab) lab.style.display = ok ? '' : 'none';
       var r = radio(intent);
@@ -100,6 +107,7 @@
       if (premier) radio(premier).checked = true;
     }
     if (equipesRow) equipesRow.style.display = (sansProjet && intentCourant() === 'information') ? '' : 'none';
+    if (projetOptionnel) projetOptionnel.style.display = intentCourant() === 'information' ? '' : 'none';
   }
 
   function appliquerProjet() {
@@ -140,6 +148,7 @@
       if (r) { r.disabled = false; r.checked = true; }
 
       var pidImpose = btn.getAttribute('data-projet-id');
+      projetImpose = !!pidImpose;
       if (projetSelect) {
         if (pidImpose) {
           choisirProjet(pidImpose, btn.getAttribute('data-projet-label'));
@@ -151,7 +160,9 @@
         } else {
           if (projetRow) projetRow.style.display = '';
           if (projetFigee) projetFigee.style.display = 'none';
-          if (projetSelect.value === AUCUN && intent !== 'information' && premierProjet()) {
+          if (intent === 'information') {
+            choisirProjet(AUCUN);
+          } else if (projetSelect.value === AUCUN && premierProjet()) {
             choisirProjet(premierProjet());
           }
         }
@@ -181,6 +192,10 @@
 
   dialog.querySelectorAll('.composer-radio').forEach(function (r) {
     r.addEventListener('change', function () {
+      // Onglet Information : projet vide par défaut (s'il n'est pas imposé).
+      if (projetSelect && !projetImpose && intentCourant() === 'information') {
+        choisirProjet(AUCUN);
+      }
       // Quitter l'onglet Information sans projet : revenir à un projet.
       if (projetSelect && projetSelect.value === AUCUN && intentCourant() !== 'information' && premierProjet()) {
         choisirProjet(premierProjet());
