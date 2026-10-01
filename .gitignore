@@ -5,6 +5,7 @@ __pycache__/
 uploads/
 backups/
 *.egg-info/
+.venv/
 .DS_Store
 
 # Sorties de scripts/migrate_from_chronos.py, et dumps de l'ancien Kairos
@@ -16,6 +17,11 @@ migration_sorties/
 identifiants*NE_PAS_COMMITER*.csv
 chronos_*.sql
 migration.sql
+# Sorties datées de la migration du 2026-09-21, posées à la racine (audit
+# du 2026-10-01) : même contenu sensible que ci-dessus.
+migration_kairos_*.sql
+rapport_migration_*.md
+identifiants_*.csv
 
 # Captures d'écran de vérification posées à la racine par erreur (une
 # s'était retrouvée dans le dépôt et dans l'image Docker, audit du

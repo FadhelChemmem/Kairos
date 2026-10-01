@@ -25,6 +25,11 @@ migration_sorties/
 **/identifiants*NE_PAS_COMMITER*.csv
 **/chronos_*.sql
 **/migration.sql
+# Sorties datées de la migration du 2026-09-21 (audit du 2026-10-01) :
+# elles partaient dans l'image via `COPY . .`.
+**/migration_kairos_*.sql
+**/rapport_migration_*.md
+**/identifiants_*.csv
 
 # Pièces jointes déjà uploadées (volume Docker en prod, jamais du contenu
 # à embarquer dans l'image applicative elle-même)
