@@ -717,6 +717,22 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
 .chip-opt.chip-selected { background: var(--brand-bg-soft); border-color: #4a7c59; color: var(--brand-text-strong); }
 .chip-opt.chip-hidden { display: none; }
 
+/* Filtre "Lots" à trois états par puce (data-chip-tristate, voir
+   chip-select.js — retour Fadhel, 2026-10-01) : « contient » reprend
+   l'aspect sélectionné habituel, « = » (uniquement ce lot) est plus marqué
+   (fond plein). Le petit symbole ⊇ / = suit le libellé du lot. */
+.chip-opt.chip-tristate .chip-tristate-mode { font-weight: 800; margin-left: 1px; }
+.chip-opt.chip-tristate.chip-mode-egal {
+  background: #4a7c59; border-color: #4a7c59; color: #ffffff;
+}
+
+/* Noms de personnes cliquables vers leur fiche (retour Fadhel, 2026-10-01) :
+   partout où un nom de personne apparaît, un lien discret vers
+   utilisateurs.profil_personne — le nom se souligne au survol, le reste de
+   la ligne (avatar, rôle) ne change pas. */
+.lien-personne { cursor: pointer; }
+.lien-personne:hover .nom-personne { text-decoration: underline; }
+
 /* Variante "avatar" du sélecteur à puces (data-chip-avatar, voir
    chip-select.js) : puces rondes (initiales colorées ou photo) au lieu de
    texte — utilisée pour "Chef de projet" (retour Fadhel, 2026-09-27) pour

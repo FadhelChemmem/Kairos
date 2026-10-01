@@ -164,8 +164,97 @@
     select.parentNode.insertBefore(wrap, select.nextSibling);
   }
 
+  /* Variante à TROIS états, par puce (retour Fadhel, 2026-10-01) — utilisée
+   * pour le filtre "Lots" de /projets : chaque clic fait défiler
+   *   désélectionné → « contient » (projets AYANT ce lot, même avec d'autres)
+   *   → « = » (projets n'ayant QUE ce lot) → désélectionné.
+   * Le <select> d'origine ne porte pas de name (il ne se soumet pas) ; le JS
+   * entretient des <input type=hidden> (noms data-name-contient /
+   * data-name-egal) placés DANS le formulaire, lus côté serveur comme deux
+   * listes (voir routes/projets._filtres_liste). L'état initial de chaque
+   * option vient de son data-mode (rendu par le gabarit).
+   */
+  function buildChipTristate(select) {
+    if (select.dataset.chipInit) return;
+    select.dataset.chipInit = '1';
+    select.style.display = 'none';
+
+    var nameContient = select.dataset.nameContient || 'lot_contient';
+    var nameEgal = select.dataset.nameEgal || 'lot_egal';
+    var SYMB = { contient: '⊇', egal: '=' };
+    var MODES = ['', 'contient', 'egal'];
+    var ARIA = {
+      '': ' : non filtré (cliquer : contient ce lot)',
+      contient: ' : contient ce lot (cliquer : uniquement ce lot)',
+      egal: ' : uniquement ce lot (cliquer : retirer le filtre)'
+    };
+
+    var wrap = document.createElement('div');
+    wrap.className = 'chip-select-wrap';
+    var cloud = document.createElement('div');
+    cloud.className = 'chip-cloud';
+    cloud.setAttribute('role', 'group');
+    wrap.appendChild(cloud);
+    // Conteneur des champs cachés soumis avec le formulaire.
+    var hidden = document.createElement('span');
+    hidden.style.display = 'none';
+    wrap.appendChild(hidden);
+
+    var items = [];
+
+    function syncHidden() {
+      hidden.innerHTML = '';
+      items.forEach(function (it) {
+        if (!it.mode) return;
+        var inp = document.createElement('input');
+        inp.type = 'hidden';
+        inp.name = it.mode === 'egal' ? nameEgal : nameContient;
+        inp.value = it.value;
+        hidden.appendChild(inp);
+      });
+    }
+
+    Array.prototype.forEach.call(select.options, function (opt) {
+      var it = { value: opt.value, mode: opt.dataset.mode || '' };
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip-opt chip-tristate';
+      var label = document.createElement('span');
+      label.textContent = opt.textContent;
+      chip.appendChild(label);
+      var badge = document.createElement('span');
+      badge.className = 'chip-tristate-mode';
+      chip.appendChild(badge);
+
+      function render() {
+        chip.classList.toggle('chip-selected', !!it.mode);
+        chip.classList.toggle('chip-mode-contient', it.mode === 'contient');
+        chip.classList.toggle('chip-mode-egal', it.mode === 'egal');
+        badge.textContent = it.mode ? SYMB[it.mode] : '';
+        chip.title = (opt.title ? opt.title + ' — ' : '') + ARIA[it.mode].replace(/^ : /, '');
+        chip.setAttribute('aria-pressed', it.mode ? 'true' : 'false');
+        chip.setAttribute('aria-label', opt.textContent + ARIA[it.mode]);
+      }
+
+      chip.addEventListener('click', function () {
+        it.mode = MODES[(MODES.indexOf(it.mode) + 1) % MODES.length];
+        render();
+        syncHidden();
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+
+      render();
+      cloud.appendChild(chip);
+      items.push(it);
+    });
+
+    syncHidden();
+    select.parentNode.insertBefore(wrap, select.nextSibling);
+  }
+
   function init() {
     document.querySelectorAll('select[data-chip-select]').forEach(buildChipSelect);
+    document.querySelectorAll('select[data-chip-tristate]').forEach(buildChipTristate);
   }
 
   if (document.readyState === 'loading') {

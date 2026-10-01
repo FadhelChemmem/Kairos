@@ -122,7 +122,12 @@ def _filtres_liste():
         etats = request.args.getlist("etat") or None
         phases = request.args.getlist("phase") or None
         chef_ids = [int(v) for v in request.args.getlist("chef_id") if v.isdigit()] or None
-        lots = request.args.getlist("lot") or None
+        # Filtre lots à trois états par lot (retour Fadhel, 2026-10-01) :
+        # "contient" (le projet A ce lot, même parmi d'autres) et "="
+        # (le projet n'a QUE ce lot) — deux listes distinctes. Voir
+        # projets_liste.html (data-chip-tristate) et list_projets.
+        lots_contient = request.args.getlist("lot_contient") or None
+        lots_egal = request.args.getlist("lot_egal") or None
     else:
         etats = ["en_cours", "bloque"]
         phases = list(PHASES)
@@ -131,9 +136,10 @@ def _filtres_liste():
         # par défaut, sans comprendre pourquoi (aucune puce cochée).
         est_chef = any(c["id"] == g.user["id"] for c in chefs_de_projet)
         chef_ids = [g.user["id"]] if est_chef else None
-        lots = None
+        lots_contient = None
+        lots_egal = None
     q = request.args.get("q") or None
-    return etats, phases, chef_ids, lots, q, chefs_de_projet
+    return etats, phases, chef_ids, lots_contient, lots_egal, q, chefs_de_projet
 
 
 @bp.route("")
@@ -142,13 +148,15 @@ def liste():
     refus = _refus_rh()
     if refus:
         return refus
-    etats, phases, chef_ids, lots, q, chefs_de_projet = _filtres_liste()
+    etats, phases, chef_ids, lots_contient, lots_egal, q, chefs_de_projet = _filtres_liste()
     tous = projets.list_projets(
-        user_id=g.user["id"], etats=etats, phases=phases, chef_ids=chef_ids, lots=lots, q=q,
+        user_id=g.user["id"], etats=etats, phases=phases, chef_ids=chef_ids,
+        lots_contient=lots_contient, lots_egal=lots_egal, q=q,
     )
     contexte = dict(
         projets=tous, q=q or "",
-        etats=etats or [], phases=phases or [], chef_ids=chef_ids or [], lots=lots or [],
+        etats=etats or [], phases=phases or [], chef_ids=chef_ids or [],
+        lots_contient=lots_contient or [], lots_egal=lots_egal or [],
         phases_choices=PHASES, utilisateurs_actifs=chefs_de_projet,
     )
     # Rafraîchissement AJAX (retour Fadhel, 2026-09-27) : la recherche/les
@@ -193,9 +201,10 @@ def export_excel():
     refus = _refus_rh()
     if refus:
         return refus
-    etats, phases, chef_ids, lots, q, _ = _filtres_liste()
+    etats, phases, chef_ids, lots_contient, lots_egal, q, _ = _filtres_liste()
     lignes = projets.list_projets(
-        user_id=g.user["id"], etats=etats, phases=phases, chef_ids=chef_ids, lots=lots, q=q, limit=5000,
+        user_id=g.user["id"], etats=etats, phases=phases, chef_ids=chef_ids,
+        lots_contient=lots_contient, lots_egal=lots_egal, q=q, limit=5000,
     )
     classeur = Workbook()
     feuille = classeur.active

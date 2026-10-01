@@ -61,10 +61,12 @@
         <div style="width:1px; height:32px; background:var(--border-soft);"></div>
         <div>
           <div style="font-size:10.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em; margin-bottom:5px; text-align:right;">Chef de projet</div>
-          <div style="display:flex; align-items:center; gap:6px; justify-content:flex-end;">
-            <span style="font-size:12.5px; font-weight:600;">{{ projet.chef_prenom }} {{ projet.chef_nom }}</span>
+          {# Nom cliquable vers la fiche de la personne (retour Fadhel,
+             2026-10-01) — profil_personne, ouvert à tout utilisateur. #}
+          <a href="{{ url_for('utilisateurs.profil_personne', user_id=projet.chef_projet_id) }}" class="lien-personne" style="display:flex; align-items:center; gap:6px; justify-content:flex-end; text-decoration:none; color:inherit;" title="Voir la fiche de {{ projet.chef_prenom }} {{ projet.chef_nom }}">
+            <span class="nom-personne" style="font-size:12.5px; font-weight:600;">{{ projet.chef_prenom }} {{ projet.chef_nom }}</span>
             {{ avatarm.avatar(projet.chef_projet_id, projet.chef_prenom, projet.chef_nom, projet.chef_avatar_chemin, css_class='avatar avatar-md') }}
-          </div>
+          </a>
         </div>
       </div>
     </div>
@@ -317,13 +319,15 @@
       <div style="font-size:14px; font-weight:700; margin-bottom:12px;">Intervenants</div>
       <div style="display:flex; flex-direction:column; gap:12px;">
         {% for iv in intervenants %}
-          <div style="display:flex; align-items:center; gap:10px;">
+          {# Ligne cliquable vers la fiche de la personne (retour Fadhel,
+             2026-10-01). #}
+          <a href="{{ url_for('utilisateurs.profil_personne', user_id=iv.id) }}" class="lien-personne" style="display:flex; align-items:center; gap:10px; text-decoration:none; color:inherit;" title="Voir la fiche de {{ iv.prenom }} {{ iv.nom }}">
             {{ avatarm.avatar(iv.id, iv.prenom, iv.nom, iv.avatar_chemin, css_class='avatar avatar-md') }}
             <div style="flex:1; min-width:0;">
-              <div style="font-size:12.5px; font-weight:600;">{{ iv.prenom }} {{ iv.nom }}</div>
+              <div class="nom-personne" style="font-size:12.5px; font-weight:600;">{{ iv.prenom }} {{ iv.nom }}</div>
               <div style="font-size:11px; color:var(--text-muted);">{{ iv.role_label }}</div>
             </div>
-          </div>
+          </a>
         {% endfor %}
       </div>
       {% if peut_gerer and not projet_clos %}
