@@ -2405,6 +2405,28 @@ class SmokeTestCase(SmokeBase):
         body = resp.data.decode()
         self.assertNotIn('value="en_cours" selected', body)
 
+    def test_projets_liste_filtre_lots_trois_etats_transmis(self):
+        # Retour Fadhel (2026-10-01) : les deux listes du filtre "Lots"
+        # (lot_contient / lot_egal, voir data-chip-tristate) arrivent bien
+        # jusqu'à list_projets. On réutilise le stub DB complet (_patched)
+        # et on espionne list_projets par-dessus (démarré en dernier).
+        self._login()
+        patchers = self._patched()
+        for p in patchers:
+            p.start()
+        spy = patch("app.repositories.projets.list_projets", return_value=[])
+        m = spy.start()
+        patchers.append(spy)
+        try:
+            resp = self.client.get("/projets?filtres_actifs=1&lot_egal=GO&lot_contient=CM")
+        finally:
+            for p in reversed(patchers):
+                p.stop()
+        self.assertEqual(resp.status_code, 200)
+        _, kwargs = m.call_args
+        self.assertEqual(kwargs.get("lots_egal"), ["GO"])
+        self.assertEqual(kwargs.get("lots_contient"), ["CM"])
+
     def test_projets_liste_filtre_chef_de_projet_utilise_les_vrais_chefs(self):
         # Bug corrigé (2026-09-27, retour Fadhel) : le filtre listait tout
         # le monde (UTILISATEURS_ACTIFS) au lieu des seuls chefs de projet
@@ -2670,29 +2692,31 @@ class SmokeTestCase(SmokeBase):
         self.assertIn("p.etat::text = ANY(%(etats)s)", source)
         self.assertIn("p.phase::text = ANY(%(phases)s)", source)
 
-    def test_list_projets_caste_lots_pour_le_filtre_exclusif(self):
-        """Régression P0 (2026-09-28, retour Fadhel) : "Tous les projets"
-        (et "Mes projets → Voir tout", qui pointe vers la même page) était
-        cassée à CHAQUE chargement — 500 systématique. Cause : le filtre
-        "lots" exclusif (Lot 3, 2026-09-27) subscriptait/mesurait
-        %(lots)s sans caster, et quand aucun lot n'est choisi, psycopg2
-        envoie un NULL non typé — `NULL[1]` et `array_length(NULL, 1)`
-        sont des erreurs de SYNTAXE Postgres (contrairement à `x =
-        ANY(NULL)`, qui infère son type via l'opérateur `=` et ne plante
-        pas). Reproduit et corrigé en conditions réelles sur une base
-        Postgres 16 de test (`NULL[1]` -> "syntax error at or near '['",
-        exactement le traceback fourni par Fadhel). On ne peut pas
-        exécuter du vrai SQL ici (psycopg2 indisponible dans ce bac à
-        sable de test), donc on verrouille le texte de la requête."""
+    def test_list_projets_filtre_lots_trois_etats(self):
+        """Filtre "Lots" à trois états par lot (retour Fadhel, 2026-10-01) :
+        deux listes indépendantes — lot_contient (le projet A ce lot, même
+        parmi d'autres) et lot_egal (le projet n'a QUE ces lots). Remplace
+        l'ancien couplage implicite "1 lot = exclusif".
+
+        On verrouille aussi la régression P0 de casting (2026-09-28) : quand
+        aucun lot n'est choisi psycopg2 envoie un NULL non typé, et
+        `array_length(NULL, 1)` est une erreur de SYNTAXE Postgres
+        (contrairement à `x = ANY(NULL)`) — d'où le `::text[]` sur CHAQUE
+        paramètre avant tout array_length/ALL. psycopg2 étant indisponible
+        dans ce bac à sable, on verrouille le texte de la requête."""
         import inspect
 
         from app.repositories import projets as projets_repo
 
         source = inspect.getsource(projets_repo.list_projets)
-        self.assertIn("%(lots)s::text[] IS NULL", source)
-        self.assertIn("array_length(%(lots)s::text[], 1)", source)
-        self.assertIn("(%(lots)s::text[])[1]", source)
-        self.assertIn("ANY(%(lots)s::text[])", source)
+        # "contient" : le projet a tous les lots demandés (parmi d'autres).
+        self.assertIn("%(lots_contient)s::text[] IS NULL", source)
+        self.assertIn("array_length(%(lots_contient)s::text[], 1)", source)
+        self.assertIn("ANY(%(lots_contient)s::text[])", source)
+        # "=" : l'ensemble des lots du projet vaut exactement la liste.
+        self.assertIn("%(lots_egal)s::text[] IS NULL", source)
+        self.assertIn("array_length(%(lots_egal)s::text[], 1)", source)
+        self.assertIn("lot_code <> ALL(%(lots_egal)s::text[])", source)
 
     def test_repartition_heures_par_role_branchee_partout(self):
         """Lot 5 (2026-09-28, retour Fadhel) : "répartition des heures par
@@ -5371,7 +5395,10 @@ class TestPagesLot6(SmokeBase):
 
     def test_tous_les_projets_cm_go_excel_et_rendu(self):
         body = self._get("/projets", **{"app.repositories.projets.list_projets": [self.PROJET_LIGNE]}).data.decode()
-        self.assertIn('<option value="CM" title="Charpente Métallique" >CM</option>', body)
+        # Filtre "Lots" à trois états par puce (data-chip-tristate) depuis le
+        # 2026-10-01 — l'option porte son état initial dans data-mode.
+        self.assertIn('<option value="CM" title="Charpente Métallique" data-mode="">CM</option>', body)
+        self.assertIn('data-chip-tristate data-name-contient="lot_contient" data-name-egal="lot_egal"', body)
         self.assertIn('id="export-excel" href="/projets/export.xlsx"', body)
         self.assertIn('title="Rendu : Note de calcul"', body)
         self.assertIn("filtres-une-ligne", body)

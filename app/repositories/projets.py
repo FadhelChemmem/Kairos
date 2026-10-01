@@ -85,7 +85,8 @@ def list_mes_projets_recents(user_id: int, limit: int = 5) -> list[dict]:
 def list_projets(
     user_id: int, limit: int = 200,
     etats: list[str] | None = None, phases: list[str] | None = None,
-    chef_ids: list[int] | None = None, lots: list[str] | None = None,
+    chef_ids: list[int] | None = None,
+    lots_contient: list[str] | None = None, lots_egal: list[str] | None = None,
     q: str | None = None,
 ) -> list[dict]:
     """Liste complète des projets visibles par `user_id` (vue "Tous les
@@ -158,39 +159,37 @@ def list_projets(
         WHERE (%(etats)s IS NULL OR p.etat::text = ANY(%(etats)s))
           AND (%(phases)s IS NULL OR p.phase::text = ANY(%(phases)s))
           AND (%(chef_ids)s IS NULL OR p.chef_projet_id = ANY(%(chef_ids)s))
-          -- Filtre lots (retour Fadhel, 2026-09-28) : quand UN SEUL lot est
-          -- sélectionné, exclusif — seulement les projets qui N'ONT QUE ce
-          -- lot (pas ceux qui l'ont parmi d'autres). Avec plusieurs lots
-          -- sélectionnés, on garde le comportement "contient au moins un
-          -- de ces lots" (comme avant), le cas exclusif n'ayant été demandé
-          -- que pour la sélection à un seul lot.
+          -- Filtre lots à TROIS états par lot (retour Fadhel, 2026-10-01),
+          -- deux listes indépendantes :
+          --   lot_contient : le projet DOIT avoir chacun de ces lots (parmi
+          --                  d'autres éventuels) — "contient GO".
+          --   lot_egal     : l'ENSEMBLE des lots du projet est exactement
+          --                  cette liste — "= GO" (uniquement ce lot).
+          -- Les deux peuvent être combinés (ET) ; une combinaison
+          -- contradictoire (= GO + contient CM) ne renvoie rien, ce qui est
+          -- le comportement attendu. Remplace l'ancien couplage implicite
+          -- "1 lot coché = exclusif, plusieurs = contient l'un d'eux".
           --
-          -- BUG CORRIGÉ (2026-09-28, retour Fadhel — 500 sur /projets à
-          -- CHAQUE chargement, "Tous les projets" et "Mes projets → Voir
-          -- tout" étant tous deux inutilisables) : quand aucun lot n'est
-          -- sélectionné, psycopg2 envoie %(lots)s comme un NULL non typé,
-          -- et `NULL[1]`/`array_length(NULL, 1)` sont des erreurs de
-          -- syntaxe côté Postgres — contrairement à `x = ANY(NULL)`
-          -- (etats/phases ci-dessus), qui infère le type via l'opérateur
-          -- `=` et ne plante pas. `NULL::text[]` lève l'ambiguïté de type
-          -- AVANT toute subscription/array_length, y compris pour la
-          -- branche jamais atteinte à l'exécution (l'erreur est levée à
-          -- l'analyse de la requête, pas au moment de l'évaluation du OR).
+          -- `::text[]` sur un paramètre NULL lève l'ambiguïté de type AVANT
+          -- toute subscription/array_length (même raison qu'avant : l'erreur
+          -- serait levée à l'analyse de la requête, pas à l'exécution).
           AND (
-                %(lots)s::text[] IS NULL
+                %(lots_contient)s::text[] IS NULL
+                OR (SELECT count(DISTINCT pl.lot_code) FROM projet_lot pl
+                     WHERE pl.projet_id = p.id
+                       AND pl.lot_code = ANY(%(lots_contient)s::text[]))
+                    = array_length(%(lots_contient)s::text[], 1)
+              )
+          AND (
+                %(lots_egal)s::text[] IS NULL
                 OR (
-                     array_length(%(lots)s::text[], 1) = 1
-                     AND EXISTS (
-                           SELECT 1 FROM projet_lot pl2
-                           WHERE pl2.projet_id = p.id AND pl2.lot_code = (%(lots)s::text[])[1]
-                         )
-                     AND (SELECT count(*) FROM projet_lot pl3 WHERE pl3.projet_id = p.id) = 1
-                   )
-                OR (
-                     array_length(%(lots)s::text[], 1) > 1
-                     AND EXISTS (
-                           SELECT 1 FROM projet_lot pl2
-                           WHERE pl2.projet_id = p.id AND pl2.lot_code = ANY(%(lots)s::text[])
+                     (SELECT count(DISTINCT pl.lot_code) FROM projet_lot pl
+                        WHERE pl.projet_id = p.id)
+                       = array_length(%(lots_egal)s::text[], 1)
+                     AND NOT EXISTS (
+                           SELECT 1 FROM projet_lot pl
+                           WHERE pl.projet_id = p.id
+                             AND pl.lot_code <> ALL(%(lots_egal)s::text[])
                          )
                    )
               )
@@ -210,7 +209,8 @@ def list_projets(
     """
     params = {
         "etats": etats or None, "phases": phases or None,
-        "chef_ids": chef_ids or None, "lots": lots or None,
+        "chef_ids": chef_ids or None,
+        "lots_contient": lots_contient or None, "lots_egal": lots_egal or None,
         "q": f"%{q.strip().lower()}%" if q else None,
         "limit": limit, "user_id": user_id,
     }
