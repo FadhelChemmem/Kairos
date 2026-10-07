@@ -49,15 +49,26 @@
 -- ---------------------------------------------------------------------
 -- Fonction utilitaire : mise à jour automatique de updated_at/updated_by
 -- ---------------------------------------------------------------------
+-- Id de l'utilisateur applicatif courant (SET LOCAL app.current_user_id,
+-- voir app/db.py), NULL si absent / vide / invalide (migration 0013).
+CREATE OR REPLACE FUNCTION fn_app_user_id()
+RETURNS BIGINT AS $$
+  SELECT CASE WHEN s ~ '^[0-9]{1,18}$' THEN s::BIGINT END
+  FROM (SELECT current_setting('app.current_user_id', true) AS s) x
+$$ LANGUAGE sql STABLE;
+
+-- updated_by n'est jamais écrasé par NULL quand aucune variable de session
+-- n'est posée (script, migration) : la valeur explicite de la requête, ou
+-- l'auteur précédent, est conservée (migration 0013).
 CREATE OR REPLACE FUNCTION set_updated_at_and_by()
 RETURNS TRIGGER AS $$
+DECLARE
+  v_user_id BIGINT := fn_app_user_id();
 BEGIN
   NEW.updated_at = now();
-  BEGIN
-    NEW.updated_by = current_setting('app.current_user_id', true)::BIGINT;
-  EXCEPTION WHEN OTHERS THEN
-    NEW.updated_by = NULL;
-  END;
+  IF v_user_id IS NOT NULL THEN
+    NEW.updated_by = v_user_id;
+  END IF;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -402,7 +413,6 @@ CREATE TRIGGER trg_dailylog_updated_at
   BEFORE UPDATE ON dailylog_entree
   FOR EACH ROW EXECUTE FUNCTION set_updated_at_and_by();
 
-CREATE INDEX idx_dailylog_user_date ON dailylog_entree(utilisateur_id, date);
 CREATE INDEX idx_dailylog_projet ON dailylog_entree(projet_id);
 CREATE INDEX idx_dailylog_tache ON dailylog_entree(tache_id);
 
@@ -632,14 +642,8 @@ CREATE INDEX idx_tentative_securite_lookup ON tentative_securite (type, cle, cre
 CREATE OR REPLACE FUNCTION fn_audit_log()
 RETURNS TRIGGER AS $$
 DECLARE
-  v_user_id BIGINT;
+  v_user_id BIGINT := fn_app_user_id();
 BEGIN
-  BEGIN
-    v_user_id := current_setting('app.current_user_id', true)::BIGINT;
-  EXCEPTION WHEN OTHERS THEN
-    v_user_id := NULL;
-  END;
-
   -- Le "-" retire une clé du JSON si elle existe (ne fait rien sinon) :
   -- on retire systématiquement mot_de_passe_hash pour ne JAMAIS stocker
   -- de hash de mot de passe dans le journal d'audit, même historique.
@@ -829,15 +833,25 @@ END $$;
 
 
 -- ---------------------------------------------------------------------
--- Dates ordonnées et honoraires positifs (migration 0012, lot 8).
+-- Dates ordonnées et honoraires positifs (migration 0012, lot 8). Chaque
+-- règle ne s'évalue que si SES colonnes changent (migration 0013).
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION fn_check_dates_projet()
 RETURNS TRIGGER AS $$
+DECLARE
+  v_dates_changent BOOLEAN := true;
+  v_honoraires_changent BOOLEAN := true;
 BEGIN
-  IF NEW.date_fin IS NOT NULL AND NEW.date_debut IS NOT NULL AND NEW.date_fin < NEW.date_debut THEN
+  IF TG_OP = 'UPDATE' THEN
+    v_dates_changent := NEW.date_debut IS DISTINCT FROM OLD.date_debut
+                        OR NEW.date_fin IS DISTINCT FROM OLD.date_fin;
+    v_honoraires_changent := NEW.honoraires IS DISTINCT FROM OLD.honoraires;
+  END IF;
+  IF v_dates_changent AND NEW.date_fin IS NOT NULL AND NEW.date_debut IS NOT NULL
+     AND NEW.date_fin < NEW.date_debut THEN
     RAISE EXCEPTION 'Date de fin du projet (%) antérieure à sa date de début (%).', NEW.date_fin, NEW.date_debut;
   END IF;
-  IF NEW.honoraires IS NOT NULL AND NEW.honoraires < 0 THEN
+  IF v_honoraires_changent AND NEW.honoraires IS NOT NULL AND NEW.honoraires < 0 THEN
     RAISE EXCEPTION 'Honoraires négatifs refusés.';
   END IF;
   RETURN NEW;
@@ -879,6 +893,153 @@ CREATE TRIGGER trg_check_dates_tache_maj
 
 
 -- ---------------------------------------------------------------------
+-- Migration 0013 (lot 10) : intégrité, index, garde des comptes Admin,
+-- co-chef automatique. Mêmes définitions que
+-- migrations/0013_rattrapage_et_integrite.sql (une base neuve doit avoir
+-- exactement le catalogue d'une base migrée — vérifié en CI).
+-- ---------------------------------------------------------------------
+-- Une ligne d'heures (ou un post) ne pointe que la tâche de SON projet.
+ALTER TABLE tache ADD CONSTRAINT tache_id_projet_unique UNIQUE (id, projet_id);
+ALTER TABLE dailylog_entree ADD CONSTRAINT dailylog_entree_tache_du_projet_fk
+  FOREIGN KEY (tache_id, projet_id) REFERENCES tache (id, projet_id);
+ALTER TABLE post ADD CONSTRAINT post_tache_du_projet_fk
+  FOREIGN KEY (tache_id, projet_id) REFERENCES tache (id, projet_id);
+-- Pas d'auto-référence.
+ALTER TABLE projet ADD CONSTRAINT projet_phase_liee_pas_soi_meme CHECK (phase_liee_id <> id);
+ALTER TABLE post ADD CONSTRAINT post_parent_pas_soi_meme CHECK (parent_post_id <> id);
+-- Vocabulaires fermés.
+ALTER TABLE notification ADD CONSTRAINT notification_categorie_valide
+  CHECK (categorie IN ('projet', 'rh_info'));
+ALTER TABLE tentative_securite ADD CONSTRAINT tentative_securite_type_valide
+  CHECK (type IN ('connexion', 'connexion_ip', 'mot_de_passe_oublie'));
+ALTER TABLE audit_log ADD CONSTRAINT audit_log_action_valide
+  CHECK (action IN ('INSERT', 'UPDATE', 'DELETE'));
+-- Email : ni vide, ni espaces autour.
+ALTER TABLE utilisateur ADD CONSTRAINT utilisateur_email_forme
+  CHECK (email = btrim(email) AND position('@' IN email) > 1);
+
+-- Compteur de la cloche (notifications non lues).
+CREATE INDEX IF NOT EXISTS idx_notification_non_lues ON notification (utilisateur_id) WHERE NOT lu;
+-- Onglet Log filtré par table, trié par date.
+CREATE INDEX IF NOT EXISTS idx_audit_table_date ON audit_log (table_cible, created_at DESC, id DESC);
+-- « Collaborateurs récents », « Mes projets récents », profil. Composites
+-- et non mono-colonne : un index (auteur_id) seul fait choisir au
+-- planificateur un mauvais plan pour list_mes_projets_recents (x2,5 mesuré).
+CREATE INDEX IF NOT EXISTS idx_post_auteur_projet ON post (auteur_id, projet_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_post_commentaire_auteur_post ON post_commentaire (auteur_id, post_id)
+  INCLUDE (created_at, modifie_le);
+CREATE INDEX IF NOT EXISTS idx_tache_created_by ON tache (created_by);
+-- Jeton « mot de passe oublié » : recherche par empreinte, unique.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_utilisateur_reset_token ON utilisateur (reset_token_hash)
+  WHERE reset_token_hash IS NOT NULL;
+
+-- Décision 1 : le RH ne crée, ne modifie, ne désactive ni ne promeut
+-- jamais un compte Admin ; il reste toujours au moins un Admin actif.
+CREATE OR REPLACE FUNCTION fn_garde_comptes_admin()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_acteur BIGINT := fn_app_user_id();
+  v_role_acteur role_enum;
+BEGIN
+  IF v_acteur IS NOT NULL THEN
+    SELECT role INTO v_role_acteur FROM utilisateur WHERE id = v_acteur;
+    IF v_role_acteur = 'rh' AND (
+         (TG_OP IN ('UPDATE', 'DELETE') AND OLD.role = 'admin')
+      OR (TG_OP IN ('INSERT', 'UPDATE') AND NEW.role = 'admin')
+    ) THEN
+      RAISE EXCEPTION 'Le RH ne peut ni créer, ni modifier, ni désactiver un compte Admin.'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END IF;
+  IF TG_OP IN ('UPDATE', 'DELETE') AND OLD.role = 'admin' AND OLD.actif
+     AND (TG_OP = 'DELETE' OR NEW.role <> 'admin' OR NOT NEW.actif) THEN
+    PERFORM pg_advisory_xact_lock(hashtext('kairos:admins_actifs'));
+    IF NOT EXISTS (SELECT 1 FROM utilisateur WHERE role = 'admin' AND actif AND id <> OLD.id) THEN
+      RAISE EXCEPTION 'Impossible : ce compte est le dernier Admin actif.'
+        USING ERRCODE = 'check_violation';
+    END IF;
+  END IF;
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trg_garde_comptes_admin ON utilisateur;
+CREATE TRIGGER trg_garde_comptes_admin
+  BEFORE INSERT OR UPDATE OR DELETE ON utilisateur
+  FOR EACH ROW EXECUTE FUNCTION fn_garde_comptes_admin();
+
+-- Décision 3 : un chef de projet ajouté comme intervenant d'un projet ou
+-- d'une tâche devient co-chef du projet.
+CREATE OR REPLACE FUNCTION fn_chef_intervenant_co_chef()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO projet_co_chef (projet_id, utilisateur_id)
+  SELECT NEW.projet_id, NEW.utilisateur_id
+  FROM utilisateur u
+  JOIN projet p ON p.id = NEW.projet_id
+  WHERE u.id = NEW.utilisateur_id
+    AND u.role = 'chef_de_projet'
+    AND p.chef_projet_id <> u.id
+  ON CONFLICT DO NOTHING;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trg_chef_intervenant_co_chef ON projet_intervenant;
+CREATE TRIGGER trg_chef_intervenant_co_chef
+  AFTER INSERT ON projet_intervenant
+  FOR EACH ROW EXECUTE FUNCTION fn_chef_intervenant_co_chef();
+
+CREATE OR REPLACE FUNCTION fn_chef_intervenant_tache_co_chef()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO projet_co_chef (projet_id, utilisateur_id)
+  SELECT t.projet_id, NEW.utilisateur_id
+  FROM tache t
+  JOIN projet p ON p.id = t.projet_id
+  JOIN utilisateur u ON u.id = NEW.utilisateur_id
+  WHERE t.id = NEW.tache_id
+    AND u.role = 'chef_de_projet'
+    AND p.chef_projet_id <> u.id
+  ON CONFLICT DO NOTHING;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trg_chef_intervenant_tache_co_chef ON tache_intervenant;
+CREATE TRIGGER trg_chef_intervenant_tache_co_chef
+  AFTER INSERT ON tache_intervenant
+  FOR EACH ROW EXECUTE FUNCTION fn_chef_intervenant_tache_co_chef();
+
+
+-- ---------------------------------------------------------------------
+-- Révocation des sessions (migration 0013, audit sécurité I7) : le cookie de session
+--    porte la « génération » de sessions de son titulaire. La déconnexion
+--    (app/auth.py:logout) et la DÉSACTIVATION d'un compte l'incrémentent :
+--    un cookie copié avant reste refusé, y compris après une réactivation.
+--    Table à part (pas de colonne sur utilisateur) : ni ligne d'audit ni
+--    updated_at réécrit à chaque déconnexion.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS utilisateur_session (
+  utilisateur_id BIGINT PRIMARY KEY REFERENCES utilisateur(id) ON DELETE CASCADE,
+  generation     INTEGER NOT NULL DEFAULT 0
+);
+CREATE OR REPLACE FUNCTION fn_revoquer_sessions_si_desactive()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO utilisateur_session (utilisateur_id, generation) VALUES (NEW.id, 1)
+  ON CONFLICT (utilisateur_id) DO UPDATE SET generation = utilisateur_session.generation + 1;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trg_revoquer_sessions_si_desactive ON utilisateur;
+CREATE TRIGGER trg_revoquer_sessions_si_desactive
+  AFTER UPDATE OF actif ON utilisateur
+  FOR EACH ROW
+  WHEN (OLD.actif AND NOT NEW.actif)
+  EXECUTE FUNCTION fn_revoquer_sessions_si_desactive();
+
+-- ---------------------------------------------------------------------
 -- Migrations déjà intégrées à ce fichier : une base créée depuis
 -- schema.sql les marque comme appliquées, pour que le premier
 -- `flask migrer` ne les rejoue pas (voir app/__init__.py). À compléter à
@@ -886,7 +1047,10 @@ CREATE TRIGGER trg_check_dates_tache_maj
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version     VARCHAR(255) PRIMARY KEY,
-  applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  applied_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Empreinte SHA-256 du fichier, enregistrée par `flask migrer` (0013) :
+  -- une migration modifiée après son application est signalée.
+  checksum    VARCHAR(64)
 );
 INSERT INTO schema_migrations (version) VALUES
   ('0001_equipe_urbs_ipco'),
@@ -900,5 +1064,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0009_fil_information_commentaires'),
   ('0010_projet_client'),
   ('0011_roles_et_projets_clos'),
-  ('0012_controle_des_dates')
+  ('0012_controle_des_dates'),
+  ('0013_rattrapage_et_integrite')
 ON CONFLICT (version) DO NOTHING;
