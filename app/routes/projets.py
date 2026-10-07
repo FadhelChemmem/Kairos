@@ -428,6 +428,7 @@ def detail(projet_id: int):
         taches=liste_taches,
         fil=fil,
         peut_gerer=peut_gerer,
+        etats_reserves=taches.ETATS_RESERVES_GESTION,
         peut_rejoindre_projet=peut_rejoindre_projet,
         projet_clos=projet_clos,
         nb_taches=nb_taches,
@@ -654,13 +655,17 @@ def changer_etat_tache(projet_id: int, tache_id: int):
     OU intervenant affecté à CETTE tâche — le menu d'action de la tâche
     était affiché à tout le monde dans projet_detail.html, sans aucun
     contrôle côté serveur, ce qui permettait à n'importe quel utilisateur
-    connecté de changer l'état de n'importe quelle tâche."""
+    connecté de changer l'état de n'importe quelle tâche.
+
+    Décision du gérant (lot 10) : Vérifiée, Arrêtée et Abandonnée sont
+    réservées au chef titulaire, aux co-chefs et à l'Admin — dans les deux
+    sens (y entrer, en sortir). Un intervenant garde En cours / Bloquée (et
+    Terminée par cloturer_tache). L'état actuel est revérifié sous verrou
+    par taches.set_etat, et en base par le trigger de la migration 0015."""
     if not projets.user_can_view(projet_id, g.user["id"]):
         abort(404)
-    autorise = (
-        projets.user_can_manage(projet_id, g.user["id"])
-        or taches.user_est_intervenant(tache_id, g.user["id"])
-    )
+    peut_gerer = projets.user_can_manage(projet_id, g.user["id"])
+    autorise = peut_gerer or taches.user_est_intervenant(tache_id, g.user["id"])
     if not autorise:
         flash("Seul le chef de projet, un co-chef ou un intervenant de cette tâche peut changer son état.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
@@ -673,8 +678,18 @@ def changer_etat_tache(projet_id: int, tache_id: int):
     if etat not in etats_valides:
         flash("État invalide.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
+    if etat in taches.ETATS_RESERVES_GESTION and not peut_gerer:
+        flash(taches.MESSAGE_ETAT_RESERVE, "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
 
-    if not taches.set_etat(tache_id, projet_id, etat, g.user["id"]):
+    try:
+        trouvee = taches.set_etat(tache_id, projet_id, etat, g.user["id"], peut_gerer=peut_gerer)
+    except Exception as exc:
+        if not taches.est_refus_etat_reserve(exc):
+            raise
+        flash(taches.MESSAGE_ETAT_RESERVE, "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+    if not trouvee:
         flash("Tâche introuvable sur ce projet.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
 
@@ -720,13 +735,14 @@ def cloturer_tache(projet_id: int, tache_id: int):
 
     Même autorisation que changer_etat_tache (PROMPT_CORRECTIONS.md P0 #2),
     plus une validation du tag choisi (un type_code invalide faisait
-    planter la clôture en 500 via une violation de contrainte FK)."""
+    planter la clôture en 500 via une violation de contrainte FK).
+
+    Clôturer une tâche Arrêtée ou Abandonnée la fait sortir d'un état
+    réservé au chef / co-chef / Admin (décision du gérant, lot 10)."""
     if not projets.user_can_view(projet_id, g.user["id"]):
         abort(404)
-    autorise = (
-        projets.user_can_manage(projet_id, g.user["id"])
-        or taches.user_est_intervenant(tache_id, g.user["id"])
-    )
+    peut_gerer = projets.user_can_manage(projet_id, g.user["id"])
+    autorise = peut_gerer or taches.user_est_intervenant(tache_id, g.user["id"])
     if not autorise:
         flash("Seul le chef de projet, un co-chef ou un intervenant de cette tâche peut la clôturer.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
@@ -743,7 +759,15 @@ def cloturer_tache(projet_id: int, tache_id: int):
         flash(erreur, "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
 
-    if taches.close_tache(tache_id, projet_id, g.user["id"], type_code, contenu) is None:
+    try:
+        post_id = taches.close_tache(tache_id, projet_id, g.user["id"], type_code, contenu,
+                                     peut_gerer=peut_gerer)
+    except Exception as exc:
+        if not taches.est_refus_etat_reserve(exc):
+            raise
+        flash(taches.MESSAGE_ETAT_RESERVE, "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
+    if post_id is None:
         flash("Impossible de clôturer cette tâche (introuvable sur ce projet, ou déjà clôturée).", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
 

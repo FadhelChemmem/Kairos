@@ -1133,21 +1133,25 @@ class SmokeTestCase(SmokeBase):
 
     def test_changer_etat_tache_autorise_un_intervenant_de_la_tache(self):
         """Un intervenant affecté à la tâche (mais ni chef ni co-chef) doit
-        pouvoir changer son état — pas seulement le chef/co-chef."""
+        pouvoir changer son état — pas seulement le chef/co-chef. Vers
+        En cours / Bloquée seulement (Vérifiée, Arrêtée et Abandonnée sont
+        réservées au chef, aux co-chefs et à l'Admin — lot 10)."""
         self._login()
         patchers = self._patched(**{
             "app.repositories.projets.user_can_manage": False,
             "app.repositories.taches.user_est_intervenant": True,
-        }) + [patch("app.repositories.taches.set_etat", return_value=True)]
+        })
         for p in patchers:
             p.start()
         try:
-            resp = self.client.post("/projets/1/taches/5/etat", data={"etat": "verifie"}, follow_redirects=False)
+            with patch("app.repositories.taches.set_etat", return_value=True) as set_etat:
+                resp = self.client.post("/projets/1/taches/5/etat", data={"etat": "bloque"}, follow_redirects=False)
         finally:
             for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         self.assertIn("/projets/1", resp.headers["Location"])
+        set_etat.assert_called_once_with(5, 1, "bloque", 1, peut_gerer=False)
 
     def test_changer_etat_tache_introuvable_ne_plante_pas(self):
         """set_etat() renvoie False quand la tâche n'appartient pas à ce
@@ -4663,16 +4667,16 @@ class TestPostsAutomatiquesEtProjet(SmokeBase):
         self.assertEqual(maj[0].args[1], ("en_cours", 1, "bloque"))
         # Vérifié / Arrêt / Abandonné : le projet ne bouge pas.
         cur = self._cur([{"etat": "en_cours"}])
-        taches_repo.set_etat(5, 1, "arret", 1)
+        taches_repo.set_etat(5, 1, "arret", 1, peut_gerer=True)
         self.assertFalse([c for c in cur.execute.call_args_list if c.args[0].startswith("UPDATE projet")])
         # Tâche bloquée close alors qu'il n'en reste aucune autre : débloque.
         cur = self._cur([{"etat": "bloque"}, None, {"id": 1}])
-        taches_repo.set_etat(5, 1, "abandonne", 1)
+        taches_repo.set_etat(5, 1, "abandonne", 1, peut_gerer=True)
         maj = [c for c in cur.execute.call_args_list if c.args[0].startswith("UPDATE projet SET etat")]
         self.assertEqual(maj[0].args[1], ("en_cours", 1, "bloque"))
         # ... mais pas s'il reste une autre tâche bloquée.
         cur = self._cur([{"etat": "bloque"}, {"reste": 1}])
-        taches_repo.set_etat(5, 1, "abandonne", 1)
+        taches_repo.set_etat(5, 1, "abandonne", 1, peut_gerer=True)
         self.assertFalse([c for c in cur.execute.call_args_list if c.args[0].startswith("UPDATE projet")])
 
     def test_meme_etat_pas_de_post_et_tache_inconnue_refusee(self):

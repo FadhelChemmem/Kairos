@@ -21,7 +21,7 @@ class TestEtatProjetSuitTaches(BaseIntegration):
         taches.set_etat(t1, p, "bloque", chef)
         self.assertEqual(self._etat(p), "bloque")
         taches.set_etat(t2, p, "bloque", chef)
-        taches.set_etat(t1, p, "verifie", chef)
+        taches.set_etat(t1, p, "verifie", chef, peut_gerer=True)
         self.assertEqual(self._etat(p), "bloque")       # t2 encore bloquée
         taches.close_tache(t2, p, chef, "information")
         self.assertEqual(self._etat(p), "en_cours")

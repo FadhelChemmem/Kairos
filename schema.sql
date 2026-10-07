@@ -1260,6 +1260,55 @@ $$ LANGUAGE sql IMMUTABLE PARALLEL SAFE;
 
 
 -- ---------------------------------------------------------------------
+-- Migration 0015 (lot 10) : états de tâche réservés. Mêmes définitions que
+-- migrations/0015_etats_taches_reserves.sql (décision du gérant : seuls le
+-- chef titulaire, les co-chefs et l'Admin passent une tâche en Vérifiée,
+-- Arrêtée ou Abandonnée, ou l'en font sortir).
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_garde_etat_tache()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_acteur BIGINT := fn_app_user_id();
+BEGIN
+  IF v_acteur IS NULL OR current_setting('kairos.reprise_historique', true) = 'on' THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE' THEN
+    IF OLD.etat = NEW.etat THEN
+      RETURN NEW;
+    END IF;
+    IF OLD.etat NOT IN ('verifie', 'arret', 'abandonne')
+       AND NEW.etat NOT IN ('verifie', 'arret', 'abandonne') THEN
+      RETURN NEW;
+    END IF;
+  ELSIF NEW.etat NOT IN ('verifie', 'arret', 'abandonne') THEN
+    RETURN NEW;
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM utilisateur u
+    JOIN projet p ON p.id = NEW.projet_id
+    WHERE u.id = v_acteur
+      AND u.actif AND u.role NOT IN ('client', 'rh')
+      AND (u.role = 'admin'
+           OR p.chef_projet_id = u.id
+           OR EXISTS (SELECT 1 FROM projet_co_chef cc
+                      WHERE cc.projet_id = p.id AND cc.utilisateur_id = u.id))
+  ) THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'Tâche % : seuls le chef de projet, un co-chef ou un Admin peuvent la passer en Vérifiée, Arrêtée ou Abandonnée, ou la faire sortir de ces états.',
+    NEW.id
+    USING ERRCODE = 'insufficient_privilege', CONSTRAINT = 'tache_etat_reserve';
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trg_garde_etat_tache ON tache;
+CREATE TRIGGER trg_garde_etat_tache
+  BEFORE INSERT OR UPDATE OF etat ON tache
+  FOR EACH ROW EXECUTE FUNCTION fn_garde_etat_tache();
+
+
+-- ---------------------------------------------------------------------
 -- Migrations déjà intégrées à ce fichier : une base créée depuis
 -- schema.sql les marque comme appliquées, pour que le premier
 -- `flask migrer` ne les rejoue pas (voir app/__init__.py). À compléter à
@@ -1286,5 +1335,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0011_roles_et_projets_clos'),
   ('0012_controle_des_dates'),
   ('0013_rattrapage_et_integrite'),
-  ('0014_dailylog_v9')
+  ('0014_dailylog_v9'),
+  ('0015_etats_taches_reserves')
 ON CONFLICT (version) DO NOTHING;

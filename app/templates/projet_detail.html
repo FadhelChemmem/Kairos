@@ -205,16 +205,26 @@
           <div style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
             {% if t.date_echeance %}Échéance {{ t.date_echeance|date_courte }}{% if t.type_deadline == 'interne' %} · interne{% endif %} · {% endif %}{{ t.intervenants|map(attribute='prenom')|join(', ') or 'Aucun intervenant' }}
           </div>
+          {# États réservés (décision du gérant, lot 10) : Vérifiée, Arrêtée et
+             Abandonnée ne sont proposées qu'au chef de projet, aux co-chefs et à
+             l'Admin (peut_gerer) ; une tâche dans l'un de ces états ne peut
+             être rouverte ou clôturée que par eux. Contrôle serveur :
+             projets.changer_etat_tache / cloturer_tache, migration 0015. #}
+          {% set etat_reserve_verrouille = t.etat in etats_reserves and not peut_gerer %}
           <div class="tache-dialog-actions">
-            {% if t.etat not in ('termine', 'verifie') and peut_agir_tache %}
+            {% if t.etat not in ('termine', 'verifie') and peut_agir_tache and etat_reserve_verrouille %}
+            <span style="font-size:12px; color:var(--text-muted);">Tâche {{ tst.libelle|lower }}&nbsp;: seuls le chef de projet, un co-chef ou un Admin peuvent changer son état.</span>
+            {% elif t.etat not in ('termine', 'verifie') and peut_agir_tache %}
             <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" style="display:flex; gap:6px; margin-bottom:8px;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <select name="etat" aria-label="Nouvel état" style="flex:1;">
                 <option value="en_cours" {{ 'selected' if t.etat == 'en_cours' }}>En cours</option>
                 <option value="bloque" {{ 'selected' if t.etat == 'bloque' }}>Bloquée</option>
+                {% if peut_gerer %}
                 <option value="verifie" {{ 'selected' if t.etat == 'verifie' }}>Vérifiée</option>
                 <option value="arret" {{ 'selected' if t.etat == 'arret' }}>Arrêtée</option>
                 <option value="abandonne" {{ 'selected' if t.etat == 'abandonne' }}>Abandonnée</option>
+                {% endif %}
               </select>
               <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">Appliquer</button>
             </form>
@@ -231,11 +241,13 @@
             </form>
             {% elif t.etat in ('termine', 'verifie') %}
               <span style="font-size:12px; color:var(--text-muted);">Tâche {{ 'vérifiée' if t.etat == 'verifie' else 'terminée' }}{% if t.date_fin %} — clôturée le {{ t.date_fin|date_courte(true) }}{% endif %}</span>
-              {% if peut_agir_tache %}
+              {% if peut_agir_tache and etat_reserve_verrouille %}
+              <div style="font-size:12px; color:var(--text-muted); margin-top:8px;">Seuls le chef de projet, un co-chef ou un Admin peuvent rouvrir une tâche vérifiée.</div>
+              {% elif peut_agir_tache %}
               <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" style="display:flex; gap:6px; margin-top:8px;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <select name="etat" aria-label="Nouvel état" style="flex:1;">
-                  {% if t.etat == 'termine' %}<option value="verifie">Vérifiée</option>{% endif %}
+                  {% if t.etat == 'termine' and peut_gerer %}<option value="verifie">Vérifiée</option>{% endif %}
                   <option value="en_cours">Rouvrir (en cours)</option>
                 </select>
                 <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">Appliquer</button>

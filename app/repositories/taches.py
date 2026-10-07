@@ -9,6 +9,34 @@ elle cassait dès que la tâche était modifiée après sa clôture.
 """
 from .. import db
 
+# États qu'une tâche ne peut prendre OU quitter que par le chef de projet
+# titulaire, un co-chef ou l'Admin (décision du gérant, lot 10) — les
+# intervenants gardent En cours / Terminée / Bloquée. Même liste que le
+# trigger trg_garde_etat_tache (migration 0015), dernier rempart en base.
+ETATS_RESERVES_GESTION = ("verifie", "arret", "abandonne")
+
+MESSAGE_ETAT_RESERVE = (
+    "Seuls le chef de projet, un co-chef ou un Admin peuvent passer une tâche "
+    "en Vérifiée, Arrêtée ou Abandonnée, ou la faire sortir de ces états."
+)
+
+
+class EtatReserve(Exception):
+    """Changement d'état refusé : il touche un état réservé (voir
+    ETATS_RESERVES_GESTION) et l'utilisateur ne gère pas le projet."""
+
+
+def est_refus_etat_reserve(exc: Exception) -> bool:
+    """Vrai si `exc` est le refus du trigger trg_garde_etat_tache (migration
+    0015) — normalement déjà évité par le contrôle de l'appli."""
+    if isinstance(exc, EtatReserve):
+        return True
+    diag = getattr(exc, "diag", None)
+    if getattr(diag, "constraint_name", None) == "tache_etat_reserve":
+        return True
+    # Sans diag (pilote minimal) : code SQLSTATE et texte du trigger.
+    return getattr(exc, "pgcode", None) == "42501" and "Vérifiée, Arrêtée ou Abandonnée" in str(exc)
+
 
 def list_taches_projet(projet_id: int) -> list[dict]:
     sql = """
@@ -337,7 +365,7 @@ def add_intervenant(tache_id: int, projet_id: int, utilisateur_id: int, current_
         return True
 
 
-def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int) -> bool:
+def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, peut_gerer: bool = False) -> bool:
     """Changement d'état simple (En cours / Bloqué / Vérifié / Arrêt /
     Abandonné) — avec un post automatique "ancien état → nouvel état"
     depuis le 2026-09-29 (P1) ; la clôture ("Terminé", voir close_tache)
@@ -354,7 +382,14 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int) -> 
     doit plus afficher une date de fin qui ne correspond plus à rien. Le
     passage à "Vérifié" (étape normale APRÈS la clôture) ou "Abandonné"
     garde en revanche la date de clôture (audit n°2 : elle était effacée
-    à tort dès qu'une tâche terminée était vérifiée)."""
+    à tort dès qu'une tâche terminée était vérifiée).
+
+    `peut_gerer` (décision du gérant, lot 10) : vrai pour le chef titulaire,
+    un co-chef ou l'Admin (projets.user_can_manage). Sans lui, passer la
+    tâche dans un état de ETATS_RESERVES_GESTION ou l'en faire sortir lève
+    EtatReserve — contrôlé sur l'état LU SOUS VERROU, pas sur celui affiché
+    au moment du clic. Faux par défaut : un appelant qui oublie de le
+    préciser n'obtient que les droits d'un intervenant."""
     from ..utils import tache_etat_style
 
     with db.get_cursor(user_id=current_user_id) as cur:
@@ -366,6 +401,8 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int) -> 
         avant = cur.fetchone()
         if avant is None:
             return False
+        if not peut_gerer and (etat in ETATS_RESERVES_GESTION or avant["etat"] in ETATS_RESERVES_GESTION):
+            raise EtatReserve(MESSAGE_ETAT_RESERVE)
         cur.execute(
             """
             UPDATE tache
@@ -447,6 +484,7 @@ def get_piece_jointe(piece_id: int) -> dict | None:
 
 def close_tache(
     tache_id: int, projet_id: int, current_user_id: int, type_code: str, contenu: str | None = None,
+    *, peut_gerer: bool = False,
 ) -> int | None:
     """Clôture une tâche (etat='termine', date_fin=aujourd'hui) et génère
     toujours le post automatique associé, avec le tag choisi par
@@ -465,7 +503,12 @@ def close_tache(
     utilisé pour l'affichage (voir la note en tête de fichier). Retourne
     None (jamais d'exception) si la tâche n'existe pas, n'appartient pas à
     ce projet, ou est déjà clôturée — la route transforme ça en message
-    flash plutôt qu'en erreur 500."""
+    flash plutôt qu'en erreur 500.
+
+    `peut_gerer` : comme pour set_etat, clôturer une tâche Arrêtée ou
+    Abandonnée la fait sortir d'un état réservé — EtatReserve sans lui
+    (décision du gérant, lot 10)."""
+    reserves_hors_cloture = tuple(e for e in ETATS_RESERVES_GESTION if e not in ("termine", "verifie"))
     with db.get_cursor(user_id=current_user_id) as cur:
         _verrouiller_projet(cur, projet_id)
         # `avant` (CTE) : l'état AVANT la clôture — une tâche bloquée qui se
@@ -475,12 +518,19 @@ def close_tache(
             WITH avant AS (SELECT etat FROM tache WHERE id = %s)
             UPDATE tache SET etat = 'termine', date_fin = CURRENT_DATE
             WHERE id = %s AND projet_id = %s AND etat NOT IN ('termine', 'verifie')
+              AND (%s OR etat::text <> ALL (%s))
             RETURNING id, projet_id, titre, (SELECT etat FROM avant) AS ancien_etat
             """,
-            (tache_id, tache_id, projet_id),
+            (tache_id, tache_id, projet_id, peut_gerer, list(reserves_hors_cloture)),
         )
         row = cur.fetchone()
         if row is None:
+            if not peut_gerer:
+                # Rien de clôturé : si c'est à cause d'un état réservé, le dire.
+                cur.execute("SELECT etat FROM tache WHERE id = %s AND projet_id = %s", (tache_id, projet_id))
+                etat = cur.fetchone()
+                if etat is not None and etat["etat"] in reserves_hors_cloture:
+                    raise EtatReserve(MESSAGE_ETAT_RESERVE)
             return None
 
         cur.execute(

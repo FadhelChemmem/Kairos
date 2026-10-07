@@ -282,8 +282,10 @@ def profil_personne(user_id: int):
     # Daily log d'un collègue (audit sécurité I5, lot 10) : spec du 16/09
     # « intervenant = accès limité à ses tâches/Daily log », le chef voit
     # tout (18/09). Visible pour soi-même, l'Admin et le chef de projet ;
-    # plus pour un intervenant. Client : inchangé en attendant la décision
-    # sur ce que voit un Client (audit sécurité I4, question 5 du 05/10).
+    # plus pour un intervenant. Client : visible en lecture (décision du
+    # gérant, fin du lot 10 — le Client voit heures, honoraires et pièces
+    # jointes des projets qu'il voit), limité à ces projets comme pour
+    # tout le monde (projets_visibles_ids).
     voir_daily_log = user_id == viewer_id or g.user["role"] in ("admin", "chef_de_projet", "client")
 
     return render_template(

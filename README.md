@@ -19,7 +19,11 @@ Notifications et fil de posts (étape 1, complète). Flask + PostgreSQL
 - **Nouveau projet** : formulaire de création (code proposé automatiquement,
   modifiable, comme décidé) — `/projets/nouveau`.
 - Tâches : création, changement d'état, clôture (avec le post
-  automatique et son tag, comme décidé).
+  automatique et son tag, comme décidé). Vérifiée, Arrêtée et Abandonnée
+  sont réservées au chef de projet titulaire, aux co-chefs et à l'Admin,
+  pour y entrer comme pour en sortir ; un intervenant de la tâche garde
+  En cours, Bloquée et Terminée (décision du gérant, lot 10 — contrôlé par
+  la route, sous verrou par le repository et en base par la migration 0015).
 - **Composeur "Nouveau post"** (Tâche/Information/Requête) avec personnes
   taguées, lien et pièce jointe en glisser-déposer sur les panneaux
   Information et Requête.
