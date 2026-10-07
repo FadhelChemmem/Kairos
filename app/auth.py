@@ -294,10 +294,11 @@ def login():
         # exemple) pouvait le verrouiller pour tout le monde, à répétition.
         # Lié à l'IP, un attaquant ne verrouille plus que ses propres
         # tentatives ; le vrai propriétaire, depuis son poste, se connecte
-        # toujours. Derrière un reverse proxy, remote_addr n'est la vraie IP
-        # du client que si TRUSTED_PROXY_COUNT est renseigné (voir
-        # app/__init__.py, ProxyFix) — sinon tout le monde partagerait
-        # l'IP du proxy.
+        # toujours. Derrière un reverse proxy, remote_addr est la vraie IP
+        # du client quand la requête arrive d'une adresse de
+        # TRUSTED_PROXY_IPS (avec TRUSTED_PROXY_COUNT > 0, voir
+        # app/proxy.py) ; d'ailleurs, c'est l'adresse TCP directe : un
+        # X-Forwarded-For forgé sur le LAN ne change jamais la clé.
         # tentative_securite.cle est un VARCHAR(255) : un email plus long
         # faisait une erreur 500 (aucun compte ne peut l'avoir de toute façon).
         email = email[:254]

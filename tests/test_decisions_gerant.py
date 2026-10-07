@@ -317,5 +317,129 @@ class TestDecisions1Et4Inchangees(_Base):
         self.assertIn('href="/utilisateurs"', resp.data.decode())
 
 
+# ---------------------------------------------------------------------------
+# Décision 5 : X-Forwarded-* crus seulement depuis TRUSTED_PROXY_IPS
+# ---------------------------------------------------------------------------
+class TestDecision5ProxyDeConfiance(unittest.TestCase):
+    def _app(self, proxys=1, ips="", bind="0.0.0.0", hote=""):
+        from flask import request
+        from app import create_app
+
+        class C(smoke.TestConfig):
+            TRUSTED_PROXY_COUNT = proxys
+            TRUSTED_PROXY_IPS = ips
+            WEB_BIND = bind
+            HOST_IP = hote
+        app = create_app(C)
+
+        @app.route("/_vu")
+        def _vu():
+            return f"{request.remote_addr}|{request.scheme}|{request.headers.get('X-Forwarded-For', '-')}"
+        return app
+
+    def _vu(self, app, adresse, xff="203.0.113.9", proto="https"):
+        resp = app.test_client().get("/_vu", environ_base={"REMOTE_ADDR": adresse},
+                                     headers={"X-Forwarded-For": xff, "X-Forwarded-Proto": proto})
+        return resp.data.decode()
+
+    def test_en_tete_accepte_depuis_une_ip_de_confiance(self):
+        app = self._app(ips="172.16.0.0/12")
+        self.assertEqual(self._vu(app, "172.18.0.5"), "203.0.113.9|https|203.0.113.9")
+
+    def test_en_tete_ignore_depuis_le_lan_avec_avertissement_une_fois(self):
+        app = self._app(ips="172.16.0.0/12")
+        with self.assertLogs("app.proxy", "WARNING") as journal:
+            self.assertEqual(self._vu(app, "192.168.100.50"), "192.168.100.50|http|-")
+            self.assertEqual(self._vu(app, "192.168.100.50", xff="198.51.100.7"), "192.168.100.50|http|-")
+            self._vu(app, "192.168.100.51")
+        self.assertEqual(len(journal.records), 2)  # une fois par adresse
+        self.assertIn("192.168.100.50", journal.output[0])
+        self.assertIn("TRUSTED_PROXY_IPS", journal.output[0])
+
+    def test_sans_en_tete_aucun_avertissement(self):
+        app = self._app(ips="172.16.0.0/12")
+        with patch("app.proxy.logger") as journal:
+            resp = app.test_client().get("/_vu", environ_base={"REMOTE_ADDR": "192.168.100.50"})
+        self.assertEqual(resp.data.decode(), "192.168.100.50|http|-")
+        journal.warning.assert_not_called()
+
+    def test_cidr_ip_seule_et_espaces(self):
+        app = self._app(ips=" 192.168.100.17 , 10.0.0.0/8,")
+        self.assertTrue(self._vu(app, "10.200.3.4").startswith("203.0.113.9|"))
+        self.assertTrue(self._vu(app, "192.168.100.17").startswith("203.0.113.9|"))
+        with self.assertLogs("app.proxy", "WARNING"):
+            self.assertTrue(self._vu(app, "192.168.100.18").startswith("192.168.100.18|"))
+            self.assertTrue(self._vu(app, "172.18.0.5").startswith("172.18.0.5|"))  # pas dans la liste
+
+    def test_liste_vide_defaut_sur_avec_avertissement_au_demarrage(self):
+        with self.assertLogs("app.proxy", "WARNING") as journal:
+            app = self._app(ips="", bind="0.0.0.0")
+        self.assertIn("TRUSTED_PROXY_IPS vide", journal.output[0])
+        self.assertIn("172.16.0.0/12", journal.output[0])
+        for adresse in ("172.17.0.1", "172.31.255.254", "127.0.0.1"):
+            with self.subTest(adresse=adresse):
+                self.assertTrue(self._vu(app, adresse).startswith("203.0.113.9|"))
+        with self.assertLogs("app.proxy", "WARNING"):
+            for adresse in ("192.168.100.50", "192.168.100.17", "172.32.0.1", "10.0.0.5"):
+                self.assertTrue(self._vu(app, adresse).startswith(adresse + "|"))
+
+    def test_liste_vide_avec_ip_de_l_hote(self):
+        with self.assertLogs("app.proxy", "WARNING") as journal:
+            app = self._app(ips="", hote="192.168.100.17")
+        self.assertIn("192.168.100.17", journal.output[0])
+        self.assertTrue(self._vu(app, "192.168.100.17").startswith("203.0.113.9|"))
+        with self.assertLogs("app.proxy", "WARNING"):
+            self.assertTrue(self._vu(app, "192.168.100.50").startswith("192.168.100.50|"))
+
+    def test_web_bind_local_meme_defaut_sans_avertissement(self):
+        with patch("app.proxy.logger") as journal:
+            app = self._app(ips="", bind="127.0.0.1")
+        journal.warning.assert_not_called()
+        self.assertTrue(self._vu(app, "172.17.0.1").startswith("203.0.113.9|"))
+
+    def test_entree_invalide_ignoree_et_signalee(self):
+        with self.assertLogs("app.proxy", "ERROR") as journal:
+            app = self._app(ips="npm.local, 172.16.0.0/12")
+        self.assertIn("npm.local", journal.output[0])
+        self.assertTrue(self._vu(app, "172.20.0.3").startswith("203.0.113.9|"))
+
+    def test_ipv4_vue_en_ipv6(self):
+        from app.proxy import ProxyDeConfiance, analyser_reseaux
+        reseaux, _ = analyser_reseaux("172.16.0.0/12")
+        mw = ProxyDeConfiance(lambda e, s: [], 1, reseaux)
+        self.assertTrue(mw.est_de_confiance("::ffff:172.18.0.2"))
+        self.assertFalse(mw.est_de_confiance("::ffff:192.168.100.50"))
+        self.assertFalse(mw.est_de_confiance("pas-une-ip"))
+
+    def test_sans_proxy_en_tetes_jamais_crus(self):
+        app = self._app(proxys=0, ips="172.16.0.0/12")
+        self.assertTrue(self._vu(app, "172.18.0.5").startswith("172.18.0.5|http|"))
+
+    def _connexion(self, app, adresse):
+        client = app.test_client()
+        with patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
+                patch("app.repositories.securite.enregistrer_tentative") as enregistrer, \
+                patch("app.auth.get_user_by_email", return_value=None):
+            client.post("/connexion", data={"email": "x@t.tn", "password": "faux"},
+                        environ_base={"REMOTE_ADDR": adresse},
+                        headers={"X-Forwarded-For": "203.0.113.9"})
+        return [c.args for c in enregistrer.call_args_list]
+
+    def test_limiteur_ip_reelle_si_confiance_ip_tcp_sinon(self):
+        app = self._app(ips="172.16.0.0/12")
+        self.assertIn(("connexion_ip", "203.0.113.9"), self._connexion(app, "172.18.0.5"))
+        with self.assertLogs("app.proxy", "WARNING"):
+            appels = self._connexion(app, "192.168.100.50")
+        self.assertIn(("connexion_ip", "192.168.100.50"), appels)
+        self.assertIn(("connexion", "x@t.tn|192.168.100.50"), appels)
+
+    def test_docker_compose_et_env_example(self):
+        compose = (RACINE / "docker-compose.yml").read_text(encoding="utf-8")
+        self.assertIn("TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-}", compose)
+        self.assertIn("HOST_IP: ${HOST_IP:-}", compose)
+        exemple = (RACINE / ".env.example").read_text(encoding="utf-8")
+        self.assertIn("\nTRUSTED_PROXY_IPS=", exemple)
+
+
 if __name__ == "__main__":
     unittest.main()

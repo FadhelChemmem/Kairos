@@ -58,8 +58,8 @@ EXPOSE 8000
 # - --worker-tmp-dir /dev/shm : évite les blocages de heartbeat gunicorn
 #   sur un disque lent (NAS).
 # Les en-têtes X-Forwarded-* d'un reverse proxy sont interprétés par
-# l'appli elle-même (ProxyFix, TRUSTED_PROXY_COUNT dans .env), pas par
-# gunicorn.
+# l'appli elle-même (app/proxy.py : TRUSTED_PROXY_COUNT et
+# TRUSTED_PROXY_IPS dans .env), pas par gunicorn.
 #
 # Migrations appliquées AU DÉMARRAGE, avant gunicorn (audit du 2026-09-29) :
 # entre `docker compose up -d --build` et `flask migrer`, personne ne

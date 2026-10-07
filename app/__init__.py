@@ -6,9 +6,8 @@ from flask import Flask, abort, flash, g, redirect, request, url_for
 from flask.logging import default_handler as flask_default_handler
 from flask_wtf.csrf import CSRFError, CSRFProtect
 from werkzeug.exceptions import HTTPException
-from werkzeug.middleware.proxy_fix import ProxyFix
 
-from . import db, utils
+from . import db, proxy, utils
 from .config import Config
 
 # Valeurs d'exemple connues ("copié-collé du .env.example sans y toucher")
@@ -43,28 +42,6 @@ def _valider_secret_key(app: Flask) -> None:
             "ou a été laissée à une valeur d'exemple. Générez-en une nouvelle avec : "
             "python3 -c \"import secrets; print(secrets.token_hex(32))\" "
             "et renseignez-la dans .env (voir .env.example)."
-        )
-
-
-_ADRESSES_LOCALES = {"127.0.0.1", "localhost", "::1", "[::1]"}
-
-
-def _valider_proxy(app: Flask) -> None:
-    """Refuse de démarrer si l'appli croit l'en-tête X-Forwarded-For
-    (TRUSTED_PROXY_COUNT > 0) alors que le port 8000 est publié sur le LAN
-    (WEB_BIND différent de 127.0.0.1) : n'importe qui pourrait alors
-    contacter gunicorn directement, choisir son « IP » à chaque tentative
-    et contourner le limiteur de connexion (audit sécurité I8, lot 10 —
-    40 échecs sur un même compte, 40 IP inventées, aucun blocage).
-    Ignoré en test, comme _valider_secret_key."""
-    if app.testing or not app.config.get("TRUSTED_PROXY_COUNT"):
-        return
-    if (app.config.get("WEB_BIND") or "0.0.0.0").strip() not in _ADRESSES_LOCALES:
-        raise RuntimeError(
-            "TRUSTED_PROXY_COUNT > 0 exige WEB_BIND=127.0.0.1 dans .env : le port 8000 ne "
-            "doit être joignable que par le reverse proxy, sinon l'en-tête X-Forwarded-For "
-            "est falsifiable et le limiteur de connexion contournable. Corrigez .env (ou "
-            "remettez TRUSTED_PROXY_COUNT=0 sans proxy) puis relancez."
         )
 
 
@@ -105,20 +82,14 @@ def create_app(config_class=Config) -> Flask:
         app.logger.addHandler(_handler)
         app.logger.setLevel(logging.INFO)
 
-    # Derrière un reverse proxy HTTPS (APP_BASE_URL en https://...), sans
-    # ProxyFix, request.remote_addr vaut l'IP du proxy pour TOUS les
-    # utilisateurs : la limite de connexions par IP (auth.py) bloquait
-    # alors tout le monde dès 30 échecs, et le schéma/l'hôte vus par
-    # l'appli étaient faux. TRUSTED_PROXY_COUNT = nombre de proxys de
-    # confiance devant l'appli (0 = accès direct, aucun en-tête X-Forwarded-*
-    # n'est cru — sinon n'importe qui pourrait usurper une IP).
-    nb_proxys = app.config.get("TRUSTED_PROXY_COUNT", 0)
-    _valider_proxy(app)
-    if nb_proxys:
-        app.wsgi_app = ProxyFix(
-            app.wsgi_app, x_for=nb_proxys, x_proto=nb_proxys,
-            x_host=nb_proxys, x_port=nb_proxys,
-        )
+    # Derrière un reverse proxy HTTPS, sans lecture des en-têtes
+    # X-Forwarded-*, request.remote_addr vaut l'IP du proxy pour TOUS les
+    # utilisateurs (limiteur de connexion de auth.py bloquant tout le
+    # monde) et le schéma/l'hôte vus par l'appli sont faux. Ces en-têtes ne
+    # sont crus que si la requête arrive d'une adresse de TRUSTED_PROXY_IPS
+    # (décision du gérant, fin du lot 10 — remplace le refus de démarrer
+    # quand WEB_BIND n'était pas 127.0.0.1) : voir app/proxy.py.
+    proxy.installer(app)
 
     if (app.config.get("APP_BASE_URL", "").startswith("https://")
             and not app.config.get("SESSION_COOKIE_SECURE")):

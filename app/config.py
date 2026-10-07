@@ -73,14 +73,22 @@ class Config:
     APP_BASE_URL = os.environ.get("APP_BASE_URL", "").rstrip("/")
 
     # Nombre de reverse proxys de confiance devant l'appli (ex. 1 pour un
-    # nginx/Synology en HTTPS devant gunicorn). 0 = accès direct : les
-    # en-têtes X-Forwarded-* sont alors ignorés. Voir app/__init__.py.
-    TRUSTED_PROXY_COUNT = int(os.environ.get("TRUSTED_PROXY_COUNT", "0") or 0)
+    # Nginx Proxy Manager en HTTPS devant gunicorn). 0 = accès direct : les
+    # en-têtes X-Forwarded-* sont alors ignorés. Voir app/proxy.py.
+    TRUSTED_PROXY_COUNT = int(os.environ.get("TRUSTED_PROXY_COUNT") or 0)
+    # Adresses (IP ou réseaux CIDR, séparés par des virgules) d'où une
+    # requête peut porter des en-têtes X-Forwarded-* crus par l'appli :
+    # l'adresse TCP directe vue par gunicorn, c'est-à-dire celle du proxy
+    # (décision du gérant, fin du lot 10). Vide : réseaux Docker
+    # (172.16.0.0/12) + 127.0.0.1 + HOST_IP, avec un avertissement au
+    # démarrage si le port 8000 est publié sur le LAN. Voir app/proxy.py.
+    TRUSTED_PROXY_IPS = os.environ.get("TRUSTED_PROXY_IPS", "")
+    # IP LAN du serveur (facultative), ajoutée à la liste par défaut
+    # ci-dessus : un proxy de l'hôte peut arriver avec cette adresse.
+    HOST_IP = os.environ.get("HOST_IP", "")
     # Adresse sur laquelle docker-compose.yml publie le port 8000 (WEB_BIND
-    # du .env, transmis au conteneur). Avec TRUSTED_PROXY_COUNT > 0, elle
-    # DOIT être 127.0.0.1 : sinon n'importe qui sur le LAN parle directement
-    # à gunicorn et choisit son X-Forwarded-For (limiteur de connexion
-    # contourné, audit sécurité I8) — voir app/__init__.py.
+    # du .env, transmis au conteneur) : 127.0.0.1 = joignable seulement
+    # depuis le serveur (pas d'avertissement pour la liste par défaut).
     WEB_BIND = os.environ.get("WEB_BIND", "0.0.0.0")
 
     # Protection CSRF (Flask-WTF CSRFProtect, PROMPT_CORRECTIONS.md P2 #25) :

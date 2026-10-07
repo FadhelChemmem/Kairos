@@ -511,8 +511,11 @@ class TestDurcissement(unittest.TestCase):
             WEB_BIND = bind
         return C
 
-    def test_proxy_de_confiance_exige_web_bind_local(self):
-        with self.assertRaises(RuntimeError):
+    def test_proxy_de_confiance_demarre_quel_que_soit_web_bind(self):
+        """Décision du gérant (fin du lot 10) : plus de refus de démarrer ;
+        les en-têtes ne sont crus que depuis TRUSTED_PROXY_IPS (voir
+        tests/test_decisions_gerant.py)."""
+        with self.assertLogs("app.proxy", "WARNING"):
             create_app(self._config(1, "0.0.0.0"))
         create_app(self._config(1, "127.0.0.1"))
         create_app(self._config(0, "0.0.0.0"))

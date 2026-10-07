@@ -87,9 +87,8 @@ cp .env.example .env
 # éditer .env (voir les commentaires dans le fichier) — au minimum :
 #   POSTGRES_PASSWORD, SECRET_KEY (32 caractères minimum, sinon l'appli refuse de démarrer),
 #   APP_BASE_URL et SMTP_* (la création de compte envoie un email pour choisir son mot de passe)
-#   Derrière un reverse proxy HTTPS : SESSION_COOKIE_SECURE=true, TRUSTED_PROXY_COUNT=1, WEB_BIND=127.0.0.1
-#   (TRUSTED_PROXY_COUNT > 0 sans WEB_BIND=127.0.0.1 : l'appli REFUSE de démarrer ; un proxy
-#   en conteneur Docker ou sur une autre machine ne joint pas un port publié sur 127.0.0.1)
+#   Derrière un reverse proxy HTTPS : SESSION_COOKIE_SECURE=true, TRUSTED_PROXY_COUNT=1 et
+#   TRUSTED_PROXY_IPS = adresse(s) du proxy vue(s) par l'appli (voir « Reverse proxy » plus bas)
 
 docker compose up -d --build
 ```
@@ -105,6 +104,42 @@ docker compose exec web flask create-user \
 ```
 
 L'application est ensuite accessible sur `http://<adresse-du-serveur>:8000/`.
+
+### Reverse proxy (HTTPS)
+
+Derrière un reverse proxy (Nginx Proxy Manager…), l'appli lit l'IP réelle
+du client et le `https` dans les en-têtes `X-Forwarded-*` — mais
+**seulement** pour une requête qui arrive d'une adresse de
+`TRUSTED_PROXY_IPS` (IP ou réseaux CIDR séparés par des virgules ; voir
+`app/proxy.py`). Une requête d'une autre adresse (un poste du LAN qui vise
+directement le port 8000) garde son adresse réelle : ces en-têtes sont
+ignorés, le limiteur de connexion compte sur la vraie adresse, et un
+avertissement l'indique une fois dans `docker compose logs web` :
+
+```
+WARNING app.proxy: En-têtes X-Forwarded-* ignorés : requête reçue directement de 172.19.0.4, …
+```
+
+Si l'adresse citée est celle du proxy, l'ajouter à `TRUSTED_PROXY_IPS`
+puis `docker compose up -d`. Pour retrouver l'adresse vue du proxy :
+`docker compose logs web | grep -E "X-Forwarded|GET /"` (la première
+colonne des lignes d'accès de gunicorn est l'adresse TCP vue par l'appli).
+
+`TRUSTED_PROXY_IPS` vide avec `TRUSTED_PROXY_COUNT` > 0 : liste par défaut
+`172.16.0.0/12` (réseaux Docker) + `127.0.0.1` + `HOST_IP` (IP LAN du
+serveur, facultative), avec un avertissement au démarrage si le port 8000
+est publié sur le LAN (`WEB_BIND` ≠ `127.0.0.1`). L'appli démarre dans
+tous les cas.
+
+Exemple (Nginx Proxy Manager en conteneur sur le serveur 192.168.100.17,
+qui renvoie vers le port 8000 publié) :
+
+```
+TRUSTED_PROXY_COUNT=1
+TRUSTED_PROXY_IPS=172.16.0.0/12
+SESSION_COOKIE_SECURE=true
+WEB_BIND=0.0.0.0
+```
 
 ## Mettre à jour (après un `git pull`)
 

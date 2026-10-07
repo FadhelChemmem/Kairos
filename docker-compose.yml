@@ -101,9 +101,16 @@ services:
       APP_BASE_URL: ${APP_BASE_URL:-}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       TRUSTED_PROXY_COUNT: ${TRUSTED_PROXY_COUNT:-0}
-      # Transmis à l'appli pour qu'elle refuse de démarrer si elle croit
-      # X-Forwarded-For (TRUSTED_PROXY_COUNT > 0) alors que le port 8000
-      # reste joignable sans passer par le proxy (audit sécurité I8).
+      # Adresses (IP ou CIDR, séparées par des virgules) d'où les en-têtes
+      # X-Forwarded-* sont crus : celle du reverse proxy telle que vue par
+      # l'appli. Vide : réseaux Docker 172.16.0.0/12 + 127.0.0.1 + HOST_IP
+      # (avertissement au démarrage si le port 8000 est publié sur le LAN).
+      # Une requête d'une autre adresse portant ces en-têtes est signalée
+      # dans `docker compose logs web`, avec l'IP vue (app/proxy.py).
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-}
+      HOST_IP: ${HOST_IP:-}
+      # Transmis à l'appli : avec TRUSTED_PROXY_COUNT > 0, TRUSTED_PROXY_IPS
+      # vide et le port publié sur le LAN, elle prévient au démarrage.
       WEB_BIND: ${WEB_BIND:-0.0.0.0}
       SESSION_DUREE_ABSOLUE_JOURS: ${SESSION_DUREE_ABSOLUE_JOURS:-30}
       # Fuseau horaire (PROMPT_CORRECTIONS.md P2 #16) : sans ça, le
@@ -124,10 +131,12 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
     ports:
-      # WEB_BIND=127.0.0.1 une fois un reverse proxy HTTPS en place sur la
-      # même machine : sinon le port 8000 reste joignable en HTTP simple
-      # depuis le LAN, en contournant le proxy (audit n°2). Par défaut,
-      # accès direct depuis le LAN comme aujourd'hui.
+      # WEB_BIND=127.0.0.1 quand le reverse proxy HTTPS tourne sur la même
+      # machine HORS conteneur : sinon le port 8000 reste joignable en HTTP
+      # simple depuis le LAN, en contournant le proxy (audit n°2). Un proxy
+      # en conteneur qui vise l'IP LAN du serveur garde WEB_BIND=0.0.0.0 :
+      # les en-têtes d'un poste du LAN sont alors ignorés (TRUSTED_PROXY_IPS).
+      # Par défaut, accès direct depuis le LAN.
       - "${WEB_BIND:-0.0.0.0}:8000:8000"
     healthcheck:
       # Pas de curl dans l'image : Python fait la requête.
