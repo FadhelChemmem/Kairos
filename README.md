@@ -130,10 +130,13 @@ erreur `PermissionError: [Errno 13] Permission denied` dans les logs
 appartient à `root` alors que l'appli tourne avec un utilisateur non-root
 (`appuser`, par sécurité) — typique d'un volume créé avant le correctif
 du Dockerfile du 2026-09-20. Se corrige une seule fois, sans perte de
-données :
+données (dans un conteneur ponctuel : depuis le lot 10, le conteneur `web`
+tourne sans aucune capacité Linux, `cap_drop: ALL`, et même `root` n'y
+peut plus changer de propriétaire ; l'image `postgres:16` est déjà
+présente sur la machine, `1000` est l'UID d'`appuser`) :
 
 ```bash
-docker compose exec -u root web chown -R appuser:appuser /app/uploads
+sudo docker run --rm -v kairos_uploads:/u postgres:16 chown -R 1000:1000 /u
 ```
 
 ### Dépannage : renommage des volumes Docker (workflowbook → Kairos, 2026-09-21)

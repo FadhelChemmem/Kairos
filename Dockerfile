@@ -18,9 +18,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # AVANT le montage garantit que Docker copie ces permissions dans le
 # volume à sa toute première création. Sur un volume déjà existant créé
 # avant ce correctif (2026-09-20), un chown manuel une seule fois reste
-# nécessaire : `docker compose exec -u root web chown -R appuser:appuser
-# /app/uploads` — voir le README. UID inchangé (premier utilisateur créé,
-# 1000) : le volume existant reste lisible.
+# nécessaire, HORS du conteneur web (qui tourne sans aucune capacité,
+# cap_drop: ALL — même root n'y peut plus faire de chown) :
+# `sudo docker run --rm -v kairos_uploads:/u postgres:16 chown -R 1000:1000 /u`
+# — voir le README. UID inchangé (premier utilisateur créé, 1000) : le
+# volume existant reste lisible.
 RUN useradd --create-home appuser \
     && mkdir -p /app/uploads \
     && chown appuser:appuser /app/uploads
