@@ -54,13 +54,19 @@ Notifications et fil de posts (étape 1, complète). Flask + PostgreSQL
   de passe depuis "Infos perso" (`/utilisateurs/moi`). Anti-bourrinage
   sur la connexion et la demande de réinitialisation (5 tentatives /
   15 min par email).
-- **DailyLog façon curseur** (`/dailylog`) : répartition visuelle des
-  heures de la journée par glisser-déposer, catalogue d'ajout de ligne,
-  calendrier de navigation, sauvegarde explicite de toute la journée.
+- **Daily log v9** (`/dailylog`, lot 10) : −/+ par 30 min ou saisie au
+  clavier (2,5 · 2h30 · 45min), 10 h au plus par jour, objectif de journée
+  personnel (4 à 10 h, repère non bloquant), jours absents, « Copier le
+  dernier jour rempli », enregistrement automatique au changement de jour
+  et en arrière-plan, calendrier rempli / absent / non renseigné, bannière
+  des jours manqués. Saisie libre aujourd'hui et les 14 jours précédents
+  (au fuseau de la personne : Tunis ou Guyane, réglé sur sa fiche) ;
+  au-delà, correction par le chef de projet (lignes de ses projets) ou
+  l'Admin, tracée à son nom. API JSON : voir `app/routes/dailylog.py`.
 - **Notifications** : cloche dans la barre du haut avec compteur temps
   réel, page `/notifications`, déclenchées par mention (post/commentaire),
   affectation à une tâche, ajout comme intervenant, et rappel automatique
-  si le DailyLog de la veille n'a pas été rempli.
+  si le dernier jour ouvré n'a pas été rempli (le lundi : le vendredi).
 
 **Reste à construire** (étape 2, plus tard) : Congés/Télétravail,
 rôle Client, fil "Information" hors-projet ciblé par équipe.
