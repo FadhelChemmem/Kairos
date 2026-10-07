@@ -242,6 +242,11 @@ jobs:
             echo "APP_BASE_URL=http://127.0.0.1:8000"
             echo "WEB_BIND=127.0.0.1"
           } > .env
+          # Créé ICI, au nom de l'utilisateur du runner : sinon le démon
+          # Docker le crée en root (montage du service sauvegarde-migrations)
+          # et backup_db.sh / restore_db.sh, lancés sans sudo plus bas, ne
+          # peuvent plus y écrire (revue 3 du lot 10).
+          mkdir -p backups
       - name: docker compose config
         run: docker compose config -q
       # Pas de --wait : le service ponctuel sauvegarde-migrations se termine
