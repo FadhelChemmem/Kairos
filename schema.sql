@@ -176,12 +176,14 @@ CREATE TABLE utilisateur (
   actif            BOOLEAN NOT NULL DEFAULT true,   -- false = a quitté l'entreprise (historique conservé)
   champs_perso     JSONB NOT NULL DEFAULT '{}'::jsonb, -- champs additionnels libres ("rajouter des champs")
   avatar_chemin    TEXT, -- photo de profil (chemin relatif sous UPLOAD_DIR, voir app/storage.py) ; NULL = avatar par défaut (initiales), voir app/routes/fichiers.py:avatar
+  fuseau           VARCHAR(40) NOT NULL DEFAULT 'Africa/Tunis', -- bureau de la personne (migration 0014) : « aujourd'hui » du Daily log, fenêtre de 14 jours, rappel
   reset_token_hash        VARCHAR(64), -- empreinte SHA-256 du jeton "mot de passe oublié" envoyé par email (jamais le jeton en clair) ; NULL = pas de réinitialisation en cours
   reset_token_expires_at  TIMESTAMPTZ, -- le jeton n'est valable qu'avant cette date (1h, voir app/auth.py) ; à usage unique, effacé dès qu'il sert
   created_by       BIGINT REFERENCES utilisateur(id), -- admin qui a créé la fiche (NULL pour le tout premier compte)
   updated_by       BIGINT REFERENCES utilisateur(id),
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT utilisateur_fuseau_valide CHECK (fuseau IN ('Africa/Tunis', 'America/Cayenne'))
 );
 CREATE TRIGGER trg_utilisateur_updated_at
   BEFORE UPDATE ON utilisateur
@@ -434,14 +436,22 @@ CREATE TABLE dailylog_jour (
   id             BIGSERIAL PRIMARY KEY,
   utilisateur_id BIGINT NOT NULL REFERENCES utilisateur(id),
   date           DATE NOT NULL,
-  duree_heures   NUMERIC(4,2) NOT NULL DEFAULT 8,
+  duree_heures   NUMERIC(4,2),            -- v2 : durée réglée pour ce jour ; plus écrite depuis la v9 (migration 0014)
   absent         BOOLEAN NOT NULL DEFAULT false,
+  version        INTEGER NOT NULL DEFAULT 1, -- verrou optimiste (migration 0014) : +1 à chaque enregistrement ; pas de ligne = 0
   updated_by     BIGINT REFERENCES utilisateur(id),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT dailylog_jour_duree_valide CHECK (duree_heures > 0 AND duree_heures <= 24),
+  CONSTRAINT dailylog_jour_version_valide CHECK (version >= 0),
   CONSTRAINT dailylog_jour_unique UNIQUE (utilisateur_id, date)
 );
+COMMENT ON COLUMN utilisateur.fuseau IS
+  'Fuseau du bureau (0014) : « aujourd''hui » du Daily log, fenêtre de 14 jours, rappel.';
+COMMENT ON COLUMN dailylog_jour.duree_heures IS
+  'Daily log v2 (0008) : durée réglée pour ce jour. Plus écrite depuis la v9 (0014) — historique seulement.';
+COMMENT ON COLUMN dailylog_jour.version IS
+  'Verrou optimiste (0014) : +1 à chaque enregistrement du jour ; pas de ligne = 0.';
 CREATE TRIGGER trg_dailylog_jour_updated_at
   BEFORE UPDATE ON dailylog_jour
   FOR EACH ROW EXECUTE FUNCTION set_updated_at_and_by();
@@ -1040,6 +1050,216 @@ CREATE TRIGGER trg_revoquer_sessions_si_desactive
   EXECUTE FUNCTION fn_revoquer_sessions_si_desactive();
 
 -- ---------------------------------------------------------------------
+-- Migration 0014 (lot 10) : Daily log v9. Mêmes définitions que
+-- migrations/0014_dailylog_v9.sql (catalogue d'une base neuve = catalogue
+-- d'une base migrée, vérifié en CI). Colonnes utilisateur.fuseau et
+-- dailylog_jour.version : voir les CREATE TABLE plus haut.
+-- Objectif de journée : réglage PAR PERSONNE (repère 4-10 h, 8 h sans
+-- ligne), non audité.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS dailylog_preference (
+  utilisateur_id    BIGINT PRIMARY KEY REFERENCES utilisateur(id),
+  objectif_minutes  SMALLINT NOT NULL DEFAULT 480,
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT dailylog_preference_objectif_valide
+    CHECK (objectif_minutes BETWEEN 240 AND 600 AND objectif_minutes % 30 = 0)
+);
+
+
+-- ---------------------------------------------------------------------
+-- 4. Contrôle d'une ligne d'heures : pas de 30 min, seulement si la valeur
+--    CHANGE (une ancienne valeur au quart d'heure se réenregistre telle
+--    quelle).
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_dailylog_entree_controle()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF current_setting('kairos.reprise_historique', true) = 'on' THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE' AND OLD.heures = NEW.heures THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.heures * 2 <> trunc(NEW.heures * 2) THEN
+    RAISE EXCEPTION 'Daily log : les heures vont par pas de 30 minutes (% h refusé).', NEW.heures
+      USING ERRCODE = 'check_violation', CONSTRAINT = 'dailylog_pas_30_min';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trg_dailylog_entree_controle ON dailylog_entree;
+CREATE TRIGGER trg_dailylog_entree_controle
+  BEFORE INSERT OR UPDATE OF heures ON dailylog_entree
+  FOR EACH ROW EXECUTE FUNCTION fn_dailylog_entree_controle();
+
+-- ---------------------------------------------------------------------
+-- 5. Cohérence du jour, DIFFÉRÉE au COMMIT (l'ordre des écritures dans la
+--    transaction n'importe pas : échanger des heures entre deux lignes ne
+--    déclenche pas de faux refus) :
+--    - 10 h au plus, vérifié quand une ligne est ajoutée ou AUGMENTÉE (une
+--      ancienne journée Chronos de 12 h peut être réduite ligne à ligne) ;
+--    - un jour « absent » ne porte aucune heure (dans les deux sens).
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_dailylog_jour_coherent()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_total  NUMERIC;
+  v_absent BOOLEAN;
+BEGIN
+  IF current_setting('kairos.reprise_historique', true) = 'on' THEN
+    RETURN NULL;
+  END IF;
+  SELECT COALESCE(SUM(heures), 0) INTO v_total
+    FROM dailylog_entree WHERE utilisateur_id = NEW.utilisateur_id AND date = NEW.date;
+  SELECT absent INTO v_absent
+    FROM dailylog_jour WHERE utilisateur_id = NEW.utilisateur_id AND date = NEW.date;
+  IF TG_TABLE_NAME = 'dailylog_entree' AND v_total > 10 THEN
+    RAISE EXCEPTION 'Daily log : % h le % pour l''utilisateur % (10 h au plus par jour).',
+      v_total, NEW.date, NEW.utilisateur_id
+      USING ERRCODE = 'check_violation', CONSTRAINT = 'dailylog_max_10h_par_jour';
+  END IF;
+  IF COALESCE(v_absent, false) AND v_total > 0 THEN
+    RAISE EXCEPTION 'Daily log : le % est marqué absent mais porte % h (utilisateur %).',
+      NEW.date, v_total, NEW.utilisateur_id
+      USING ERRCODE = 'check_violation', CONSTRAINT = 'dailylog_absent_sans_heures';
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_dailylog_entree_jour_coherent_ins ON dailylog_entree;
+CREATE CONSTRAINT TRIGGER trg_dailylog_entree_jour_coherent_ins
+  AFTER INSERT ON dailylog_entree
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW EXECUTE FUNCTION fn_dailylog_jour_coherent();
+DROP TRIGGER IF EXISTS trg_dailylog_entree_jour_coherent_maj ON dailylog_entree;
+CREATE CONSTRAINT TRIGGER trg_dailylog_entree_jour_coherent_maj
+  AFTER UPDATE OF heures, date, utilisateur_id ON dailylog_entree
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW
+  WHEN (NEW.heures > OLD.heures OR OLD.date IS DISTINCT FROM NEW.date
+        OR OLD.utilisateur_id IS DISTINCT FROM NEW.utilisateur_id)
+  EXECUTE FUNCTION fn_dailylog_jour_coherent();
+DROP TRIGGER IF EXISTS trg_dailylog_jour_absent_coherent ON dailylog_jour;
+CREATE CONSTRAINT TRIGGER trg_dailylog_jour_absent_coherent
+  AFTER INSERT OR UPDATE OF absent ON dailylog_jour
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW
+  WHEN (NEW.absent)
+  EXECUTE FUNCTION fn_dailylog_jour_coherent();
+
+-- ---------------------------------------------------------------------
+-- 6. Qui écrit quel jour (décisions du gérant, lot 10) — garde-fou en
+--    base, l'appli donne le message clair avant :
+--    - jamais avant 2000 ni après « aujourd'hui » AU FUSEAU DU TITULAIRE ;
+--    - jamais pour un compte RH ou Client ;
+--    - le titulaire : aujourd'hui et les 14 jours précédents ;
+--    - l'Admin : tout ;
+--    - au-delà (ou pour quelqu'un d'autre) : le chef titulaire ou un
+--      co-chef du PROJET de la ligne ; pour la ligne `dailylog_jour`
+--      (version), un chef de projet — mais l'absence, elle, reste au
+--      titulaire dans la fenêtre et à l'Admin.
+--    Sans app.current_user_id (scripts, migrations) : seules les deux
+--    premières règles. Seule une valeur qui CHANGE est contrôlée.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_dailylog_garde()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_ligne        JSONB;
+  v_proprio      BIGINT;
+  v_date         DATE;
+  v_projet       BIGINT;
+  v_acteur       BIGINT := fn_app_user_id();
+  v_role_proprio role_enum;
+  v_fuseau       TEXT;
+  v_role_acteur  role_enum;
+  v_actif_acteur BOOLEAN;
+  v_aujourdhui   DATE;
+BEGIN
+  IF current_setting('kairos.reprise_historique', true) = 'on' THEN
+    RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+  END IF;
+  -- IF imbriqués : une expression qui cite OLD.heures ne doit jamais être
+  -- préparée pour une ligne de dailylog_jour (et inversement).
+  IF TG_OP = 'UPDATE' THEN
+    IF TG_TABLE_NAME = 'dailylog_entree' THEN
+      IF OLD.heures = NEW.heures AND OLD.date = NEW.date AND OLD.utilisateur_id = NEW.utilisateur_id
+         AND OLD.projet_id = NEW.projet_id AND OLD.tache_id IS NOT DISTINCT FROM NEW.tache_id THEN
+        RETURN NEW;
+      END IF;
+    ELSIF OLD.absent = NEW.absent AND OLD.date = NEW.date AND OLD.utilisateur_id = NEW.utilisateur_id THEN
+      RETURN NEW;  -- simple passage de version : les lignes sont contrôlées une à une
+    END IF;
+  END IF;
+
+  v_ligne   := to_jsonb(CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END);
+  v_proprio := (v_ligne->>'utilisateur_id')::BIGINT;
+  v_date    := (v_ligne->>'date')::DATE;
+  v_projet  := (v_ligne->>'projet_id')::BIGINT;
+  SELECT role, fuseau INTO v_role_proprio, v_fuseau FROM utilisateur WHERE id = v_proprio;
+  v_aujourdhui := (now() AT TIME ZONE COALESCE(v_fuseau, 'Africa/Tunis'))::DATE;
+
+  IF TG_OP <> 'DELETE' THEN
+    IF v_date < DATE '2000-01-01' OR v_date > v_aujourdhui THEN
+      RAISE EXCEPTION 'Daily log : date % hors limites (aujourd''hui : % pour l''utilisateur %).',
+        v_date, v_aujourdhui, v_proprio
+        USING ERRCODE = 'check_violation', CONSTRAINT = 'dailylog_date_plausible';
+    END IF;
+    IF v_role_proprio IN ('rh', 'client') THEN
+      RAISE EXCEPTION 'Daily log : un compte RH ou Client n''a pas de Daily log (utilisateur %).', v_proprio
+        USING ERRCODE = 'check_violation', CONSTRAINT = 'dailylog_compte_sans_daily_log';
+    END IF;
+  END IF;
+
+  IF v_acteur IS NULL THEN
+    RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+  END IF;
+  IF v_acteur = v_proprio AND v_date >= v_aujourdhui - 14 THEN
+    RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+  END IF;
+  SELECT role, actif INTO v_role_acteur, v_actif_acteur FROM utilisateur WHERE id = v_acteur;
+  IF v_role_acteur = 'admin' AND v_actif_acteur THEN
+    RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+  END IF;
+  IF v_actif_acteur AND v_role_acteur = 'chef_de_projet' THEN
+    IF TG_TABLE_NAME = 'dailylog_entree' THEN
+      IF EXISTS (SELECT 1 FROM projet p WHERE p.id = v_projet AND p.chef_projet_id = v_acteur)
+         OR EXISTS (SELECT 1 FROM projet_co_chef cc WHERE cc.projet_id = v_projet AND cc.utilisateur_id = v_acteur) THEN
+        RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+      END IF;
+    ELSIF TG_OP = 'INSERT' AND NOT (v_ligne->>'absent')::BOOLEAN THEN
+      RETURN NEW;  -- première ligne « état du jour » d'une correction (sans absence)
+    END IF;
+  END IF;
+  RAISE EXCEPTION 'Daily log du % verrouillé : au-delà de 14 jours (ou pour une autre personne), seul le chef du projet ou un Admin peut corriger (utilisateur %).',
+    v_date, v_proprio
+    USING ERRCODE = 'insufficient_privilege', CONSTRAINT = 'dailylog_fenetre';
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trg_dailylog_entree_garde ON dailylog_entree;
+CREATE TRIGGER trg_dailylog_entree_garde
+  BEFORE INSERT OR UPDATE OF heures, date, utilisateur_id, projet_id, tache_id OR DELETE ON dailylog_entree
+  FOR EACH ROW EXECUTE FUNCTION fn_dailylog_garde();
+DROP TRIGGER IF EXISTS trg_dailylog_jour_garde ON dailylog_jour;
+CREATE TRIGGER trg_dailylog_jour_garde
+  BEFORE INSERT OR UPDATE OF absent, date, utilisateur_id OR DELETE ON dailylog_jour
+  FOR EACH ROW EXECUTE FUNCTION fn_dailylog_garde();
+
+-- ---------------------------------------------------------------------
+-- 7. Recherche sans accents (catalogue du Daily log : « ete » trouve
+--    « Résidence Été »), sans l'extension unaccent (qui exige un
+--    superutilisateur). Même table de correspondance que
+--    app/repositories/dailylog.py:sans_accents.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_sans_accents(t TEXT)
+RETURNS TEXT AS $$
+  SELECT translate(lower(t),
+    'àáâãäåçèéêëìíîïñòóôõöùúûüýÿœæÀÁÂÃÄÅÇÈÉÊËÌÍÎÏÑÒÓÔÕÖÙÚÛÜÝ',
+    'aaaaaaceeeeiiiinooooouuuuyyoaaaaaaaceeeeiiiinooooouuuuy');
+$$ LANGUAGE sql IMMUTABLE PARALLEL SAFE;
+
+
+-- ---------------------------------------------------------------------
 -- Migrations déjà intégrées à ce fichier : une base créée depuis
 -- schema.sql les marque comme appliquées, pour que le premier
 -- `flask migrer` ne les rejoue pas (voir app/__init__.py). À compléter à
@@ -1065,5 +1285,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0010_projet_client'),
   ('0011_roles_et_projets_clos'),
   ('0012_controle_des_dates'),
-  ('0013_rattrapage_et_integrite')
+  ('0013_rattrapage_et_integrite'),
+  ('0014_dailylog_v9')
 ON CONFLICT (version) DO NOTHING;

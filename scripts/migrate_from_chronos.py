@@ -639,6 +639,12 @@ def emit_sql(path, utilisateurs, projets, projet_lots, liens_phase, taches,
     w("-- =====================================================================")
     w("\\set ON_ERROR_STOP on")
     w("BEGIN;")
+    # Daily log v9 (migration 0014) : l'historique Chronos garde ses valeurs
+    # telles quelles (2,67 h, journées de plus de 10 h, dates d'avant 2000
+    # refusées ailleurs) — les triggers du Daily log le laissent passer pour
+    # cette seule transaction. Sans cette ligne, migration.sql serait rejeté
+    # en bloc (même piège que l'audit du 2026-10-05, BLOQUANT n°4).
+    w("SET LOCAL kairos.reprise_historique = 'on';")
     w("")
 
     w("-- --- Utilisateurs (emails anonymisés en nom_prenom@domaine ; mots de")

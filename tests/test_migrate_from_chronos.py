@@ -297,6 +297,46 @@ class TestRepriseChargeeDansPostgres(unittest.TestCase):
         self.assertIn("**5.5 h** au total", rapport)
         self.assertIn("fin effacée", rapport)
 
+    def test_historique_hors_regles_du_daily_log_v9_charge_tel_quel(self):
+        """Migration 0014 : 30 min, 10 h par jour, date au fuseau… ne
+        s'appliquent pas à la reprise (SET LOCAL kairos.reprise_historique)
+        — une journée Chronos de 12,67 h passe telle quelle."""
+        import subprocess
+        import tempfile
+        import uuid
+        from urllib.parse import urlsplit
+        racine = Path(__file__).resolve().parent.parent
+        u = urlsplit(os.environ["KAIROS_TEST_DATABASE_URL"])
+        env = dict(os.environ, PGHOST=u.hostname or "127.0.0.1", PGPORT=str(u.port or 5432),
+                   PGUSER=u.username or "", PGPASSWORD=u.password or os.environ.get("PGPASSWORD", ""))
+        base = f"kairos_t_chronos_{uuid.uuid4().hex[:8]}"
+
+        def psql(db, *args):
+            return subprocess.run(["psql", "-X", "-Atq", "-v", "ON_ERROR_STOP=1", "-d", db, *args],
+                                  env=env, capture_output=True, text=True)
+
+        psql("postgres", "-c", f"CREATE DATABASE {base}")
+        self.addCleanup(psql, "postgres", "-c", f"DROP DATABASE IF EXISTS {base}")
+        self.assertEqual(psql(base, "-f", str(racine / "schema.sql")).returncode, 0)
+        sortie = Path(tempfile.mkdtemp(prefix="kairos_chronos_"))
+        self.addCleanup(shutil.rmtree, sortie, ignore_errors=True)
+        dump = (racine / "tests" / "fixtures_chronos" / "mini_dump.sql").read_text(encoding="utf-8")
+        self.assertIn("(1,8,'2025-02-03'", dump)
+        (sortie / "dump.sql").write_text(dump.replace("(1,8,'2025-02-03'", "(1,12.67,'2025-02-03'"), encoding="utf-8")
+        r = subprocess.run([sys.executable, str(racine / "scripts" / "migrate_from_chronos.py"),
+                            str(sortie / "dump.sql"), "--out-dir", str(sortie / "out")], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        sql = (sortie / "out" / "migration.sql").read_text(encoding="utf-8")
+        self.assertIn("BEGIN;\nSET LOCAL kairos.reprise_historique = 'on';", sql)
+        r = psql(base, "-f", str(sortie / "out" / "migration.sql"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(psql(base, "-c", "SELECT sum(heures) FROM dailylog_entree").stdout.strip(), "12.67")
+        # Sans le contournement, la même ligne est refusée par la base.
+        r = psql(base, "-c", "INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) "
+                             "SELECT utilisateur_id, date + 1, projet_id, 2.67 FROM dailylog_entree LIMIT 1")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("30 minutes", r.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
