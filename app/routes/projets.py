@@ -121,7 +121,7 @@ def _filtres_liste():
     if request.args.get("filtres_actifs"):
         etats = request.args.getlist("etat") or None
         phases = request.args.getlist("phase") or None
-        chef_ids = [int(v) for v in request.args.getlist("chef_id") if v.isdigit()] or None
+        chef_ids = v.ids_entiers(request.args.getlist("chef_id")) or None
         # Filtre lots à trois états par lot (retour Fadhel, 2026-10-01) :
         # "contient" (le projet A ce lot, même parmi d'autres) et "="
         # (le projet n'a QUE ce lot) — deux listes distinctes. Voir
@@ -597,8 +597,8 @@ def creer_tache(projet_id: int):
     # Jamais un Client (migration 0011).
     affectables = {u["id"] for u in utilisateurs.list_affectables()}
     intervenant_ids = [
-        int(v) for v in request.form.getlist("intervenants")
-        if v.isdigit() and int(v) in affectables and projets.user_can_view(projet_id, int(v))
+        uid for uid in v.ids_entiers(request.form.getlist("intervenants"))
+        if uid in affectables and projets.user_can_view(projet_id, uid)
     ]
 
     # Un rebond doit pointer vers un post du MÊME projet (même contrôle que

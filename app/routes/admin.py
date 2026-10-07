@@ -9,6 +9,7 @@ from flask import Blueprint, render_template, request
 
 from ..auth import role_required
 from ..repositories import audit as audit_repo
+from ..validation import ids_entiers
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -33,7 +34,7 @@ def journal():
         action = None
 
     utilisateur_id_str = request.args.get("utilisateur_id")
-    utilisateur_id = int(utilisateur_id_str) if utilisateur_id_str and utilisateur_id_str.isdigit() else None
+    utilisateur_id = next(iter(ids_entiers([utilisateur_id_str or ""])), None)
 
     date_debut_str = request.args.get("date_debut") or ""
     date_fin_str = request.args.get("date_fin") or ""

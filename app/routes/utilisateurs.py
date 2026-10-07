@@ -245,6 +245,10 @@ def liste():
     q = request.args.get("q") or None
     equipe_code = request.args.get("equipe_code") or None
     role = request.args.get("role") or None
+    # Valeur hors role_enum (URL forgée) : erreur 500 « invalid input value
+    # for enum » auparavant (audit sécurité I14) -> filtre ignoré.
+    if role not in (None, "admin", "chef_de_projet", "intervenant", "rh", "client"):
+        role = None
     actif_param = request.args.get("actif") or None
     actif = {"actifs": True, "inactifs": False}.get(actif_param)
 

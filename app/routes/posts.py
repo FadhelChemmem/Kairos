@@ -90,7 +90,7 @@ def creer():
     if lien and not is_lien_valide(lien):
         lien = None
         lien_ignore = True
-    mentionne_ids = [int(v) for v in request.form.getlist("mentions") if v.isdigit()]
+    mentionne_ids = v.ids_entiers(request.form.getlist("mentions"))
     # Information d'équipe (migration 0009, retour Fadhel, 2026-09-29) : le
     # projet est optionnel ; sans projet, au moins une équipe destinataire.
     equipe_codes = [c for c in dict.fromkeys(request.form.getlist("equipes")) if c in EQUIPES_VALIDES]

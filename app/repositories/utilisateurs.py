@@ -2,6 +2,7 @@
 import json
 
 from .. import db
+from ._like import motif_contient
 
 
 def list_actifs() -> list[dict]:
@@ -81,7 +82,7 @@ def search(q: str, limit: int = 6) -> list[dict]:
     aux projets) : seul le nom/poste est exposé ici, jamais l'email/le
     téléphone — c'est le PROFIL (utilisateurs.profil_personne) qui décide
     ensuite de ce qu'il montre, avec ses propres filtres de visibilité."""
-    like = f"%{q.strip().lower()}%"
+    like = motif_contient(q)
     return db.query_all(
         """
         SELECT id, prenom, nom, poste
@@ -104,7 +105,7 @@ def list_tous(q: str | None = None, equipe_code: str | None = None,
     params: list = []
 
     if q:
-        like = f"%{q.strip().lower()}%"
+        like = motif_contient(q)
         conditions.append(
             "(lower(prenom) LIKE %s OR lower(nom) LIKE %s OR lower(email) LIKE %s "
             "OR lower(coalesce(poste, '')) LIKE %s)"

@@ -49,7 +49,12 @@ def save_upload(file_storage, subdir: str) -> tuple[str, str]:
     contre PIECE_JOINTE_EXTENSIONS avant d'être utilisée pour le nom stocké
     sur disque (qui reste un UUID — aucun risque de traversée de chemin).
     """
-    nom_brut = file_storage.filename or "fichier"
+    nom_brut = (file_storage.filename or "fichier").replace("\x00", "")
+    if len(nom_brut) > 255:
+        # nom_fichier est un VARCHAR(255) : au-delà, erreur 500 à l'INSERT.
+        racine, extension = os.path.splitext(nom_brut)
+        extension = extension[:20]
+        nom_brut = racine[:255 - len(extension)] + extension
     ext = os.path.splitext(nom_brut)[1].lower()
     if ext not in PIECE_JOINTE_EXTENSIONS:
         ext = ""

@@ -5,6 +5,7 @@ la plupart n'ont pas besoin de user_id (pas de trace à écrire). Seule
 create_projet passe user_id pour alimenter created_by/updated_by + audit_log.
 """
 from .. import db
+from ._like import motif_contient
 
 
 def list_mes_projets(user_id: int) -> list[dict]:
@@ -212,7 +213,7 @@ def list_projets(
         "etats": etats or None, "phases": phases or None,
         "chef_ids": chef_ids or None,
         "lots_contient": lots_contient or None, "lots_egal": lots_egal or None,
-        "q": f"%{q.strip().lower()}%" if q else None,
+        "q": motif_contient(q) if q else None,
         "limit": limit, "user_id": user_id,
     }
     with db.get_cursor() as cur:
@@ -266,7 +267,7 @@ def search(user_id: int, q: str, limit: int = 8) -> list[dict]:
         ORDER BY p.updated_at DESC
         LIMIT %(limit)s
     """
-    return db.query_all(sql, {"q": f"%{q.strip().lower()}%", "user_id": user_id, "limit": limit})
+    return db.query_all(sql, {"q": motif_contient(q), "user_id": user_id, "limit": limit})
 
 
 def get_projet(projet_id: int) -> dict | None:

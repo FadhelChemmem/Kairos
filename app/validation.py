@@ -72,6 +72,16 @@ def telephone_invalide(telephone: str | None) -> str | None:
     return None
 
 
+_ID = re.compile(r"[0-9]{1,18}")
+
+
+def ids_entiers(valeurs) -> list[int]:
+    """Ids entiers d'une liste de champs de formulaire/URL, sans doublon
+    (ordre conservé). `str.isdigit()` accepte « ² » ou « ٣ » que `int()`
+    refuse ensuite (erreur 500) : on n'accepte que des chiffres ASCII."""
+    return list(dict.fromkeys(int(x) for x in valeurs if isinstance(x, str) and _ID.fullmatch(x)))
+
+
 def premiere_erreur(*messages: str | None) -> str | None:
     """Premier message non vide d'une suite de contrôles."""
     return next((m for m in messages if m), None)

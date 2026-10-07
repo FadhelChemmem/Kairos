@@ -300,5 +300,78 @@ class TestDecision5TachesClosesMasquees(unittest.TestCase):
         self.assertEqual(inspect.getsource(projets.list_projets).count("'verifie', 'arret'"), 3)
 
 
+
+class TestEntreesForgees(_BaseLot10):
+    """Audit sécurité I14 / M18, audit données M5 : plus d'erreur 500 sur
+    une entrée forgée, et les jokers LIKE sont pris littéralement."""
+
+    def test_ids_entiers_chiffres_ascii_sans_doublon(self):
+        from app.validation import ids_entiers
+        self.assertEqual(ids_entiers(["1", "²", "٣", "1", "x", "007", "1" * 19, "", None, " 2"]), [1, 7])
+
+    def test_motif_like_litteral(self):
+        from app.repositories._like import motif_contient
+        self.assertEqual(motif_contient("__"), "%\\_\\_%")
+        self.assertEqual(motif_contient(" 50% "), "%50\\%%")
+        self.assertEqual(motif_contient("a\\b"), "%a\\\\b%")
+
+    def test_exposant_dans_les_ids_sans_500(self):
+        cas = [
+            ("get", "/admin/journal?utilisateur_id=%C2%B2", None),
+            ("get", "/projets?filtres_actifs=1&chef_id=%C2%B2", None),
+            ("post", "/posts", {"projet_id": "1", "type_code": "requete", "contenu": "x", "mentions": "²"}),
+            ("post", "/projets/1/taches", {"titre": "T", "type_deadline": "interne", "intervenants": "²"}),
+        ]
+        for methode, chemin, data in cas:
+            with self.subTest(chemin=chemin):
+                resp, _ = self._requete(methode, chemin, data, espions=[
+                    ("app.repositories.posts.create_post", 1), ("app.repositories.taches.create_tache", 1)])
+                self.assertLess(resp.status_code, 500)
+
+    def test_role_hors_enum_ignore(self):
+        _, m = self._requete("get", "/utilisateurs?role=foo",
+                             espions=[("app.repositories.utilisateurs.list_tous", [])])
+        self.assertIsNone(m["app.repositories.utilisateurs.list_tous"].call_args.kwargs["role"])
+
+    def test_email_de_300_caracteres_sans_500(self):
+        email = "a" * 290 + "@x.tn"
+        with patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
+             patch("app.auth.get_user_by_email", return_value=None), \
+             patch("app.repositories.securite.enregistrer_tentative") as enregistrer:
+            resp = self.client.post("/connexion", data={"email": email, "password": "x"})
+            self.assertLess(resp.status_code, 500)
+            self.assertTrue(all(len(c.args[1]) <= 255 for c in enregistrer.call_args_list))
+            resp = self.client.post("/mot-de-passe-oublie", data={"email": email})
+            self.assertLess(resp.status_code, 500)
+            self.assertTrue(all(len(c.args[1]) <= 255 for c in enregistrer.call_args_list))
+
+    def test_caractere_nul_refuse_400(self):
+        resp, m = self._requete("post", "/posts", {"projet_id": "1", "type_code": "requete", "contenu": "a\x00b"},
+                                espions=[("app.repositories.posts.create_post", 1)])
+        self.assertEqual(resp.status_code, 400)
+        m["app.repositories.posts.create_post"].assert_not_called()
+        resp, _ = self._requete("get", "/projets?q=%00")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_nom_de_fichier_long_ou_nul(self):
+        import tempfile
+        from app import storage
+
+        class Fichier:
+            def __init__(self, nom):
+                self.filename = nom
+
+            def save(self, dst):
+                pathlib.Path(dst).write_bytes(b"x")
+
+        with tempfile.TemporaryDirectory() as d, self.app.app_context():
+            self.app.config["UPLOAD_DIR"] = d
+            nom, chemin = storage.save_upload(Fichier("n" * 300 + ".pdf"), "taches/1")
+            self.assertLessEqual(len(nom), 255)
+            self.assertTrue(nom.endswith(".pdf") and chemin.endswith(".pdf"))
+            nom, _ = storage.save_upload(Fichier("plan\x00.pdf"), "taches/1")
+            self.assertEqual(nom, "plan.pdf")
+
+
 if __name__ == "__main__":
     unittest.main()

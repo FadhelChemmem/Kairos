@@ -2,7 +2,7 @@
 import logging
 import os
 
-from flask import Flask, flash, g, redirect, request, url_for
+from flask import Flask, abort, flash, g, redirect, request, url_for
 from flask.logging import default_handler as flask_default_handler
 from flask_wtf.csrf import CSRFError, CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -160,6 +160,18 @@ def create_app(config_class=Config) -> Flask:
     from . import auth
 
     app.register_blueprint(auth.bp)
+
+    @app.before_request
+    def _refuser_caractere_nul():
+        # Caractère NUL dans un champ (formulaire ou URL forgés) : psycopg2
+        # refuse la valeur (ValueError) et la requête finissait en erreur
+        # 500 (audits sécurité M18 / I14). Aucun texte légitime n'en
+        # contient : 400 d'emblée. Les noms de fichier sont nettoyés à
+        # part (storage.save_upload).
+        for source in (request.args, request.form):
+            for _, valeurs in source.lists():
+                if any("\x00" in valeur for valeur in valeurs):
+                    abort(400)
 
     @app.before_request
     def _load_user():

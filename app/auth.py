@@ -247,7 +247,10 @@ def login():
         # du client que si TRUSTED_PROXY_COUNT est renseigné (voir
         # app/__init__.py, ProxyFix) — sinon tout le monde partagerait
         # l'IP du proxy.
-        cle_email_ip = f"{email}|{ip}"
+        # tentative_securite.cle est un VARCHAR(255) : un email plus long
+        # faisait une erreur 500 (aucun compte ne peut l'avoir de toute façon).
+        email = email[:254]
+        cle_email_ip = f"{email}|{ip}"[:255]
         trop_de_tentatives_email = email and securite_repo.compter_tentatives_recentes(
             "connexion", cle_email_ip, FENETRE_TENTATIVES_MINUTES
         ) >= MAX_TENTATIVES
@@ -333,7 +336,7 @@ def mot_de_passe_oublie():
     TOUJOURS le même, que l'email existe ou non en base (revue sécurité :
     ne jamais laisser deviner quels emails sont des comptes réels)."""
     if request.method == "POST":
-        email = request.form.get("email", "").strip()
+        email = request.form.get("email", "").strip()[:254]
 
         if email:
             if securite_repo.compter_tentatives_recentes(
