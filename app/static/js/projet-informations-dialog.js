@@ -12,11 +12,15 @@
   if (!dialog) return;
 
   function ouvrir() {
+    // Bouton « Modifier » DANS la carte cliquable : un seul appel.
+    if (dialog.open) return;
     if (typeof dialog.showModal === 'function') {
       dialog.showModal();
     } else {
       dialog.setAttribute('open', 'open');
     }
+    // Lot 10 : focus sur le premier champ (et non sur « Fermer »).
+    window.KairosFloatingWindow.focusPremierChamp(dialog);
   }
 
   // Déclencheur : le panneau "Informations" de la page projet lui-même

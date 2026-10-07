@@ -145,6 +145,20 @@
   document.querySelectorAll('[data-open-post-dialog]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       if (btn.disabled) return;
+      // Lot 10 (audit front I4) : un brouillon reste lié à SON contexte
+      // (post d'origine, projet). Ouvrir la fenêtre pour un autre post ou
+      // un autre projet repart d'un formulaire vierge — avant, le texte
+      // saisi pour un post partait sous un autre.
+      var contexte = (btn.getAttribute('data-parent-post-id') || '') + '|' + (btn.getAttribute('data-projet-id') || '');
+      if (dialog.dataset.contexte !== undefined && dialog.dataset.contexte !== contexte) {
+        dialog.querySelectorAll('.intent-panel form').forEach(function (f) {
+          f.reset();
+          f.querySelectorAll('select[data-chip-select], .dropzone-input').forEach(function (s) { s.dispatchEvent(new Event('change')); });
+        });
+        var aideEquipes = dialog.querySelector('[data-post-dialog-equipes-aide]');
+        if (aideEquipes) aideEquipes.style.display = 'none';
+      }
+      dialog.dataset.contexte = contexte;
       projetImpose = !!btn.getAttribute('data-projet-id');
       definirParent(btn.getAttribute('data-parent-post-id'), btn.getAttribute('data-parent-label'));
       var intents = btn.getAttribute('data-intents');
@@ -188,6 +202,9 @@
       } else {
         dialog.setAttribute('open', 'open');
       }
+      // Focus sur le premier champ du panneau ouvert (et non sur « Fermer »).
+      var panneau = dialog.querySelector('.panel-' + intentCourant());
+      if (panneau) window.KairosFloatingWindow.focusPremierChamp(panneau);
     });
   });
 

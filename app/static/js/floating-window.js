@@ -62,10 +62,31 @@ window.KairosFloatingWindow = (function () {
 
     dialogEl.addEventListener('click', function (e) {
       if (e.target !== dialogEl) return;
+      // Lot 10 (audit front I4) : e.target vaut aussi le <dialog> pour un
+      // clic dans son propre padding (20 px) — on ne ferme que pour un
+      // clic réellement hors du cadre (sur le fond).
+      var r = dialogEl.getBoundingClientRect();
+      if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) return;
       if (aEteModifiee(dialogEl)) return;
       dialogEl.close();
     });
+    // Échap : même règle que le clic sur le fond — une saisie en cours
+    // n'est pas jetée sans confirmation.
+    dialogEl.addEventListener('cancel', function (e) {
+      if (aEteModifiee(dialogEl) && !window.confirm('Fermer sans enregistrer ? La saisie sera perdue.')) e.preventDefault();
+    });
   }
 
-  return { memoriser: memoriser, aEteModifiee: aEteModifiee, attacherFermetureAuFond: attacherFermetureAuFond };
+  // Focus initial d'une fenêtre : le premier champ de saisie visible (et
+  // non le bouton « Fermer », premier élément focalisable).
+  function focusPremierChamp(container) {
+    var champs = container.querySelectorAll('input:not([type=hidden]):not([type=radio]):not([type=file]):not([disabled]), textarea:not([disabled]), select:not([disabled])');
+    for (var i = 0; i < champs.length; i++) {
+      var c = champs[i];
+      if (c.offsetParent !== null && getComputedStyle(c).visibility !== 'hidden') { c.focus(); return true; }
+    }
+    return false;
+  }
+
+  return { memoriser: memoriser, aEteModifiee: aEteModifiee, attacherFermetureAuFond: attacherFermetureAuFond, focusPremierChamp: focusPremierChamp };
 })();

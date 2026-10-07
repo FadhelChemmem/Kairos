@@ -6,19 +6,19 @@
    projets_liste.html. #}
 {% import "partials/avatar.html" as avatarm %}
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-  <span style="font-size:12.5px; color:var(--text-muted);">{{ projets|length }} projet{{ 's' if projets|length != 1 else '' }}</span>
+  <span data-compte style="font-size:12.5px; color:var(--text-muted);">{{ projets|length }} projet{{ 's' if projets|length > 1 else '' }}</span>
 </div>
 
 <div class="card table-scroll" style="padding:8px 18px;">
   <div class="ptable-head" style="padding:10px 4px; font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em; border-bottom:1px solid var(--border-soft);">
-    <span>Projet</span><span>Phase</span><span>Lots</span><span>Chef de projet</span><span title="Heures intervenants / heures chef de projet">Heures i/c</span><span title="Prochain rendu client (tri de la liste)">Rendu</span><span>État</span>
+    <span>Projet</span><span>Phase</span><span>Lots</span><span>Chef de projet</span><span title="Heures intervenants / heures chef de projet">Heures interv./chef</span><span title="Prochain rendu client (tri de la liste)">Prochain rendu</span><span>État</span>
   </div>
   {% for p in projets %}
     {% set st = projet_etat_style(p.etat) %}
     <a href="{{ url_for('projets.detail', projet_id=p.id) }}" class="ptable-row" style="padding:12px 4px; border-bottom:1px solid var(--border-soft); color:inherit;">
       <span style="display:flex; align-items:center; gap:8px; min-width:0;">
-        <span style="width:8px; height:8px; border-radius:999px; background:{{ st.dot }}; flex-shrink:0;"></span>
-        <span style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.code }}_{{ p.nom }}</span>
+        <span aria-hidden="true" style="width:8px; height:8px; border-radius:999px; background:{{ st.dot }}; flex-shrink:0;"></span>
+        <span style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="{{ p.code }}_{{ p.nom }}">{{ p.code }}_{{ p.nom }}</span>
       </span>
       <span class="pill" style="background:var(--hover-bg); color:var(--text-secondary); width:fit-content;">{{ p.phase }}</span>
       <span style="font-size:12.5px; color:var(--text-secondary);">{{ p.lots }}</span>
@@ -34,13 +34,15 @@
       {% if p.prochain_rendu %}
         <span style="font-size:12px; color:var(--text-secondary); font-weight:600;" title="Rendu : {{ p.prochain_rendu_titre }}">{{ p.prochain_rendu|date_courte }}</span>
       {% elif p.prochaine_deadline %}
-        <span style="font-size:12px; color:var(--text-faint);" title="Échéance interne : {{ p.prochaine_deadline_titre }}">{{ p.prochaine_deadline|date_courte }} <span style="font-size:10.5px;">#interne</span></span>
+        <span style="font-size:12px; color:var(--text-faint);" title="Échéance interne : {{ p.prochaine_deadline_titre }}">{{ p.prochaine_deadline|date_courte }} <span style="font-size:10.5px;">(interne)</span></span>
       {% else %}
         <span></span>
       {% endif %}
       <span class="pill" style="background:{{ st.bg }}; color:{{ st.fg }}; width:fit-content;">{{ st.label }}</span>
     </a>
   {% else %}
-    <div style="padding:20px 4px; font-size:13px; color:var(--text-muted);">Aucun projet pour l'instant.</div>
+    {# Les filtres s'appliquent toujours (valeurs par défaut comprises) : une
+       liste vide vient donc d'eux — lot 10, audit front I2. #}
+    <div style="padding:20px 4px; font-size:13px; color:var(--text-muted);">Aucun projet ne correspond à ces filtres. <a href="{{ url_for('projets.liste', filtres_actifs=1) }}" style="font-weight:600;">Afficher tous les projets</a></div>
   {% endfor %}
 </div>

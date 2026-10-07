@@ -14,6 +14,8 @@
       } else {
         dialog.setAttribute('open', 'open');
       }
+      // Lot 10 : focus sur le premier champ (et non sur « Fermer »).
+      window.KairosFloatingWindow.focusPremierChamp(dialog);
     });
   });
 

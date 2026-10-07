@@ -29,7 +29,17 @@
     input.type = 'text';
     input.className = 'search-combobox-input';
     input.placeholder = select.dataset.searchPlaceholder || 'Rechercher…';
-    input.setAttribute('aria-label', input.placeholder);
+    // Nom accessible : le <label for> du <select> d'origine s'il existe
+    // (« Projet », « Phase liée »…), sinon le texte d'aide.
+    var libelle = select.id && document.querySelector('label[for="' + select.id + '"]');
+    if (libelle) {
+      if (!libelle.id) libelle.id = select.id + '-libelle';
+      input.setAttribute('aria-labelledby', libelle.id);
+      libelle.htmlFor = '';
+      libelle.addEventListener('click', function () { input.focus(); });
+    } else {
+      input.setAttribute('aria-label', input.placeholder);
+    }
     input.autocomplete = 'off';
     wrap.appendChild(input);
 
@@ -39,15 +49,28 @@
     list.hidden = true;
     wrap.appendChild(list);
 
+    // Lot 10 (audit front I5) : vrai combobox ARIA (rôle, état ouvert,
+    // option active annoncée) ; les options ne sont plus des boutons
+    // tabulables.
+    var listId = 'cbx-' + (select.id || Math.random().toString(36).slice(2));
+    list.id = listId;
+    input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-controls', listId);
+    input.setAttribute('aria-expanded', 'false');
+
     select.insertAdjacentElement('afterend', wrap);
 
     function options() {
-      return Array.prototype.filter.call(select.options, function (o) { return o.value; });
+      // Une option vide explicite (data-vide, « — Aucune — ») reste
+      // choisissable : c'est le seul moyen de RETIRER une phase liée.
+      return Array.prototype.filter.call(select.options, function (o) { return o.value || o.hasAttribute('data-vide'); });
     }
 
     function labelFor(valeur) {
       var trouve = options().filter(function (o) { return o.value === valeur; })[0];
-      return trouve ? trouve.textContent : '';
+      // « — Aucune — » choisi : champ vide (le texte d'aide réapparaît).
+      return trouve && !trouve.hasAttribute('data-vide') ? trouve.textContent : '';
     }
 
     var trouves = [];
@@ -55,6 +78,8 @@
 
     function fermer() {
       list.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      input.removeAttribute('aria-activedescendant');
     }
 
     function choisir(o) {
@@ -67,7 +92,8 @@
     function surligner() {
       Array.prototype.forEach.call(list.querySelectorAll('.search-combobox-item'), function (el, i) {
         el.classList.toggle('is-active', i === actif);
-        if (i === actif) el.scrollIntoView({ block: 'nearest' });
+        el.setAttribute('aria-selected', i === actif ? 'true' : 'false');
+        if (i === actif) { el.scrollIntoView({ block: 'nearest' }); input.setAttribute('aria-activedescendant', el.id); }
       });
     }
 
@@ -89,17 +115,20 @@
       // choisi en silence). Avec un filtre, le premier résultat.
       var courant = matches.map(function (o) { return o.value; }).indexOf(select.value);
       actif = f ? (matches.length ? 0 : -1) : courant;
-      matches.forEach(function (o) {
-        var item = document.createElement('button');
-        item.type = 'button';
+      if (actif < 0) input.removeAttribute('aria-activedescendant');
+      matches.forEach(function (o, i) {
+        var item = document.createElement('div');
+        item.id = listId + '-opt-' + i;
         item.className = 'search-combobox-item';
         item.setAttribute('role', 'option');
+        item.setAttribute('aria-selected', 'false');
         item.textContent = o.textContent;
         if (o.value === select.value) item.classList.add('is-selected');
         item.addEventListener('click', function () { choisir(o); });
         list.appendChild(item);
       });
       list.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
       surligner();
     }
 
@@ -114,7 +143,15 @@
     input.addEventListener('click', function () {
       if (list.hidden) afficher(input.value === labelFor(select.value) ? '' : input.value);
     });
-    input.addEventListener('input', function () { afficher(input.value); });
+    input.addEventListener('input', function () {
+      afficher(input.value);
+      // Champ vidé : Entrée choisit « — Aucune — » (retirer la phase liée).
+      if (!input.value.trim()) {
+        for (var i = 0; i < trouves.length; i++) {
+          if (trouves[i].hasAttribute('data-vide')) { actif = i; surligner(); break; }
+        }
+      }
+    });
     // Clavier (audit du 2026-09-29) : flèches pour parcourir, Entrée pour
     // CHOISIR le résultat surligné (avant, Entrée fermait seulement la
     // liste : le champ affichait « Olivi » mais le post partait sur le
@@ -132,9 +169,16 @@
         if (!list.hidden && actif >= 0 && trouves[actif]) choisir(trouves[actif]);
         else { annulerSaisie(); fermer(); }
       } else if (evt.key === 'Escape') {
+        // Lot 10 (audit front I5/M17) : Échap referme la liste ou annule la
+        // saisie SANS fermer la fenêtre parente, et le focus reste dans le
+        // champ (il partait sur <body>). Champ déjà au repos : Échap
+        // remonte normalement (fermeture de la fenêtre).
+        if (!list.hidden || input.value !== labelFor(select.value)) {
+          evt.preventDefault();
+          evt.stopPropagation();
+        }
         input.value = labelFor(select.value);
         fermer();
-        input.blur();
       }
     });
     // Le texte affiché correspond toujours au projet réellement choisi :

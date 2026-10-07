@@ -64,7 +64,7 @@
          EXE qui suit un DCE) — retour Fadhel, lot 7 ; même champ que la
          fenêtre Informations. #}
       <select id="phase_liee_id" name="phase_liee_id" data-search-combobox data-search-placeholder="Rechercher un projet…">
-        <option value=""></option>
+        <option value="" data-vide>— Aucune —</option>
         {% for p in projets_phase_liee|default([]) %}
           <option value="{{ p.id }}"{{ ' selected' if p.id == saisie.phase_liee_id }}>{{ p.code }}_{{ p.nom }}</option>
         {% endfor %}

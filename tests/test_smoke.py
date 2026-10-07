@@ -2560,18 +2560,22 @@ class SmokeTestCase(SmokeBase):
         bannière continue de mener à /deadlines)."""
         resp = self._get("/accueil", **{"app.repositories.taches.list_deadlines": DEADLINES})
         body = resp.data.decode()
-        self.assertIn('<a href="/projets/1" style="font-weight:600; color:inherit;">26099X_Tour Meridian</a>', body)
+        # Lot 10 : titre de la tâche d'abord, projet (lien) en dessous.
+        self.assertIn('<a href="/projets/1" class="mini-gantt-projet" title="26099X_Tour Meridian">26099X_Tour Meridian</a>', body)
 
     def test_accueil_fil_filtrable_par_code_projet(self):
         """Retour Fadhel, 2026-09-28 : le filtre du fil d'activité doit
         aussi matcher un code de projet ("24102X"), pas seulement son nom —
-        vérifié directement dans l'attribut data-fil-texte utilisé par le
-        filtre JS (pas juste une présence de texte ailleurs sur la page)."""
+        vérifié directement dans l'attribut data-filtre utilisé par le
+        filtre JS (pas juste une présence de texte ailleurs sur la page) —
+        lot 10 : la casse et les accents sont normalisés côté navigateur."""
         resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [FEED_POST_MANUEL]})
         body = resp.data.decode()
-        debut = body.index('data-fil-texte="')
-        fin = body.index('"', debut + len('data-fil-texte="'))
-        self.assertIn(FEED_POST_MANUEL["projet_code"].lower(), body[debut:fin])
+        debut = body.index('data-filtre="')
+        fin = body.index('"', debut + len('data-filtre="'))
+        self.assertIn(FEED_POST_MANUEL["projet_code"].lower(), body[debut:fin].lower())
+        # Une Information d'équipe sans projet n'y écrit plus « None ».
+        self.assertNotIn("none", body[debut:fin].lower())
 
     def test_post_dialog_echeance_preremplie_a_aujourdhui(self):
         """Retour Fadhel, 2026-09-28 : "Dans écheance mettre par défaut la
@@ -4950,7 +4954,7 @@ class TestInformationEtComposeur(SmokeBase):
         resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [FEED_POST_INFORMATION_EQUIPE]})
         self.assertEqual(resp.status_code, 200, resp.data[:3000])
         body = resp.data.decode()
-        self.assertIn("Équipes Midgard, URBS", body)
+        self.assertIn("Équipes&nbsp;: Midgard, URBS", body)
         self.assertIn("Bureau fermé le 25.", body)
         self.assertIn('id="post-9"', body)
 
@@ -5416,7 +5420,7 @@ class TestPagesLot6(SmokeBase):
         body = self._get("/projets", **{"app.repositories.projets.list_projets": [self.PROJET_LIGNE]}).data.decode()
         # Filtre "Lots" à trois états par puce (data-chip-tristate) depuis le
         # 2026-10-01 — l'option porte son état initial dans data-mode.
-        self.assertIn('<option value="CM" title="Charpente Métallique" data-mode="">CM</option>', body)
+        self.assertIn('<option value="CM" title="Charpente métallique" data-mode="">CM</option>', body)
         self.assertIn('data-chip-tristate data-name-contient="lot_contient" data-name-egal="lot_egal"', body)
         self.assertIn('id="export-excel" href="/projets/export.xlsx"', body)
         self.assertIn('title="Rendu : Note de calcul"', body)
@@ -5577,7 +5581,7 @@ class TestAuditV3(SmokeBase):
                                                        {"id": 5, "nom_fichier": "plan.pdf"}]}
         body = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [post]}).data.decode()
         self.assertRegex(body, r'<a href="/fichiers/posts/4"[^>]*data-lightbox')
-        self.assertIn('<img src="/fichiers/posts/4" alt="capture.png" class="post-attachment-img"', body)
+        self.assertIn('<img src="/fichiers/posts/4" alt="Image jointe : capture.png" class="post-attachment-img"', body)
         self.assertIn("plan.pdf</span>", body)
 
     def test_migrations_appliquees_au_demarrage(self):

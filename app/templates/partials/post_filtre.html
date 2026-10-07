@@ -1,0 +1,11 @@
+{# Texte sur lequel portent les filtres du fil (accueil, page projet) —
+   lot 10, audit front I11. Rendu côté serveur, et non lu dans le texte de
+   la carte : le filtre ne trouve plus les libellés de l'interface
+   (« Reposter », « Envoyer »…) ni « None » pour une Information d'équipe
+   sans projet. Auteur, projet, équipes, contenu, tâche, lien, et les
+   commentaires (auteur et texte). Les accents sont retirés côté navigateur
+   (voir la fonction norm des deux pages). #}
+{% macro texte_filtre(post) -%}
+{{ post.auteur_prenom or '' }} {{ post.auteur_nom or '' }} {{ post.projet_code or '' }} {{ post.projet_nom or '' }} {{ post.equipes|default([])|join(' ') }} {{ post.contenu or '' }} {{ post.tache_titre or '' }} {{ post.lien if (post.lien and is_lien_valide(post.lien)) else '' }} {{ post.parent_contenu or '' }}
+{%- for c in post.commentaires|default([]) %} {{ c.auteur_prenom or '' }} {{ c.auteur_nom or '' }} {{ c.contenu or '' }}{% for r in c.replies|default([]) %} {{ r.auteur_prenom or '' }} {{ r.auteur_nom or '' }} {{ r.contenu or '' }}{% endfor %}{% endfor %}
+{%- endmacro %}

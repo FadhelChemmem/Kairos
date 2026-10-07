@@ -244,8 +244,28 @@
         f.reset();
         c.querySelector('.post-comment-body').hidden = false;
         c.querySelector('.post-comment-meta').hidden = false;
+        // Lot 10 : le focus revient sur « Modifier » (il tombait sur <body>).
+        var btnMod = c.querySelector('[data-modifier]');
+        if (btnMod) btnMod.focus();
+        return;
+      }
+      // Lot 10 (audit front I12) : renoncer à une suppression sans recharger.
+      var annSup = e.target.closest('[data-annuler-suppression]');
+      if (annSup) {
+        var det = annSup.closest('details');
+        det.open = false;
+        var sum = det.querySelector('summary');
+        if (sum) sum.focus();
       }
     });
+    // À l'ouverture de « Supprimer », le focus va sur « Oui, supprimer »
+    // (l'évènement toggle ne remonte pas : écoute en capture).
+    document.addEventListener('toggle', function (e) {
+      var det = e.target;
+      if (!det.classList || !det.classList.contains('post-comment-supprimer') || !det.open) return;
+      var ok = det.querySelector('[data-confirmer-suppression]');
+      if (ok) ok.focus();
+    }, true);
   }
 
   if (document.readyState === 'loading') {

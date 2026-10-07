@@ -15,6 +15,12 @@
     e.preventDefault();
 
     var btn = form.querySelector('button[type="submit"]');
+    // Lot 10 (audit front I3) : un double-clic envoyait deux requêtes et
+    // le compteur passait de 1 à 3. Une seule requête à la fois — sans
+    // désactiver le bouton (un bouton désactivé perd le focus clavier).
+    if (!btn || btn.disabled || form.dataset.enCours) return;
+    form.dataset.enCours = '1';
+    btn.setAttribute('aria-busy', 'true');
     var countEl = btn.querySelector('.post-reaction-count');
     var activeAvant = btn.getAttribute('aria-pressed') === 'true';
 
@@ -24,14 +30,18 @@
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
       body: new FormData(form),
     }).then(function (resp) {
-      if (!resp.ok) throw new Error('Échec de la validation du post.');
+      // Le serveur répond par une redirection vers la page (« next ») : c'est
+      // le succès normal. Mais une session expirée redirige vers la
+      // connexion — ce n'est pas un succès (lot 10, audit front I3).
+      var versConnexion = resp.redirected && /^\/connexion\/?$/.test(new URL(resp.url).pathname);
+      if (!resp.ok || versConnexion) throw new Error('Échec de la validation du post.');
 
       var count = parseInt(countEl.textContent, 10) || 0;
       var actifApres = !activeAvant;
 
       countEl.textContent = Math.max(0, count + (actifApres ? 1 : -1));
       btn.setAttribute('aria-pressed', actifApres ? 'true' : 'false');
-      btn.style.background = actifApres ? 'var(--hover-bg)' : 'transparent';
+      btn.classList.toggle('est-presse', actifApres);
 
       // Prochain clic : basculer vers l'action opposée, sans re-render serveur.
       form.action = actifApres ? form.dataset.retirerUrl : form.dataset.reagirUrl;
@@ -47,6 +57,8 @@
       } else if (champReaction) {
         champReaction.remove();
       }
+      delete form.dataset.enCours;
+      btn.removeAttribute('aria-busy');
     }).catch(function () {
       // Filet de sécurité : en cas d'échec réseau, on retombe sur le
       // comportement d'origine (soumission normale du formulaire).

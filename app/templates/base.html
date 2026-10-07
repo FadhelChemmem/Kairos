@@ -379,20 +379,29 @@
 // chemin », avec repli : navigator.clipboard n'existe qu'en contexte
 // sécurisé (HTTPS ou localhost), or Kairos est servi en HTTP sur le LAN.
 (function () {
-  function copier(texte) {
-    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(texte);
-    return new Promise(function (ok, ko) {
-      var ta = document.createElement('textarea');
-      ta.value = texte;
-      ta.setAttribute('readonly', '');
-      ta.style.cssText = 'position:fixed; top:0; left:0; opacity:0;';
-      document.body.appendChild(ta);
-      ta.select();
-      var reussi = false;
-      try { reussi = document.execCommand('copy'); } catch (e) { reussi = false; }
-      ta.remove();
-      if (reussi) ok(); else ko();
-    });
+  // Copie par sélection d'un <textarea> caché (execCommand) : seule voie en
+  // HTTP sur le LAN. Le focus revient ensuite sur le bouton.
+  function parSelection(texte, bouton) {
+    var ta = document.createElement('textarea');
+    ta.value = texte;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed; top:0; left:0; opacity:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    var reussi = false;
+    try { reussi = document.execCommand('copy'); } catch (x) { reussi = false; }
+    ta.remove();
+    bouton.focus();
+    return reussi;
+  }
+  function copier(texte, bouton) {
+    if (navigator.clipboard && window.isSecureContext) {
+      // API refusée (permission) : nouvel essai par sélection.
+      return navigator.clipboard.writeText(texte).catch(function () {
+        if (!parSelection(texte, bouton)) throw new Error('copie impossible');
+      });
+    }
+    return parSelection(texte, bouton) ? Promise.resolve() : Promise.reject(new Error('copie impossible'));
   }
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-copier]');
@@ -408,7 +417,7 @@
       clearTimeout(b._minuteur);
       b._minuteur = setTimeout(function () { libelle.textContent = initial; if (retour) retour.textContent = ''; }, 2500);
     }
-    copier(texte).then(function () { afficher('Chemin copié'); }, function () {
+    copier(texte, b).then(function () { afficher('Chemin copié'); }, function () {
       // Dernier recours : le chemin est sélectionné pour un Ctrl+C manuel.
       var code = b.parentNode.querySelector('code');
       if (code) { var r = document.createRange(); r.selectNodeContents(code); var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); }

@@ -3,11 +3,11 @@
 {% block title %}Tous les projets — Kairos{% endblock %}
 {% block body %}
 <div class="page-wrap" style="padding-top:24px; padding-bottom:60px;">
-  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:8px 12px; flex-wrap:wrap; margin-bottom:16px;">
     <h1 class="page-titre" style="font-size:18px; font-weight:800;">Tous les projets</h1>
     {# Même règle que la route projets.creer (admin, chef de projet) — le
        bouton était montré à tous (audit n°2). #}
-    <div style="display:flex; align-items:center; gap:8px;">
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
       {# « Télécharger en Excel » (retour Fadhel, 2026-09-29) : la liste
          affichée, avec les filtres en cours (lien mis à jour à chaque
          rafraîchissement, voir le script plus bas). Toute la chaîne de
@@ -15,7 +15,7 @@
          valeur de chaque filtre (audit du 2026-09-29 — export incomplet
          avec plusieurs phases cochées). #}
       <a id="export-excel" href="{{ url_for('projets.export_excel') }}{% if request.query_string %}?{{ request.query_string.decode() }}{% endif %}" class="btn-secondary" style="width:auto; padding:9px 14px; display:inline-flex; align-items:center; gap:6px;" download>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
         Télécharger en Excel
       </a>
       {% if g.user.role in ('admin', 'chef_de_projet') %}
@@ -29,8 +29,8 @@
   <form method="get" id="filtres-projets">
     <input type="hidden" name="filtres_actifs" value="1">
     <div class="search-mini" style="margin-bottom:12px;">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="text" name="q" value="{{ q }}" placeholder="Rechercher un projet (code ou nom)…" style="flex:1; border:none; outline:none; background:none; font-size:13.5px; font-family:inherit;">
+      <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="search" name="q" value="{{ q }}" aria-label="Rechercher un projet (code ou nom)" autocomplete="off" placeholder="Rechercher un projet (code ou nom)…" style="flex:1; min-width:0; border:none; outline:none; background:none; padding:0; font-size:13.5px; font-family:inherit;">
     </div>
 
     {# Les quatre filtres tiennent sur une seule ligne (retour Fadhel,
@@ -48,8 +48,8 @@
          besoin. #}
       <div class="filtres-ligne filtres-une-ligne">
         <div class="filtre-groupe">
-          <div style="font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em;">État</div>
-          <select name="etat" multiple data-chip-select>
+          <div id="filtre-titre-etat" class="filtre-titre">État</div>
+          <select name="etat" multiple data-chip-select data-chip-labelledby="filtre-titre-etat">
             <option value="en_cours" {{ 'selected' if 'en_cours' in etats }}>En cours</option>
             <option value="bloque" {{ 'selected' if 'bloque' in etats }}>Bloqué</option>
             <option value="termine" {{ 'selected' if 'termine' in etats }}>Terminé</option>
@@ -57,15 +57,15 @@
           </select>
         </div>
         <div class="filtre-groupe">
-          <div style="font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em;">Phase</div>
-          <select name="phase" multiple data-chip-select>
+          <div id="filtre-titre-phase" class="filtre-titre">Phase</div>
+          <select name="phase" multiple data-chip-select data-chip-labelledby="filtre-titre-phase">
             {% for ph in phases_choices %}
               <option value="{{ ph }}" {{ 'selected' if ph in phases }}>{{ ph }}</option>
             {% endfor %}
           </select>
         </div>
         <div class="filtre-groupe">
-          <div style="font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em;">Lots</div>
+          <div id="filtre-titre-lots" class="filtre-titre">Lots</div>
           {# Filtre à TROIS états par lot (retour Fadhel, 2026-10-01) :
              désélectionné → « contient » (projets AYANT ce lot, même avec
              d'autres) → « = » (projets n'ayant QUE ce lot). Deux listes
@@ -74,14 +74,14 @@
              <select> ne porte pas de name : il ne se soumet pas, les champs
              cachés le remplacent. "CM"/"GO" seulement, libellé complet au
              survol. #}
-          <select data-chip-tristate data-name-contient="lot_contient" data-name-egal="lot_egal" aria-label="Lots">
-            <option value="CM" title="Charpente Métallique" data-mode="{{ 'egal' if 'CM' in lots_egal else ('contient' if 'CM' in lots_contient else '') }}">CM</option>
-            <option value="GO" title="Gros Œuvre" data-mode="{{ 'egal' if 'GO' in lots_egal else ('contient' if 'GO' in lots_contient else '') }}">GO</option>
+          <select data-chip-tristate data-name-contient="lot_contient" data-name-egal="lot_egal" aria-label="Lots" data-chip-labelledby="filtre-titre-lots">
+            <option value="CM" title="Charpente métallique" data-mode="{{ 'egal' if 'CM' in lots_egal else ('contient' if 'CM' in lots_contient else '') }}">CM</option>
+            <option value="GO" title="Gros œuvre" data-mode="{{ 'egal' if 'GO' in lots_egal else ('contient' if 'GO' in lots_contient else '') }}">GO</option>
           </select>
         </div>
         <div class="filtre-groupe">
-          <div style="font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em;">Chef de projet</div>
-          <select name="chef_id" multiple data-chip-select data-chip-avatar="1">
+          <div id="filtre-titre-chef" class="filtre-titre">Chef de projet</div>
+          <select name="chef_id" multiple data-chip-select data-chip-avatar="1" data-chip-labelledby="filtre-titre-chef">
             {% for u in utilisateurs_actifs %}
               <option value="{{ u.id }}" {{ 'selected' if u.id in chef_ids }}
                 data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}"
@@ -95,6 +95,9 @@
     </div>
   </form>
 
+  {# Lot 10 (audit front I2) : nombre de projets annoncé après chaque
+     rafraîchissement (zone hors du bloc remplacé). #}
+  <p id="projets-statut" class="sr-only" role="status"></p>
   <div id="projets-resultats">
     {% include "partials/projets_tableau.html" %}
   </div>
@@ -111,12 +114,22 @@
   var form = document.getElementById('filtres-projets');
   var input = form.querySelector('input[name="q"]');
   var resultats = document.getElementById('projets-resultats');
+  var statut = document.getElementById('projets-statut');
   var timer = null;
+  // Lot 10 (audit front I2) : seule la DERNIÈRE requête compte — taper
+  // « sig » (réponse lente) puis vider le champ affichait le tableau et
+  // l'URL de « sig ». La requête précédente est annulée (AbortController)
+  // et, par sécurité, une réponse arrivée hors séquence est ignorée.
+  var seq = 0;
+  var enCours = null;
 
   function refresh() {
+    var n = ++seq;
+    if (enCours) enCours.abort();
+    enCours = window.AbortController ? new AbortController() : null;
     var params = new URLSearchParams(new FormData(form));
     var url = window.location.pathname + '?' + params.toString();
-    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, signal: enCours ? enCours.signal : undefined })
       .then(function (r) {
         // Session expirée : la requête a été redirigée vers la connexion —
         // on y va vraiment, au lieu d'injecter la page de connexion dans le
@@ -125,13 +138,18 @@
         return r.text();
       })
       .then(function (html) {
-        if (html === null) return;
+        if (html === null || n !== seq) return;
         resultats.innerHTML = html;
+        var compte = resultats.querySelector('[data-compte]');
+        if (statut && compte) statut.textContent = compte.textContent.trim();
         window.history.replaceState(null, '', url);
         var lien = document.getElementById('export-excel');
         if (lien) lien.href = lien.pathname + '?' + params.toString();
       })
-      .catch(function () { form.submit(); });
+      .catch(function (err) {
+        if ((err && err.name === 'AbortError') || n !== seq) return;
+        form.submit();
+      });
   }
 
   input.addEventListener('input', function () {

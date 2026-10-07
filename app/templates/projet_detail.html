@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "partials/avatar.html" as avatarm %}
+{% import "partials/post_filtre.html" as filtrem %}
 {% block title %}{{ projet.code }}_{{ projet.nom }} — Kairos{% endblock %}
 
 {% set petat = projet_etat_style(projet.etat) %}
@@ -40,7 +41,7 @@
           <span class="pill" style="background:{{ petat.bg }}; color:{{ petat.fg }};">{{ petat.label }}</span>
         </div>
         <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; font-size:12.5px; color:var(--text-muted);">
-          <span>Lot {% for l in lots %}<strong style="color:var(--text-secondary);">{{ l.code }}</strong>{% if not loop.last %} · {% endif %}{% endfor %}</span>
+          <span>Lot{{ 's' if lots|length > 1 }} {% for l in lots %}<strong style="color:var(--text-secondary);">{{ l.code }}</strong>{% if not loop.last %} · {% endif %}{% endfor %}</span>
           <span>{% if projet.date_debut %}Début {{ projet.date_debut|date_courte(true) }}{% endif %}{% if projet.date_fin %} → Échéance {{ projet.date_fin|date_courte(true) }}{% endif %}</span>
           {% if projet_clos and projet.date_cloture %}<span>Clôturé le {{ projet.date_cloture|date_courte(true) }}</span>{% endif %}
           {% if projet.phase_liee_id %}
@@ -81,10 +82,13 @@
        client, honoraires et heures "intervenants/chef" en clair ; pour le
        chef de projet/co-chef, un clic sur le panneau ouvre la fenêtre de
        modification (à la place de l'ancien crayon de l'en-tête). #}
-    <div class="card{% if peut_gerer %} carte-cliquable{% endif %}"{% if peut_gerer %} data-open-informations-dialog role="button" tabindex="0" title="Modifier les informations du projet"{% endif %}>
+    {# Lot 10 (audit front I8) : la carte n'est plus un role=button (nom
+       calculé de ~170 caractères) ; le clic sur la carte reste un
+       raccourci souris, et un vrai bouton « Modifier » sert au clavier. #}
+    <div class="card{% if peut_gerer %} carte-cliquable{% endif %}"{% if peut_gerer %} data-open-informations-dialog title="Modifier les informations du projet"{% endif %}>
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
         <h2 class="carte-titre">Informations</h2>
-        {% if peut_gerer %}<span style="font-size:11.5px; font-weight:700; color:var(--brand-text);">Modifier</span>{% endif %}
+        {% if peut_gerer %}<button type="button" class="bouton-texte bouton-texte-cible" data-open-informations-dialog aria-haspopup="dialog" aria-label="Modifier les informations du projet">Modifier</button>{% endif %}
       </div>
       <div style="display:flex; flex-direction:column; gap:10px; font-size:12.5px;">
         <div style="display:flex; justify-content:space-between; gap:10px;"><span style="color:var(--text-muted);">Client</span><span style="font-weight:600; text-align:right;">{{ projet.client or 'IPCO' }}</span></div>
@@ -92,10 +96,10 @@
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Heures intervenants</span><span style="font-weight:600;">{{ heures_courtes(projet.heures_intervenant) }} h</span></div>
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Heures chef de projet</span><span style="font-weight:600;">{{ heures_courtes(projet.heures_chef) }} h</span></div>
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Phase</span><span style="font-weight:600;">{{ projet.phase }}</span></div>
-        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Lot</span><span style="font-weight:600;">{{ lots|map(attribute='code')|join(' · ') }}</span></div>
-        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">État</span><span style="font-weight:600; color:{{ petat.fg }};">{{ petat.label }}</span></div>
-        {% if projet.date_debut %}<div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Début</span><span style="font-weight:600;">{{ projet.date_debut.strftime('%d/%m/%Y') }}</span></div>{% endif %}
-        {% if projet.date_fin %}<div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Échéance</span><span style="font-weight:600;">{{ projet.date_fin.strftime('%d/%m/%Y') }}</span></div>{% endif %}
+        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Lot{{ 's' if lots|length > 1 }}</span><span style="font-weight:600;">{{ lots|map(attribute='code')|join(' · ') }}</span></div>
+        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">État</span><span style="font-weight:600; display:flex; align-items:center; gap:6px;"><span aria-hidden="true" style="width:8px; height:8px; border-radius:999px; background:{{ petat.dot }};"></span>{{ petat.label }}</span></div>
+        {% if projet.date_debut %}<div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Début</span><span style="font-weight:600;">{{ projet.date_debut|date_courte(true) }}</span></div>{% endif %}
+        {% if projet.date_fin %}<div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Échéance</span><span style="font-weight:600;">{{ projet.date_fin|date_courte(true) }}</span></div>{% endif %}
       </div>
     </div>
 
@@ -112,7 +116,7 @@
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; gap:12px; flex-wrap:wrap;">
         <div style="display:flex; align-items:center; gap:10px;">
           <h2 class="carte-titre">Tâches</h2>
-          <span style="font-size:12px; color:var(--text-muted);">{{ nb_taches }} tâche{{ 's' if nb_taches != 1 else '' }} · {{ nb_en_cours }} en cours</span>
+          <span style="font-size:12px; color:var(--text-muted);">{{ nb_taches }} tâche{{ 's' if nb_taches > 1 else '' }} · {{ nb_en_cours }} en cours</span>
         </div>
         {% if peut_gerer and not projet_clos %}
         {# +Information et +Requête retirés d'ici (retour Fadhel, 2026-09-28) :
@@ -129,7 +133,7 @@
       </div>
 
       <div class="thead">
-        <span>Tâche</span><span>Intervenant</span><span>État</span><span>Échéance</span><span>Heures</span><span></span>
+        <span>Tâche</span><span>Intervenants</span><span>État</span><span>Échéance</span><span>Heures</span><span></span>
       </div>
 
       {% for t in taches %}
@@ -139,8 +143,12 @@
            place de l'ancien menu "…" — voir tache-dialog.js. #}
         {# Projet clos : plus d'action sur ses tâches (décision Fadhel, lot 7). #}
         {% set peut_agir_tache = not projet_clos and (peut_gerer or (g.user.role not in ('client', 'rh') and g.user.id in (t.intervenants|map(attribute='id')|list))) %}
-        <div class="taskrow taskrow-cliquable" data-open-tache="{{ t.id }}" role="button" tabindex="0" aria-haspopup="dialog" title="Ouvrir la tâche">
-          <span style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; {% if t.etat in ('termine','abandonne') %}color:var(--text-faint);{% endif %}">{{ t.titre }}</span>
+        {# Lot 10 (audit front I8) : la ligne n'est plus un role=button qui
+           contenait un autre bouton (« Rejoindre ») : le titre est le vrai
+           bouton d'ouverture, la ligne reste cliquable à la souris. Titre
+           complet au survol (il est tronqué). #}
+        <div class="taskrow taskrow-cliquable" data-open-tache="{{ t.id }}">
+          <button type="button" class="taskrow-titre" data-ouvrir-tache aria-haspopup="dialog" title="{{ t.titre }}"{% if t.etat in ('termine','abandonne') %} style="color:var(--text-faint);"{% endif %}>{{ t.titre }}</button>
           {# "Rejoindre cette tâche" (retour Fadhel, 2026-09-28) : ajout
              immédiat comme intervenant de la tâche, sans validation —
              n'apparaît qu'au survol de la ligne (moins de bruit visuel
@@ -148,7 +156,7 @@
              intervenant et n'est pas RH. #}
           {% set deja_intervenant_tache = g.user.id in (t.intervenants|map(attribute='id')|list) %}
           <div class="taskrow-intervenants">
-            <div class="avatar-stack" style="display:flex;">
+            <div class="avatar-stack" style="display:flex;" role="img" aria-label="{{ ('Intervenants : ' ~ (t.intervenants|map(attribute='prenom')|join(', '))) if t.intervenants else 'Aucun intervenant' }}">
               {% for iv in t.intervenants %}
                 {{ avatarm.avatar(iv.id, iv.prenom, iv.nom, iv.avatar_chemin, css_class='avatar avatar-sm', titre=(iv.prenom ~ ' ' ~ iv.nom)) }}
               {% endfor %}
@@ -165,7 +173,7 @@
           <span class="pill" style="background:{{ tst.bg }}; color:{{ tst.fg }};">{{ tst.label }}</span>
           <span style="font-size:12px; color:{{ 'var(--text-faint)' if t.etat in ('termine','abandonne') else 'var(--text-secondary)' }};">
             {% if t.date_echeance %}{{ t.date_echeance|date_courte }}{% endif %}
-            {% if t.type_deadline == 'interne' %}<span style="color:var(--text-faint);">#interne</span>{% endif %}
+            {% if t.type_deadline == 'interne' %}<span style="color:var(--text-faint);">(interne)</span>{% endif %}
           </span>
           {# "8/5 h" en clair = heures intervenants / heures chef de projet
              (retour Fadhel, J.docx, PR4) — voir v_tache_heures_par_role. #}
@@ -198,63 +206,63 @@
             {% if t.date_echeance %}Échéance {{ t.date_echeance|date_courte }}{% if t.type_deadline == 'interne' %} · interne{% endif %} · {% endif %}{{ t.intervenants|map(attribute='prenom')|join(', ') or 'Aucun intervenant' }}
           </div>
           <div class="tache-dialog-actions">
-                {% if t.etat not in ('termine', 'verifie') and peut_agir_tache %}
+            {% if t.etat not in ('termine', 'verifie') and peut_agir_tache %}
             <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" style="display:flex; gap:6px; margin-bottom:8px;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <select name="etat" aria-label="Nouvel état" style="flex:1;">
                 <option value="en_cours" {{ 'selected' if t.etat == 'en_cours' }}>En cours</option>
-                <option value="bloque" {{ 'selected' if t.etat == 'bloque' }}>Bloqué</option>
-                <option value="verifie" {{ 'selected' if t.etat == 'verifie' }}>Vérifié</option>
-                <option value="arret" {{ 'selected' if t.etat == 'arret' }}>Arrêt</option>
-                <option value="abandonne" {{ 'selected' if t.etat == 'abandonne' }}>Abandonné</option>
+                <option value="bloque" {{ 'selected' if t.etat == 'bloque' }}>Bloquée</option>
+                <option value="verifie" {{ 'selected' if t.etat == 'verifie' }}>Vérifiée</option>
+                <option value="arret" {{ 'selected' if t.etat == 'arret' }}>Arrêtée</option>
+                <option value="abandonne" {{ 'selected' if t.etat == 'abandonne' }}>Abandonnée</option>
               </select>
-              <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">OK</button>
+              <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">Appliquer</button>
             </form>
             <form method="post" action="{{ url_for('projets.cloturer_tache', projet_id=projet.id, tache_id=t.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <label for="cloture-tag-{{ t.id }}">Clôturer avec le tag</label>
+              <label for="cloture-tag-{{ t.id }}">Clôturer avec le type</label>
               <select name="type_code" id="cloture-tag-{{ t.id }}" style="margin-bottom:6px;">
                 <option value="envoi">Envoi</option>
                 <option value="reponse">Réponse</option>
                 <option value="question">Question</option>
                 <option value="requete">Requête</option>
               </select>
-              <button type="submit" class="btn-primary" style="background:#4a7c59; color:#fff;">Terminé</button>
+              <button type="submit" class="btn-primary btn-accent">Marquer comme terminée</button>
             </form>
             {% elif t.etat in ('termine', 'verifie') %}
-              <span style="font-size:12px; color:var(--text-muted);">Tâche {{ 'vérifiée' if t.etat == 'verifie' else 'terminée' }}{% if t.date_fin %} — clôturée le {{ t.date_fin.strftime('%d/%m/%Y') }}{% endif %}</span>
+              <span style="font-size:12px; color:var(--text-muted);">Tâche {{ 'vérifiée' if t.etat == 'verifie' else 'terminée' }}{% if t.date_fin %} — clôturée le {{ t.date_fin|date_courte(true) }}{% endif %}</span>
               {% if peut_agir_tache %}
               <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" style="display:flex; gap:6px; margin-top:8px;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <select name="etat" aria-label="Nouvel état" style="flex:1;">
-                  {% if t.etat == 'termine' %}<option value="verifie">Vérifié</option>{% endif %}
-                  <option value="en_cours">Rouvrir (En cours)</option>
+                  {% if t.etat == 'termine' %}<option value="verifie">Vérifiée</option>{% endif %}
+                  <option value="en_cours">Rouvrir (en cours)</option>
                 </select>
-                <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">OK</button>
+                <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">Appliquer</button>
               </form>
               {% endif %}
             {% elif projet_clos %}
-              <span style="font-size:12px; color:var(--text-muted);">Projet clos : rouvrez-le (Informations) pour agir sur ses tâches.</span>
+              <span style="font-size:12px; color:var(--text-muted);">{% if peut_gerer %}Projet clos&nbsp;: rouvrez-le (panneau Informations) pour agir sur ses tâches.{% else %}Projet clos&nbsp;: seul son chef de projet ou un co-chef peut le rouvrir (panneau Informations).{% endif %}</span>
             {% else %}
               <span style="font-size:12px; color:var(--text-muted);">Seuls le chef de projet, un co-chef ou un intervenant de la tâche peuvent changer son état.</span>
             {% endif %}
 
             <div class="divider" style="margin-left:0;"></div>
-            <div style="font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin-bottom:6px;">Pièces jointes</div>
+            <h3 style="font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; margin:0 0 6px;">Pièces jointes</h3>
             {% for pj in t.pieces_jointes %}
               <a href="{{ url_for('fichiers.download_tache', piece_id=pj.id) }}" style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:6px;">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+                <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
                 {{ pj.nom_fichier }}
               </a>
             {% else %}
-              <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:6px;">Aucune.</div>
+              <div style="font-size:11.5px; color:var(--text-faint); margin-bottom:6px;">Aucune pièce jointe.</div>
             {% endfor %}
             {% if peut_agir_tache %}
             <form method="post" action="{{ url_for('fichiers.upload_tache', tache_id=t.id) }}" enctype="multipart/form-data" style="display:flex; gap:6px;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="next" value="{{ request.path }}">
               <input type="file" name="fichier" aria-label="Fichier à joindre à la tâche" style="flex:1; font-size:11px;">
-              <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">+</button>
+              <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;" aria-label="Joindre le fichier">+</button>
             </form>
             {% endif %}
           </div>
@@ -271,7 +279,7 @@
            n°2) : masque, côté navigateur, les posts qui ne contiennent pas
            le texte saisi. #}
         <label class="search-mini" style="flex:1;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input type="search" id="filtre-posts" placeholder="Filtrer les posts de ce projet…" aria-label="Filtrer les posts de ce projet" style="border:none; outline:none; background:none; padding:0; flex:1; min-width:0; font:inherit; font-size:13.5px;">
         </label>
         {# Ouvert à tous ceux qui voient le projet (2026-09-29) : une
@@ -286,28 +294,36 @@
 
       <div id="fil-posts" style="display:flex; flex-direction:column; gap:14px;">
       {% for post in fil %}
+        <div class="fil-item" data-filtre="{{ filtrem.texte_filtre(post) }}">
         {% with post=post, show_projet=false, next_url=request.path %}
           {% include "partials/post_card.html" %}
         {% endwith %}
+        </div>
       {% else %}
         <div class="card" style="text-align:center; color:var(--text-muted); font-size:13px;">Aucun post pour l'instant.</div>
       {% endfor %}
       </div>
-      <div id="filtre-posts-vide" class="card" style="display:none; text-align:center; color:var(--text-muted); font-size:13px;">Aucun post ne correspond à ce filtre.</div>
+      <div id="filtre-posts-vide" role="status" style="text-align:center; color:var(--text-muted); font-size:13px;"></div>
       <script>
+      // Lot 10 (audit front I11) : filtre sur un texte rendu côté serveur
+      // (data-filtre), sans accents ni casse ; résultat vide annoncé.
       (function () {
         var champ = document.getElementById('filtre-posts');
         var fil = document.getElementById('fil-posts');
         var vide = document.getElementById('filtre-posts-vide');
         if (!champ || !fil) return;
+        function norm(s) { return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+        var items = Array.prototype.slice.call(fil.querySelectorAll('.fil-item'));
+        items.forEach(function (it) { it._filtre = norm(it.getAttribute('data-filtre')); });
         champ.addEventListener('input', function () {
-          var q = champ.value.trim().toLowerCase(), visibles = 0;
-          Array.prototype.forEach.call(fil.children, function (carte) {
-            var ok = !q || carte.textContent.toLowerCase().indexOf(q) !== -1;
+          var q = norm(champ.value.trim()), visibles = 0;
+          items.forEach(function (carte) {
+            var ok = !q || carte._filtre.indexOf(q) !== -1;
             carte.style.display = ok ? '' : 'none';
             if (ok) visibles++;
           });
-          vide.style.display = (q && !visibles) ? '' : 'none';
+          vide.textContent = (q && !visibles) ? 'Aucun post ne correspond à ce filtre.' : '';
+          vide.className = (q && !visibles) ? 'card' : '';
         });
       })();
       </script>
@@ -335,10 +351,15 @@
       <div class="divider" style="margin-left:0;"></div>
       <details>
         <summary class="btn-secondary" style="list-style:none; cursor:pointer; text-align:center;">+ Ajouter un intervenant</summary>
+        {# Lot 10 (audit front I9) : liste nommée, sans présélection (la
+           1re personne partait si l'on validait trop vite), sans les
+           membres actuels. #}
+        {% set ids_membres = intervenants|map(attribute='id')|list %}
         <form method="post" action="{{ url_for('projets.ajouter_intervenant', projet_id=projet.id) }}" style="margin-top:10px; display:flex; gap:6px;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <select name="utilisateur_id" style="flex:1;">
-            {% for u in utilisateurs_affectables %}
+          <select name="utilisateur_id" aria-label="Personne à ajouter" required style="flex:1; min-width:0;">
+            <option value="" disabled selected>Choisir…</option>
+            {% for u in utilisateurs_affectables if u.id not in ids_membres %}
               <option value="{{ u.id }}">{{ u.prenom }} {{ u.nom }}</option>
             {% endfor %}
           </select>

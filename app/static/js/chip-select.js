@@ -62,7 +62,11 @@
     cloud.className = 'chip-cloud';
     cloud.setAttribute('role', 'group');
     var libelle = select.id && document.querySelector('label[for="' + select.id + '"]');
-    if (libelle) cloud.setAttribute('aria-label', libelle.textContent.trim());
+    // Lot 10 (audit front I2/M20) : groupe nommé par son titre visible
+    // (data-chip-labelledby), à défaut par le <label for> ou l'aria-label.
+    if (select.dataset.chipLabelledby) cloud.setAttribute('aria-labelledby', select.dataset.chipLabelledby);
+    else if (libelle) cloud.setAttribute('aria-label', libelle.textContent.trim());
+    else if (select.getAttribute('aria-label')) cloud.setAttribute('aria-label', select.getAttribute('aria-label'));
     wrap.appendChild(cloud);
 
     var avatarMode = !!select.dataset.chipAvatar;
@@ -194,6 +198,8 @@
     var cloud = document.createElement('div');
     cloud.className = 'chip-cloud';
     cloud.setAttribute('role', 'group');
+    if (select.dataset.chipLabelledby) cloud.setAttribute('aria-labelledby', select.dataset.chipLabelledby);
+    else if (select.getAttribute('aria-label')) cloud.setAttribute('aria-label', select.getAttribute('aria-label'));
     wrap.appendChild(cloud);
     // Conteneur des champs cachés soumis avec le formulaire.
     var hidden = document.createElement('span');

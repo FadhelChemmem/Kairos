@@ -79,7 +79,7 @@
     <div class="form-row" style="margin-bottom:0;">
       <label for="dialog-info-phase-liee">Phase liée <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
       <select id="dialog-info-phase-liee" name="phase_liee_id" data-search-combobox data-search-placeholder="Rechercher un projet…">
-        <option value=""></option>
+        <option value="" data-vide>— Aucune —</option>
         {% for p in projets_phase_liee %}
           <option value="{{ p.id }}" {{ 'selected' if p.id == projet.phase_liee_id }}>{{ p.code }}_{{ p.nom }}</option>
         {% endfor %}

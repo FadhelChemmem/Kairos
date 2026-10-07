@@ -19,12 +19,12 @@
        fenêtre flottante, un clic à côté ramène au même endroit du fil —
        voir app/static/js/lightbox.js. Le lien reste un vrai lien (nouvel
        onglet) sans JavaScript. #}
-    <a href="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" target="_blank" rel="noopener" data-lightbox>
-      <img src="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" alt="{{ pj.nom_fichier }}" class="post-comment-attachment-img" loading="lazy">
+    <a href="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" target="_blank" rel="noopener noreferrer" data-lightbox>
+      <img src="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" alt="Image jointe : {{ pj.nom_fichier }}" class="post-comment-attachment-img" loading="lazy">
     </a>
   {% else %}
     <a href="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" class="post-comment-attachment-file">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+      <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
       <span>{{ pj.nom_fichier }}</span>
     </a>
   {% endif %}
@@ -37,15 +37,15 @@
    avec le trombone du champ) ; Entrée envoie, Maj+Entrée va à la ligne.
    Sert aussi pour "Répondre" à un commentaire de premier niveau
    (parent_commentaire_id) — voir comment-composer.js. #}
-{% macro composer_commentaire(post, next_url, parent_commentaire_id=none, placeholder='Écrire un commentaire…', autofocus=false) %}
+{% macro composer_commentaire(post, next_url, parent_commentaire_id=none, placeholder='Écrire un commentaire…', autofocus=false, etiquette=none) %}
   <form method="post" action="{{ url_for('posts.commenter', post_id=post.id) }}" enctype="multipart/form-data" class="comment-composer" data-comment-composer>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
     {% if parent_commentaire_id %}<input type="hidden" name="parent_commentaire_id" value="{{ parent_commentaire_id }}">{% endif %}
     <div class="comment-input">
-      <textarea name="contenu" maxlength="5000" rows="1" placeholder="{{ placeholder }}" aria-label="Commentaire" required data-mention-input{% if not parent_commentaire_id %} id="commentaire-post-{{ post.id }}"{% endif %}{% if autofocus %} autofocus{% endif %}></textarea>
+      <textarea name="contenu" maxlength="5000" rows="1" placeholder="{{ placeholder }}" aria-label="{{ etiquette or ('Commenter le post de ' ~ post.auteur_prenom ~ ' ' ~ post.auteur_nom) }}" required data-mention-input{% if not parent_commentaire_id %} id="commentaire-post-{{ post.id }}"{% endif %}{% if autofocus %} autofocus{% endif %}></textarea>
       <label class="comment-attach" title="Joindre un fichier (ou le glisser sur le champ)">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+        <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
         <input type="file" name="fichier" aria-label="Joindre un fichier" data-comment-file>
       </label>
     </div>
@@ -72,7 +72,7 @@
         {% for pj in c.pieces_jointes|default([]) %}{{ piece_jointe_commentaire(pj) }}{% endfor %}
       </div>
       <div class="post-comment-meta">
-        {% if c.created_at %}<span>{{ c.created_at|il_y_a }}</span>{% endif %}
+        {% if c.created_at %}<time datetime="{{ c.created_at.isoformat() }}" title="{{ date_fr(c.created_at) }} à {{ c.created_at.strftime('%H:%M') }}">{{ c.created_at|il_y_a }}</time>{% endif %}
         {% if c.modifie_le %}<span title="Modifié {{ c.modifie_le|il_y_a }}">· modifié</span>{% endif %}
         {# Répondre à une réponse : même fil (un seul niveau), la personne
            est taguée d'office. #}
@@ -90,8 +90,10 @@
             <form method="post" action="{{ url_for('posts.supprimer_commentaire', commentaire_id=c.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
-              <span>Supprimer{{ ' ce commentaire et ses réponses' if c.replies else ' ce commentaire' }} ?</span>
-              <button type="submit" class="post-comment-action danger">Oui, supprimer</button>
+              <span>Supprimer{{ ' ce commentaire et ses réponses' if c.replies else ' ce commentaire' }}&#8239;?</span>
+              <button type="submit" class="post-comment-action danger" data-confirmer-suppression>Oui, supprimer</button>
+              {# Lot 10 (audit front I12) : on peut renoncer sans recharger. #}
+              <button type="button" class="post-comment-action" data-annuler-suppression>Annuler</button>
             </form>
           </details>
         {% endif %}
@@ -114,7 +116,7 @@
           </div>
         {% endif %}
         <div class="post-comment-reply" data-reponse-a="{{ c.id }}" hidden>
-          {{ composer_commentaire(post, next_url, parent_commentaire_id=c.id, placeholder='Répondre à ' ~ c.auteur_prenom ~ '…') }}
+          {{ composer_commentaire(post, next_url, parent_commentaire_id=c.id, placeholder='Répondre à ' ~ c.auteur_prenom ~ '…', etiquette='Répondre au commentaire de ' ~ c.auteur_prenom ~ ' ' ~ c.auteur_nom) }}
         </div>
       {% endif %}
     </div>
@@ -129,7 +131,9 @@
        ouverte à tout utilisateur connecté), plus à la fiche "Utilisateurs"
        (celle-là reste réservée admin/RH/chef de projet, voir base.html). #}
     {% set auteur_url = url_for('utilisateurs.profil_personne', user_id=post.auteur_id) %}
-    <a href="{{ auteur_url }}">
+    {# Doublon du nom juste à côté : hors tabulation et masqué aux lecteurs
+       d'écran (lot 10, audit front I17). #}
+    <a href="{{ auteur_url }}" aria-hidden="true" tabindex="-1">
       {{ avatarm.avatar(post.auteur_id, post.auteur_prenom, post.auteur_nom, post.auteur_avatar_chemin, css_class='avatar avatar-lg') }}
     </a>
     <div style="flex:1; min-width:0;">
@@ -154,7 +158,7 @@
       <div style="font-size:11.5px; color:var(--text-muted);">
         {# Information d'équipe sans projet (migration 0009) : ses équipes
            destinataires à la place du projet. #}
-        {% if post.projet_id is none %}<span>{{ 'Équipes' if post.equipes|default([])|length > 1 else 'Équipe' }} {{ post.equipes|default([])|join(', ') }}</span> · {% elif show_projet %}<a href="{{ url_for('projets.detail', projet_id=post.projet_id) }}" style="color:inherit;">{{ post.projet_code }}_{{ post.projet_nom }}</a> · {% endif %}{{ post.created_at|il_y_a }}
+        {% if post.projet_id is none %}<span>{{ 'Équipes' if post.equipes|default([])|length > 1 else 'Équipe' }}&nbsp;: {{ post.equipes|default([])|join(', ') }}</span> · {% elif show_projet %}<a href="{{ url_for('projets.detail', projet_id=post.projet_id) }}" style="color:inherit;">{{ post.projet_code }}_{{ post.projet_nom }}</a> · {% endif %}{% if post.created_at %}<time datetime="{{ post.created_at.isoformat() }}" title="{{ date_fr(post.created_at) }} à {{ post.created_at.strftime('%H:%M') }}">{{ post.created_at|il_y_a }}</time>{% endif %}
       </div>
     </div>
     {% if post.est_creation_tache or post.evenement|default(none) in ('etat_tache', 'titre_tache') %}
@@ -178,12 +182,12 @@
   {% if post.evenement|default(none) in ('etat_tache', 'titre_tache') %}
     <div style="font-size:13.5px; line-height:1.55; margin:12px 0 10px 46px;">
       {% if post.evenement == 'etat_tache' %}<div style="font-weight:600;">{{ post.tache_titre }}</div>{% endif %}
-      <div style="color:var(--text-secondary);">{{ post.contenu }}</div>
+      <div class="post-texte" style="color:var(--text-secondary);">{{ post.contenu }}</div>
     </div>
   {% elif post.evenement|default(none) == 'etat_projet' %}
-    <div style="font-size:13.5px; line-height:1.55; margin:12px 0 10px 46px; color:var(--text-secondary);">{{ post.contenu }}</div>
+    <div class="post-texte" style="font-size:13.5px; line-height:1.55; margin:12px 0 10px 46px; color:var(--text-secondary);">{{ post.contenu }}</div>
   {% elif post.est_creation_tache or post.est_cloture_tache or post.evenement|default(none) == 'creation_projet' %}
-    <div style="font-size:13.5px; line-height:1.55; margin:12px 0 10px 46px; font-weight:600;">{{ post.contenu or post.tache_titre }}</div>
+    <div class="post-texte" style="font-size:13.5px; line-height:1.55; margin:12px 0 10px 46px; font-weight:600;">{{ post.contenu or post.tache_titre }}</div>
   {% else %}
     <div class="post-texte" style="font-size:13.5px; line-height:1.55; margin:12px 0 12px 46px;">{{ post.contenu }}</div>
   {% endif %}
@@ -197,7 +201,7 @@
       <span>avec</span>
       <span class="avatar-stack">
         {% for m in post.mentions %}
-          <a href="{{ url_for('utilisateurs.profil_personne', user_id=m.id) }}">{{ avatarm.avatar(m.id, m.prenom, m.nom, m.avatar_chemin, css_class='avatar avatar-sm', titre=(m.prenom ~ ' ' ~ m.nom)) }}</a>
+          <a href="{{ url_for('utilisateurs.profil_personne', user_id=m.id) }}" aria-label="{{ m.prenom }} {{ m.nom }}">{{ avatarm.avatar(m.id, m.prenom, m.nom, m.avatar_chemin, css_class='avatar avatar-sm', titre=(m.prenom ~ ' ' ~ m.nom)) }}</a>
         {% endfor %}
       </span>
       {% if post.mentions|length == 1 %}<span class="post-avec-nom">{{ post.mentions[0].prenom }} {{ post.mentions[0].nom }}</span>{% endif %}
@@ -210,10 +214,25 @@
      même si la création (routes/posts.py:creer) est censée l'avoir déjà
      filtré (défense en profondeur pour une donnée existante). #}
   {% if post.lien and is_lien_valide(post.lien) %}
-    <a href="{{ post.lien }}" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:6px; margin:0 0 6px 46px;">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
-      <span style="font-size:12px; color:var(--text-muted); word-break:break-all;">{{ post.lien }}</span>
+    {# Lot 10 (audit front B8) : un chemin réseau Windows (\\NAS\…) ou une
+       URI file:/smb: ne s'ouvre pas depuis un navigateur (le lien menait à
+       http://nas/…) : on affiche le chemin et un bouton « Copier le
+       chemin » (script commun dans base.html, avec repli en HTTP). #}
+    {% set lien_reseau = post.lien.strip().startswith('\\\\') or post.lien.strip().lower().startswith(('file:', 'smb:')) %}
+    {% if lien_reseau %}
+    <div class="post-lien post-lien-reseau">
+      <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
+      <code class="post-lien-chemin">{{ post.lien.strip() }}</code>
+      <button type="button" class="bouton-copier" data-copier="{{ post.lien.strip() }}" aria-label="Copier le chemin réseau {{ post.lien.strip() }}"><span class="copier-libelle">Copier le chemin</span></button>
+      <span class="copier-statut sr-only" role="status"></span>
+    </div>
+    {% else %}
+    <a href="{{ post.lien }}" target="_blank" rel="noopener noreferrer" class="post-lien">
+      <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
+      <span style="font-size:12px; color:var(--text-muted); overflow-wrap:anywhere;">{{ post.lien }}</span>
+      <span class="sr-only">(nouvel onglet)</span>
     </a>
+    {% endif %}
   {% endif %}
 
   {# Images jointes affichées dans le fil, en grand dans la visionneuse
@@ -221,12 +240,12 @@
      de captures d'écran ») ; autres fichiers en lien de téléchargement. #}
   {% for pj in post.pieces_jointes %}
     {% if is_image_filename(pj.nom_fichier) %}
-      <a href="{{ url_for('fichiers.download_post', piece_id=pj.id) }}" target="_blank" rel="noopener" data-lightbox style="display:block; margin:0 0 8px 46px;">
-        <img src="{{ url_for('fichiers.download_post', piece_id=pj.id) }}" alt="{{ pj.nom_fichier }}" class="post-attachment-img" loading="lazy">
+      <a href="{{ url_for('fichiers.download_post', piece_id=pj.id) }}" target="_blank" rel="noopener noreferrer" data-lightbox style="display:block; margin:0 0 8px 46px;">
+        <img src="{{ url_for('fichiers.download_post', piece_id=pj.id) }}" alt="Image jointe : {{ pj.nom_fichier }}" class="post-attachment-img" loading="lazy">
       </a>
     {% else %}
     <a href="{{ url_for('fichiers.download_post', piece_id=pj.id) }}" style="display:flex; align-items:center; gap:6px; margin:0 0 6px 46px;">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+      <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
       <span style="font-size:12px; color:var(--text-muted);">{{ pj.nom_fichier }}</span>
     </a>
     {% endif %}
@@ -235,7 +254,7 @@
   {% if post.parent_post_id %}
     <div style="margin:0 0 12px 46px; background:var(--bg-subtle-1); border:1px solid var(--border-soft); border-radius:12px; padding:12px 14px;">
       <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h6a3 3 0 0 1 3 3v3"/><path d="M13 7l3 3-3 3"/><path d="M7 17h4"/></svg>
+        <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h6a3 3 0 0 1 3 3v3"/><path d="M13 7l3 3-3 3"/><path d="M7 17h4"/></svg>
         <span style="font-size:11.5px; color:var(--text-muted);">En réponse à <a href="#post-{{ post.parent_post_id }}" style="color:inherit; font-weight:700;">{{ post.parent_auteur_prenom }} {{ post.parent_auteur_nom }}</a></span>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
@@ -245,7 +264,7 @@
         {% else %}
           {% set pst = post_type_style(post.parent_type_code) %}
           <span class="pill pill-sm" style="background:{{ pst.bg }}; color:{{ pst.fg }};">{{ pst.label }}</span>
-          <span style="font-size:13px; font-weight:600;">{{ post.parent_contenu }}</span>
+          <span class="post-texte" style="font-size:13px; font-weight:600;">{{ (post.parent_contenu or '')|truncate(200, true, '…') }}</span>
         {% endif %}
       </div>
     </div>
@@ -269,13 +288,22 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
       {% if not post.ma_reaction %}<input type="hidden" name="reaction_code" value="pouce">{% endif %}
-      <button type="submit"{% if projet_clos %} disabled{% endif %} aria-pressed="{{ 'true' if post.ma_reaction else 'false' }}" aria-label="{{ 'Retirer ma validation' if post.ma_reaction else 'Valider ce post' }} ({{ post.nb_reactions }})" {% if post.reacteurs %}title="{% for r in post.reacteurs %}{{ r.prenom }} {{ r.nom }}{% if not loop.last %}, {% endif %}{% endfor %}"{% endif %} class="post-action" style="background:{{ 'var(--hover-bg)' if post.ma_reaction else 'transparent' }};">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> <span class="post-reaction-count">{{ post.nb_reactions }}</span>
+      {# Lot 10 (audit front I3) : nom accessible = texte + compteur visible
+         (toujours juste), l'état passe par aria-pressed ; état pressé en
+         classe (.est-presse), contrasté dans les deux thèmes. #}
+      <button type="submit"{% if projet_clos %} disabled{% endif %} aria-pressed="{{ 'true' if post.ma_reaction else 'false' }}" {% if post.reacteurs %}title="{% for r in post.reacteurs %}{{ r.prenom }} {{ r.nom }}{% if not loop.last %}, {% endif %}{% endfor %}"{% endif %} class="post-action{{ ' est-presse' if post.ma_reaction }}">
+        <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> <span class="sr-only">Valider ce post, validations&nbsp;:</span> <span class="post-reaction-count">{{ post.nb_reactions }}</span>
       </button>
     </form>
-    <label for="commentaire-post-{{ post.id }}" class="post-action" style="color:var(--text-muted);">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="4"/><path d="M8.5 17 6.5 20v-3"/></svg> {{ post.nb_commentaires }} commentaire{{ 's' if post.nb_commentaires != 1 else '' }}
-    </label>
+    {# Compteur : un <label> vers le champ de commentaire s'il existe (un
+       clic y place le curseur), un simple texte si le projet est clos (le
+       champ n'existe pas) — lot 10, audit front I17. #}
+    {% set compteur_commentaires %}<svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="4"/><path d="M8.5 17 6.5 20v-3"/></svg> {{ post.nb_commentaires }} commentaire{{ 's' if post.nb_commentaires > 1 else '' }}{% endset %}
+    {% if projet_clos %}
+    <span class="post-action post-action-compteur">{{ compteur_commentaires }}</span>
+    {% else %}
+    <label for="commentaire-post-{{ post.id }}" class="post-action post-action-compteur">{{ compteur_commentaires }}</label>
+    {% endif %}
     {# "Reposter" (retour Fadhel, 2026-09-29, P2) : remplace le trombone et
        la flèche. Ouvre la fenêtre "Nouveau post" (Tâche / Information /
        Requête) liée à ce post, qui s'affichera "en réponse à" lui dans le
@@ -292,9 +320,9 @@
             data-parent-post-id="{{ post.id }}"
             data-parent-label="{{ post.auteur_prenom }} {{ post.auteur_nom }} — {{ (post.contenu or post.tache_titre or '')|truncate(70, true, '…') }}"
             data-projet-id="{{ post.projet_id or 'aucun' }}"
-            data-projet-label="{{ (post.projet_code ~ '_' ~ post.projet_nom) if post.projet_id else 'Aucun projet — information d\'équipe' }}"
+            data-projet-label="{{ (post.projet_code ~ '_' ~ post.projet_nom) if post.projet_id else 'Aucun projet (information d\'équipe)' }}"
             {% if projet_clos %}disabled title="Projet {{ 'terminé' if post.projet_etat == 'termine' else 'abandonné' }} : on ne peut plus y reposter"{% else %}title="Reposter : répondre à ce post par une tâche, une information ou une requête"{% endif %}>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+      <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
       Reposter
     </button>
     {% endif %}
