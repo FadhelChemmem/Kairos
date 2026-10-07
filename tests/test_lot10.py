@@ -544,5 +544,39 @@ class TestDurcissement(unittest.TestCase):
         self.assertIn('host="127.0.0.1"', (RACINE / "wsgi.py").read_text(encoding="utf-8"))
 
 
+
+class TestFichiersIgnores(unittest.TestCase):
+    """Audits sécurité I16 / QA I7 : fichiers sensibles hors de git, et
+    image Docker construite sur liste blanche."""
+
+    SENSIBLES = (".env", ".env.prod", "kairos_2026-10-01_0300.sql.gz", "dump.sql", "kairos.dump",
+                 "export_rh.csv", "identifiants.csv", "migration_2026.sql", "liste.xlsx", "Remarques.docx",
+                 "sous/capture.png", "sous/kairos.tar.gz")
+    VERSIONNES = ("schema.sql", "migrations/0013_rattrapage_et_integrite.sql", "tests/sql/rattrapage_0013.sql",
+                  ".env.example", "app/static/img/kairos-logo.png")
+
+    def _git(self, *args):
+        import shutil
+        import subprocess
+        if not shutil.which("git") or not (RACINE / ".git").exists():
+            self.skipTest("dépôt git indisponible")
+        return subprocess.run(["git", *args], cwd=RACINE, capture_output=True, text=True)
+
+    def test_gitignore(self):
+        for f in self.SENSIBLES:
+            with self.subTest(fichier=f):
+                self.assertEqual(self._git("check-ignore", "-q", "--no-index", f).returncode, 0)
+        for f in self.VERSIONNES:
+            with self.subTest(fichier=f):
+                self.assertEqual(self._git("check-ignore", "-q", "--no-index", f).returncode, 1)
+
+    def test_dockerignore_liste_blanche(self):
+        lignes = [l.strip() for l in (RACINE / ".dockerignore").read_text(encoding="utf-8").splitlines()
+                  if l.strip() and not l.startswith("#")]
+        self.assertEqual(lignes[0], "*")
+        autorises = {l[1:] for l in lignes if l.startswith("!")}
+        self.assertEqual(autorises, {"app/", "migrations/", "wsgi.py", "requirements.txt", "gunicorn.conf.py"})
+
+
 if __name__ == "__main__":
     unittest.main()

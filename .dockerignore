@@ -1,56 +1,18 @@
-# PROMPT_CORRECTIONS.md P0 #6 : sans ce fichier, `COPY . .` dans le
-# Dockerfile embarque TOUT le contenu du dossier de build dans l'image —
-# y compris des fichiers qui ne sont pas dans git (voir .gitignore) mais
-# qui existent bel et bien sur la machine où `docker compose build` est
-# lancé : le vrai .env (secrets en clair), les sauvegardes, les dumps de
-# migration (données personnelles réelles + mots de passe temporaires en
-# clair, voir la note de .gitignore sur l'incident du 2026-09-19), les
-# pièces jointes déjà uploadées, et l'historique git complet. Une image
-# Docker se laisse inspecter (`docker save`/`docker history`/un simple
-# accès au registre si elle y est poussée) : tout ce qui est copié dedans
-# doit être considéré comme potentiellement exposé.
+# LISTE BLANCHE (audits sécurité I16 et QA I7, lot 10) : seul ce qui sert à
+# l'exécution entre dans l'image. Le dossier de build est la copie de
+# travail du NAS, où l'on dépose aussi des exports, dumps, .env.prod,
+# captures... : avec une liste noire, tout fichier imprévu partait dans
+# l'image via `COPY . .` (une image se laisse inspecter : tout ce qui y est
+# copié doit être considéré comme exposé). Pour ajouter un fichier
+# nécessaire à l'exécution : une ligne « !chemin » ci-dessous.
+*
+!app/
+!migrations/
+!wsgi.py
+!requirements.txt
+!gunicorn.conf.py
 
-# Secrets / configuration locale
-.env
-.env.*
-!.env.example
-
-# Sauvegardes et exports de migration (données personnelles réelles,
-# mots de passe temporaires en clair — voir .gitignore)
-backups/
-migration_sorties/
-# "**/" : sans ce préfixe, ces motifs ne visent QUE la racine du dossier de
-# build (contrairement à .gitignore) — un dump posé dans un sous-dossier
-# partait quand même dans l'image (audit n°2).
-**/identifiants*NE_PAS_COMMITER*.csv
-**/chronos_*.sql
-**/migration.sql
-# Sorties datées de la migration du 2026-09-21 (audit du 2026-10-01) :
-# elles partaient dans l'image via `COPY . .`.
-**/migration_kairos_*.sql
-**/rapport_migration_*.md
-**/identifiants_*.csv
-
-# Pièces jointes déjà uploadées (volume Docker en prod, jamais du contenu
-# à embarquer dans l'image applicative elle-même)
-uploads/
-
-# Contrôle de version / CI — inutile à l'exécution, et l'historique git
-# complet n'a rien à faire dans une image publiée
-.git/
-.github/
-
-# Tests, caches, artefacts Python — inutiles à l'exécution en production
-tests/
+# Même dans les dossiers autorisés : ni caches ni artefacts locaux.
 **/__pycache__/
 **/*.pyc
-**/.pytest_cache/
-**/*.egg-info/
-.venv/
-venv/
-
-# Divers
-.DS_Store
-
-# Captures d'écran à la racine (voir .gitignore)
-/*.png
+**/.DS_Store

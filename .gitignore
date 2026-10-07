@@ -2,6 +2,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .env
+# Toute variante de .env (.env.prod, .env.local...) contient des secrets ;
+# seul le modèle est versionné (audits sécurité I16 et QA I7, lot 10).
+.env.*
+!.env.example
 uploads/
 backups/
 *.egg-info/
@@ -25,5 +29,26 @@ identifiants_*.csv
 
 # Captures d'écran de vérification posées à la racine par erreur (une
 # s'était retrouvée dans le dépôt et dans l'image Docker, audit du
-# 2026-09-29) — les images de l'appli sont dans app/static/img/.
-/*.png
+# 2026-09-29) — les images de l'appli sont dans app/static/img/. Lot 10 :
+# où qu'elles soient (sous-dossiers compris), sauf dans app/static/img/.
+*.png
+*.jpg
+*.jpeg
+!/app/static/img/*
+
+# Fichiers déposés à la racine de la copie de travail (exports Excel,
+# documents, dumps, identifiants...) : jamais dans git (audits sécurité I16
+# et QA I7, lot 10). Les fichiers SQL versionnés sont réintégrés
+# explicitement.
+/*.xlsx
+/*.xls
+/*.docx
+/*.doc
+/*.pdf
+/*.csv
+/*.sql
+!/schema.sql
+*.sql.gz
+*.tar.gz
+*.dump
+*.backup
