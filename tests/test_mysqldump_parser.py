@@ -63,9 +63,6 @@ class TestCompleteInsert(unittest.TestCase):
         self.assertEqual(data["users"], [{"id": 1, "email": "a@b.tn", "role": "admin"}])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class TestVariantesEtEchecBruyant(unittest.TestCase):
     """Audit n°2 : INSERT IGNORE / REPLACE INTO étaient ignorés en silence,
@@ -95,3 +92,7 @@ class TestVariantesEtEchecBruyant(unittest.TestCase):
         self.assertEqual(data["users"][0]["email"], "l'a;b),(c")
         self.assertEqual(data["users"][0]["role"], "x\\y")
         self.assertIsNone(data["users"][1]["email"])
+
+
+if __name__ == "__main__":
+    unittest.main()

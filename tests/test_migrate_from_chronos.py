@@ -4,6 +4,8 @@ scripts/migrate_from_chronos.py — PROMPT_CORRECTIONS.md P1 #13.
 Le script n'est pas un module du package `app` (voir la note "RÉUTILISABLE"
 en tête de fichier) : on ajoute `scripts/` à sys.path avant de l'importer,
 exactement comme le script le fait lui-même pour mysqldump_parser."""
+import os
+import shutil
 import sys
 import unittest
 from collections import defaultdict
@@ -12,8 +14,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from migrate_from_chronos import (  # noqa: E402
-    RawSQL, build_dailylog, build_intervenants, build_projets, build_utilisateurs, mysql_date_only,
-    mysql_dt_to_pg, sql_str, sql_val,
+    RawSQL, build_dailylog, build_intervenants, build_projets, build_taches, build_utilisateurs,
+    mysql_date_only, mysql_dt_to_pg, sql_str, sql_val,
 )
 
 
@@ -195,6 +197,105 @@ class TestComptesRH(unittest.TestCase):
         projet_iv, _tache_iv = build_intervenants(data, {7, 8}, {1}, set(), report, rh_ids=frozenset({7}))
         self.assertEqual(projet_iv, [(1, 8)])
         self.assertEqual(report["intervenants_rh_ignores"], [7])
+
+
+class TestRepriseLot10(unittest.TestCase):
+    """Audit données lot 10 : B1 (dates incohérentes rejetées par les
+    triggers de 0012 -> tout le chargement échouait), I6 (heures sans
+    personne), I7 (projets clos sans date de clôture)."""
+
+    @staticmethod
+    def _projet(pid, state, debut, fin, maj="2025-05-10 08:00:00"):
+        return {"id": pid, "customId": f"2600{pid}X_P", "code": None, "phaseID": 10, "manager": 1,
+                "state": state, "startDate": debut, "dueDate": fin, "createdBy": 1,
+                "createdAt": "2025-01-01 08:00:00", "updatedAt": maj, "prevPhase": None, "name": "P"}
+
+    def test_fin_avant_debut_effacee_et_cloture_posee(self):
+        data = {"projects": [self._projet(1, "done", "2025-03-01 00:00:00", "2025-02-01 00:00:00"),
+                             self._projet(2, "done", "2025-01-01 00:00:00", "2025-02-01 00:00:00")],
+                "phases": [{"id": 10, "name": "EXE"}], "lots": [], "projectLots": []}
+        report = defaultdict(list)
+        projets, _l, _p, _ids = build_projets(data, {1}, report)
+        par_id = {p["id"]: p for p in projets}
+        self.assertIsNone(par_id[1]["date_fin"])
+        self.assertEqual(par_id[1]["date_cloture"], "2025-05-10")
+        self.assertEqual(par_id[2]["date_cloture"], "2025-02-01")
+        self.assertEqual(report["projets_date_fin_effacee"], [(1, "2025-03-01", "2025-02-01")])
+
+    def test_echeance_avant_debut_effacee(self):
+        data = {"intervenants": [], "tasks": [{
+            "id": 7, "name": "T", "startDate": "2025-02-01 00:00:00", "dueDate": "2025-01-15 00:00:00",
+            "doneDate": None, "isVerified": 0, "state": "doing", "meta": '{"projectID": 1}',
+            "createdAt": None, "updatedAt": None}]}
+        report = defaultdict(list)
+        taches, _ids = build_taches(data, {1}, report)
+        self.assertIsNone(taches[0]["date_echeance"])
+        self.assertEqual(report["taches_echeance_effacee"], [(7, "2025-02-01", "2025-01-15")])
+
+    def test_heures_sans_personne_chiffrees_par_projet(self):
+        data = {"intervenants": [{"id": 1, "intervenantID": None, "projectID": 3, "taskID": None}],
+                "interventionHours": [
+                    {"interventionID": 1, "projectID": 3, "date": "2025-02-04", "hours": 3.5},
+                    {"interventionID": None, "projectID": 3, "date": "2025-02-05", "hours": 2},
+                    {"interventionID": None, "projectID": None, "date": "2025-02-05", "hours": 1}]}
+        report = defaultdict(list)
+        self.assertEqual(build_dailylog(data, set(), set(), set(), report), [])
+        self.assertEqual(report["dailylog_ignore_sans_intervenant"], 3)
+        self.assertEqual(report["dailylog_heures_orphelines"], {3: 5.5, None: 1.0})
+
+
+@unittest.skipUnless(os.environ.get("KAIROS_TEST_DATABASE_URL") and shutil.which("psql"),
+                     "KAIROS_TEST_DATABASE_URL et psql requis")
+class TestRepriseChargeeDansPostgres(unittest.TestCase):
+    """Audit QA I12 : migration.sql n'était jamais chargé sur une vraie
+    base. Mini export synthétique (tests/fixtures_chronos) -> script ->
+    psql -v ON_ERROR_STOP=1 sur une base neuve (schema.sql, triggers
+    actifs)."""
+
+    def test_chargement_complet(self):
+        import subprocess
+        import tempfile
+        import uuid
+        from urllib.parse import urlsplit
+        racine = Path(__file__).resolve().parent.parent
+        u = urlsplit(os.environ["KAIROS_TEST_DATABASE_URL"])
+        env = dict(os.environ, PGHOST=u.hostname or "127.0.0.1", PGPORT=str(u.port or 5432),
+                   PGUSER=u.username or "", PGPASSWORD=u.password or os.environ.get("PGPASSWORD", ""))
+        base = f"kairos_t_chronos_{uuid.uuid4().hex[:8]}"
+
+        def psql(db, *args):
+            return subprocess.run(["psql", "-X", "-Atq", "-v", "ON_ERROR_STOP=1", "-d", db, *args],
+                                  env=env, capture_output=True, text=True)
+
+        psql("postgres", "-c", f"CREATE DATABASE {base}")
+        self.addCleanup(psql, "postgres", "-c", f"DROP DATABASE IF EXISTS {base}")
+        self.assertEqual(psql(base, "-f", str(racine / "schema.sql")).returncode, 0)
+        sortie = Path(tempfile.mkdtemp(prefix="kairos_chronos_"))
+        self.addCleanup(shutil.rmtree, sortie, ignore_errors=True)
+        r = subprocess.run([sys.executable, str(racine / "scripts" / "migrate_from_chronos.py"),
+                            str(racine / "tests" / "fixtures_chronos" / "mini_dump.sql"), "--out-dir", str(sortie)],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = psql(base, "-f", str(sortie / "migration.sql"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+        def valeur(sql):
+            return psql(base, "-c", sql).stdout.strip()
+
+        self.assertEqual(valeur("SELECT string_agg(id::text, ',' ORDER BY id) FROM projet"), "1,2,3")  # Client chef exclu
+        self.assertEqual(valeur("SELECT coalesce(date_fin::text, 'NULL') || ' ' || date_cloture FROM projet WHERE id = 2"),
+                         "NULL 2025-05-10")
+        self.assertEqual(valeur("SELECT count(*) FROM projet WHERE etat IN ('termine', 'abandonne') AND date_cloture IS NULL"), "0")
+        self.assertEqual(valeur("SELECT phase_liee_id || ' ' || to_char(updated_at, 'YYYY-MM-DD') FROM projet WHERE id = 3"),
+                         "2 2025-04-02")  # phase liée posée sans réécrire updated_at
+        self.assertEqual(valeur("SELECT coalesce(date_echeance::text, 'NULL') FROM tache WHERE id = 1"), "NULL")
+        self.assertEqual(valeur("SELECT string_agg(utilisateur_id::text, ',') FROM projet_co_chef WHERE projet_id = 1"), "3")
+        self.assertEqual(valeur("SELECT count(*) FROM projet_intervenant pi JOIN utilisateur u ON u.id = pi.utilisateur_id "
+                                "WHERE u.role IN ('client', 'rh')"), "0")
+        self.assertEqual(valeur("SELECT sum(heures) FROM dailylog_entree"), "8.00")
+        rapport = (sortie / "rapport.md").read_text(encoding="utf-8")
+        self.assertIn("**5.5 h** au total", rapport)
+        self.assertIn("fin effacée", rapport)
 
 
 if __name__ == "__main__":

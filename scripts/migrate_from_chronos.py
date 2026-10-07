@@ -381,6 +381,17 @@ def build_projets(data, valid_user_ids, report, rh_ids=frozenset()):
         etat = PROJET_ETAT_MAP.get(p["state"], "en_cours")
         date_debut = mysql_date_only(p["startDate"])
         date_fin = mysql_date_only(p["dueDate"]) if p["state"] == "done" else None
+        # Trigger trg_check_dates_projet (migration 0012) : une fin avant le
+        # début ferait échouer TOUT le chargement -> fin effacée, signalée.
+        if date_debut and date_fin and date_fin < date_debut:
+            report["projets_date_fin_effacee"].append((pid, date_debut, date_fin))
+            date_fin = None
+        # Projet clos : date de clôture (migration 0011) = fin prévue, sinon
+        # dernière modification Chronos — sans elle, le Daily log ne fige
+        # jamais ces projets.
+        date_cloture = None
+        if etat in ("termine", "abandonne"):
+            date_cloture = date_fin or mysql_date_only(p["updatedAt"]) or mysql_date_only(p["createdAt"])
 
         created_by = p["createdBy"] if p["createdBy"] in valid_user_ids else None
         created_at = mysql_dt_to_pg(p["createdAt"]) or RawSQL("now()")
@@ -389,6 +400,7 @@ def build_projets(data, valid_user_ids, report, rh_ids=frozenset()):
         projets.append(dict(
             id=pid, code=code, nom=clean_text(p["name"]) or f"Projet {pid}",
             phase=phase, date_debut=date_debut, date_fin=date_fin, etat=etat,
+            date_cloture=date_cloture,
             chef_projet_id=manager, created_by=created_by,
             created_at=created_at, updated_at=updated_at,
         ))
@@ -465,10 +477,16 @@ def build_taches(data, valid_projet_ids, report):
         created_at = mysql_dt_to_pg(t["createdAt"]) or RawSQL("now()")
         updated_at = mysql_dt_to_pg(t["updatedAt"]) or created_at
 
+        date_debut_t = mysql_date_only(t["startDate"])
+        date_echeance_t = mysql_date_only(t["dueDate"])
+        # Trigger trg_check_dates_tache (migration 0012) : même raison.
+        if date_debut_t and date_echeance_t and date_echeance_t < date_debut_t:
+            report["taches_echeance_effacee"].append((tid, date_debut_t, date_echeance_t))
+            date_echeance_t = None
         taches.append(dict(
             id=tid, projet_id=projet_id, titre=clean_text(t["name"]) or f"Tâche {tid}",
-            etat=etat, date_debut=mysql_date_only(t["startDate"]),
-            date_echeance=mysql_date_only(t["dueDate"]),
+            etat=etat, date_debut=date_debut_t,
+            date_echeance=date_echeance_t,
             date_fin=mysql_date_only(t["doneDate"]),
             created_at=created_at, updated_at=updated_at,
         ))
@@ -516,14 +534,21 @@ def build_dailylog(data, valid_user_ids, valid_projet_ids, valid_tache_ids, repo
     ignorees_sans_intervention = 0
     ignorees_donnees_invalides = 0
 
+    orphelines = defaultdict(float)  # projet_id (ou None) -> heures sans personne
+
     for h in data["interventionHours"]:
         interv_id = h["interventionID"]
-        if interv_id is None:
-            ignorees_sans_intervention += 1
-            continue
-        interv = interv_by_id.get(interv_id)
+        interv = interv_by_id.get(interv_id) if interv_id is not None else None
         if not interv or interv["intervenantID"] is None:
+            # Heures sans personne identifiable (audit données I6, lot 10 :
+            # ~31 % des heures du dump réel) : non imputées — décision
+            # métier en attente — mais chiffrées par projet dans le rapport.
             ignorees_sans_intervention += 1
+            projet_orphelin = (interv or {}).get("projectID") or h.get("projectID")
+            try:
+                orphelines[projet_orphelin] += float(h["hours"] or 0)
+            except (TypeError, ValueError):
+                pass
             continue
         uid = interv["intervenantID"]
         projet_id = interv["projectID"]
@@ -540,6 +565,9 @@ def build_dailylog(data, valid_user_ids, valid_projet_ids, valid_tache_ids, repo
 
     report["dailylog_ignore_sans_intervenant"] = ignorees_sans_intervention
     report["dailylog_ignore_invalide"] = ignorees_donnees_invalides
+    report["dailylog_heures_orphelines"] = {
+        projet_id: round(heures, 2) for projet_id, heures in orphelines.items() if heures > 0
+    }
 
     lignes = []
     for (uid, date, projet_id, tache_id0), heures in agg.items():
@@ -609,6 +637,7 @@ def emit_sql(path, utilisateurs, projets, projet_lots, liens_phase, taches,
     w("-- À rejouer sur une base FRAÎCHE (schema.sql déjà appliqué, aucune")
     w("-- donnée métier existante) — voir le rapport .md associé.")
     w("-- =====================================================================")
+    w("\\set ON_ERROR_STOP on")
     w("BEGIN;")
     w("")
 
@@ -628,19 +657,35 @@ def emit_sql(path, utilisateurs, projets, projet_lots, liens_phase, taches,
     w("")
 
     w("-- --- Projets ---")
-    for p in projets:
+    w("-- Phase liée posée dans l'INSERT, projets référencés insérés d'abord : un")
+    w("-- UPDATE en 2e passe réécrivait updated_at (trigger) de chaque projet lié.")
+    lien = dict(liens_phase)
+    restants = {p["id"]: p for p in projets}
+    ordonnes, inseres = [], set()
+    while restants:
+        prets = [pid for pid, p in restants.items() if lien.get(pid) is None or lien[pid] in inseres]
+        if not prets:  # cycle de phases liées (improbable) : liens restants posés après coup
+            prets = list(restants)
+        for pid in sorted(prets):
+            ordonnes.append(restants.pop(pid))
+            inseres.add(pid)
+    cycle, inseres = [], set()
+    for p in ordonnes:
+        lie = lien.get(p["id"])
+        if lie is not None and lie not in inseres:
+            cycle.append((p["id"], lie))
+            lie = None
+        inseres.add(p["id"])
         w(
-            "INSERT INTO projet (id, code, nom, phase, date_debut, date_fin, etat, "
-            "chef_projet_id, created_by, created_at, updated_at) VALUES ("
+            "INSERT INTO projet (id, code, nom, phase, date_debut, date_fin, date_cloture, etat, "
+            "chef_projet_id, phase_liee_id, created_by, created_at, updated_at) VALUES ("
             f"{p['id']}, {sql_val(p['code'])}, {sql_val(p['nom'])}, {sql_val(p['phase'])}::phase_enum, "
-            f"{sql_val(p['date_debut'])}, {sql_val(p['date_fin'])}, {sql_val(p['etat'])}::projet_etat_enum, "
-            f"{p['chef_projet_id']}, {sql_val(p['created_by'])}, "
+            f"{sql_val(p['date_debut'])}, {sql_val(p['date_fin'])}, {sql_val(p.get('date_cloture'))}, "
+            f"{sql_val(p['etat'])}::projet_etat_enum, "
+            f"{p['chef_projet_id']}, {sql_val(lie)}, {sql_val(p['created_by'])}, "
             f"{sql_val(p['created_at'])}, {sql_val(p['updated_at'])});"
         )
-    w("")
-
-    w("-- --- Phase liée (2e passe, une fois tous les projets insérés) ---")
-    for projet_id, prev_id in liens_phase:
+    for projet_id, prev_id in cycle:
         w(f"UPDATE projet SET phase_liee_id = {prev_id} WHERE id = {projet_id};")
     w("")
 
@@ -738,7 +783,13 @@ def emit_rapport(path, report, counts, args):
     a("- **Équipe (`equipe_code`)** : l'ancien Kairos n'a pas cette notion — laissée "
       "**vide** pour tout le monde (utilisateurs ET projets). À assigner à la main "
       "(page Utilisateurs / fiche projet) après import : tant que ce n'est pas fait, "
-      "la visibilité des projets par équipe ne filtre rien pour les non-admin/RH.")
+      "un chef de projet ou un intervenant ne voit QUE les projets auxquels il est "
+      "rattaché (chef, co-chef, intervenant du projet ou d'une tâche), un **Client ne "
+      "voit aucun projet** ; seul l'Admin voit tout (vue v_projet_visibilite).")
+    a("- **Chef de projet ajouté comme intervenant** : devient co-chef du projet "
+      "(décision 3, migration 0013) — ses heures comptent côté « chef ».")
+    a("- **Rôles RH et Client** : jamais chef, co-chef ni intervenant — ces "
+      "rattachements sont ignorés (sinon tout le chargement échoue).")
     a("- **Code projet** : reconstruit depuis `customId` (ex. `18C9P_chambres funéraires` "
       "→ code `18C9P`), unique vérifié sur les 807 projets sans collision.")
     a("- **`tache.created_by`** : l'ancien Kairos ne trace pas qui a créé une tâche — "
@@ -769,11 +820,27 @@ def emit_rapport(path, report, counts, args):
       "total pour 807 projets).")
     a(f"- {report['dailylog_ignore_invalide']} ligne(s) `interventionHours` avec des données "
       "incohérentes (heures nulles/négatives, projet ou utilisateur introuvable) — ignorée(s).")
+    if report["dailylog_heures_orphelines"]:
+        orphelines = report["dailylog_heures_orphelines"]
+        a(f"- **{round(sum(orphelines.values()), 2)} h** au total dans ces lignes sans personne, "
+          "NON importées (à imputer à la main si besoin — par exemple au chef du projet) :")
+        a("")
+        a("  | Projet (id ancien Kairos) | Heures non importées |")
+        a("  |---|---|")
+        for projet_id, heures in sorted(orphelines.items(), key=lambda kv: (-kv[1], str(kv[0]))):
+            a(f"  | {projet_id if projet_id is not None else 'inconnu'} | {heures} |")
+        a("")
     if report["dailylog_heures_plafonnees"]:
         a(f"- {len(report['dailylog_heures_plafonnees'])} ligne(s) DailyLog dont le total "
           "agrégé (même jour/projet/tâche/personne) dépassait 24h — plafonnée(s) à 24, "
           "**à vérifier manuellement** (données source probablement incorrectes) : "
           f"{report['dailylog_heures_plafonnees']}")
+    if report["projets_date_fin_effacee"]:
+        a(f"- {len(report['projets_date_fin_effacee'])} projet(s) avec une fin prévue antérieure au début — "
+          f"fin effacée (à ressaisir) : {report['projets_date_fin_effacee']}")
+    if report["taches_echeance_effacee"]:
+        a(f"- {len(report['taches_echeance_effacee'])} tâche(s) avec une échéance antérieure au début — "
+          f"échéance effacée (à ressaisir) : {report['taches_echeance_effacee']}")
     if report["lots_non_reconnus"]:
         a(f"- {len(report['lots_non_reconnus'])} rattachement(s) projet/lot non reconnu(s) "
           f"(libellé absent de LOTS_CIBLE dans le script) — ignoré(s), à assigner à la main "
@@ -782,11 +849,11 @@ def emit_rapport(path, report, counts, args):
         a(f"- {len(report['codes_projet_renommes'])} code(s) projet renommé(s) pour éviter un "
           f"doublon : {report['codes_projet_renommes']}")
     if report["projets_manager_rh"]:
-        a(f"- {len(report['projets_manager_rh'])} projet(s) dont le chef est un compte RH "
-          "(interdit : un RH ne peut pas être chef de projet) — non importés, à recréer "
+        a(f"- {len(report['projets_manager_rh'])} projet(s) dont le chef est un compte RH ou Client "
+          "(interdit : ni l'un ni l'autre ne peut être chef de projet) — non importés, à recréer "
           f"avec un autre chef : {report['projets_manager_rh']}")
     if report["intervenants_rh_ignores"]:
-        a(f"- {len(report['intervenants_rh_ignores'])} affectation(s) d'un compte RH comme "
+        a(f"- {len(report['intervenants_rh_ignores'])} affectation(s) d'un compte RH ou Client comme "
           "intervenant — ignorée(s) (interdit dans le nouveau Kairos) : "
           f"{sorted(set(report['intervenants_rh_ignores']))}")
     if report["rh_supplementaires_retrogrades"]:
@@ -866,7 +933,8 @@ def main():
 
     print("Transformation des utilisateurs ...")
     utilisateurs, credentials, valid_user_ids = build_utilisateurs(data, args.email_domain, report)
-    rh_ids = frozenset(u["id"] for u in utilisateurs if u["role"] == "rh")
+    # RH ET Client : ni chef, ni co-chef, ni intervenant (fn_check_role_non_rh).
+    rh_ids = frozenset(u["id"] for u in utilisateurs if u["role"] in ("rh", "client"))
 
     print("Transformation des projets ...")
     projets, projet_lots, liens_phase, valid_projet_ids = build_projets(data, valid_user_ids, report, rh_ids)
