@@ -86,6 +86,7 @@
             <input type="hidden" name="equipe_code" value="{{ equipe_code or '' }}">
             <input type="hidden" name="role" value="{{ role or '' }}">
             <input type="hidden" name="actif" value="{{ actif_param }}">
+            <input type="hidden" name="actif_cible" value="{{ '0' if u.actif else '1' }}">
             <button type="submit" class="toggle" style="background:{{ '#4a7c59' if u.actif else 'var(--border)' }}; justify-content:{{ 'flex-end' if u.actif else 'flex-start' }};" title="{{ 'Désactiver' if u.actif else 'Réactiver' }} ce compte">
               <span class="toggle-knob"></span>
             </button>

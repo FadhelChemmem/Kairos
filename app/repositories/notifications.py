@@ -33,8 +33,9 @@ def creer_pour_plusieurs(utilisateur_ids: list[int], categorie: str, message: st
                           exclure_id: int | None = None) -> None:
     """Même notification pour plusieurs personnes (ex. tous les intervenants
     ajoutés à une tâche) — `exclure_id` sert à ne jamais notifier l'auteur
-    de l'action lui-même."""
-    for uid in utilisateur_ids:
+    de l'action lui-même. Chaque personne n'est notifiée qu'une fois, même
+    si son id est répété (audit sécurité I12)."""
+    for uid in dict.fromkeys(utilisateur_ids):
         if uid == exclure_id:
             continue
         creer(uid, categorie, message, post_id=post_id, tache_id=tache_id)

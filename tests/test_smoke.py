@@ -1622,7 +1622,7 @@ class SmokeTestCase(SmokeBase):
             patch("app.routes.posts.save_upload", return_value=("plan.pdf", "posts/101/xyz.pdf")),
             patch("app.repositories.taches.add_piece_jointe", return_value=1),
             patch("app.repositories.utilisateurs.create_utilisateur", return_value=42),
-            patch("app.repositories.utilisateurs.toggle_actif", return_value=None),
+            patch("app.repositories.utilisateurs.set_actif", return_value=None),
         ]
         for p in patchers:
             p.start()
@@ -1690,7 +1690,7 @@ class SmokeTestCase(SmokeBase):
             self.assertEqual(r12.status_code, 302, r12.data[:2000])
 
             r13 = self.client.post("/utilisateurs/5/toggle-actif", data={
-                "q": "", "equipe_code": "", "role": "", "actif": "",
+                "q": "", "equipe_code": "", "role": "", "actif": "", "actif_cible": "0",
             })
             self.assertEqual(r13.status_code, 302, r13.data[:2000])
         finally:
@@ -1890,7 +1890,7 @@ class SmokeTestCase(SmokeBase):
         self._login()
         patchers = self._patched(**{
             "app.repositories.utilisateurs.create_utilisateur": 42,
-            "app.repositories.utilisateurs.toggle_actif": None,
+            "app.repositories.utilisateurs.set_actif": None,
         })
         for p in patchers:
             p.start()
@@ -1921,7 +1921,7 @@ class SmokeTestCase(SmokeBase):
         self._login()
         patchers = self._patched(**{
             "app.repositories.utilisateurs.create_utilisateur": 42,
-            "app.repositories.utilisateurs.toggle_actif": None,
+            "app.repositories.utilisateurs.set_actif": None,
         })
         for p in patchers:
             p.start()
@@ -1957,7 +1957,7 @@ class SmokeTestCase(SmokeBase):
             p.start()
         try:
             with patch("app.repositories.utilisateurs.create_utilisateur", return_value=42) as mock_create, \
-                 patch("app.repositories.utilisateurs.toggle_actif") as mock_toggle:
+                 patch("app.repositories.utilisateurs.set_actif") as mock_toggle:
                 resp = self.client.post(
                     "/utilisateurs/nouveau",
                     data={
@@ -2034,14 +2034,14 @@ class SmokeTestCase(SmokeBase):
         self._login()
         patchers = self._patched() + [
             patch(
-                "app.repositories.utilisateurs.toggle_actif",
+                "app.repositories.utilisateurs.set_actif",
                 side_effect=Exception('duplicate key value violates unique constraint "idx_utilisateur_rh_singleton"'),
             ),
         ]
         for p in patchers:
             p.start()
         try:
-            resp = self.client.post("/utilisateurs/2/toggle-actif", data={})
+            resp = self.client.post("/utilisateurs/2/toggle-actif", data={"actif_cible": "1"})
         finally:
             for p in reversed(patchers):
                 p.stop()
@@ -2054,12 +2054,13 @@ class SmokeTestCase(SmokeBase):
         """Audit n°2 : la redirection recopiait tout request.form, donc
         aussi csrf_token, dans l'URL de la liste."""
         self._login()
-        patchers = self._patched() + [patch("app.repositories.utilisateurs.toggle_actif")]
+        patchers = self._patched() + [patch("app.repositories.utilisateurs.set_actif")]
         for p in patchers:
             p.start()
         try:
             resp = self.client.post("/utilisateurs/2/toggle-actif", data={
                 "csrf_token": "secret", "q": "wael", "equipe_code": "", "role": "intervenant",
+                "actif_cible": "0",
             })
         finally:
             for p in reversed(patchers):
@@ -3079,7 +3080,7 @@ class SmokeTestCase(SmokeBase):
         self._login()
         patchers = self._patched(**{
             "app.repositories.utilisateurs.create_utilisateur": 42,
-            "app.repositories.utilisateurs.toggle_actif": None,
+            "app.repositories.utilisateurs.set_actif": None,
         })
         for p in patchers:
             p.start()
@@ -3104,7 +3105,7 @@ class SmokeTestCase(SmokeBase):
         self._login()
         patchers = self._patched(**{
             "app.repositories.utilisateurs.create_utilisateur": 42,
-            "app.repositories.utilisateurs.toggle_actif": None,
+            "app.repositories.utilisateurs.set_actif": None,
         })
         for p in patchers:
             p.start()
@@ -3130,7 +3131,7 @@ class SmokeTestCase(SmokeBase):
         self._login()
         patchers = self._patched(**{
             "app.repositories.utilisateurs.create_utilisateur": 42,
-            "app.repositories.utilisateurs.toggle_actif": None,
+            "app.repositories.utilisateurs.set_actif": None,
         })
         for p in patchers:
             p.start()

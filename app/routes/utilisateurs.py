@@ -603,9 +603,13 @@ def toggle_actif(user_id: int):
         flash("Vous ne pouvez pas désactiver votre propre compte.", "error")
     elif _cible_protegee(cible):
         flash("Seul un Admin peut activer ou désactiver le compte d'un Admin.", "error")
+    elif request.form.get("actif_cible") not in ("0", "1"):
+        # État VOULU envoyé par le formulaire (utilisateurs_liste.html) :
+        # un double clic ne fait plus revenir à l'état d'avant.
+        flash("Requête invalide : rechargez la page et réessayez.", "error")
     else:
         try:
-            utilisateurs_repo.toggle_actif(user_id, g.user["id"])
+            utilisateurs_repo.set_actif(user_id, request.form["actif_cible"] == "1", g.user["id"])
         except Exception as exc:
             # Réactivation d'un compte RH alors qu'un autre est déjà actif
             # (PROMPT_CORRECTIONS.md P1 #11) : idx_utilisateur_rh_singleton

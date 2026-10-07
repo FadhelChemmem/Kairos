@@ -156,8 +156,15 @@ def creer():
     if projet_id:
         mentionne_ids = [uid for uid in mentionne_ids if projets_repo.user_can_view(projet_id, uid)]
     else:
-        actifs = {u["id"] for u in utilisateurs_repo.list_actifs()}
-        mentionne_ids = [uid for uid in mentionne_ids if uid in actifs]
+        # Information sans projet : la mention rend destinataire — jamais un
+        # Client, et (sauf Admin/RH) seulement un membre des équipes visées
+        # (audit sécurité I3 : l'Information sortait de l'équipe).
+        cibles = {
+            u["id"] for u in utilisateurs_repo.list_actifs()
+            if u.get("role") != "client"
+            and (g.user["role"] in ("admin", "rh") or u.get("equipe_code") in equipe_codes)
+        }
+        mentionne_ids = [uid for uid in mentionne_ids if uid in cibles]
     # Une personne taguée dans une réponse doit aussi voir le post d'origine
     # (repris dans le bloc "En réponse à").
     if parent_post_id:

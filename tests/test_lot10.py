@@ -143,7 +143,7 @@ class TestDecision1RHEtAdmin(_BaseLot10):
     CREER = "app.repositories.utilisateurs.create_utilisateur"
     MAJ = "app.repositories.utilisateurs.update_utilisateur_complet"
     MDP = "app.repositories.utilisateurs.set_password"
-    ACTIF = "app.repositories.utilisateurs.toggle_actif"
+    ACTIF = "app.repositories.utilisateurs.set_actif"
 
     def test_rh_ne_cree_pas_d_admin(self):
         _, m = self._requete("post", "/utilisateurs/nouveau", {**FICHE, "role": "admin", "actif": "on"},
@@ -371,6 +371,60 @@ class TestEntreesForgees(_BaseLot10):
             self.assertTrue(nom.endswith(".pdf") and chemin.endswith(".pdf"))
             nom, _ = storage.save_upload(Fichier("plan\x00.pdf"), "taches/1")
             self.assertEqual(nom, "plan.pdf")
+
+
+
+class TestDoublonsEtIdempotence(_BaseLot10):
+    """Audit sécurité I3, I12, M1 ; audit données M7, M8."""
+
+    def test_mentions_repetees_une_seule_notification(self):
+        from app.repositories import notifications
+        with patch.object(notifications, "creer") as creer:
+            notifications.creer_pour_plusieurs([5, 5, 6, 5], "projet", "m", exclure_id=6)
+        self.assertEqual([c.args[0] for c in creer.call_args_list], [5])
+
+    def test_information_sans_projet_mention_hors_equipe_ou_client_ignoree(self):
+        actifs = [
+            {"id": 3, "prenom": "A", "nom": "M", "poste": None, "role": "intervenant", "equipe_code": "MIDGARD"},
+            {"id": 4, "prenom": "B", "nom": "U", "poste": None, "role": "intervenant", "equipe_code": "URBS"},
+            {"id": 5, "prenom": "C", "nom": "C", "poste": None, "role": "client", "equipe_code": "MIDGARD"},
+        ]
+        intervenant = {**smoke.USER, "role": "intervenant"}
+        _, m = self._requete("post", "/posts", {"type_code": "information", "equipes": "MIDGARD",
+                                                 "contenu": "x", "mentions": ["3", "4", "5", "3"]},
+                             espions=[("app.repositories.posts.create_post", 1)],
+                             **{"app.auth.get_user_by_id": intervenant,
+                                "app.repositories.utilisateurs.list_actifs": actifs})
+        self.assertEqual(m["app.repositories.posts.create_post"].call_args.kwargs["mentionne_ids"], [3])
+
+    def test_activation_idempotente(self):
+        for cible, attendu in (("0", False), ("1", True)):
+            with self.subTest(cible=cible):
+                _, m = self._requete("post", "/utilisateurs/2/toggle-actif", {"actif_cible": cible},
+                                     espions=[("app.repositories.utilisateurs.set_actif", True)],
+                                     **{"app.repositories.utilisateurs.get_utilisateur": smoke.AUTRE_UTILISATEUR})
+                self.assertEqual(m["app.repositories.utilisateurs.set_actif"].call_args.args[:2], (2, attendu))
+
+    def test_activation_sans_etat_voulu_refusee(self):
+        _, m = self._requete("post", "/utilisateurs/2/toggle-actif", {},
+                             espions=[("app.repositories.utilisateurs.set_actif", True)],
+                             **{"app.repositories.utilisateurs.get_utilisateur": smoke.AUTRE_UTILISATEUR})
+        m["app.repositories.utilisateurs.set_actif"].assert_not_called()
+
+    def test_activation_compte_inexistant(self):
+        resp, m = self._requete("post", "/utilisateurs/99999/toggle-actif", {"actif_cible": "0"},
+                                espions=[("app.repositories.utilisateurs.set_actif", False)],
+                                **{"app.repositories.utilisateurs.get_utilisateur": None})
+        m["app.repositories.utilisateurs.set_actif"].assert_not_called()
+        with self.client.session_transaction() as sess:
+            self.assertTrue(any("introuvable" in msg for _, msg in sess.get("_flashes", [])))
+
+    def test_set_actif_pose_la_valeur(self):
+        from app.repositories import utilisateurs
+        with patch.object(db, "execute", return_value=1) as execute:
+            self.assertTrue(utilisateurs.set_actif(4, False, 1))
+        self.assertIn("SET actif = %s", execute.call_args.args[0])
+        self.assertEqual(execute.call_args.args[1], (False, 4))
 
 
 if __name__ == "__main__":

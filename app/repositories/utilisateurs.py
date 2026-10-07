@@ -18,7 +18,7 @@ def list_actifs() -> list[dict]:
     projet / d'intervenant — voir list_affectables (migration 0011)."""
     return db.query_all(
         """
-        SELECT id, prenom, nom, poste, role
+        SELECT id, prenom, nom, poste, role, equipe_code
         FROM utilisateur
         WHERE actif = true AND role != 'rh'
         ORDER BY nom, prenom
@@ -235,14 +235,17 @@ def set_avatar(user_id: int, avatar_chemin: str, current_user_id: int) -> None:
     )
 
 
-def toggle_actif(user_id: int, current_user_id: int) -> None:
-    """Active/désactive un compte (ne supprime jamais rien — voir la note
-    de la maquette : l'historique projets/tâches/posts reste intact)."""
-    db.execute(
-        "UPDATE utilisateur SET actif = NOT actif WHERE id = %s",
-        (user_id,),
+def set_actif(user_id: int, actif: bool, current_user_id: int) -> bool:
+    """Active ou désactive un compte (ne supprime jamais rien — voir la
+    note de la maquette : l'historique projets/tâches/posts reste intact).
+    Idempotent (audits sécurité M1 / données M7) : on pose l'état VOULU,
+    un double envoi du formulaire ne fait plus revenir à l'état d'avant.
+    Retourne False si le compte n'existe pas."""
+    return db.execute(
+        "UPDATE utilisateur SET actif = %s WHERE id = %s",
+        (bool(actif), user_id),
         user_id=current_user_id,
-    )
+    ) == 1
 
 
 def update_utilisateur_complet(
