@@ -432,10 +432,10 @@ def creer():
                         if g.user["role"] == "admin" else ""
                     )
                     flash(
-                        f"Compte créé pour {prenom} {nom}, mais l'email n'a "
-                        f"pas pu être envoyé ({_motif_echec_email()}) — il ne "
-                        "pourra pas se connecter tant qu'un mot de passe n'est "
-                        "pas défini. Renvoyez-lui le lien depuis sa fiche "
+                        f"Compte créé pour {prenom} {nom}, mais l'e-mail n'a "
+                        f"pas pu être envoyé ({_motif_echec_email()}) : la "
+                        "personne ne pourra pas se connecter tant qu'un mot de "
+                        "passe n'est pas défini. Renvoyez-lui le lien depuis sa fiche "
                         "(« Envoyer un lien de réinitialisation ») une fois "
                         f"l'envoi d'e-mails opérationnel{autre_option}.", "error",
                     )

@@ -73,7 +73,9 @@
     </div>
   </div>
 
-  <!-- Colonne droite : Daily log de la semaine dernière -->
+  <!-- Colonne droite : Daily log de la semaine dernière (ni le RH ni un
+       Client n'ont de Daily log : leurs liens menaient à « Accès réservé »). -->
+  {% if g.user.role in ('admin', 'chef_de_projet', 'intervenant') %}
   <div class="col-center" style="max-width:none;">
     <div class="card">
       <h2 class="carte-titre" style="margin-bottom:14px;">Daily log — semaine dernière</h2>
@@ -95,6 +97,7 @@
       </div>
     </div>
   </div>
+  {% endif %}
 
 </div>
 {% endblock %}

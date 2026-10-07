@@ -226,7 +226,8 @@ def date_fr(d) -> str:
     français sur un serveur sans la locale fr_FR installée)."""
     if d is None:
         return ""
-    return f"{_JOURS_COMPLETS[d.weekday()]} {d.day} {_MOIS_COMPLETS[d.month - 1]} {d.year}"
+    jour = "1er" if d.day == 1 else str(d.day)
+    return f"{_JOURS_COMPLETS[d.weekday()]} {jour} {_MOIS_COMPLETS[d.month - 1]} {d.year}"
 
 
 def date_courte(d, avec_annee: bool = False) -> str:
