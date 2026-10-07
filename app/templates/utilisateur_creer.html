@@ -28,11 +28,11 @@
       </div>
     </div>
     <div class="form-row">
-      <label for="avatar">Photo de profil <span style="font-weight:400; color:var(--text-faint);">— optionnel, remplace les initiales</span></label>
+      <label for="avatar">Photo de profil <span style="font-weight:400; color:var(--text-faint);">— facultatif, remplace les initiales</span></label>
       <input type="file" id="avatar" name="avatar" accept=".png,.jpg,.jpeg,.gif,.webp,image/*">
     </div>
     <div class="form-row">
-      <label for="email">Email <span style="font-weight:400; color:var(--text-faint);">— identifiant de connexion</span></label>
+      <label for="email">Adresse e-mail <span style="font-weight:400; color:var(--text-faint);">— identifiant de connexion</span></label>
       <input type="email" id="email" name="email" maxlength="255" value="{{ f.get('email', '') }}" placeholder="foulen@gmail.com" autocomplete="off" required>
     </div>
     <div class="form-row">
@@ -54,7 +54,7 @@
       <input type="text" id="adresse" name="adresse" value="{{ f.get('adresse', '') }}" autocomplete="off" placeholder="Rue, ville…">
     </div>
 
-    <div class="section-title">Bureau et rôle</div>
+    <div class="section-title">Équipe et rôle</div>
     <div class="form-row-2">
       <div class="form-row">
         <label for="equipe_code">Équipe</label>
@@ -78,19 +78,19 @@
         <select id="role" name="role">
           <option value="intervenant" {{ 'selected' if f.get('role') == 'intervenant' }}>Intervenant</option>
           <option value="chef_de_projet" {{ 'selected' if f.get('role') == 'chef_de_projet' }}>Chef de projet</option>
-          {% if g.user.role == 'admin' %}<option value="admin" {{ 'selected' if f.get('role') == 'admin' }}>Admin</option>{% endif %}
+          {% if g.user.role == 'admin' %}<option value="admin" {{ 'selected' if f.get('role') == 'admin' }}>Administrateur</option>{% endif %}
           <option value="rh" {{ 'disabled' if rh_titulaire }} {{ 'selected' if f.get('role') == 'rh' and not rh_titulaire }}>
             {{ 'RH — déjà attribué à ' ~ rh_titulaire.prenom ~ ' ' ~ rh_titulaire.nom if rh_titulaire else 'RH' }}
           </option>
         </select>
       </div>
     </div>
-    <div style="font-size:11px; color:var(--text-faint); margin:-8px 0 4px;">RH est un rôle unique : un seul compte actif peut l'avoir à la fois. Désactivez le titulaire actuel pour le réattribuer ailleurs.</div>
+    <div style="font-size:11px; color:var(--text-muted); margin:-8px 0 4px;">RH est un rôle unique : un seul compte actif peut l'avoir à la fois. Désactivez le titulaire actuel pour le réattribuer ailleurs.</div>
 
     <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 2px;">
       <div>
         <div style="font-size:13px; font-weight:600;">Compte actif</div>
-        <div style="font-size:11px; color:var(--text-faint);">Désactivé, le compte disparaît des listes d'affectation sans rien supprimer</div>
+        <div style="font-size:11px; color:var(--text-muted);">Désactivé, le compte disparaît des listes d'affectation sans rien supprimer</div>
       </div>
       <input type="checkbox" id="actif" name="actif" class="actif-toggle-input" aria-label="Compte actif" {{ 'checked' if request.method != 'POST' or f.get('actif') }}>
       <label for="actif" class="toggle" aria-hidden="true"><span class="toggle-knob"></span></label>
@@ -98,10 +98,10 @@
 
     <div class="section-title">Accès</div>
     <div class="radio-opt selected">
-      <input type="radio" checked disabled style="margin-top:2px;">
+      <input type="radio" checked disabled aria-label="E-mail d'activation" style="margin-top:2px; width:auto;">
       <div>
-        <div class="radio-opt-title">Email d'activation</div>
-        <div class="radio-opt-note">Aucun mot de passe n'est défini ici : un email est envoyé à l'utilisateur pour qu'il choisisse lui-même son mot de passe (lien valable 1 heure, si l'envoi d'email est configuré côté serveur — sinon vous verrez un avertissement). Le compte reste marqué "Non vérifié" tant qu'il ne l'a pas fait.</div>
+        <div class="radio-opt-title">E-mail d'activation</div>
+        <div class="radio-opt-note">Aucun mot de passe n'est défini ici : un e-mail est envoyé à l'utilisateur pour qu'il choisisse lui-même son mot de passe (lien valable 1 heure, si l'envoi d'e-mails est configuré côté serveur — sinon vous verrez un avertissement). Le compte reste marqué «&nbsp;Non vérifié&nbsp;» tant qu'il ne l'a pas fait.</div>
       </div>
     </div>
 

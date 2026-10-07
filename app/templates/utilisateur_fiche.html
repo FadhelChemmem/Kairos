@@ -27,11 +27,11 @@
       </div>
     </div>
     <div class="form-row">
-      <label for="avatar">Photo de profil <span style="font-weight:400; color:var(--text-faint);">— optionnel, remplace les initiales</span></label>
+      <label for="avatar">Photo de profil <span style="font-weight:400; color:var(--text-faint);">— facultatif, remplace les initiales</span></label>
       <input type="file" id="avatar" name="avatar" accept=".png,.jpg,.jpeg,.gif,.webp,image/*">
     </div>
     <div class="form-row">
-      <label for="email">Email <span style="font-weight:400; color:var(--text-faint);">— identifiant de connexion</span></label>
+      <label for="email">Adresse e-mail <span style="font-weight:400; color:var(--text-faint);">— identifiant de connexion</span></label>
       <input type="email" id="email" name="email" maxlength="255" value="{{ utilisateur.email }}" autocomplete="off" required>
     </div>
     <div class="form-row">
@@ -53,7 +53,7 @@
       <input type="text" id="adresse" name="adresse" autocomplete="off" value="{{ utilisateur.adresse or '' }}" placeholder="Rue, ville…">
     </div>
 
-    <div class="section-title">Bureau et rôle</div>
+    <div class="section-title">Équipe et rôle</div>
     <div class="form-row-2">
       <div class="form-row">
         <label for="equipe_code">Équipe</label>
@@ -94,7 +94,7 @@
           {% endif %}
           {% for r in roles_creables %}
             <option value="{{ r }}" {{ 'selected' if r == utilisateur.role }}>
-              {{ {"intervenant": "Intervenant", "chef_de_projet": "Chef de projet", "admin": "Admin", "rh": "RH"}[r] }}
+              {{ {"intervenant": "Intervenant", "chef_de_projet": "Chef de projet", "admin": "Administrateur", "rh": "RH"}[r] }}
             </option>
           {% endfor %}
         </select>

@@ -85,7 +85,7 @@
             {% endif %}
           {% endif %}
         </div>
-        <span style="font-size:12px; color:var(--text-secondary);">{{ u.date_embauche.strftime('%m/%Y') if u.date_embauche else '—' }}</span>
+        <span style="font-size:12px; color:var(--text-secondary);">{{ u.date_embauche|date_courte(true) if u.date_embauche else '—' }}</span>
         {% if peut_gerer %}
           <form method="post" action="{{ url_for('utilisateurs.toggle_actif', user_id=u.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

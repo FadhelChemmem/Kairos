@@ -3,7 +3,7 @@ import datetime
 import unittest
 
 from app.utils import (
-    avatar_color, build_gantt, il_y_a, initials, is_lien_valide, is_safe_next, post_type_style, projet_etat_style,
+    avatar_color, build_gantt, date_courte, il_y_a, initials, is_lien_valide, is_safe_next, post_type_style, projet_etat_style,
     tache_etat_style,
 )
 
@@ -62,6 +62,21 @@ class TestIlYA(unittest.TestCase):
     def test_yesterday(self):
         dt = datetime.datetime.now() - datetime.timedelta(days=1, hours=1)
         self.assertEqual(il_y_a(dt), "hier")
+
+    def test_plus_d_une_semaine_date_courte_francaise(self):
+        # Lot 10 (audit front §7) : « le 5 oct. », plus « 05/10/2026 ».
+        dt = datetime.datetime.now() - datetime.timedelta(days=20)
+        self.assertEqual(il_y_a(dt), "le " + date_courte(dt))
+        ancien = datetime.datetime(2024, 3, 1, 9, 0)
+        self.assertEqual(il_y_a(ancien), "le 1er mars 2024")
+
+
+class TestDateCourte(unittest.TestCase):
+    def test_jour_sans_zero_initial_et_premier(self):
+        self.assertEqual(date_courte(datetime.date(2026, 10, 5)), "5 oct.")
+        self.assertEqual(date_courte(datetime.date(2026, 6, 1), True), "1er juin 2026")
+        self.assertEqual(date_courte(datetime.date(2026, 9, 23)), "23 sept.")
+        self.assertEqual(date_courte(None), "")
 
 
 class TestBuildGantt(unittest.TestCase):

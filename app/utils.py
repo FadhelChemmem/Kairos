@@ -203,7 +203,9 @@ def il_y_a(dt) -> str:
         return "hier"
     if secondes < 7 * 24 * 3600:
         return f"il y a {int(secondes // (24 * 3600))} j"
-    return dt.strftime("%d/%m/%Y")
+    # Au-delà d'une semaine : « le 5 oct. » (« le 5 oct. 2025 » une autre
+    # année) — même format que le reste de l'appli (lot 10, audit front §7).
+    return "le " + date_courte(dt, avec_annee=dt.year != now.year)
 
 
 _JOURS_LETTRE = ["L", "M", "M", "J", "V", "S", "D"]
@@ -227,7 +229,10 @@ def date_courte(d, avec_annee: bool = False) -> str:
     serveur sans locale française (audit n°2)."""
     if d is None:
         return ""
-    texte = f"{d.day:02d} {_MOIS_ABBR[d.month - 1]}"
+    # « 5 oct. », « 1er juin » : jour sans zéro initial, « 1er » pour le
+    # premier du mois (lot 10, audit front §7 — c'était « 05 oct. »).
+    jour = "1er" if d.day == 1 else str(d.day)
+    texte = f"{jour} {_MOIS_ABBR[d.month - 1]}"
     return f"{texte} {d.year}" if avec_annee else texte
 
 
