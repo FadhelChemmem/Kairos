@@ -69,6 +69,16 @@ class BackupDbTestCase(unittest.TestCase):
             mode = stat.S_IMODE((self.tmp / "backups" / n).stat().st_mode)
             self.assertEqual(mode & 0o077, 0, f"{n}: permissions {oct(mode)}")
 
+    def test_dossier_de_sauvegarde_hors_du_depot(self):
+        """Audit QA I6 (lot 10) : KAIROS_BACKUP_DIR place les sauvegardes
+        hors de la copie de travail (un `git clean` les effaçait)."""
+        dest = self.tmp / "ailleurs" / "kairos"
+        result = self._run(env_extra={"KAIROS_BACKUP_DIR": str(dest)})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(list(dest.glob("kairos_*.sql.gz"))), 1)
+        self.assertEqual(len(list(dest.glob("kairos_uploads_*.tar.gz"))), 1)
+        self.assertEqual(self._backups(), [])
+
     def test_echec_pg_dump_ne_laisse_aucun_fichier_final_ni_tmp(self):
         """PROMPT_CORRECTIONS.md P1 #15 : avant l'écriture atomique, un
         pg_dump interrompu laissait quand même un .sql.gz tronqué sous son

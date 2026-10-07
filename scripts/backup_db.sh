@@ -10,8 +10,12 @@
 # se replace tout seul dans son dossier)
 #
 # Automatisation recommandée : TrueNAS SCALE > Système > Tâches planifiées
-# (Advanced Settings > Cron Jobs) — commande à y coller :
-#   /chemin/vers/kairos-app/scripts/backup_db.sh
+# (Advanced Settings > Cron Jobs) — commande à y coller (audit QA I6 du
+# lot 10 : sauvegardes HORS de la copie de travail, sur laquelle un
+# `git clean` ou le partage SMB peuvent tout effacer ; `bash` devant pour ne
+# plus dépendre du bit exécutable) :
+#   KAIROS_BACKUP_DIR=/mnt/Pool/sauvegardes/kairos bash /chemin/vers/kairos-app/scripts/backup_db.sh
+# KAIROS_BACKUP_DIR peut aussi être posé dans .env ; défaut : backups/.
 # Une fois par jour, en dehors des heures de bureau, suffit largement.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -44,11 +48,13 @@ lire_env() {
 POSTGRES_USER="$(lire_env POSTGRES_USER kairos)"
 POSTGRES_DB="$(lire_env POSTGRES_DB kairos)"
 
+DEST="${KAIROS_BACKUP_DIR:-$(lire_env KAIROS_BACKUP_DIR backups)}"
+
 DATE="$(date +%Y-%m-%d_%H%M)"
-mkdir -p backups
+mkdir -p "$DEST"
 
 # --- Base de données (pg_dump) ---
-FICHIER_DB="backups/kairos_${DATE}.sql.gz"
+FICHIER_DB="$DEST/kairos_${DATE}.sql.gz"
 TMP_DB="${FICHIER_DB}.tmp"
 
 # Écriture atomique + vérification d'intégrité (PROMPT_CORRECTIONS.md P1 #15) :
@@ -82,7 +88,7 @@ echo "Sauvegarde base écrite : $FICHIER_DB"
 # qui monte déjà ce volume (/app/uploads, docker-compose.yml) — pas besoin
 # de tirer une image supplémentaire. Même principe d'écriture atomique que
 # ci-dessus. ---
-FICHIER_UPLOADS="backups/kairos_uploads_${DATE}.tar.gz"
+FICHIER_UPLOADS="$DEST/kairos_uploads_${DATE}.tar.gz"
 TMP_UPLOADS="${FICHIER_UPLOADS}.tmp"
 
 set +e
@@ -110,5 +116,5 @@ echo "Sauvegarde pièces jointes écrite : $FICHIER_UPLOADS"
 # workflowbook → Kairos) : les anciens fichiers "workflowbook_*.sql.gz"
 # ne sont plus reconnus par ce nettoyage automatique et doivent être
 # supprimés à la main si besoin (voir README, section Dépannage).
-ls -1t backups/kairos_*.sql.gz 2>/dev/null | tail -n +31 | xargs -r rm --
-ls -1t backups/kairos_uploads_*.tar.gz 2>/dev/null | tail -n +31 | xargs -r rm --
+ls -1t "$DEST"/kairos_*.sql.gz 2>/dev/null | tail -n +31 | xargs -r rm --
+ls -1t "$DEST"/kairos_uploads_*.tar.gz 2>/dev/null | tail -n +31 | xargs -r rm --

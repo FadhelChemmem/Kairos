@@ -1,0 +1,24 @@
+#!/bin/sh
+# Faux `docker` pour tests/test_restore_db.py : `compose exec -T db
+# psql|pg_dump ...` est envoyé au PostgreSQL de test (PGHOST/PGPORT/
+# PGPASSWORD fournis par le test), `compose run ... web tar xzf -` extrait
+# dans FAKE_UPLOADS_DIR, le reste (up, stop, logs) ne fait rien.
+echo "docker $*" >> "${FAKE_DOCKER_LOG:-/dev/null}"
+[ "$1" = "compose" ] && shift
+case "$1" in
+  exec)
+    shift 3  # exec -T db
+    outil="$1"; shift
+    exec "$outil" "$@"
+    ;;
+  run)
+    exec tar xzf - -C "$FAKE_UPLOADS_DIR"
+    ;;
+  up|stop|logs|ps)
+    exit 0
+    ;;
+  *)
+    echo "faux docker : invocation inattendue : $*" >&2
+    exit 2
+    ;;
+esac
