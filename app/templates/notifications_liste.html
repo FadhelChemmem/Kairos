@@ -4,7 +4,7 @@
 
 <div class="subbar">
   <div class="subbar-inner">
-    <span style="font-size:14px; font-weight:700;">Notifications</span>
+    <h1 class="page-titre">Notifications</h1>
     <span style="font-size:12.5px; color:var(--text-muted);">{{ notifications|selectattr('lu', 'equalto', false)|list|length }} non lue{{ 's' if notifications|selectattr('lu', 'equalto', false)|list|length != 1 }}</span>
     {% if notifications %}
     <form method="post" action="{{ url_for('notifications.marquer_toutes_lues') }}" style="margin-left:auto;">

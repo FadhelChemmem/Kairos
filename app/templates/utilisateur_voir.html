@@ -6,7 +6,7 @@
 <div class="subbar">
   <div class="subbar-inner" style="max-width:900px;">
     <a href="{{ url_for('utilisateurs.liste') }}" style="font-size:12.5px; color:var(--text-muted); font-weight:600;">← Utilisateurs</a>
-    <span style="font-size:14px; font-weight:700;">{{ utilisateur.prenom }} {{ utilisateur.nom }}</span>
+    <h1 class="page-titre">{{ utilisateur.prenom }} {{ utilisateur.nom }}</h1>
     <span class="pill" style="background:var(--hover-bg); color:var(--text-faint); margin-left:auto;">Lecture seule</span>
   </div>
 </div>
@@ -34,7 +34,7 @@
 
   <div class="col-center" style="max-width:none;">
     <div class="card">
-      <div style="font-size:14px; font-weight:700; margin-bottom:14px;">Daily log — semaine dernière</div>
+      <h2 class="carte-titre" style="margin-bottom:14px;">Daily log — semaine dernière</h2>
       <div style="display:flex; flex-direction:column; gap:10px;">
         {% for jour in semaine_derniere %}
           <div style="border:1px solid var(--border-soft); border-radius:10px; padding:10px 14px;">

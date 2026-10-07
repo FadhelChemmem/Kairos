@@ -14,7 +14,7 @@
 
 <div class="subbar">
   <div class="subbar-inner" style="max-width:900px;">
-    <span style="font-size:14px; font-weight:700;">{{ utilisateur.prenom }} {{ utilisateur.nom }}</span>
+    <h1 class="page-titre">{{ utilisateur.prenom }} {{ utilisateur.nom }}</h1>
     <span class="pill" style="background:var(--hover-bg); color:var(--text-faint); margin-left:auto;">Profil — lecture seule</span>
   </div>
 </div>
@@ -38,7 +38,7 @@
     </div>
 
     <div class="card">
-      <div style="font-size:14px; font-weight:700; margin-bottom:12px;">Tâches en cours</div>
+      <h2 class="carte-titre" style="margin-bottom:12px;">Tâches en cours</h2>
       {% for t in taches_en_cours %}
         {% set tst = tache_etat_style(t.etat) %}
         <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" style="display:block; padding:9px 0; border-bottom:1px solid var(--border-soft); color:inherit;">
@@ -59,7 +59,7 @@
   <div class="col-center" style="max-width:none;">
     {% if jours is not none %}
     <div class="card">
-      <div style="font-size:14px; font-weight:700; margin-bottom:14px;" id="dailylog">Daily log — {{ 'dernière semaine' if semaines == 1 else semaines ~ ' dernières semaines' }}</div>
+      <h2 class="carte-titre" style="margin-bottom:14px;" id="dailylog">Daily log — {{ 'dernière semaine' if semaines == 1 else semaines ~ ' dernières semaines' }}</h2>
       <div style="display:flex; flex-direction:column; gap:10px;">
         {% for jour in jours %}
           <div style="border:1px solid var(--border-soft); border-radius:10px; padding:10px 14px;">
@@ -84,7 +84,7 @@
     {% endif %}
 
     <div class="card">
-      <div style="font-size:14px; font-weight:700; margin-bottom:14px;" id="posts">Posts — {{ 'dernière semaine' if semaines == 1 else semaines ~ ' dernières semaines' }}</div>
+      <h2 class="carte-titre" style="margin-bottom:14px;" id="posts">Posts — {{ 'dernière semaine' if semaines == 1 else semaines ~ ' dernières semaines' }}</h2>
       {% for post in posts_recents %}
         <div style="margin-bottom:12px;">
           {% with post=post, show_projet=true, next_url=url_for('utilisateurs.profil_personne', user_id=utilisateur.id, semaines=(semaines if semaines > 1 else none)) %}

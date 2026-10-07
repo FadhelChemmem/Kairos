@@ -44,6 +44,7 @@
 </div>
 {% endif %}
 
+<h1 class="sr-only">Accueil</h1>
 <div class="page-body">
 
   <!-- Colonne gauche -->
@@ -53,7 +54,7 @@
 
     <div class="card">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-        <span style="font-size:14px; font-weight:700;">Mes projets</span>
+        <h2 class="carte-titre">Mes projets</h2>
         <a href="{{ url_for('projets.liste') }}" style="font-size:12px; font-weight:600;">Tout voir</a>
       </div>
       <div style="display:flex; flex-direction:column; gap:10px;">
@@ -86,7 +87,7 @@
     <div class="card {{ 'card-cta-alert' if dailylog_jours_manques else 'card-cta' }}">
       {# var(--text-strong), pas un gris fixe : sinon illisible en thème
          sombre (bug trouvé à la vérification Playwright, 2026-09-28). #}
-      <div style="font-size:13px; font-weight:700; margin-bottom:4px; color:{{ 'var(--text-strong)' if dailylog_jours_manques else '#fff' }};">Daily log</div>
+      <h2 class="carte-titre" style="font-size:13px; margin-bottom:4px; color:{{ 'var(--text-strong)' if dailylog_jours_manques else '#fff' }};">Daily log</h2>
       {% if dailylog_jours_manques %}
         <div style="font-size:12px; color:var(--text-secondary); margin-bottom:12px; line-height:1.4;">
           {{ dailylog_jours_manques|length }} jour{{ 's' if dailylog_jours_manques|length != 1 else '' }} sans saisie ({{ dailylog_jours_manques[0]|date_courte }}{% if dailylog_jours_manques|length > 1 %}…{% endif %}).
@@ -103,6 +104,7 @@
 
   <!-- Fil d'activité -->
   <div class="col-center">
+    <h2 class="sr-only">Fil d'activité</h2>
     <div style="display:flex; align-items:center; gap:10px;">
       <div class="search-mini" style="flex:1;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -136,7 +138,7 @@
     {% if not sans_projets and g.user.role != 'client' %}
     <div class="card">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-        <span style="font-size:14px; font-weight:700;">Mes tâches</span>
+        <h2 class="carte-titre">Mes tâches</h2>
         <a href="{{ url_for('deadlines.liste') }}" style="font-size:12px; font-weight:600;">Toutes les échéances</a>
       </div>
       <div style="display:flex; flex-direction:column; gap:12px;">

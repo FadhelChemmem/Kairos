@@ -118,6 +118,19 @@ a { color: var(--brand-text); text-decoration: none; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
 a:hover { color: var(--brand-text-strong); }
 
+/* --- Structure (lot 10, audit front B9) : lien d'évitement, titres de
+   page (h1 des sous-barres) et de carte (h2), qui gardent l'aspect des
+   anciens <span>. --- */
+.lien-evitement {
+  position: absolute; left: 8px; top: -80px; z-index: 600;
+  background: var(--surface); color: var(--brand-text-strong); border: 2px solid var(--focus-ring);
+  padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: 700;
+}
+.lien-evitement:focus { top: 8px; }
+main:focus { outline: none; }
+.page-titre { font-size: 14px; font-weight: 700; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.carte-titre { font-size: 14px; font-weight: 700; margin: 0; }
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -210,6 +223,14 @@ a:hover { color: var(--brand-text-strong); }
   background: var(--hover-bg); border-radius: 10px; padding: 7px 13px;
 }
 .topbar-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+/* Résultats de la recherche globale (construits par le script de base.html). */
+.recherche-resultat {
+  display: flex; align-items: baseline; gap: 6px; padding: 9px 12px; border-radius: 8px;
+  font-size: 13px; color: inherit; text-decoration: none;
+}
+.recherche-resultat:hover, .recherche-resultat:focus-visible { background: var(--hover-bg); color: inherit; }
+.recherche-resultat:focus-visible { outline-offset: -2px; }
+.recherche-resultat-sous { font-size: 11.5px; color: var(--text-muted); }
 
 /* Icône du projet actif dans la topbar (retour Fadhel, 2026-09-27) — voir
    le bloc topbar_projet de base.html, rempli par projet_detail.html. */
@@ -308,10 +329,18 @@ a:hover { color: var(--brand-text-strong); }
   pointer-events: none;
 }
 .flash {
-  padding: 10px 14px; border-radius: 10px; font-size: 13.5px; margin-bottom: 0;
-  box-shadow: 0 6px 20px rgba(20, 30, 25, 0.14); cursor: pointer; pointer-events: auto;
+  padding: 8px 8px 8px 14px; border-radius: 10px; font-size: 13.5px; margin-bottom: 0;
+  box-shadow: 0 6px 20px rgba(20, 30, 25, 0.14); pointer-events: auto;
   animation: flash-in 0.18s ease-out;
+  display: flex; align-items: flex-start; gap: 10px;
 }
+.flash-texte { flex: 1; min-width: 0; padding-top: 4px; overflow-wrap: anywhere; }
+/* Lot 10 (audit front B7) : fermeture par un vrai bouton (clavier), cible 28 px. */
+.flash-fermer {
+  flex-shrink: 0; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px;
+  background: none; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.flash-fermer:hover { background: rgba(0, 0, 0, 0.06); }
 @keyframes flash-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 .flash-error { background: var(--error-bg); color: var(--error-text); }
 .flash-success { background: var(--brand-bg-soft); color: var(--brand-text-strong); }

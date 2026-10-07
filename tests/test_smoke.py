@@ -2488,7 +2488,7 @@ class SmokeTestCase(SmokeBase):
     def test_mon_profil_affiche_les_infos_et_la_semaine_derniere(self):
         resp = self._get("/utilisateurs/moi")
         self.assertEqual(resp.status_code, 200)
-        self.assertIn("Infos perso".encode(), resp.data)
+        self.assertIn("Mes informations".encode(), resp.data)
         self.assertIn(UTILISATEUR_PROFIL["email"].encode(), resp.data)
         self.assertIn("Daily log".encode(), resp.data)
 
