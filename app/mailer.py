@@ -17,6 +17,14 @@ from flask import current_app
 logger = logging.getLogger(__name__)
 
 
+def est_configure() -> bool:
+    """Vrai si un serveur SMTP est renseigné (SMTP_HOST). Permet de dire
+    clairement « l'e-mail n'a pas pu partir » au lieu d'un faux succès —
+    sans rien révéler sur le compte visé, puisque la réponse ne dépend que
+    de la configuration du serveur."""
+    return bool(current_app.config.get("SMTP_HOST"))
+
+
 def envoyer(destinataire: str, sujet: str, corps: str) -> bool:
     """Envoie un email texte simple. Retourne True si l'envoi a réussi,
     False sinon (et log la raison — jamais d'exception qui remonte)."""

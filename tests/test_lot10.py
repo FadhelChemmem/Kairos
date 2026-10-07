@@ -186,7 +186,10 @@ class TestDecision1RHEtAdmin(_BaseLot10):
         self.assertIn("<fieldset disabled", resp.data.decode())
 
     def test_rh_garde_la_main_sur_les_autres_comptes(self):
-        _, m = self._requete("post", "/utilisateurs/10", {**FICHE, "role": "chef_de_projet"},
+        # Même email : seul un Admin peut le changer (lot 10, lien de
+        # réinitialisation — voir tests/test_rh_mot_de_passe.py).
+        _, m = self._requete("post", "/utilisateurs/10",
+                             {**FICHE, "email": INTERVENANT_CIBLE["email"], "role": "chef_de_projet"},
                              espions=[(self.MAJ, None)],
                              **{"app.auth.get_user_by_id": RH,
                                 "app.repositories.utilisateurs.get_utilisateur": INTERVENANT_CIBLE})

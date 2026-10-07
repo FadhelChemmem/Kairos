@@ -2508,6 +2508,8 @@ class SmokeTestCase(SmokeBase):
     def test_mot_de_passe_oublie_message_generique_email_inconnu(self):
         """Aucun indice ne doit distinguer un email inconnu d'un email
         connu — voir la note de non-énumération dans auth.py."""
+        # SMTP configuré : sinon aucun lien ne part et le message le dit (lot 10).
+        self.app.config["SMTP_HOST"] = "smtp.midgard.tn"
         with patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
              patch("app.repositories.securite.enregistrer_tentative"), \
              patch("app.auth.get_user_by_email", return_value=None), \
@@ -2521,6 +2523,8 @@ class SmokeTestCase(SmokeBase):
 
     def test_mot_de_passe_oublie_envoie_un_email_si_le_compte_existe(self):
         user_row = {**USER, "actif": True}
+        # SMTP configuré : sinon aucun lien ne part et le message le dit (lot 10).
+        self.app.config["SMTP_HOST"] = "smtp.midgard.tn"
         with patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
              patch("app.repositories.securite.enregistrer_tentative"), \
              patch("app.auth.get_user_by_email", return_value=user_row), \
@@ -2537,6 +2541,8 @@ class SmokeTestCase(SmokeBase):
         self.assertEqual(mock_envoyer.call_args[0][0], user_row["email"])
 
     def test_mot_de_passe_oublie_bloque_apres_trop_de_tentatives_sans_message_different(self):
+        # SMTP configuré : sinon aucun lien ne part et le message le dit (lot 10).
+        self.app.config["SMTP_HOST"] = "smtp.midgard.tn"
         with patch("app.repositories.securite.compter_tentatives_recentes", return_value=5), \
              patch("app.repositories.securite.enregistrer_tentative") as mock_enregistrer, \
              patch("app.mailer.envoyer") as mock_envoyer:

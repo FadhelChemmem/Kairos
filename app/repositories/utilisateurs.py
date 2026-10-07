@@ -322,12 +322,15 @@ def revoquer_sessions(user_id: int) -> None:
     )
 
 
-def set_reset_token(user_id: int, token_hash: str, expires_at) -> None:
+def set_reset_token(user_id: int, token_hash: str, expires_at, current_user_id: int | None = None) -> None:
     """Enregistre le jeton "mot de passe oublié" (son empreinte SHA-256,
-    jamais le jeton en clair — voir app/auth.py)."""
+    jamais le jeton en clair — voir app/auth.py). `current_user_id` :
+    l'Admin/RH qui a déclenché l'envoi depuis la fiche, pour que le
+    journal l'attribue à la bonne personne."""
     db.execute(
         "UPDATE utilisateur SET reset_token_hash = %s, reset_token_expires_at = %s WHERE id = %s",
         (token_hash, expires_at, user_id),
+        user_id=current_user_id,
     )
 
 

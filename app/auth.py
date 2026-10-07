@@ -222,18 +222,21 @@ def _verifier_rappel_dailylog(user: dict, aujourdhui: "datetime.date | None" = N
     )
 
 
-def generer_lien_reset(user_id: int) -> str:
+def generer_lien_reset(user_id: int, current_user_id: int | None = None) -> str:
     """Génère un jeton de réinitialisation (voir RESET_TOKEN_TTL), enregistre
     uniquement son empreinte SHA-256 (voir set_reset_token) et retourne le
     lien complet à envoyer par email. Partagé par mot_de_passe_oublie()
     ci-dessous et par la création de compte sans mot de passe initial
     (routes/utilisateurs.py:creer, retour Fadhel 2026-09-21) : dans les
     deux cas, c'est ce même lien qui permet à l'utilisateur de définir
-    lui-même son mot de passe."""
+    lui-même son mot de passe. Aussi utilisé par le bouton « Envoyer un
+    lien de réinitialisation » de la fiche (Admin/RH : le RH ne fixe plus
+    lui-même un mot de passe, décision du gérant, lot 10) —
+    `current_user_id` est alors celui qui a déclenché l'envoi."""
     jeton = secrets.token_urlsafe(32)
     jeton_hash = hashlib.sha256(jeton.encode()).hexdigest()
     expire_le = datetime.datetime.now(datetime.timezone.utc) + RESET_TOKEN_TTL
-    utilisateurs_repo.set_reset_token(user_id, jeton_hash, expire_le)
+    utilisateurs_repo.set_reset_token(user_id, jeton_hash, expire_le, current_user_id=current_user_id)
 
     # PROMPT_CORRECTIONS.md P0 #3 : on construit le lien à partir
     # d'APP_BASE_URL (voir config.py), jamais avec
@@ -401,6 +404,19 @@ def mot_de_passe_oublie():
     if request.method == "POST":
         email = request.form.get("email", "").strip()[:254]
 
+        if not mailer.est_configure():
+            # Pas de faux succès (lot 10) : sans SMTP, aucun lien ne peut
+            # partir. Le message ne dépend que de la configuration du
+            # serveur, jamais de l'email saisi — il ne révèle donc pas si
+            # un compte existe.
+            flash(
+                "Impossible d'envoyer le lien de réinitialisation : l'envoi "
+                "d'e-mails n'est pas configuré sur ce serveur. Contactez "
+                "l'administrateur ou le RH.",
+                "error",
+            )
+            return redirect(url_for("auth.mot_de_passe_oublie"))
+
         if email:
             if securite_repo.compter_tentatives_recentes(
                 "mot_de_passe_oublie", email, FENETRE_TENTATIVES_MINUTES
@@ -428,9 +444,13 @@ def mot_de_passe_oublie():
                         "email — rien ne change sur votre compte.",
                     )
 
+        # Envoi en arrière-plan : son échec éventuel n'est pas connu ici
+        # (et le signaler révélerait que le compte existe) — d'où un
+        # message qui ne promet pas que l'e-mail est déjà parti.
         flash(
-            "Si un compte existe avec cet email, un lien de réinitialisation "
-            "vient d'être envoyé.",
+            "Si un compte actif existe avec cet email, un lien de "
+            "réinitialisation va lui être envoyé. Rien reçu d'ici quelques "
+            "minutes ? Vérifiez vos courriers indésirables ou contactez le RH.",
             "success",
         )
         return redirect(url_for("auth.login"))

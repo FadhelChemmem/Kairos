@@ -9,7 +9,9 @@ semaine dernière)."""
 import datetime
 import secrets
 
-from flask import Blueprint, flash, g, redirect, render_template, request, session, url_for
+from flask import (
+    Blueprint, abort, current_app, flash, g, redirect, render_template, request, session, url_for,
+)
 
 from .. import mailer
 from ..auth import (
@@ -49,6 +51,67 @@ def _cible_protegee(utilisateur: dict) -> bool:
     compte : un compte Admin n'est modifiable que par un Admin (mot de
     passe, email, activation, rôle, fiche — décision 1, lot 10)."""
     return g.user["role"] != "admin" and utilisateur.get("role") == "admin"
+
+
+# Champs par lesquels un mot de passe pourrait être fixé depuis la fiche ou
+# la création (le second n'existe dans aucun formulaire : requête forgée).
+CHAMPS_MOT_DE_PASSE = ("nouveau_mot_de_passe", "mot_de_passe")
+
+
+def _refuser_mot_de_passe_hors_admin() -> None:
+    """Décision du gérant (lot 10) : le RH ne fixe plus lui-même le mot de
+    passe d'un employé — il envoie un lien de réinitialisation (voir
+    envoyer_lien_reinitialisation). Le champ n'est plus affiché pour lui ;
+    s'il est quand même envoyé (requête forgée), toute la requête est
+    refusée (403) plutôt que le champ ignoré en silence. L'Admin garde la
+    possibilité de fixer un mot de passe depuis la fiche."""
+    if g.user["role"] != "admin" and any(request.form.get(c) for c in CHAMPS_MOT_DE_PASSE):
+        abort(403)
+
+
+def _motif_echec_email() -> str:
+    """Raison affichée quand un e-mail n'a pas pu partir — jamais de faux
+    succès (lot 10)."""
+    if not mailer.est_configure():
+        return "SMTP non configuré sur ce serveur"
+    return "serveur SMTP indisponible ou en erreur"
+
+
+def _envoyer_lien_mot_de_passe(user_id: int, email: str, creation: bool) -> bool:
+    """Génère un jeton (même mécanisme que « mot de passe oublié », voir
+    auth.generer_lien_reset) et l'envoie, de façon synchrone, à `email` —
+    l'adresse ENREGISTRÉE du compte, jamais une adresse saisie à côté.
+    Retourne False si l'e-mail n'est pas parti, sans lever d'exception :
+    le compte, lui, existe déjà."""
+    try:
+        lien = generer_lien_reset(user_id, current_user_id=g.user["id"])
+    except Exception:
+        current_app.logger.exception("Lien de réinitialisation impossible à générer (id=%s)", user_id)
+        return False
+    if creation:
+        sujet = "Kairos — création de votre compte"
+        corps = (
+            "Bonjour,\n\n"
+            "Un compte Kairos vient d'être créé pour vous.\n\n"
+            f"Adresse e-mail : {email}\n\n"
+            "Pour définir votre mot de passe et activer votre "
+            f"compte, utilisez ce lien (valable 1 heure) : {lien}\n\n"
+            "Si ce lien a expiré, utilisez \"Mot de passe "
+            "oublié ?\" sur la page de connexion avec cette même "
+            "adresse email pour en recevoir un nouveau."
+        )
+    else:
+        sujet = "Kairos — réinitialisation de votre mot de passe"
+        corps = (
+            "Bonjour,\n\n"
+            f"{g.user['prenom']} {g.user['nom']} vous a envoyé un lien pour "
+            "choisir un nouveau mot de passe Kairos.\n\n"
+            f"Ce lien est valable 1 heure : {lien}\n\n"
+            "Votre mot de passe actuel reste valable tant que vous n'en avez "
+            "pas choisi un nouveau. Si vous n'attendiez pas ce message, "
+            "prévenez l'administrateur."
+        )
+    return mailer.envoyer(email, sujet, corps)
 
 
 def _message_garde_admin(exc: Exception) -> str | None:
@@ -276,6 +339,7 @@ def liste():
 @role_required("admin", "rh")
 def creer():
     if request.method == "POST":
+        _refuser_mot_de_passe_hors_admin()
         prenom = request.form.get("prenom", "").strip()
         nom = request.form.get("nom", "").strip()
         email = request.form.get("email", "").strip()
@@ -329,22 +393,6 @@ def creer():
                     equipe_code=equipe_code, verifie=False, actif=actif_compte,
                     champs_perso=champs_perso, current_user_id=g.user["id"], fuseau=fuseau,
                 )
-                _enregistrer_avatar_si_fourni(user_id, g.user["id"])
-                email_envoye = False
-                if actif_compte:
-                    lien = generer_lien_reset(user_id)
-                    email_envoye = mailer.envoyer(
-                        email,
-                        "Kairos — création de votre compte",
-                        "Bonjour,\n\n"
-                        "Un compte Kairos vient d'être créé pour vous.\n\n"
-                        f"Adresse e-mail : {email}\n\n"
-                        "Pour définir votre mot de passe et activer votre "
-                        f"compte, utilisez ce lien (valable 1 heure) : {lien}\n\n"
-                        "Si ce lien a expiré, utilisez \"Mot de passe "
-                        "oublié ?\" sur la page de connexion avec cette même "
-                        "adresse email pour en recevoir un nouveau.",
-                    )
             except Exception as exc:
                 if "idx_utilisateur_rh_singleton" in str(exc):
                     flash(
@@ -356,25 +404,40 @@ def creer():
                 else:
                     flash("Impossible de créer ce compte.", "error")
             else:
+                # À partir d'ici le compte EXISTE (lot 10) : une panne de la
+                # photo, du jeton ou de l'e-mail ne doit plus finir en
+                # « Impossible de créer ce compte » — on le recréerait en
+                # doublon. Chaque étape est donc isolée et signalée.
+                try:
+                    _enregistrer_avatar_si_fourni(user_id, g.user["id"])
+                except Exception:
+                    current_app.logger.exception("Photo de profil non enregistrée (id=%s)", user_id)
+                    flash("Photo de profil non enregistrée — ajoutez-la depuis la fiche.", "error")
                 if not actif_compte:
                     flash(
                         f"Compte créé pour {prenom} {nom} (inactif) — aucun "
                         "email envoyé. Réactivez le compte pour qu'il puisse "
                         "définir son mot de passe.", "success",
                     )
-                elif email_envoye:
+                elif _envoyer_lien_mot_de_passe(user_id, email, creation=True):
                     flash(
                         f"Compte créé pour {prenom} {nom}. Un email lui a été "
                         "envoyé pour qu'il définisse son mot de passe.", "success",
                     )
                 else:
+                    # Le RH ne fixe plus de mot de passe (décision du gérant,
+                    # lot 10) : seul l'Admin se voit proposer cette option.
+                    autre_option = (
+                        ", ou définissez-lui un mot de passe depuis sa fiche"
+                        if g.user["role"] == "admin" else ""
+                    )
                     flash(
                         f"Compte créé pour {prenom} {nom}, mais l'email n'a "
-                        "pas pu être envoyé (SMTP non configuré ou "
-                        "indisponible) — il ne pourra pas se connecter tant "
-                        "qu'un mot de passe n'est pas défini. Réessayez via "
-                        "\"Mot de passe oublié ?\" une fois SMTP opérationnel, "
-                        "ou définissez-lui un mot de passe depuis sa fiche.", "error",
+                        f"pas pu être envoyé ({_motif_echec_email()}) — il ne "
+                        "pourra pas se connecter tant qu'un mot de passe n'est "
+                        "pas défini. Renvoyez-lui le lien depuis sa fiche "
+                        "(« Envoyer un lien de réinitialisation ») une fois "
+                        f"l'envoi d'e-mails opérationnel{autre_option}.", "error",
                     )
                 return redirect(url_for("utilisateurs.liste"))
 
@@ -494,6 +557,7 @@ def fiche(user_id: int):
         return redirect(url_for("utilisateurs.fiche", user_id=user_id))
 
     if request.method == "POST":
+        _refuser_mot_de_passe_hors_admin()
         prenom = request.form.get("prenom", "").strip()
         nom = request.form.get("nom", "").strip()
         email = request.form.get("email", "").strip()
@@ -531,6 +595,18 @@ def fiche(user_id: int):
         except ValueError:
             date_embauche_valide = False
 
+        # Adresse e-mail réservée à l'Admin (lot 10) : le lien de
+        # réinitialisation part vers cette adresse ; si le RH pouvait la
+        # changer, il y mettrait la sienne, s'enverrait le lien et
+        # prendrait la main sur le compte. Une simple différence de casse
+        # n'est pas un changement : on garde l'adresse enregistrée.
+        email_change_refuse = False
+        if g.user["role"] != "admin":
+            if email.lower() == (utilisateur["email"] or "").lower():
+                email = utilisateur["email"]
+            elif email:
+                email_change_refuse = True
+
         if user_id == g.user["id"] and role != utilisateur["role"]:
             flash("Vous ne pouvez pas changer votre propre rôle depuis cet écran.", "error")
         elif role not in _roles_attribuables() and role != utilisateur["role"]:
@@ -539,6 +615,11 @@ def fiche(user_id: int):
             flash("Bureau (fuseau horaire) invalide.", "error")
         elif not prenom or not nom or not email:
             flash("Prénom, nom et email sont obligatoires.", "error")
+        elif email_change_refuse:
+            flash(
+                "Seul un Admin peut changer l'adresse e-mail d'un compte (c'est "
+                "à cette adresse que part le lien de réinitialisation).", "error",
+            )
         elif date_embauche_valide is False:
             flash("Date d'embauche invalide.", "error")
         elif erreur := _erreur_fiche(prenom, nom, email, telephone, poste, adresse,
@@ -553,6 +634,8 @@ def fiche(user_id: int):
                     current_user_id=g.user["id"], fuseau=fuseau,
                 )
                 _enregistrer_avatar_si_fourni(user_id, g.user["id"])
+                # Admin uniquement : pour le RH, la requête a déjà été
+                # refusée plus haut (_refuser_mot_de_passe_hors_admin).
                 nouveau_mot_de_passe = request.form.get("nouveau_mot_de_passe", "")
                 if nouveau_mot_de_passe:
                     if len(nouveau_mot_de_passe) < MOT_DE_PASSE_MIN_LEN:
@@ -597,7 +680,8 @@ def fiche(user_id: int):
         # valeurs enregistrées, toutes les modifications étaient perdues).
         utilisateur = {
             **utilisateurs_repo.get_utilisateur(user_id),
-            "prenom": prenom, "nom": nom, "email": email, "telephone": telephone,
+            "prenom": prenom, "nom": nom,
+            "email": utilisateur["email"] if email_change_refuse else email, "telephone": telephone,
             "poste": poste, "adresse": adresse, "date_embauche": date_embauche,
             "equipe_code": equipe_code, "role": role, "champs_perso": champs_perso,
             "fuseau": fuseau,
@@ -610,6 +694,48 @@ def fiche(user_id: int):
         lecture_seule=_cible_protegee(utilisateur),
         fuseaux=dailylog_repo.FUSEAUX,
     )
+
+
+@bp.route("/<int:user_id>/envoyer-lien", methods=["POST"])
+@role_required("admin", "rh")
+def envoyer_lien_reinitialisation(user_id: int):
+    """Bouton « Envoyer un lien de réinitialisation » de la fiche (décision
+    du gérant, lot 10) : c'est la seule façon pour le RH d'aider un employé
+    à retrouver l'accès — il ne fixe plus lui-même de mot de passe. Le lien
+    part TOUJOURS vers l'adresse enregistrée du compte (aucune adresse n'est
+    lue dans le formulaire), adresse que seul un Admin peut changer (voir
+    fiche()). Le mot de passe actuel reste valable tant que l'employé n'en
+    a pas choisi un nouveau : un envoi ne bloque personne."""
+    cible = utilisateurs_repo.get_utilisateur(user_id)
+    if cible is None:
+        flash("Utilisateur introuvable.", "error")
+        return redirect(url_for("utilisateurs.liste"))
+    if _cible_protegee(cible):
+        flash("Seul un Admin peut agir sur le compte d'un Admin.", "error")
+    elif not cible["actif"]:
+        flash(
+            "Ce compte est désactivé : réactivez-le avant d'envoyer un lien "
+            "(un compte désactivé ne peut pas définir de mot de passe).", "error",
+        )
+    elif not mailer.est_configure():
+        # Aucun jeton généré : il remplacerait pour rien un lien encore
+        # valable (celui de la création du compte, par exemple).
+        flash(
+            f"L'e-mail de réinitialisation n'a pas pu être envoyé ({_motif_echec_email()}) : "
+            f"aucun lien n'a été transmis à {cible['email']}.", "error",
+        )
+    elif _envoyer_lien_mot_de_passe(user_id, cible["email"], creation=False):
+        flash(
+            f"Lien de réinitialisation envoyé à {cible['email']} (valable 1 heure). "
+            "Son mot de passe actuel reste valable jusqu'à ce qu'il en choisisse un nouveau.",
+            "success",
+        )
+    else:
+        flash(
+            f"L'e-mail de réinitialisation n'a pas pu être envoyé ({_motif_echec_email()}) : "
+            f"aucun lien n'a été transmis à {cible['email']}. Réessayez plus tard.", "error",
+        )
+    return redirect(url_for("utilisateurs.fiche", user_id=user_id))
 
 
 @bp.route("/<int:user_id>/toggle-actif", methods=["POST"])

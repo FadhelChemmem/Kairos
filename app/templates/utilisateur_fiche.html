@@ -31,8 +31,12 @@
       <input type="file" id="avatar" name="avatar" accept=".png,.jpg,.jpeg,.gif,.webp,image/*">
     </div>
     <div class="form-row">
-      <label for="email">Adresse e-mail <span style="font-weight:400; color:var(--text-faint);">— identifiant de connexion</span></label>
-      <input type="email" id="email" name="email" maxlength="255" value="{{ utilisateur.email }}" autocomplete="off" required>
+      {# Adresse réservée à l'Admin (lot 10) : c'est là que part le lien de
+         réinitialisation — modifiable par le RH, elle lui redonnerait
+         l'accès au compte. Refusé aussi côté serveur (fiche()). #}
+      {% set email_verrouille = g.user.role != 'admin' %}
+      <label for="email">Adresse e-mail <span style="font-weight:400; color:var(--text-faint);">— identifiant de connexion{{ ', modifiable uniquement par un Admin' if email_verrouille }}</span></label>
+      <input type="email" id="email" name="email" maxlength="255" value="{{ utilisateur.email }}" autocomplete="off" required{{ ' readonly' if email_verrouille }}>
     </div>
     <div class="form-row">
       <label for="telephone">Téléphone</label>
@@ -116,12 +120,17 @@
       </select>
     </div>
 
+    {# Décision du gérant (lot 10) : seul l'Admin fixe un mot de passe ici ;
+       le RH envoie un lien de réinitialisation (formulaire sous la fiche).
+       Un champ forgé par le RH est refusé (403) côté serveur. #}
+    {% if g.user.role == 'admin' %}
     <div class="section-title">Mot de passe</div>
     <div class="form-row">
       <label for="nouveau_mot_de_passe">Nouveau mot de passe <span style="font-weight:400; color:var(--text-faint);">— laisser vide pour ne pas le changer</span></label>
       <input type="password" id="nouveau_mot_de_passe" name="nouveau_mot_de_passe" minlength="8" autocomplete="new-password" aria-describedby="aide-mdp-fiche">
       <p id="aide-mdp-fiche" class="aide-champ">8 caractères minimum.</p>
     </div>
+    {% endif %}
 
     <div class="section-title">Champs personnalisés <span style="font-weight:400; color:var(--text-muted); text-transform:none; letter-spacing:0;">(facultatif)</span></div>
     <div id="cf-list">
@@ -149,6 +158,22 @@
     <span style="font-size:12.5px; color:var(--text-muted); flex:1; min-width:200px;">Corrections tracées à votre nom dans le journal d’audit.</span>
     <a class="btn-secondary" style="width:auto; padding:8px 14px; text-decoration:none;" href="{{ url_for('dailylog.formulaire', utilisateur=utilisateur.id) }}">Corriger le Daily log de {{ utilisateur.prenom }} {{ utilisateur.nom }}</a>
   </div>
+  {% endif %}
+
+  {% if not lecture_seule %}
+  {# Formulaire séparé (pas de <form> imbriqué) : POST + jeton CSRF. Le
+     lien part vers l'adresse ENREGISTRÉE du compte — aucune adresse n'est
+     envoyée par ce formulaire. #}
+  <form method="post" action="{{ url_for('utilisateurs.envoyer_lien_reinitialisation', user_id=utilisateur.id) }}" class="card" style="padding:18px 22px 20px; margin-top:16px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="section-title">Réinitialisation du mot de passe</div>
+    {% if utilisateur.actif %}
+      <p class="aide-champ" style="margin:0 0 12px;">Envoie à l'adresse e-mail enregistrée un lien (valable 1 heure) pour choisir un nouveau mot de passe. Le mot de passe actuel reste valable jusque-là.</p>
+      <button type="submit" class="btn-secondary" style="width:auto; padding:9px 16px;">Envoyer un lien de réinitialisation</button>
+    {% else %}
+      <p class="aide-champ" style="margin:0;">Compte désactivé : réactivez-le avant d'envoyer un lien de réinitialisation.</p>
+    {% endif %}
+  </form>
   {% endif %}
 </div>
 
