@@ -15,9 +15,14 @@ python3 "$racine/tests_e2e/seed_dailylog.py" "$base"
 export DATABASE_URL="postgresql://$PGUSER:$PGPASSWORD@$PGHOST:5432/$base"
 export SECRET_KEY=${SECRET_KEY:-e2e-0123456789abcdef0123456789abcdef0123456789}
 export UPLOAD_DIR=$(mktemp -d) APP_BASE_URL="http://127.0.0.1:$port"
+# Port déjà pris : le scénario parlerait à un AUTRE serveur (revue 3).
+if curl -fs -o /dev/null "http://127.0.0.1:$port/connexion"; then
+  echo "Port $port déjà utilisé : choisir KAIROS_E2E_PORT=<port libre>." >&2; exit 1
+fi
 (cd "$racine" && exec python3 -m flask --app wsgi run -p "$port" --no-reload > /tmp/kairos-e2e-serveur.log 2>&1) &
 serveur=$!
 trap 'kill $serveur 2>/dev/null || true' EXIT
 for _ in $(seq 40); do curl -fs -o /dev/null "http://127.0.0.1:$port/connexion" && break; sleep 0.25; done
+kill -0 "$serveur" 2>/dev/null || { echo "Serveur Flask arrêté : voir /tmp/kairos-e2e-serveur.log" >&2; exit 1; }
 KAIROS_E2E_URL="http://127.0.0.1:$port" KAIROS_E2E_DB="$base" KAIROS_E2E_CAPTURES="${1:-}" \
   node "$racine/tests_e2e/dailylog.e2e.js"
