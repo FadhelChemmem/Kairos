@@ -259,7 +259,10 @@ def clean_text(v) -> str | None:
 # Étape 1 : utilisateurs
 # =====================================================================
 
-def build_utilisateurs(data, email_domain, report):
+def build_utilisateurs(data, email_domain, report, generer_mots_de_passe=True):
+    """`generer_mots_de_passe=False` (scripts/recharger_projets_chronos.py) :
+    mêmes noms et rôles, sans mot de passe (mot_de_passe_hash à None) — le
+    rechargement ne crée aucun compte, il compare seulement les noms."""
     profiles_by_user = {p["userID"]: p for p in data["UserProfiles"]}
     email_factory = EmailFactory(email_domain)
     utilisateurs = []          # lignes prêtes à insérer
@@ -289,8 +292,8 @@ def build_utilisateurs(data, email_domain, report):
             role = "admin"
 
         email_fake = email_factory.make(nom, prenom)
-        mdp_clair = gen_temp_password()
-        mdp_hash = hash_password_pbkdf2(mdp_clair)
+        mdp_clair = gen_temp_password() if generer_mots_de_passe else None
+        mdp_hash = hash_password_pbkdf2(mdp_clair) if generer_mots_de_passe else None
 
         actif = bool(u["active"]) and not bool(u["isBanned"])
         if u["isBanned"]:

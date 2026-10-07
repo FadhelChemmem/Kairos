@@ -26,6 +26,9 @@ migration.sql
 migration_kairos_*.sql
 rapport_migration_*.md
 identifiants_*.csv
+# Sorties de scripts/recharger_projets_chronos.py (données réelles).
+recharge_chronos_*.sql
+recharge_chronos_*.md
 
 # Captures d'écran de vérification posées à la racine par erreur (une
 # s'était retrouvée dans le dépôt et dans l'image Docker, audit du

@@ -200,8 +200,8 @@ jobs:
           for fichier in migrations/*.sql; do psql -d kairos_it -v ON_ERROR_STOP=1 -q -f "$fichier"; done
       - name: Tests d'intégration
         run: python -m unittest discover -s tests_integration -t . -v
-      - name: Scripts sur vraie base (restauration, sauvegarde avant migration, reprise Chronos)
-        run: python -m unittest -v tests.test_restore_db tests.test_sauvegarde_avant_migration tests.test_migrate_from_chronos
+      - name: Scripts sur vraie base (restauration, sauvegarde avant migration, reprise et rechargement Chronos)
+        run: python -m unittest -v tests.test_restore_db tests.test_sauvegarde_avant_migration tests.test_migrate_from_chronos tests.test_recharger_projets_chronos
 
   scripts:
     runs-on: ubuntu-24.04

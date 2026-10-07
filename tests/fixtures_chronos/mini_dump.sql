@@ -4,7 +4,8 @@
 -- seule la structure des tables reprend celle du vrai export.
 -- Cas couverts : projet clos dont la fin précède le début, tâche dont
 -- l'échéance précède le début, phase liée, Client chef de projet et
--- intervenant, chef de projet intervenant, heures sans personne.
+-- intervenant, chef de projet intervenant, heures sans personne, second
+-- intervenant (rechargement : compte passé Client entre-temps).
 
 CREATE TABLE `users` (
   `id` int NOT NULL AUTO_INCREMENT,
@@ -19,7 +20,7 @@ CREATE TABLE `users` (
   `updatedAt` datetime NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-INSERT INTO `users` VALUES (1,'admin@exemple.tn',NULL,'superuser',1,NULL,1,0,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(2,'chef.a@exemple.tn',NULL,'Chef_projet',0,NULL,1,0,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(3,'chef.b@exemple.tn',NULL,'Chef_projet',0,NULL,1,0,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(4,'inter@exemple.tn',NULL,'intervenant',0,NULL,1,0,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(5,'client@exemple.tn',NULL,'client',0,NULL,1,0,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(6,'rh@exemple.tn',NULL,'ressource_humaine',0,NULL,1,0,'2024-01-01 08:00:00','2024-01-01 08:00:00');
+INSERT INTO `users` VALUES (1,'admin@exemple.tn',NULL,'superuser',1,NULL,1,0,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(2,'chef.a@exemple.tn',NULL,'Chef_projet',0,NULL,1,0,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(3,'chef.b@exemple.tn',NULL,'Chef_projet',0,NULL,1,0,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(4,'inter@exemple.tn',NULL,'intervenant',0,NULL,1,0,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(5,'client@exemple.tn',NULL,'client',0,NULL,1,0,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(6,'rh@exemple.tn',NULL,'ressource_humaine',0,NULL,1,0,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(7,'inter.b@exemple.tn',NULL,'intervenant',0,NULL,1,0,'2024-01-01 08:00:00','2024-01-01 08:00:00');
 
 CREATE TABLE `UserProfiles` (
   `id` int NOT NULL AUTO_INCREMENT,
@@ -35,7 +36,7 @@ CREATE TABLE `UserProfiles` (
   `updatedAt` datetime NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-INSERT INTO `UserProfiles` VALUES (1,'Admin','Alpha',NULL,NULL,NULL,1,NULL,NULL,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(2,'Chef','Alif',NULL,NULL,NULL,2,NULL,NULL,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(3,'Chef','Ba',NULL,NULL,NULL,3,NULL,NULL,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(4,'Inter','Ta',NULL,NULL,NULL,4,NULL,NULL,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(5,'Client','Tha',NULL,NULL,NULL,5,NULL,NULL,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(6,'Rh','Jim',NULL,NULL,NULL,6,NULL,NULL,'2024-01-01 08:00:00','2024-01-01 08:00:00');
+INSERT INTO `UserProfiles` VALUES (1,'Admin','Alpha',NULL,NULL,NULL,1,NULL,NULL,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(2,'Chef','Alif',NULL,NULL,NULL,2,NULL,NULL,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(3,'Chef','Ba',NULL,NULL,NULL,3,NULL,NULL,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(4,'Inter','Ta',NULL,NULL,NULL,4,NULL,NULL,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(5,'Client','Tha',NULL,NULL,NULL,5,NULL,NULL,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(6,'Rh','Jim',NULL,NULL,NULL,6,NULL,NULL,'2024-01-01 08:00:00','2024-01-01 08:00:00'),(7,'Inter','Kha',NULL,NULL,NULL,7,NULL,NULL,'2024-01-01 08:00:00','2024-01-01 08:00:00');
 
 CREATE TABLE `phases` (
   `id` int NOT NULL AUTO_INCREMENT,
@@ -115,7 +116,7 @@ CREATE TABLE `intervenants` (
   `nbHours` float NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-INSERT INTO `intervenants` VALUES (1,NULL,'2025-02-01 08:00:00','2025-02-01 08:00:00',4,1,NULL,0),(2,NULL,'2025-02-01 08:00:00','2025-02-01 08:00:00',3,1,NULL,0),(3,NULL,'2025-02-01 08:00:00','2025-02-01 08:00:00',5,1,NULL,0),(4,NULL,'2025-02-01 08:00:00','2025-02-01 08:00:00',4,1,2,0),(5,NULL,'2025-02-01 08:00:00','2025-02-01 08:00:00',NULL,1,NULL,0),(6,NULL,'2025-02-01 08:00:00','2025-02-01 08:00:00',5,1,2,0);
+INSERT INTO `intervenants` VALUES (1,NULL,'2025-02-01 08:00:00','2025-02-01 08:00:00',4,1,NULL,0),(2,NULL,'2025-02-01 08:00:00','2025-02-01 08:00:00',3,1,NULL,0),(3,NULL,'2025-02-01 08:00:00','2025-02-01 08:00:00',5,1,NULL,0),(4,NULL,'2025-02-01 08:00:00','2025-02-01 08:00:00',4,1,2,0),(5,NULL,'2025-02-01 08:00:00','2025-02-01 08:00:00',NULL,1,NULL,0),(6,NULL,'2025-02-01 08:00:00','2025-02-01 08:00:00',5,1,2,0),(7,NULL,'2025-02-01 08:00:00','2025-02-01 08:00:00',7,3,NULL,0),(8,NULL,'2025-02-01 08:00:00','2025-02-01 08:00:00',7,1,1,0);
 
 CREATE TABLE `interventionHours` (
   `id` int NOT NULL AUTO_INCREMENT,
