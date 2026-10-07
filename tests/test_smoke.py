@@ -5766,7 +5766,8 @@ class TestDecisionsLot7(SmokeBase):
         import inspect
         from app.repositories import posts as posts_repo, projets as projets_repo, taches as taches_repo
         garde = "ux.role IN ('client', 'rh')"
-        self.assertIn(garde, inspect.getsource(projets_repo.user_can_manage))
+        # Lot 10 : user_can_manage exclut Client/RH par « NOT IN » (clause positive).
+        self.assertIn("ux.role NOT IN ('client', 'rh')", inspect.getsource(projets_repo.user_can_manage))
         self.assertIn(garde, inspect.getsource(taches_repo.user_est_intervenant))
         self.assertIn(garde, posts_repo._FEED_SELECT)
 

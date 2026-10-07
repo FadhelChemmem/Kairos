@@ -134,11 +134,12 @@ def list_projets(
                                    WHERE pc.projet_id = p.id AND pc.utilisateur_id = de.utilisateur_id))
                ) AS heures_intervenant,
                (SELECT min(t.date_echeance) FROM tache t
-                 WHERE t.projet_id = p.id AND t.etat NOT IN ('termine', 'abandonne')
+                 WHERE t.projet_id = p.id AND t.etat NOT IN ('termine', 'verifie', 'arret', 'abandonne')
                    AND t.date_echeance IS NOT NULL) AS prochaine_echeance,
                -- Prochain rendu client et prochaine échéance, avec le nom
                -- de la tâche (infobulle de la colonne Deadlines, retour
-               -- Fadhel, 2026-09-29) — tâches encore ouvertes seulement.
+               -- Fadhel, 2026-09-29) — tâches encore ouvertes seulement
+               -- (ni Vérifiée ni Arrêt : décision 5, lot 10).
                pr.date_echeance AS prochain_rendu, pr.titre AS prochain_rendu_titre,
                pe.date_echeance AS prochaine_deadline, pe.titre AS prochaine_deadline_titre,
                pe.type_deadline AS prochaine_deadline_type
@@ -146,13 +147,13 @@ def list_projets(
         JOIN utilisateur u ON u.id = p.chef_projet_id
         LEFT JOIN LATERAL (
             SELECT t.date_echeance, t.titre FROM tache t
-            WHERE t.projet_id = p.id AND t.etat NOT IN ('termine', 'verifie', 'abandonne')
+            WHERE t.projet_id = p.id AND t.etat NOT IN ('termine', 'verifie', 'arret', 'abandonne')
               AND t.date_echeance IS NOT NULL AND t.type_deadline = 'rendu_client'
             ORDER BY t.date_echeance, t.id LIMIT 1
         ) pr ON true
         LEFT JOIN LATERAL (
             SELECT t.date_echeance, t.titre, t.type_deadline FROM tache t
-            WHERE t.projet_id = p.id AND t.etat NOT IN ('termine', 'verifie', 'abandonne')
+            WHERE t.projet_id = p.id AND t.etat NOT IN ('termine', 'verifie', 'arret', 'abandonne')
               AND t.date_echeance IS NOT NULL
             ORDER BY t.date_echeance, (t.type_deadline <> 'rendu_client'), t.id LIMIT 1
         ) pe ON true
@@ -477,18 +478,28 @@ ETATS_CLOS = ("termine", "abandonne")
 
 
 def user_can_manage(projet_id: int, user_id: int) -> bool:
-    """Chef de projet OU co-chef : seuls eux peuvent créer des tâches sur
-    ce projet (cf. décision "co-chef simple" — voir spec).
-
-    Jamais un Client ni le RH (lot 7), même s'il reste un rattachement
-    d'avant la migration 0011 : les garde-fous en base ne jouent qu'à
-    l'ajout d'un rattachement."""
+    """Droits de gestion (créer/éditer des tâches, intervenants, fenêtre
+    Informations, rouvrir un projet clos) :
+    - l'Admin, sur TOUS les projets, réouverture comprise (décision 2,
+      lot 10) ;
+    - le chef de projet titulaire et les co-chefs. Un chef de projet ajouté
+      comme intervenant (projet ou tâche) EST co-chef (décision 3, lot 10) :
+      l'appli l'inscrit dans projet_co_chef (add_intervenant) et les
+      triggers de la migration 0013 font de même pour tout autre chemin.
+    Jamais un Client ni le RH (lot 7, même s'il reste un rattachement
+    d'avant la migration 0011), jamais un compte désactivé."""
     sql = """
         SELECT 1
         FROM projet p
-        LEFT JOIN projet_co_chef cc ON cc.projet_id = p.id AND cc.utilisateur_id = %(uid)s
-        WHERE p.id = %(pid)s AND (p.chef_projet_id = %(uid)s OR cc.utilisateur_id IS NOT NULL)
-          AND NOT EXISTS (SELECT 1 FROM utilisateur ux WHERE ux.id = %(uid)s AND ux.role IN ('client', 'rh'))
+        JOIN utilisateur ux ON ux.id = %(uid)s
+        WHERE p.id = %(pid)s
+          AND ux.actif AND ux.role NOT IN ('client', 'rh')
+          AND (
+                ux.role = 'admin'
+             OR p.chef_projet_id = ux.id
+             OR EXISTS (SELECT 1 FROM projet_co_chef cc
+                        WHERE cc.projet_id = p.id AND cc.utilisateur_id = ux.id)
+              )
     """
     with db.get_cursor() as cur:
         cur.execute(sql, {"pid": projet_id, "uid": user_id})
@@ -529,16 +540,34 @@ def add_co_chef(projet_id: int, utilisateur_id: int, current_user_id: int) -> No
     )
 
 
-def add_intervenant(projet_id: int, utilisateur_id: int, current_user_id: int) -> None:
-    db.execute(
-        """
-        INSERT INTO projet_intervenant (projet_id, utilisateur_id)
-        VALUES (%s, %s)
-        ON CONFLICT DO NOTHING
-        """,
-        (projet_id, utilisateur_id),
-        user_id=current_user_id,
-    )
+def add_intervenant(projet_id: int, utilisateur_id: int, current_user_id: int) -> bool:
+    """Rattache `utilisateur_id` au projet. Un utilisateur de rôle
+    « chef_de_projet » devient co-chef (décision 3, lot 10) au lieu
+    d'intervenant — jamais co-chef de son propre projet. Retourne True si
+    un rattachement a été CRÉÉ (False s'il existait déjà), pour ne notifier
+    qu'une fois."""
+    with db.get_cursor(user_id=current_user_id) as cur:
+        cur.execute("SELECT role FROM utilisateur WHERE id = %s", (utilisateur_id,))
+        row = cur.fetchone()
+        if row and row["role"] == "chef_de_projet":
+            cur.execute(
+                """
+                INSERT INTO projet_co_chef (projet_id, utilisateur_id)
+                SELECT p.id, %s FROM projet p WHERE p.id = %s AND p.chef_projet_id <> %s
+                ON CONFLICT DO NOTHING
+                """,
+                (utilisateur_id, projet_id, utilisateur_id),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO projet_intervenant (projet_id, utilisateur_id)
+                VALUES (%s, %s)
+                ON CONFLICT DO NOTHING
+                """,
+                (projet_id, utilisateur_id),
+            )
+        return cur.rowcount == 1
 
 
 # Phases valides (phase_enum, schema.sql) — voir PROMPT_CORRECTIONS.md P2

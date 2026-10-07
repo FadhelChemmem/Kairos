@@ -114,7 +114,7 @@ def list_mes_taches(user_id: int, limit: int = 10) -> list[dict]:
         SELECT t.id, t.titre, t.etat, t.date_echeance, p.id AS projet_id, p.nom AS projet_nom
         FROM tache t
         JOIN projet p ON p.id = t.projet_id
-        WHERE t.etat NOT IN ('termine', 'abandonne', 'bloque')
+        WHERE t.etat = 'en_cours'  -- décision 5 (lot 10) : ni Vérifiée, ni Arrêt, ni Bloquée, Terminée, Abandonnée
           -- Une tâche bloquée est traitée comme terminée/abandonnée dans
           -- ce widget (retour Fadhel, 2026-09-28) : elle n'avance plus,
           -- pas la peine de continuer à encombrer "Mes tâches" avec.
@@ -147,7 +147,7 @@ def list_en_cours_pour_profil(user_id: int, viewer_id: int, limit: int = 8) -> l
                p.id AS projet_id, p.nom AS projet_nom, p.code AS projet_code
         FROM tache t
         JOIN projet p ON p.id = t.projet_id
-        WHERE t.etat NOT IN ('termine', 'abandonne', 'bloque')
+        WHERE t.etat = 'en_cours'  -- décision 5 (lot 10), même règle que Mes tâches
           AND p.etat IN ('en_cours', 'bloque')
           AND (
                 t.created_by = %(uid)s
@@ -179,7 +179,7 @@ def list_deadlines(user_id: int, limit: int = 20) -> list[dict]:
         LEFT JOIN projet_co_chef cc ON cc.projet_id = p.id AND cc.utilisateur_id = %(uid)s
         LEFT JOIN projet_intervenant pi ON pi.projet_id = p.id AND pi.utilisateur_id = %(uid)s
         LEFT JOIN tache_intervenant ti ON ti.tache_id = t.id AND ti.utilisateur_id = %(uid)s
-        WHERE t.etat NOT IN ('termine', 'abandonne', 'bloque')
+        WHERE t.etat = 'en_cours'  -- décision 5 (lot 10) : ni Vérifiée, ni Arrêt
           -- Une tâche bloquée n'apparaît plus dans les deadlines non plus
           -- (retour Fadhel, 2026-09-28) : traitée comme terminée/abandonnée,
           -- puisqu'elle n'avance plus tant qu'elle est bloquée.

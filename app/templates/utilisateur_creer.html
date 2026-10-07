@@ -78,7 +78,7 @@
         <select id="role" name="role">
           <option value="intervenant" {{ 'selected' if f.get('role') == 'intervenant' }}>Intervenant</option>
           <option value="chef_de_projet" {{ 'selected' if f.get('role') == 'chef_de_projet' }}>Chef de projet</option>
-          <option value="admin" {{ 'selected' if f.get('role') == 'admin' }}>Admin</option>
+          {% if g.user.role == 'admin' %}<option value="admin" {{ 'selected' if f.get('role') == 'admin' }}>Admin</option>{% endif %}
           <option value="rh" {{ 'disabled' if rh_titulaire }} {{ 'selected' if f.get('role') == 'rh' and not rh_titulaire }}>
             {{ 'RH — déjà attribué à ' ~ rh_titulaire.prenom ~ ' ' ~ rh_titulaire.nom if rh_titulaire else 'RH' }}
           </option>

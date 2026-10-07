@@ -108,5 +108,197 @@ class TestFlaskMigrer(unittest.TestCase):
         self.assertTrue(any(s.startswith("UPDATE schema_migrations SET checksum") for s in sqls))
 
 
+RH = {**smoke.USER, "id": 7, "role": "rh", "prenom": "Rym", "nom": "Hadj", "equipe_code": None}
+ADMIN = smoke.USER  # id 1, rôle admin
+ADMIN_CIBLE = {**smoke.AUTRE_UTILISATEUR, "id": 9, "role": "admin"}
+INTERVENANT_CIBLE = {**smoke.AUTRE_UTILISATEUR, "id": 10, "role": "intervenant"}
+FICHE = {"prenom": "Ali", "nom": "Ben", "email": "ali@midgard.tn", "role": "intervenant"}
+
+
+class _BaseLot10(smoke.SmokeBase):
+    def _requete(self, methode, chemin, data=None, espions=(), **overrides):
+        """Requête avec les mocks par défaut de test_smoke (+ overrides) et
+        des espions (cible -> valeur de retour) ; renvoie (réponse, espions)."""
+        self._login()
+        patchers = self._patched(**overrides)
+        for p in patchers:
+            p.start()
+        mocks = {}
+        try:
+            for cible, valeur in espions:
+                pp = patch(cible, return_value=valeur)
+                mocks[cible] = pp.start()
+                patchers.append(pp)
+            resp = getattr(self.client, methode)(chemin, data=data or {})
+        finally:
+            for p in reversed(patchers):
+                p.stop()
+        return resp, mocks
+
+
+class TestDecision1RHEtAdmin(_BaseLot10):
+    """Décision 1 : le RH ne peut ni créer, ni promouvoir, ni modifier (mot
+    de passe, email, activation, rôle) un Admin. L'Admin, lui, le peut."""
+
+    CREER = "app.repositories.utilisateurs.create_utilisateur"
+    MAJ = "app.repositories.utilisateurs.update_utilisateur_complet"
+    MDP = "app.repositories.utilisateurs.set_password"
+    ACTIF = "app.repositories.utilisateurs.toggle_actif"
+
+    def test_rh_ne_cree_pas_d_admin(self):
+        _, m = self._requete("post", "/utilisateurs/nouveau", {**FICHE, "role": "admin", "actif": "on"},
+                             espions=[(self.CREER, 11)], **{"app.auth.get_user_by_id": RH})
+        m[self.CREER].assert_not_called()
+
+    def test_rh_ne_promeut_pas_en_admin(self):
+        _, m = self._requete("post", "/utilisateurs/10", {**FICHE, "role": "admin"}, espions=[(self.MAJ, None)],
+                             **{"app.auth.get_user_by_id": RH,
+                                "app.repositories.utilisateurs.get_utilisateur": INTERVENANT_CIBLE})
+        m[self.MAJ].assert_not_called()
+
+    def test_rh_ne_modifie_pas_un_admin(self):
+        data = {**FICHE, "role": "admin", "email": "rh-perso@x.tn", "nouveau_mot_de_passe": "x" * 12}
+        resp, m = self._requete("post", "/utilisateurs/9", data, espions=[(self.MAJ, None), (self.MDP, None)],
+                                **{"app.auth.get_user_by_id": RH,
+                                   "app.repositories.utilisateurs.get_utilisateur": ADMIN_CIBLE})
+        self.assertEqual(resp.status_code, 302)
+        m[self.MAJ].assert_not_called()
+        m[self.MDP].assert_not_called()
+
+    def test_rh_ne_retrograde_pas_un_admin(self):
+        _, m = self._requete("post", "/utilisateurs/9", {**FICHE, "role": "intervenant"}, espions=[(self.MAJ, None)],
+                             **{"app.auth.get_user_by_id": RH,
+                                "app.repositories.utilisateurs.get_utilisateur": ADMIN_CIBLE})
+        m[self.MAJ].assert_not_called()
+
+    def test_rh_ne_desactive_pas_un_admin(self):
+        _, m = self._requete("post", "/utilisateurs/9/toggle-actif", {"actif_cible": "0"},
+                             espions=[(self.ACTIF, True)],
+                             **{"app.auth.get_user_by_id": RH,
+                                "app.repositories.utilisateurs.get_utilisateur": ADMIN_CIBLE})
+        m[self.ACTIF].assert_not_called()
+
+    def test_rh_ne_voit_pas_l_option_admin(self):
+        resp, _ = self._requete("get", "/utilisateurs/nouveau", **{"app.auth.get_user_by_id": RH})
+        self.assertNotIn('value="admin"', resp.data.decode())
+        resp, _ = self._requete("get", "/utilisateurs/9", **{
+            "app.auth.get_user_by_id": RH, "app.repositories.utilisateurs.get_utilisateur": ADMIN_CIBLE})
+        self.assertIn("<fieldset disabled", resp.data.decode())
+
+    def test_rh_garde_la_main_sur_les_autres_comptes(self):
+        _, m = self._requete("post", "/utilisateurs/10", {**FICHE, "role": "chef_de_projet"},
+                             espions=[(self.MAJ, None)],
+                             **{"app.auth.get_user_by_id": RH,
+                                "app.repositories.utilisateurs.get_utilisateur": INTERVENANT_CIBLE})
+        m[self.MAJ].assert_called_once()
+
+    def test_admin_peut_tout_sur_un_admin(self):
+        _, m = self._requete("post", "/utilisateurs/nouveau", {**FICHE, "role": "admin"},
+                             espions=[(self.CREER, 11)])
+        m[self.CREER].assert_called_once()
+        _, m = self._requete("post", "/utilisateurs/9", {**FICHE, "role": "admin", "nouveau_mot_de_passe": "x" * 12},
+                             espions=[(self.MAJ, None), (self.MDP, None)],
+                             **{"app.repositories.utilisateurs.get_utilisateur": ADMIN_CIBLE})
+        m[self.MAJ].assert_called_once()
+        m[self.MDP].assert_called_once()
+
+    def test_dernier_admin_message_clair(self):
+        """Refus du trigger trg_garde_comptes_admin (0013) : message, pas de 500."""
+        erreur = Exception("Impossible : ce compte est le dernier Admin actif.")
+        self._login()
+        patchers = self._patched(**{"app.repositories.utilisateurs.get_utilisateur": ADMIN_CIBLE})
+        for p in patchers:
+            p.start()
+        try:
+            with patch(self.MAJ, side_effect=erreur):
+                resp = self.client.post("/utilisateurs/9", data={**FICHE, "role": "intervenant"},
+                                        follow_redirects=False)
+        finally:
+            for p in reversed(patchers):
+                p.stop()
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("dernier Admin actif", resp.data.decode())
+
+
+class TestDecision2AdminCoChef(unittest.TestCase):
+    """Décision 2 : l'Admin a les droits de co-chef sur tous les projets,
+    réouverture comprise. Comportement prouvé sur vraie base par
+    tests_integration (test_admin_co_chef_de_tous_les_projets) ; ici, la
+    clause elle-même."""
+
+    def test_clause_admin_dans_user_can_manage_et_je_gere(self):
+        import inspect
+        from app.repositories import posts, projets
+        self.assertIn("ux.role = 'admin'", inspect.getsource(projets.user_can_manage))
+        self.assertIn("ua.role = 'admin'", posts._FEED_SELECT)
+
+
+class _CurseurEspion:
+    def __init__(self, role, rowcount=1):
+        self.role, self.rowcount, self.sql = role, rowcount, []
+
+    def execute(self, sql, params=None):
+        self.sql.append(" ".join(sql.split()))
+
+    def fetchone(self):
+        return {"role": self.role}
+
+
+class TestDecision3CoChefAutomatique(_BaseLot10):
+    def _ajouter(self, role, rowcount=1):
+        cur = _CurseurEspion(role, rowcount)
+
+        @contextlib.contextmanager
+        def faux(*a, **k):
+            yield cur
+
+        from app.repositories import projets
+        with patch.object(db, "get_cursor", faux):
+            ajoute = projets.add_intervenant(1, 5, 1)
+        return ajoute, cur.sql[-1]
+
+    def test_chef_ajoute_comme_intervenant_devient_co_chef(self):
+        ajoute, sql = self._ajouter("chef_de_projet")
+        self.assertTrue(ajoute)
+        self.assertIn("INSERT INTO projet_co_chef", sql)
+        self.assertIn("p.chef_projet_id <>", sql)  # jamais co-chef de son propre projet
+
+    def test_intervenant_reste_intervenant(self):
+        ajoute, sql = self._ajouter("intervenant")
+        self.assertIn("INSERT INTO projet_intervenant", sql)
+
+    def test_deja_rattache_ni_notifie_ni_ajoute(self):
+        ajoute, _ = self._ajouter("intervenant", rowcount=0)
+        self.assertFalse(ajoute)
+
+    def test_notification_co_chef(self):
+        chef = {**INTERVENANT_CIBLE, "role": "chef_de_projet"}
+        _, m = self._requete("post", "/projets/1/intervenants", {"utilisateur_id": "10"},
+                             espions=[("app.repositories.projets.add_intervenant", True),
+                                      ("app.repositories.notifications.creer", 1)],
+                             **{"app.repositories.utilisateurs.get_utilisateur": chef})
+        self.assertIn("co-chef", m["app.repositories.notifications.creer"].call_args.args[2])
+
+    def test_second_ajout_pas_de_notification(self):
+        _, m = self._requete("post", "/projets/1/intervenants", {"utilisateur_id": "10"},
+                             espions=[("app.repositories.projets.add_intervenant", False),
+                                      ("app.repositories.notifications.creer", 1)],
+                             **{"app.repositories.utilisateurs.get_utilisateur": INTERVENANT_CIBLE})
+        m["app.repositories.notifications.creer"].assert_not_called()
+
+
+class TestDecision5TachesClosesMasquees(unittest.TestCase):
+    """Décision 5 : Vérifiée et Arrêt retirées de Mes tâches et des
+    Deadlines (prouvé sur vraie base par tests_integration)."""
+
+    def test_seules_les_taches_en_cours(self):
+        import inspect
+        from app.repositories import projets, taches
+        for fn in (taches.list_mes_taches, taches.list_deadlines, taches.list_en_cours_pour_profil):
+            with self.subTest(fn=fn.__name__):
+                self.assertIn("WHERE t.etat = 'en_cours'", inspect.getsource(fn))
+        self.assertEqual(inspect.getsource(projets.list_projets).count("'verifie', 'arret'"), 3)
+
+
 if __name__ == "__main__":
     unittest.main()

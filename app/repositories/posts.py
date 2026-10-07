@@ -67,7 +67,9 @@ _FEED_SELECT = """
            COALESCE((proj.chef_projet_id = %(uid)s OR EXISTS (
               SELECT 1 FROM projet_co_chef cc
               WHERE cc.projet_id = p.projet_id AND cc.utilisateur_id = %(uid)s
-           )) AND NOT EXISTS (SELECT 1 FROM utilisateur ux WHERE ux.id = %(uid)s AND ux.role IN ('client', 'rh')), false) AS je_gere,
+           ) OR (p.projet_id IS NOT NULL AND EXISTS (
+              SELECT 1 FROM utilisateur ua WHERE ua.id = %(uid)s AND ua.role = 'admin'
+           ))) AND NOT EXISTS (SELECT 1 FROM utilisateur ux WHERE ux.id = %(uid)s AND ux.role IN ('client', 'rh')), false) AS je_gere,
            (SELECT count(*) FROM post_reaction r WHERE r.post_id = p.id) AS nb_reactions,
            (SELECT count(*) FROM post_commentaire c WHERE c.post_id = p.id) AS nb_commentaires,
            (SELECT pr.reaction_code FROM post_reaction pr

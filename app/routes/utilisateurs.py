@@ -34,6 +34,35 @@ bp = Blueprint("utilisateurs", __name__, url_prefix="/utilisateurs")
 ROLES_CREABLES = ["intervenant", "chef_de_projet", "admin", "rh"]
 
 
+def _roles_attribuables() -> list[str]:
+    """Rôles que l'utilisateur connecté peut attribuer (décision 1 du
+    gérant, lot 10) : le RH ne crée ni ne promeut jamais un Admin. Le
+    trigger trg_garde_comptes_admin (migration 0013) l'interdit aussi en
+    base."""
+    if g.user["role"] == "admin":
+        return list(ROLES_CREABLES)
+    return [r for r in ROLES_CREABLES if r != "admin"]
+
+
+def _cible_protegee(utilisateur: dict) -> bool:
+    """Vrai si l'utilisateur connecté (RH) n'a pas le droit de toucher à ce
+    compte : un compte Admin n'est modifiable que par un Admin (mot de
+    passe, email, activation, rôle, fiche — décision 1, lot 10)."""
+    return g.user["role"] != "admin" and utilisateur.get("role") == "admin"
+
+
+def _message_garde_admin(exc: Exception) -> str | None:
+    """Message clair pour les refus du trigger trg_garde_comptes_admin
+    (migration 0013) — normalement déjà évités par les contrôles de route,
+    qui n'en sont que le premier rempart."""
+    texte = str(exc)
+    if "dernier Admin actif" in texte:
+        return "Impossible : ce compte est le dernier Admin actif."
+    if "Le RH ne peut ni créer" in texte:
+        return "Seul un Admin peut créer, modifier ou désactiver un compte Admin."
+    return None
+
+
 def _enregistrer_avatar_si_fourni(user_id: int, current_user_id: int) -> None:
     """Photo de profil optionnelle (retour Fadhel, 2026-09-20) — n'importe
     quel formulaire de création/modification d'utilisateur qui accepte un
@@ -260,7 +289,7 @@ def creer():
 
         if not prenom or not nom or not email:
             flash("Prénom, nom et email sont obligatoires.", "error")
-        elif role not in ROLES_CREABLES:
+        elif role not in _roles_attribuables():
             flash("Rôle invalide.", "error")
         elif date_embauche_valide is False:
             flash("Date d'embauche invalide.", "error")
@@ -442,6 +471,10 @@ def fiche(user_id: int):
             semaine_derniere=_semaine_derniere(user_id, projets_repo.list_ids_visibles(g.user["id"])),
         )
 
+    if request.method == "POST" and _cible_protegee(utilisateur):
+        flash("Seul un Admin peut modifier le compte d'un Admin.", "error")
+        return redirect(url_for("utilisateurs.fiche", user_id=user_id))
+
     if request.method == "POST":
         prenom = request.form.get("prenom", "").strip()
         nom = request.form.get("nom", "").strip()
@@ -481,7 +514,7 @@ def fiche(user_id: int):
 
         if user_id == g.user["id"] and role != utilisateur["role"]:
             flash("Vous ne pouvez pas changer votre propre rôle depuis cet écran.", "error")
-        elif role not in ROLES_CREABLES and role != utilisateur["role"]:
+        elif role not in _roles_attribuables() and role != utilisateur["role"]:
             flash("Rôle invalide.", "error")
         elif not prenom or not nom or not email:
             flash("Prénom, nom et email sont obligatoires.", "error")
@@ -531,6 +564,8 @@ def fiche(user_id: int):
                         "encore chef de projet, co-chef ou intervenant. Retirez-la "
                         "d'abord de ses projets et tâches.", "error",
                     )
+                elif message := _message_garde_admin(exc):
+                    flash(message, "error")
                 else:
                     flash("Impossible de mettre à jour ce compte.", "error")
             else:
@@ -549,15 +584,21 @@ def fiche(user_id: int):
     return render_template(
         "utilisateur_fiche.html",
         utilisateur=utilisateur, equipe_choices=EQUIPE_CHOICES,
-        roles_creables=ROLES_CREABLES,
+        roles_creables=_roles_attribuables(),
+        lecture_seule=_cible_protegee(utilisateur),
     )
 
 
 @bp.route("/<int:user_id>/toggle-actif", methods=["POST"])
 @role_required("admin", "rh")
 def toggle_actif(user_id: int):
-    if user_id == g.user["id"]:
+    cible = utilisateurs_repo.get_utilisateur(user_id)
+    if cible is None:
+        flash("Utilisateur introuvable.", "error")
+    elif user_id == g.user["id"]:
         flash("Vous ne pouvez pas désactiver votre propre compte.", "error")
+    elif _cible_protegee(cible):
+        flash("Seul un Admin peut activer ou désactiver le compte d'un Admin.", "error")
     else:
         try:
             utilisateurs_repo.toggle_actif(user_id, g.user["id"])
@@ -571,6 +612,8 @@ def toggle_actif(user_id: int):
                     "Il y a déjà un compte RH actif. Désactivez-le d'abord "
                     "pour en réactiver un autre.", "error",
                 )
+            elif message := _message_garde_admin(exc):
+                flash(message, "error")
             else:
                 flash("Impossible de mettre à jour le statut de ce compte.", "error")
         else:

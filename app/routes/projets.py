@@ -784,7 +784,7 @@ def ajouter_intervenant(projet_id: int):
         return redirect(url_for("projets.detail", projet_id=projet_id))
 
     try:
-        projets.add_intervenant(projet_id, utilisateur_id, g.user["id"])
+        ajoute = projets.add_intervenant(projet_id, utilisateur_id, g.user["id"])
     except Exception as exc:
         # Garde-fou base de données (trg_check_projet_intervenant_role) :
         # un RH ne peut pas être intervenant. Ne devrait pas arriver via
@@ -792,14 +792,25 @@ def ajouter_intervenant(projet_id: int):
         # évite une page d'erreur brute si ça arrive quand même.
         flash(_message_erreur_intervenant(exc, "d'ajouter cet intervenant"), "error")
     else:
-        if utilisateur_id != g.user["id"]:
+        # Un chef de projet ajouté devient co-chef (décision 3, lot 10 —
+        # voir projets.add_intervenant). Notification seulement si le
+        # rattachement est NOUVEAU : un second ajout de la même personne
+        # ne la notifie plus (audit sécurité I12).
+        comme_co_chef = candidat.get("role") == "chef_de_projet"
+        if ajoute and utilisateur_id != g.user["id"]:
             projet = projets.get_projet(projet_id)
             nom_projet = projet["nom"] if projet else ""
             notifications_repo.creer(
                 utilisateur_id, "projet",
-                f"Vous avez été ajouté comme intervenant sur le projet « {nom_projet} ».",
+                f"Vous avez été ajouté comme {'co-chef' if comme_co_chef else 'intervenant'} "
+                f"sur le projet « {nom_projet} ».",
             )
-        flash("Intervenant ajouté.", "success")
+        if not ajoute:
+            flash("Cette personne est déjà rattachée au projet.", "success")
+        elif comme_co_chef:
+            flash("Chef de projet ajouté : il devient co-chef du projet.", "success")
+        else:
+            flash("Intervenant ajouté.", "success")
     return redirect(url_for("projets.detail", projet_id=projet_id))
 
 
