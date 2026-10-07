@@ -270,6 +270,32 @@ class TestFenetreEtCorrection(_BaseDL):
         self.assertEqual(self.sql("SELECT updated_by FROM dailylog_jour WHERE utilisateur_id=%s AND date=%s",
                                   (self.moi, d))[0]["updated_by"], admin)
 
+    def test_ligne_ancienne_projet_clos_ou_invisible_corrigee_a_la_baisse(self):
+        """Revue 1 du lot 10 : une ligne ancienne d'un projet clos depuis, ou
+        d'une autre équipe sans rattachement, se corrige à la baisse (Admin,
+        chef du projet) — elle ne pouvait jusque-là qu'être supprimée."""
+        admin = self.user("admin", equipe=None)
+        autre = self.projet(self.chef, equipe="IPCO", code="26070X")
+        d = self.jour(60)
+        self.sql("UPDATE projet SET etat='termine', date_cloture=%s WHERE id=%s", (d - datetime.timedelta(days=5), self.p1))
+        self.historique(self.moi, d, [(self.p1, 2.67), (autre, 4)])
+        self.connecter(admin)
+        r = self.put(d, [{"projet_id": self.p1, "minutes": 150}, {"projet_id": autre, "minutes": 210}],
+                     version=0, qs=f"?utilisateur={self.moi}")
+        self.assertEqual(r.status_code, 200, r.data[:400])
+        self.assertEqual(self.lignes(self.moi, d), [(self.p1, None, 2.5), (autre, None, 3.5)])
+        # La hausse reste refusée (projet clos, projet invisible pour la personne).
+        r = self.put(d, [{"projet_id": self.p1, "minutes": 180}, {"projet_id": autre, "minutes": 240}],
+                     version=1, qs=f"?utilisateur={self.moi}")
+        self.assertEqual(r.status_code, 422, r.data[:400])
+        self.assertEqual({e["code"] for e in r.get_json()["erreurs"]}, {"projet_clos", "projet_invisible"})
+        # Le chef du projet clos corrige aussi à la baisse, au-delà de 14 jours.
+        self.connecter(self.chef)
+        r = self.put(d, [{"projet_id": self.p1, "minutes": 120}, {"projet_id": autre, "minutes": 210}],
+                     version=1, qs=f"?utilisateur={self.moi}")
+        self.assertEqual(r.status_code, 200, r.data[:400])
+        self.assertEqual(self.lignes(self.moi, d), [(self.p1, None, 2.0), (autre, None, 3.5)])
+
     def test_fuseau_de_la_guyane(self):
         self.sql("UPDATE utilisateur SET fuseau='America/Cayenne' WHERE id=%s", (self.moi,))
         auj_guyane = self.dl.aujourdhui_pour({"fuseau": "America/Cayenne"})

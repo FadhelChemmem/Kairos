@@ -522,20 +522,27 @@ def _ecrire(proprio: dict, date, aujourdhui, corps: dict, absent: bool, lignes_b
             ancien = existantes.get(l["cle"])
             if ancien == l["minutes"]:
                 continue  # inchangée : valeur ancienne, projet clos ou invisible depuis… acceptée telle quelle
-            if ancien is None or l["minutes"] > ancien:
+            # Baisse d'une ligne EXISTANTE (revue 1 du lot 10) : les règles
+            # d'imputation (projet visible par la personne, ouvert à cette
+            # date) visent l'ajout d'heures et ne jouent pas ici. Sans ça,
+            # une ligne ancienne d'un projet clos depuis (ou plus visible)
+            # pouvait être supprimée mais pas corrigée à la baisse, même par
+            # l'Admin. Le droit de modifier (_modifiable) reste exigé.
+            baisse = ancien is not None and l["minutes"] < ancien
+            if not baisse:
                 hausse = True
             projet = infos.get(l["projet_id"])
             if l["minutes"] <= 0 or l["minutes"] > dl.MAX_MINUTES_JOUR:
                 errs.append({"code": "minutes_invalides", "ligne": l["i"]})
             elif l["minutes"] % dl.PAS_MINUTES:
                 errs.append({"code": "pas_30_min", "ligne": l["i"]})
-            if projet is None or not projet["visible"]:
+            if projet is None or (not projet["visible"] and not baisse):
                 errs.append({"code": "projet_invisible", "ligne": l["i"]})
                 continue
             if not _modifiable(droits, projet):
                 errs.append({"code": "ligne_non_modifiable", "ligne": l["i"]})
                 continue
-            refus = dl.projet_saisissable(projet, date)
+            refus = None if baisse else dl.projet_saisissable(projet, date)
             if refus:
                 errs.append({"code": refus, "ligne": l["i"]})
             if l["tache_id"] and taches.get(l["tache_id"]) != l["projet_id"]:

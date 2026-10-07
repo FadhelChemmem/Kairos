@@ -317,6 +317,31 @@ class TestReglesDEcriture(_BaseDailyLog):
         # Jour jamais rempli : rien à vider, pas d'erreur.
         self.assertEqual(self.put([]).status_code, 200)
 
+    def test_ligne_existante_projet_clos_ou_invisible_reduite_pas_augmentee(self):
+        """Revue 1 du lot 10 : une ligne ancienne d'un projet clos depuis ou
+        plus visible par la personne se corrige à la BAISSE (elle pouvait
+        déjà être supprimée) ; la hausse et l'ajout restent refusés."""
+        vieux = self.aujourdhui - datetime.timedelta(days=40)
+        projets = {1: projet(1, etat="termine", date_cloture=vieux - datetime.timedelta(days=10)),
+                   2: projet(2, visible=False)}
+        existantes = {(1, 0): 240, (2, 0): 160}
+
+        def put(lignes, user=ADMIN):
+            return self.put(lignes, date=vieux, user=user, projets=projets, existantes=existantes)
+
+        ok = put([{"projet_id": 1, "minutes": 180}, {"projet_id": 2, "minutes": 150}])
+        self.assertEqual(ok.status_code, 200, ok.data[:300])
+        self.assertEqual(self.preparation, (False, {(1, 0): 180, (2, 0): 150}))
+        self.assertIn("projet_clos", self.codes(put([{"projet_id": 1, "minutes": 270}, {"projet_id": 2, "minutes": 160}])))
+        self.assertIn("projet_invisible", self.codes(put([{"projet_id": 1, "minutes": 240}, {"projet_id": 2, "minutes": 180}])))
+        self.assertIn("projet_clos", self.codes(put([{"projet_id": 1, "tache_id": None, "minutes": 240},
+                                                     {"projet_id": 2, "minutes": 160},
+                                                     {"projet_id": 1, "tache_id": 7, "minutes": 30}])))
+        # Une baisse reste au pas de 30 min, et réservée à qui peut modifier la ligne.
+        self.assertIn("pas_30_min", self.codes(put([{"projet_id": 1, "minutes": 225}, {"projet_id": 2, "minutes": 160}])))
+        self.assertIn("ligne_non_modifiable", self.codes(
+            put([{"projet_id": 1, "minutes": 180}, {"projet_id": 2, "minutes": 160}], user=INTERVENANT)))
+
     def test_absence_exclusive_et_annulation_qui_rend_les_lignes(self):
         url = f"/dailylog/api/jour/{self.aujourdhui}/absence"
         projets = {"app.repositories.dailylog.projets_info": {1: projet(1)}}
