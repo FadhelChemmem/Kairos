@@ -122,9 +122,12 @@ WARNING app.proxy: En-têtes X-Forwarded-* ignorés : requête reçue directemen
 ```
 
 Si l'adresse citée est celle du proxy, l'ajouter à `TRUSTED_PROXY_IPS`
-puis `docker compose up -d`. Pour retrouver l'adresse vue du proxy :
-`docker compose logs web | grep -E "X-Forwarded|GET /"` (la première
-colonne des lignes d'accès de gunicorn est l'adresse TCP vue par l'appli).
+puis `docker compose up -d`. Pour la retrouver :
+`docker compose logs web | grep "X-Forwarded"`. Dans les lignes d'accès de
+gunicorn (`docker compose logs web | grep "GET /"`), la première colonne
+est l'adresse du client retenue par l'appli : l'IP réelle du poste pour une
+requête passée par un proxy de confiance (ou arrivée directement), l'IP du
+proxy s'il n'est pas reconnu.
 
 `TRUSTED_PROXY_IPS` vide avec `TRUSTED_PROXY_COUNT` > 0 : liste par défaut
 `172.16.0.0/12` (réseaux Docker) + `127.0.0.1` + `HOST_IP` (IP LAN du
