@@ -86,83 +86,70 @@ class TestTachesCloses(BaseIntegration):
 
 
 class TestDailyLogRepository(BaseIntegration):
-    def _jour(self, uid):
-        return self.sql("SELECT projet_id, tache_id, heures FROM dailylog_entree WHERE utilisateur_id=%s "
-                        "ORDER BY projet_id", (uid,))
+    """enregistrer_jour (lot 10) : une journée n'efface jamais les autres
+    jours ni les autres personnes ; l'absence retire les heures du jour."""
+
+    def _ecrire(self, uid, date, lignes, absent=False):
+        from app.repositories import dailylog
+        version = dailylog.lire_jour(uid, date)["version"]
+        return dailylog.enregistrer_jour(uid, date, version, uid,
+                                         lambda existantes, absent_actuel: (absent, dict(lignes)))
 
     def test_journee_absente_efface_les_heures(self):
-        from app.repositories import dailylog
         u = self.user("intervenant"); p = self.projet(self.user("chef_de_projet"))
-        j = datetime.date.today().isoformat()
-        dailylog.remplacer_jour(u, j, [{"projet_id": p, "tache_id": None, "heures": 8}], u, duree_heures=8)
-        dailylog.remplacer_jour(u, j, [{"projet_id": p, "tache_id": None, "heures": 8}], u, absent=True)
-        self.assertEqual(self._jour(u), [])
-
-    def test_lignes_refusees_conservees_et_doublons_additionnes(self):
-        from app.repositories import dailylog
-        u = self.user("intervenant"); chef = self.user("chef_de_projet")
-        p1, p2 = self.projet(chef), self.projet(chef)
-        j = datetime.date.today().isoformat()
-        dailylog.remplacer_jour(u, j, [{"projet_id": p1, "tache_id": None, "heures": 3},
-                                       {"projet_id": p2, "tache_id": None, "heures": 5}], u)
-        dailylog.remplacer_jour(u, j, [{"projet_id": p2, "tache_id": None, "heures": 2},
-                                       {"projet_id": p2, "tache_id": None, "heures": 3}], u,
-                                conserver={(p1, 0)})
-        self.assertEqual([(r["projet_id"], float(r["heures"])) for r in self._jour(u)], [(p1, 3.0), (p2, 5.0)])
+        j = datetime.date.today()
+        self._ecrire(u, j, {(p, 0): 480})
+        self._ecrire(u, j, {}, absent=True)
+        self.assertEqual(self.sql("SELECT count(*) AS n FROM dailylog_entree WHERE utilisateur_id=%s", (u,))[0]["n"], 0)
 
     def test_n_efface_jamais_les_autres_jours_ni_les_autres_personnes(self):
-        from app.repositories import dailylog
         u, v = self.user("intervenant"), self.user("intervenant")
         p = self.projet(self.user("chef_de_projet"))
-        hier = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
-        auj = datetime.date.today().isoformat()
-        dailylog.remplacer_jour(u, hier, [{"projet_id": p, "tache_id": None, "heures": 8}], u)
-        dailylog.remplacer_jour(u, auj, [{"projet_id": p, "tache_id": None, "heures": 8}], u)
-        dailylog.remplacer_jour(v, auj, [{"projet_id": p, "tache_id": None, "heures": 8}], v)
-        dailylog.remplacer_jour(u, auj, [], u, absent=True)
+        hier = datetime.date.today() - datetime.timedelta(days=1)
+        auj = datetime.date.today()
+        self._ecrire(u, hier, {(p, 0): 480})
+        self._ecrire(u, auj, {(p, 0): 480})
+        self._ecrire(v, auj, {(p, 0): 480})
+        self._ecrire(u, auj, {}, absent=True)
         restantes = self.sql("SELECT utilisateur_id, date FROM dailylog_entree ORDER BY 1, 2")
-        self.assertEqual([(r["utilisateur_id"], r["date"].isoformat()) for r in restantes], [(u, hier), (v, auj)])
+        self.assertEqual([(r["utilisateur_id"], r["date"]) for r in restantes], [(u, hier), (v, auj)])
 
 
 class TestDailyLogRegles(BaseIntegration):
-    """Règles du Daily log (lot 10) : fenêtre de 14 jours (décision 4), 10 h
-    par jour, pas de 30 min, dates absurdes. Le Daily log est réécrit à part
-    (migration 0014 et routes du Daily log) : ces tests restent marqués
-    « échec attendu » jusqu'à son intégration — un passage au vert sera
-    signalé (« unexpected success ») et imposera de retirer le marqueur."""
+    """Règles du Daily log (lot 10) par l'API : fenêtre de 14 jours
+    (décision 4), 10 h par jour, pas de 30 min, dates absurdes. Ces tests
+    étaient « échec attendu » avant la réécriture du Daily log."""
 
-    def _poster(self, jours_avant=0, heures=("8",), duree="8", absent=None):
+    def _put(self, jours_avant=0, minutes=(480,)):
         u = self.user("intervenant"); p = self.projet(self.user("chef_de_projet"))
+        self.sql("UPDATE utilisateur SET created_at = now() - interval '60 days'")
         self.login(u)
-        date = datetime.date.today() - datetime.timedelta(days=jours_avant)
-        data = {"date": date.isoformat(), "duree": duree,
-                "ligne_projet_id": [str(p)] * len(heures), "ligne_tache_id": [""] * len(heures),
-                "ligne_heures": list(heures)}
-        if absent:
-            data["absent"] = "1"
-        self.client.post("/dailylog", data=data)
+        from app.repositories import dailylog
+        date = dailylog.aujourdhui_pour({"fuseau": "Africa/Tunis"}) - datetime.timedelta(days=jours_avant)
+        lignes = [{"projet_id": p, "minutes": m} for m in minutes]
+        if len(lignes) > 1:
+            lignes = [{"projet_id": self.projet(self.user("chef_de_projet")), "minutes": m} for m in minutes]
+        self.client.put(f"/dailylog/api/jour/{date.isoformat()}", json={"version": 0, "lignes": lignes})
         return self.sql("SELECT coalesce(sum(heures),0) AS h FROM dailylog_entree WHERE utilisateur_id=%s", (u,))[0]["h"]
 
-    @unittest.expectedFailure  # réécriture du Daily log (lot 10)
     def test_fenetre_de_14_jours(self):
-        self.assertEqual(float(self._poster(jours_avant=14)), 8.0)
-        self.assertEqual(float(self._poster(jours_avant=15)), 0.0)
+        self.assertEqual(float(self._put(jours_avant=14)), 8.0)
+        self.assertEqual(float(self._put(jours_avant=15)), 0.0)
 
-    @unittest.expectedFailure  # réécriture du Daily log (lot 10)
     def test_maximum_10_heures_par_jour(self):
-        self.assertEqual(float(self._poster(heures=("10",), duree="10")), 10.0)
-        self.assertEqual(float(self._poster(heures=("10.5",), duree="10.5")), 0.0)
+        self.assertEqual(float(self._put(minutes=(600,))), 10.0)
+        self.assertEqual(float(self._put(minutes=(630,))), 0.0)
+        self.assertEqual(float(self._put(minutes=(360, 270))), 0.0)
 
-    @unittest.expectedFailure  # réécriture du Daily log (lot 10)
     def test_pas_de_30_minutes(self):
-        self.assertEqual(float(self._poster(heures=("7.5",), duree="7.5")), 7.5)
-        self.assertEqual(float(self._poster(heures=("7.25",), duree="7.25")), 0.0)
+        self.assertEqual(float(self._put(minutes=(450,))), 7.5)
+        self.assertEqual(float(self._put(minutes=(435,))), 0.0)
 
-    @unittest.expectedFailure  # réécriture du Daily log (lot 10)
     def test_date_absurde_refusee_sans_500(self):
         u = self.user("intervenant"); self.login(u)
-        r = self.client.post("/dailylog", data={"date": "0001-01-01", "duree": "8"})
-        self.assertLess(r.status_code, 500)
+        for date in ("0001-01-01", "1989-12-31", "²", "2026-02-30"):
+            r = self.client.put(f"/dailylog/api/jour/{date}", json={"version": 0, "lignes": []})
+            self.assertEqual(r.status_code, 400, date)
         self.assertEqual(self.sql("SELECT count(*) AS n FROM dailylog_jour WHERE date < '2000-01-01'")[0]["n"], 0)
 
 

@@ -30,3 +30,7 @@ WTForms==3.2.2
 # « Télécharger en Excel » sur "Tous les projets" (retour Fadhel,
 # 2026-09-29) — écriture d'un vrai .xlsx.
 openpyxl==3.1.5
+# Daily log v9 (lot 10) : « aujourd'hui » au fuseau de la personne
+# (zoneinfo, Africa/Tunis et America/Cayenne) — la base des fuseaux n'est
+# pas toujours présente dans l'image python:3.12-slim.
+tzdata==2025.2

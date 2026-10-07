@@ -1,0 +1,297 @@
+/* Daily log v9 (lot 10) — portée de la maquette v9 validée par Fadhel le
+   2026-10-06. Tout est préfixé dl- et limité à .dl9 : les classes
+   génériques de la maquette (.row, .status, .cal-day…) entraient en
+   collision avec app.css. Aucune couleur recopiée : correspondance vers
+   les jetons d'app.css, qui changent avec :root[data-theme="dark"] (seul
+   mécanisme de thème de l'appli, posé par base.html). */
+.dl9 {
+  --dl-surface: var(--surface);
+  --dl-surface-2: var(--bg-subtle-1);
+  --dl-fg: var(--text);
+  --dl-muted: var(--text-muted);
+  --dl-faint: var(--text-muted-2);
+  /* --text-faint (#6c766f) ne fait que 4,34:1 sur le fond de page clair (#f5f6f3) : --text-muted (≥ 4,5:1 partout). */
+  --dl-faint-text: var(--text-muted);
+  --dl-border: var(--border);
+  --dl-border-strong: var(--border-3);
+  --dl-control-border: var(--control-border);
+  --dl-accent: var(--accent-fill);        /* FOND vert, toujours avec --on-accent dessus */
+  --dl-accent-text: var(--brand-text);    /* TEXTE vert (s'éclaircit en sombre) */
+  --dl-accent-soft: var(--brand-bg-soft);
+  --dl-accent-ink: var(--brand-text-strong);
+  --dl-on-accent: var(--on-accent);
+  --dl-blue: var(--info-text);
+  --dl-amber: var(--warn-text);
+  --dl-amber-soft: var(--warn-bg);
+  --dl-amber-border: var(--warn-border);
+  --dl-danger: var(--error-text);
+  --dl-danger-fill: var(--danger-fill);
+  --dl-shadow: 0 1px 2px rgba(20, 40, 28, .05), 0 6px 20px rgba(20, 40, 28, .06);
+  --dl-pop: 0 12px 32px rgba(20, 40, 28, .16);
+  --dl-r-ctrl: 10px;
+  --dl-r-card: 14px;
+  --dl-r-pill: 999px;
+  color: var(--dl-fg);
+  line-height: 1.4;
+}
+:root[data-theme="dark"] .dl9 {
+  --dl-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .35);
+  --dl-pop: 0 14px 36px rgba(0, 0, 0, .5);
+}
+:root[data-theme="dark"] .dl9 .dl-pdot, :root[data-theme="dark"] .dl9 .dl-cdot { filter: brightness(1.35); }
+
+html:has(body.page-dailylog) { scroll-padding-bottom: 140px; }
+.dl9 [hidden] { display: none !important; }
+.dl9 .dl-wrap { max-width: 560px; margin: 0 auto; padding: 18px 16px 150px; }
+.dl9 button { font-family: inherit; }
+.dl9 :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 3px; }
+
+/* Choix de la personne (chef / Admin) et bandeaux d'information */
+.dl9 .dl-qui { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
+.dl9 .dl-qui label { margin: 0; font-size: 12px; font-weight: 700; color: var(--dl-faint-text); text-transform: uppercase; letter-spacing: .03em; }
+.dl9 .dl-qui select { width: auto; min-width: 180px; flex: 1; max-width: 320px; height: 36px; padding: 0 10px; border-radius: var(--dl-r-ctrl); }
+.dl9 .dl-note { margin: 0 0 12px; padding: 9px 12px; font-size: 12.5px; color: var(--dl-fg); background: var(--dl-surface-2);
+  border: 1px solid var(--dl-border-strong); border-radius: var(--dl-r-card); }
+.dl9 .dl-note-correction { background: var(--dl-accent-soft); border-color: transparent; color: var(--dl-accent-ink); }
+
+.dl9 .dl-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 12px; }
+.dl9 .dl-title { font-size: 19px; font-weight: 800; letter-spacing: -.01em; margin: 0; text-wrap: balance; color: var(--text-strong); }
+.dl9 .dl-subtitle { font-size: 12.5px; color: var(--dl-muted); margin: 2px 0 0; }
+.dl9 .dl-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; white-space: nowrap;
+  padding: 5px 10px; border-radius: var(--dl-r-pill); background: var(--dl-surface-2); border: 1px solid var(--dl-border); color: var(--dl-muted); }
+.dl9 .dl-status .dl-dot { width: 7px; height: 7px; border-radius: var(--dl-r-pill); background: var(--dl-faint); }
+.dl9 .dl-status[data-s="modifie"], .dl9 .dl-status[data-s="envoi"] { color: var(--dl-blue); border-color: color-mix(in srgb, var(--dl-blue) 40%, var(--dl-border)); }
+.dl9 .dl-status[data-s="modifie"] .dl-dot, .dl9 .dl-status[data-s="envoi"] .dl-dot { background: var(--dl-blue); }
+.dl9 .dl-status[data-s="enregistre"] { color: var(--dl-accent-ink); background: var(--dl-accent-soft); border-color: transparent; }
+.dl9 .dl-status[data-s="enregistre"] .dl-dot { background: var(--dl-accent-text); }
+.dl9 .dl-status[data-s="erreur"] { color: var(--dl-danger); border-color: color-mix(in srgb, var(--dl-danger) 45%, var(--dl-border)); background: var(--error-bg); }
+.dl9 .dl-status[data-s="erreur"] .dl-dot { background: var(--dl-danger); }
+.dl9 .dl-status[data-s="absent"] .dl-dot, .dl9 .dl-status[data-s="lecture"] .dl-dot { background: var(--dl-muted); }
+
+.dl9 .dl-settings { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 14px 0 10px; }
+.dl9 .dl-datenav { display: inline-flex; align-items: center; gap: 2px; position: relative; }
+.dl9 .dl-navbtn { width: 32px; height: 36px; border: 1px solid var(--dl-control-border); background: var(--dl-surface); color: var(--dl-muted);
+  font-size: 20px; font-weight: 700; cursor: pointer; display: grid; place-items: center; line-height: 1; padding: 0; }
+.dl9 .dl-navbtn.dl-l { border-radius: var(--dl-r-ctrl) 0 0 var(--dl-r-ctrl); border-right: none; }
+.dl9 .dl-navbtn.dl-r { border-radius: 0 var(--dl-r-ctrl) var(--dl-r-ctrl) 0; border-left: none; }
+.dl9 .dl-navbtn:disabled { opacity: .4; cursor: default; }
+.dl9 .dl-datebtn { height: 36px; border: 1px solid var(--dl-control-border); background: var(--dl-surface); color: var(--dl-fg);
+  font-size: 13px; font-weight: 700; padding: 0 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+.dl9 .dl-datebtn svg { width: 15px; height: 15px; color: var(--dl-accent-text); }
+.dl9 .dl-objctl { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--dl-muted); }
+.dl9 .dl-objctl .dl-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--dl-faint-text); }
+.dl9 .dl-objctl b { color: var(--dl-fg); font-weight: 700; min-width: 34px; text-align: center; font-variant-numeric: tabular-nums; }
+.dl9 .dl-mini { width: 30px; height: 30px; border-radius: var(--dl-r-ctrl); border: 1px solid var(--dl-control-border); background: var(--dl-surface);
+  color: var(--dl-fg); font-size: 16px; font-weight: 700; cursor: pointer; display: grid; place-items: center; line-height: 1; padding: 0; }
+.dl9 .dl-mini:disabled { opacity: .4; cursor: default; }
+
+/* Calendrier : popover non modal, trois pastilles de FORME différente */
+.dl9 .dl-cal { position: absolute; top: 42px; left: 0; z-index: 40; background: var(--dl-surface); border: 1px solid var(--dl-border);
+  border-radius: var(--dl-r-card); box-shadow: var(--dl-pop); padding: 12px; width: min(286px, calc(100vw - 32px)); }
+.dl9 .dl-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.dl9 .dl-cal-head b { font-size: 13.5px; font-weight: 800; text-transform: capitalize; }
+.dl9 .dl-cal-head .dl-navbtn { border: 1px solid var(--dl-control-border); border-radius: var(--dl-r-ctrl); }
+.dl9 .dl-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.dl9 .dl-cal-dow { font-size: 10px; font-weight: 700; color: var(--dl-faint-text); text-align: center; padding: 2px 0; }
+.dl9 .dl-cal-day { aspect-ratio: 1; border: none; background: none; font-size: 12.5px; font-weight: 600; color: var(--dl-fg); padding: 0;
+  border-radius: var(--dl-r-ctrl); cursor: pointer; position: relative; display: grid; place-items: center; min-width: 0; }
+.dl9 .dl-cal-day.dl-we:not(.dl-sel) { color: var(--dl-faint-text); }
+.dl9 .dl-cal-day[disabled] { color: var(--dl-faint-text); opacity: .8; cursor: default; }
+.dl9 .dl-cal-day .dl-pip { position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); width: 6px; height: 6px; border-radius: var(--dl-r-pill); }
+.dl9 .dl-cal-day.dl-rempli .dl-pip { background: var(--dl-accent-text); }
+.dl9 .dl-cal-day.dl-absent .dl-pip { background: var(--dl-blue); border-radius: 1.5px; width: 7px; height: 3px; }
+.dl9 .dl-cal-day.dl-vide .dl-pip { background: transparent; border: 1.5px solid var(--dl-amber); }
+.dl9 .dl-cal-day.dl-sel { background: var(--dl-accent); color: var(--dl-on-accent); }
+.dl9 .dl-cal-day.dl-sel.dl-rempli .dl-pip, .dl9 .dl-cal-day.dl-sel.dl-absent .dl-pip { background: var(--dl-on-accent); }
+.dl9 .dl-cal-day.dl-sel.dl-vide .dl-pip { border-color: var(--dl-on-accent); }
+.dl9 .dl-cal-day.dl-today { outline: 2px solid var(--dl-accent-text); outline-offset: -2px; }
+.dl9 .dl-cal-day:focus-visible { outline-offset: -2px; }
+.dl9 .dl-cal-day.dl-today:focus-visible { outline: 2px solid var(--dl-fg); outline-offset: -4px; box-shadow: 0 0 0 2px var(--dl-surface); }
+.dl9 .dl-cal-day.dl-sel:focus-visible { outline: 2px solid var(--dl-on-accent); outline-offset: -4px; box-shadow: 0 0 0 2px var(--dl-fg); }
+.dl9 .dl-cal-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--dl-border); font-size: 10.5px; color: var(--dl-faint-text); }
+.dl9 .dl-cal-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.dl9 .dl-cal-legend i { display: inline-block; }
+.dl9 .dl-cal-legend .dl-ldot { width: 7px; height: 7px; border-radius: var(--dl-r-pill); background: var(--dl-accent-text); }
+.dl9 .dl-cal-legend .dl-lbar { width: 8px; height: 3px; border-radius: 1.5px; background: var(--dl-blue); }
+.dl9 .dl-cal-legend .dl-lring { width: 8px; height: 8px; border-radius: var(--dl-r-pill); border: 1.5px solid var(--dl-amber); }
+
+/* Bannière des jours manqués */
+.dl9 .dl-banner { display: flex; align-items: center; gap: 10px; background: var(--dl-amber-soft); border: 1px solid var(--dl-amber-border);
+  border-radius: var(--dl-r-card); padding: 9px 12px; margin-bottom: 10px; }
+.dl9 .dl-bico { color: var(--warn-icon); flex: none; display: grid; place-items: center; }
+.dl9 .dl-btxt { font-size: 12.5px; color: var(--dl-fg); flex: 1; min-width: 0; }
+.dl9 .dl-btxt b { font-weight: 700; }
+.dl9 .dl-more { color: var(--dl-muted); font-size: 11.5px; }
+.dl9 .dl-chip { display: inline-flex; align-items: center; min-height: 26px; border: 1px solid var(--dl-amber); background: var(--dl-surface);
+  color: var(--dl-amber); font-size: 11.5px; font-weight: 700; border-radius: var(--dl-r-pill); padding: 4px 11px; margin: 2px 3px 0 0; cursor: pointer; }
+
+.dl9 .dl-daytools { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
+.dl9 .dl-tool { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--dl-control-border); background: var(--dl-surface);
+  color: var(--dl-fg); font-size: 12.5px; font-weight: 600; border-radius: var(--dl-r-ctrl); padding: 8px 12px; cursor: pointer; width: auto; }
+.dl9 .dl-tool:disabled { opacity: .55; cursor: default; }
+.dl9 .dl-tool svg { width: 14px; height: 14px; color: var(--dl-accent-text); }
+.dl9 .dl-tool.dl-on { background: var(--dl-accent-soft); border-color: var(--dl-accent-text); color: var(--dl-accent-ink); }
+
+/* Lignes */
+.dl9 .dl-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.dl9 .dl-list:empty::before { content: attr(data-vide); display: block; padding: 18px; text-align: center;
+  border: 1px dashed var(--dl-control-border); border-radius: var(--dl-r-card); color: var(--dl-muted); font-size: 13px; }
+.dl9 .dl-list[aria-busy="true"]:empty::before { content: "…"; }
+.dl9 .dl-row { display: flex; flex-wrap: nowrap; align-items: center; gap: 12px; background: var(--dl-surface); border: 1px solid var(--dl-border);
+  border-radius: var(--dl-r-card); padding: 12px 14px; box-shadow: var(--dl-shadow); }
+.dl9 .dl-row.dl-row-err { border-color: var(--dl-danger); box-shadow: 0 0 0 1px var(--dl-danger); }
+.dl9 .dl-pdot { width: 11px; height: 11px; border-radius: var(--dl-r-pill); flex: none; }
+.dl9 .dl-row.dl-off .dl-pdot { background: var(--dl-faint) !important; }
+.dl9 .dl-pinfo { flex: 1; min-width: 0; overflow: hidden; cursor: pointer; user-select: none; background: none; border: none; text-align: left;
+  padding: 2px 6px; margin-left: -6px; touch-action: manipulation; border-radius: 6px; color: inherit; }
+.dl9 .dl-fixe .dl-pinfo { cursor: default; }
+.dl9 .dl-pinfo:focus-visible { outline-offset: -2px; }
+.dl9 .dl-pcode { display: block; font-size: 11px; font-weight: 700; color: var(--dl-faint-text); letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dl9 .dl-pname { display: block; font-size: 14px; font-weight: 600; color: var(--dl-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .15s; }
+.dl9 .dl-row.dl-off .dl-pname { color: var(--dl-faint-text); }
+
+.dl9 .dl-stepper { display: flex; align-items: center; flex: none; width: 170px; border: 1px solid var(--dl-control-border); border-radius: var(--dl-r-ctrl);
+  overflow: hidden; background: var(--dl-surface); }
+.dl9 .dl-step { touch-action: manipulation; width: 46px; height: 40px; flex: none; border: none; background: var(--dl-surface); color: var(--dl-fg);
+  font-size: 21px; font-weight: 600; cursor: pointer; display: grid; place-items: center; line-height: 1; padding: 0; }
+.dl9 .dl-step:disabled { color: var(--dl-faint-text); opacity: .55; cursor: default; }
+.dl9 .dl-step.dl-plus { color: var(--dl-accent-text); }
+.dl9 .dl-step:focus-visible { outline-offset: -2px; }
+/* .dl9 .dl-val l'emporte sur la règle globale input {width; padding; border…} d'app.css */
+.dl9 .dl-val { flex: 1; min-width: 0; width: 100%; height: 40px; border: none; border-left: 1px solid var(--dl-border); border-right: 1px solid var(--dl-border);
+  border-radius: 0; text-align: center; font-size: 14px; font-weight: 700; color: var(--dl-fg); background: var(--dl-surface);
+  font-variant-numeric: tabular-nums; outline: none; padding: 0; }
+.dl9 .dl-val:focus { background: var(--dl-accent-soft); color: var(--dl-accent-ink); }
+.dl9 .dl-val:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.dl9 .dl-row.dl-off .dl-val { color: var(--dl-faint-text); }
+.dl9 .dl-fixval { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; color: var(--dl-muted);
+  font-variant-numeric: tabular-nums; padding: 0 8px; min-height: 40px; }
+
+/* Catalogue « + Ajouter un projet » */
+.dl9 .dl-addwrap { position: relative; margin-top: 10px; }
+.dl9 .dl-add { width: 100%; border: 1.5px dashed var(--dl-control-border); background: none; color: var(--dl-muted); font-size: 13px; font-weight: 600;
+  padding: 12px; border-radius: var(--dl-r-card); cursor: pointer; }
+.dl9 .dl-add[aria-expanded="true"] { border-color: var(--dl-accent-text); color: var(--dl-accent-text); }
+.dl9 .dl-addpanel { margin-top: 8px; background: var(--dl-surface); border: 1px solid var(--dl-border); border-radius: var(--dl-r-card);
+  box-shadow: var(--dl-pop); padding: 10px; scroll-margin-bottom: 110px; }
+.dl9 .dl-catsearch { width: 100%; border: 1px solid var(--dl-control-border); border-radius: var(--dl-r-ctrl); padding: 9px 12px 9px 34px;
+  font-size: 13px; color: var(--dl-fg); background: var(--dl-surface-2) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238b968f' stroke-width='2' stroke-linecap='round'><circle cx='7' cy='7' r='5'/><line x1='15' y1='15' x2='10.5' y2='10.5'/></svg>") no-repeat 10px center; outline: none; }
+.dl9 .dl-catsearch::placeholder { color: var(--dl-muted); opacity: 1; }
+.dl9 .dl-catsearch:focus { border-color: var(--dl-accent-text); background-color: var(--dl-surface); }
+.dl9 .dl-catsearch:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -1px; }
+.dl9 .dl-catsection { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--dl-faint-text); margin: 10px 4px 3px; }
+.dl9 .dl-catlist { max-height: min(260px, 40vh); overflow: auto; display: flex; flex-direction: column; gap: 2px; }
+.dl9 .dl-catitem { display: flex; align-items: center; gap: 4px; }
+.dl9 .dl-catrow { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--dl-r-ctrl); cursor: pointer; background: none;
+  border: none; width: 100%; min-width: 0; text-align: left; color: inherit; }
+.dl9 .dl-catrow:focus-visible { outline-offset: -2px; }
+.dl9 .dl-catrow .dl-cdot { width: 9px; height: 9px; border-radius: var(--dl-r-pill); flex: none; }
+.dl9 .dl-catrow .dl-ccode { font-size: 11px; font-weight: 700; color: var(--dl-faint-text); flex: none; }
+.dl9 .dl-catrow .dl-cname { font-size: 13px; font-weight: 600; color: var(--dl-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.dl9 .dl-catrow .dl-csous { font-weight: 500; color: var(--dl-muted); }
+.dl9 .dl-catrow .dl-cadd { margin-left: auto; color: var(--dl-accent-text); font-weight: 700; font-size: 16px; flex: none; }
+.dl9 .dl-catrow .dl-cin { margin-left: auto; color: var(--dl-faint-text); font-size: 11.5px; font-weight: 600; flex: none; }
+.dl9 .dl-catrow.dl-full { opacity: .55; }
+.dl9 .dl-cattaches { flex: none; border: 1px solid var(--dl-control-border); background: var(--dl-surface); color: var(--dl-muted);
+  font-size: 11.5px; font-weight: 600; border-radius: var(--dl-r-pill); padding: 4px 10px; cursor: pointer; white-space: nowrap; }
+.dl9 .dl-catsous { margin: 0 0 4px 22px; padding-left: 8px; border-left: 2px solid var(--dl-border); display: flex; flex-direction: column; gap: 2px; }
+.dl9 .dl-catrow-tache { padding: 7px 10px; }
+.dl9 .dl-catempty { padding: 12px 10px; color: var(--dl-faint-text); font-size: 12.5px; text-align: center; }
+
+.dl9 .dl-absentcard { background: var(--dl-surface); border: 1px dashed color-mix(in srgb, var(--dl-blue) 45%, var(--dl-control-border));
+  border-radius: var(--dl-r-card); padding: 18px 16px; text-align: center; color: var(--dl-muted); font-size: 13.5px; box-shadow: var(--dl-shadow); }
+.dl9 .dl-absentcard b { color: var(--dl-fg); }
+
+/* Barre du total (fixe) : sous les messages flash de base.html (z 500) */
+.dl9 .dl-totalbar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--dl-surface); border-top: 1px solid var(--dl-border);
+  box-shadow: 0 -6px 24px rgba(20, 40, 28, .07); padding: 12px 16px; padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 30; }
+.dl9 .dl-totalinner { max-width: 528px; margin: 0 auto; display: flex; align-items: center; gap: 14px; }
+.dl9 .dl-totsum { display: flex; flex-direction: column; min-width: 78px; }
+.dl9 .dl-totlabel { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--dl-faint-text); }
+.dl9 .dl-totval { font-size: 20px; font-weight: 800; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.dl9 .dl-totval.dl-over { color: var(--dl-danger); }
+.dl9 .dl-totval.dl-ok { color: var(--dl-accent-text); }
+.dl9 .dl-totval.dl-under { color: var(--dl-amber); }
+.dl9 .dl-mid { flex: 1; min-width: 90px; display: flex; flex-direction: column; gap: 5px; }
+.dl9 .dl-gauge { height: 8px; border-radius: var(--dl-r-pill); background: var(--dl-surface-2); overflow: hidden; border: 1px solid var(--dl-border); }
+.dl9 .dl-gauge > i { display: block; height: 100%; width: 0; background: var(--dl-accent); transition: width .18s ease, background .18s; }
+.dl9 .dl-gauge.dl-under > i { background: var(--warn-icon); }
+.dl9 .dl-gauge.dl-over > i { background: repeating-linear-gradient(45deg, var(--dl-danger-fill) 0 6px, color-mix(in srgb, var(--dl-danger-fill) 65%, #fff) 6px 12px); }
+.dl9 .dl-reste { font-size: 12px; font-weight: 600; color: var(--dl-muted); text-wrap: balance; }
+.dl9 .dl-reste b { font-weight: 800; }
+.dl9 .dl-reste.dl-ok { color: var(--dl-accent-text); }
+.dl9 .dl-reste.dl-under { color: var(--dl-amber); }
+.dl9 .dl-reste.dl-over { color: var(--dl-danger); }
+.dl9 .dl-save { flex: none; width: auto; min-width: 125px; border: none; background: var(--dl-accent); color: var(--dl-on-accent); font-size: 14px; font-weight: 700;
+  padding: 11px 18px; border-radius: var(--dl-r-ctrl); cursor: pointer; box-shadow: var(--dl-shadow); }
+.dl9 .dl-save.dl-done { background: var(--dl-accent-soft); color: var(--dl-accent-ink); box-shadow: none; }
+.dl9 .dl-save.dl-danger { background: var(--dl-danger-fill); color: #fff; }
+.dl9 .dl-save:disabled { background: var(--dl-border-strong); color: var(--dl-faint-text); cursor: default; box-shadow: none; }
+:root[data-theme="dark"] .dl9 .dl-save:disabled { color: var(--text-secondary); }
+
+/* Toast (une seule zone live : #dl-live) */
+.dl9 .dl-toast { position: fixed; left: 50%; bottom: 96px; width: max-content; transform: translateX(-50%) translateY(10px);
+  background: var(--dl-accent-ink); color: var(--dl-surface); font-size: 13px; font-weight: 600; padding: 10px 16px; border-radius: 16px;
+  box-shadow: var(--dl-shadow); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 60;
+  max-width: min(92vw, 440px); text-align: center; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 12px; text-wrap: balance; }
+.dl9 .dl-toast.dl-show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.dl9 .dl-toast.dl-warn { background: var(--dl-amber-soft); color: var(--dl-amber); border: 1px solid var(--dl-amber); }
+.dl9 .dl-toast.dl-show.dl-has-undo { pointer-events: auto; }
+.dl9 .dl-toast:not(.dl-show) { visibility: hidden; transition: opacity .2s, transform .2s, visibility 0s .2s; }
+.dl9 .dl-toast .dl-undo { border: none; background: none; color: inherit; font-weight: 800; text-decoration: underline; cursor: pointer;
+  padding: 10px 12px; margin: -8px -6px; width: auto; }
+
+.dl9 .dl-hint { font-size: 11.5px; color: var(--dl-faint-text); margin-top: 14px; line-height: 1.55; }
+.dl9 kbd { font-family: inherit; font-size: 11px; background: var(--dl-surface-2); border: 1px solid var(--dl-border); border-radius: 5px; padding: 1px 5px; font-weight: 600; }
+
+/* survol : uniquement sur les appareils qui ont un vrai survol */
+@media (hover: hover) {
+  .dl9 .dl-cal-day:hover:not(:disabled) { background: var(--dl-accent-soft); }
+  .dl9 .dl-cal-day.dl-sel:hover { background: var(--dl-accent); }
+  .dl9 .dl-chip:hover { background: var(--dl-amber); color: var(--dl-surface); }
+  .dl9 .dl-tool:hover:not(:disabled) { background: var(--dl-surface-2); border-color: var(--dl-accent-text); }
+  .dl9 .dl-step:hover:not(:disabled) { background: var(--dl-surface-2); }
+  .dl9 .dl-add:hover { border-color: var(--dl-accent-text); color: var(--dl-accent-text); }
+  .dl9 .dl-catrow:hover, .dl9 .dl-cattaches:hover { background: var(--dl-surface-2); }
+  .dl9 button.dl-pinfo:hover .dl-pname { text-decoration: underline; text-decoration-color: var(--dl-control-border); text-underline-offset: 3px; }
+  .dl9 .dl-save:hover:not(:disabled):not(.dl-done):not(.dl-danger) { background: var(--accent-fill-hover); }
+}
+/* tactile : cibles ≥ 40 px, champs à 16 px (évite le zoom iOS) */
+@media (pointer: coarse) {
+  .dl9 .dl-mini, .dl9 .dl-navbtn { width: 40px; height: 40px; }
+  .dl9 .dl-datebtn { height: 40px; }
+  .dl9 .dl-chip { min-height: 36px; }
+  .dl9 .dl-pinfo { min-height: 40px; }
+  .dl9 .dl-tool { padding: 10px 14px; }
+  .dl9 .dl-catrow { padding: 12px 10px; }
+  .dl9 .dl-cattaches { padding: 9px 12px; }
+  .dl9 .dl-val, .dl9 .dl-catsearch { font-size: 16px; }
+}
+/* petits écrans : nom du projet pleine largeur, stepper en dessous */
+@media (max-width: 480px) {
+  .dl9 .dl-row { flex-wrap: wrap; gap: 8px 10px; }
+  .dl9 .dl-pname { white-space: normal; }
+  .dl9 .dl-toast { bottom: calc(122px + env(safe-area-inset-bottom, 0px)); }
+  .dl9 .dl-pinfo { flex: 1 1 calc(100% - 30px); }
+  .dl9 .dl-stepper { flex: 1 1 100%; width: auto; }
+  .dl9 .dl-step { width: 25%; flex: 0 0 25%; height: 44px; }
+  .dl9 .dl-val { flex: 1; height: 44px; font-size: 16px; }
+  .dl9 .dl-fixval { flex: 1 1 100%; justify-content: flex-end; }
+  .dl9 .dl-totalinner { flex-wrap: wrap; gap: 8px 12px; }
+  .dl9 .dl-mid { order: 3; flex: 1 1 100%; }
+  .dl9 .dl-save { margin-left: auto; }
+  .dl9 .dl-wrap { padding-bottom: 170px; }
+  .dl9 .dl-qui select { max-width: none; }
+  .dl9 .dl-navbtn, .dl9 .dl-mini { width: 40px; height: 40px; }
+  .dl9 .dl-datebtn { height: 40px; }
+  .dl9 .dl-objctl { margin-left: 0; }
+  html:has(body.page-dailylog) { scroll-padding-bottom: 180px; }
+}
+@media (max-height: 480px) {
+  .dl9 .dl-totalbar { position: static; }
+  .dl9 .dl-wrap { padding-bottom: 20px; }
+  html:has(body.page-dailylog) { scroll-padding-bottom: 0; }
+}
+@media print {
+  .dl9 .dl-totalbar, .dl9 .dl-toast, .dl9 .dl-addwrap, .dl9 .dl-daytools, .dl9 .dl-qui { display: none !important; }
+}

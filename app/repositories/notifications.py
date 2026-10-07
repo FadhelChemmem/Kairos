@@ -112,3 +112,17 @@ def a_deja_un_rappel_dailylog(user_id: int, jour) -> bool:
         (user_id, jour),
     )
     return row is not None
+
+
+def a_deja_la_notification(user_id: int, message: str, jour) -> bool:
+    """Même message déjà envoyé ce jour-là à cette personne (ex. « Daily
+    log du … corrigé par … » : un chef qui corrige plusieurs fois le même
+    jour ne prévient qu'une fois)."""
+    row = db.query_one(
+        """
+        SELECT 1 FROM notification
+        WHERE utilisateur_id = %s AND message = %s AND created_at::date = %s
+        """,
+        (user_id, message, jour),
+    )
+    return row is not None

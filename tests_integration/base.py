@@ -19,7 +19,7 @@ URL = os.environ.get("KAIROS_TEST_DATABASE_URL")
 
 TABLES_METIER = (
     "notification, post_commentaire_mention, post_commentaire_piece_jointe, post_commentaire, "
-    "post_reaction, post_equipe, post_mention, post_piece_jointe, post, dailylog_jour, "
+    "post_reaction, post_equipe, post_mention, post_piece_jointe, post, dailylog_preference, dailylog_jour, "
     "dailylog_entree, tache_piece_jointe, tache_intervenant, tache, projet_intervenant, "
     "projet_co_chef, projet_lot, projet, tentative_securite, audit_log, utilisateur_session, utilisateur"
 )

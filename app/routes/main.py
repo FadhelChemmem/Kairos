@@ -28,7 +28,14 @@ def accueil():
     # Limité à 5 (retour Fadhel, 2026-09-28) : pour ne pas encombrer la colonne.
     mes_taches = [] if role == "client" else taches.list_mes_taches(user_id, limit=5)
     fil = posts.list_feed_mes_projets(user_id, limit=20)
-    dailylog_jours_manques = [] if role == "client" else dailylog_repo.jours_manques_recents(user_id)
+    # Daily log (lot 10) : jours oubliés au fuseau de la personne, bornés
+    # par sa date d'arrivée ; et la journée du jour, pour le texte de la carte.
+    if role == "client":
+        dailylog_jours_manques, dailylog_aujourdhui = [], None
+    else:
+        aujourdhui_local = dailylog_repo.aujourdhui_pour(g.user)
+        dailylog_jours_manques = dailylog_repo.jours_manques_recents(g.user, aujourdhui=aujourdhui_local)
+        dailylog_aujourdhui = dailylog_repo.jour_renseigne(user_id, aujourdhui_local)
 
     # Fenêtre "+ Nouveau post" de l'accueil (audit n°2) : seulement les
     # projets actifs (pas ceux terminés/abandonnés), la liste des personnes
@@ -76,6 +83,7 @@ def accueil():
         mes_taches=mes_taches,
         fil=fil,
         dailylog_jours_manques=dailylog_jours_manques,
+        dailylog_aujourdhui=dailylog_aujourdhui,
     )
 
 
@@ -91,7 +99,7 @@ def _accueil_rh(user_id: int):
         collaborateurs_recents=utilisateurs.list_collaborateurs_recents(user_id),
         deadlines=[], deadlines_gantt=None, mes_taches=[],
         fil=posts.list_feed_mes_projets(user_id, limit=20),
-        dailylog_jours_manques=[],
+        dailylog_jours_manques=[], dailylog_aujourdhui=None,
     )
 
 

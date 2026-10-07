@@ -5,6 +5,7 @@ import os
 from flask import Flask, abort, flash, g, redirect, request, url_for
 from flask.logging import default_handler as flask_default_handler
 from flask_wtf.csrf import CSRFError, CSRFProtect
+from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from . import db, utils
@@ -19,6 +20,10 @@ _SECRET_KEY_MIN_LEN = 32
 # Protection CSRF sur tous les POST (PROMPT_CORRECTIONS.md P2 #25) — voir
 # config.py (WTF_CSRF_TIME_LIMIT) et base.html (jeton pour fetch()).
 csrf = CSRFProtect()
+
+# Préfixes des API qui répondent TOUJOURS en JSON, erreurs comprises
+# (Daily log v9, lot 10).
+API_JSON_PREFIXES = ("/dailylog/api/", "/dailylog/recherche-projets")
 
 
 def _valider_secret_key(app: Flask) -> None:
@@ -164,6 +169,22 @@ def create_app(config_class=Config) -> Flask:
             )
         return response
 
+    def _est_api_json() -> bool:
+        return request.path.startswith(API_JSON_PREFIXES)
+
+    @app.errorhandler(HTTPException)
+    def _erreur_http(exc):
+        """Sous /dailylog/api/, toute erreur (404, 405, 400, 500…) répond
+        en JSON ; ailleurs, la page d'erreur habituelle."""
+        if not _est_api_json():
+            return exc
+        codes = {400: ("requete_invalide", "Requête invalide."), 401: ("non_connecte", "Session expirée : reconnectez-vous."),
+                 403: ("interdit", "Action non autorisée."), 404: ("introuvable", "Adresse inconnue."),
+                 405: ("methode_interdite", "Méthode non autorisée."), 413: ("trop_volumineux", "Requête trop volumineuse."),
+                 500: ("erreur_serveur", "Erreur du serveur.")}
+        code, message = codes.get(exc.code, ("erreur", "Requête refusée."))
+        return {"erreur": code, "message": message}, exc.code or 500
+
     @app.errorhandler(CSRFError)
     def _csrf_error(exc):
         # Jeton absent/invalide (session expirée, page ouverte avant une
@@ -171,6 +192,10 @@ def create_app(config_class=Config) -> Flask:
         # plutôt que la page d'erreur 400 brute de Flask-WTF.
         app.logger.warning("Requête refusée (CSRF) : %s %s — %s",
                            request.method, request.path, exc.description)
+        # API JSON du Daily log (lot 10) : jamais de redirection — fetch la
+        # suivrait et prendrait la page d'arrivée pour un succès.
+        if _est_api_json():
+            return {"erreur": "csrf", "message": "Session expirée : rechargez la page."}, 400
         flash("Votre session a expiré ou le formulaire n'est plus valide. "
               "Veuillez réessayer.", "error")
         retour = _chemin_interne(request.referrer)

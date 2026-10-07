@@ -212,6 +212,12 @@ _JOURS_LETTRE = ["L", "M", "M", "J", "V", "S", "D"]
 _MOIS_ABBR = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."]
 _JOURS_COMPLETS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
 _MOIS_COMPLETS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
+# Noms publics (Daily log v9 : listes transmises au JS, qui formate les
+# dates côté client sans dépendre de la locale du navigateur).
+MOIS_COMPLETS = _MOIS_COMPLETS
+MOIS_ABREGES = _MOIS_ABBR
+JOURS_COMPLETS = _JOURS_COMPLETS
+JOURS_ABREGES = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."]
 
 
 def date_fr(d) -> str:

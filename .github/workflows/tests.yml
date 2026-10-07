@@ -222,7 +222,8 @@ jobs:
           node-version: "22"
       - name: Tests JavaScript (node --test, sans dépendance)
         run: |
-          if ls tests_js/*.test.mjs >/dev/null 2>&1; then node --test tests_js/; else echo "Aucun test JS"; fi
+          # Node 22 : `node --test <dossier>` ne parcourt pas le dossier, on passe les fichiers.
+          if ls tests_js/*.test.mjs >/dev/null 2>&1; then node --test tests_js/*.test.mjs; else echo "Aucun test JS"; fi
 
   deploiement:
     # Déploiement réel comme sur le NAS : build, démarrage (flask migrer

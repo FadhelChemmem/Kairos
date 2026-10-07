@@ -280,7 +280,6 @@ main:focus { outline: none; }
    classe plutôt qu'en style inline, pour que la media query mobile puisse
    la repasser en une colonne (audit n°2 : 2 colonnes forcées à 360px). */
 .page-body-2col { grid-template-columns: 1fr 1.3fr; }
-.dailylog-wrap { padding-left: 32px; padding-right: 32px; }
 
 .page-wrap { max-width: 1360px; margin: 0 auto; padding-left: 32px; padding-right: 32px; }
 .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
@@ -557,79 +556,6 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
 .actif-toggle-input + .toggle { background: var(--border); justify-content: flex-start; }
 .actif-toggle-input:focus-visible + .toggle { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .actif-toggle-input:checked + .toggle { background: #4a7c59; justify-content: flex-end; }
-
-/* --- DailyLog façon curseur, voir DailyLog.dc.html --- */
-.daynav-btn {
-  display: flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; border-radius: 9px; color: var(--text-secondary);
-  background: var(--surface); border: 1px solid var(--border); cursor: pointer; text-decoration: none;
-}
-.daynav-btn:hover { background: var(--bg-subtle-1); }
-.dayseg {
-  height: 34px; display: flex; align-items: center; justify-content: center;
-  font-size: 11.5px; font-weight: 700; color: #ffffff; white-space: nowrap;
-  overflow: hidden; transition: width 0.15s ease;
-}
-.lrow { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
-/* pan-y (et non none) : un glissement vertical sur le nom fait défiler la
-   page sur mobile (audit n°2 : la majeure partie de la ligne bloquait le
-   défilement). L'appui long reste géré (pointercancel l'interrompt proprement). */
-.lrow-dot, .lrow-info { user-select: none; -webkit-user-select: none; touch-action: pan-y; }
-.lrow-info:focus-visible, .lrow-track:focus-visible, .add-suggestion:focus-visible, #date-pill:focus-visible {
-  outline: 2px solid #4a7c59; outline-offset: 2px; border-radius: 8px;
-}
-.lrow-info { width: 290px; flex-shrink: 0; min-width: 0; }
-.lrow-track { touch-action: none; }
-.lrow-pct { width: 52px; text-align: right; font-size: 12.5px; font-weight: 700; flex-shrink: 0; }
-.lrow-hours { width: 56px; text-align: right; font-size: 11.5px; flex-shrink: 0; }
-
-/* --- Daily log v2 (maquette validée par Fadhel le 2026-09-29, voir
-   claude/kairos-dailylog-v2.md) --- */
-.dayseg { gap: 6px; padding: 0 6px; box-sizing: border-box; min-width: 0; flex-shrink: 0; }
-.seg-code { font-size: 10.5px; font-weight: 700; opacity: 0.85; letter-spacing: 0.02em; }
-.seg-h { font-weight: 800; }
-/* Limite entre deux projets voisins dans la barre du jour (déplaçable). */
-.bar-handle { position: absolute; top: 0; bottom: 0; width: 14px; margin-left: -7px; cursor: ew-resize; z-index: 5; touch-action: none; display: flex; justify-content: center; }
-.bar-handle::before { content: ""; width: 2px; border-radius: 2px; background: rgba(255,255,255,0.95); box-shadow: 0 0 0 0.5px rgba(0,0,0,0.25); }
-.bar-handle:hover::before, .bar-handle:focus-visible::before { width: 3px; }
-.bar-handle:focus-visible { outline: none; }
-/* Graduation en heures sous la barre du jour ; la durée au bout se
-   modifie par double-clic. */
-.grad { position: relative; height: 36px; margin-top: 4px; }
-.grad .tick { position: absolute; top: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; }
-.grad .tick:first-child { transform: none; align-items: flex-start; }
-.grad .tick i, .grad .tick-fin i { display: block; width: 1px; height: 6px; background: var(--text-disabled); }
-.grad .tick b { font-size: 10.5px; font-weight: 600; color: var(--text-faint); margin-top: 2px; }
-.grad .tick-fin { position: absolute; right: 0; top: 0; display: flex; flex-direction: column; align-items: flex-end; background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; }
-.grad .tick-fin b { font-size: 11.5px; font-weight: 800; color: var(--brand-text-strong); margin-top: 2px; border-bottom: 1px dashed var(--brand-text); line-height: 1.2; }
-.grad .tick-fin:hover b { color: var(--brand-text); }
-#duree-popup { position: absolute; right: 12px; top: 96px; z-index: 50; padding: 12px; width: 210px; box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
-.duree-step { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 18px; font-weight: 700; cursor: pointer; font-family: inherit; }
-.duree-step:hover { background: var(--hover-bg); }
-.duree-btn { flex: 1; font-family: inherit; font-size: 12px; font-weight: 700; padding: 7px 12px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
-.duree-btn:hover { background: var(--hover-bg); }
-.duree-btn-ok { background: #4a7c59; border-color: #4a7c59; color: #fff; }
-.duree-btn-ok:hover { background: #3a6247; }
-/* Ligne de projet : curseur + heures cliquables en dessous. */
-.lrow-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding-top: 14px; }
-.hq-row { position: relative; height: 18px; margin: 0 2px; }
-.hq { position: absolute; top: 0; transform: translateX(-50%); font-family: inherit; font-size: 10.5px; font-weight: 600; color: var(--text-faint); background: none; border: none; padding: 1px 4px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
-.hq:hover:not(:disabled) { background: var(--hover-bg); color: var(--text); }
-.hq:disabled { color: var(--text-disabled); opacity: 0.45; cursor: not-allowed; }
-.hq-on { font-weight: 800; background: var(--hover-bg); }
-.lrow-code { display: inline-block; font-size: 11px; font-weight: 800; color: var(--text-muted); background: var(--hover-bg); border-radius: 5px; padding: 0 5px; margin-right: 6px; letter-spacing: 0.02em; }
-/* Fin de ligne : les heures ; le % n'apparaît qu'au survol de la ligne. */
-.lrow-h { width: 64px; text-align: right; font-size: 13px; font-weight: 800; flex-shrink: 0; font-variant-numeric: tabular-nums; }
-.lrow-pct-hover { width: 40px; text-align: right; font-size: 11px; color: var(--text-muted); flex-shrink: 0; opacity: 0; transition: opacity .12s; }
-.lrow:hover .lrow-pct-hover, .lrow:focus-within .lrow-pct-hover { opacity: 1; }
-.add-suggestion:hover { filter: brightness(0.97); }
-.cal-day {
-  display: flex; align-items: center; justify-content: center;
-  position: relative; width: 32px; height: 32px; border-radius: 8px;
-  font-size: 12px; cursor: pointer; color: var(--text); text-decoration: none;
-}
-.cal-day:hover { background: var(--border-soft); }
-.cal-dot { position: absolute; bottom: 3px; width: 4px; height: 4px; border-radius: 999px; }
 
 /* --- Vue Deadlines (calendrier/Gantt à défilement horizontal) --- */
 /* Colonnes des jours élastiques (2026-09-29) : elles remplissent la carte,
@@ -1106,20 +1032,6 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
   .login-wrap { padding: 16px; }
   .login-card { padding: 32px 24px 28px; }
 
-  /* DailyLog façon curseur : la ligne (pastille + nom + curseur + % +
-     heures + croix) ne tient pas sur un écran de smartphone avec ses
-     largeurs fixes desktop — on réduit le nom et on masque la colonne
-     "heures" (le %, plus lisible d'un coup d'œil, reste affiché). */
-  .dailylog-wrap { padding-left: 16px; padding-right: 16px; }
-  /* Daily log v2 (retour Fadhel, 2026-09-29) : sur téléphone on garde la
-     liste complète — nom et heures sur une ligne, curseur et heures
-     cliquables en dessous, assez grands pour un doigt. */
-  .lrow { gap: 8px; padding: 12px 10px; flex-wrap: wrap; }
-  .lrow-info { width: calc(100% - 136px); }
-  .lrow-col { order: 5; flex-basis: 100%; padding-top: 4px; }
-  .lrow-pct-hover { display: none; }
-  .hq { font-size: 12px; padding: 6px 5px; }
-  .hq-row { height: 28px; }
 }
 
 @media (max-width: 480px) {
@@ -1174,11 +1086,6 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
 .btn-primary.btn-danger, .btn-danger { background: var(--danger-fill); color: #fff; }
 .btn-primary.btn-danger:hover, .btn-danger:hover { background: #962f15; color: #fff; }
 
-/* Bandeau d'avertissement (rappel Daily log d'hier) — lot 7. */
-.warn-banner { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin-bottom: 16px;
-  background: var(--warn-bg); border-color: var(--warn-border); }
-.warn-banner-text { font-size: 12.5px; color: var(--warn-text); }
-.warn-banner a { font-size: 12.5px; font-weight: 700; margin-left: auto; color: var(--warn-text); text-decoration: underline; }
 .pill-warn { background: var(--warn-bg); color: var(--warn-text); }
 
 /* « avec » + pastilles des personnes ajoutées à un post (lot 8). */

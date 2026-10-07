@@ -2,6 +2,9 @@
 base.html) — pas d'emailing à cette étape (voir spec). Ouvrir une
 notification la marque lue et redirige vers le projet concerné, quand il y
 en a un."""
+import datetime
+import re
+
 from flask import Blueprint, abort, redirect, g, render_template, url_for
 
 from ..auth import login_required
@@ -28,6 +31,11 @@ def ouvrir(notification_id: int):
 
     notifications_repo.marquer_lu(notification_id, g.user["id"])
 
+    # Rappel ou correction du Daily log (lot 10) : directement le jour cité.
+    jour = _jour_daily_log(notif.get("message"))
+    if jour is not None and g.user["role"] in ("admin", "chef_de_projet", "intervenant"):
+        return redirect(url_for("dailylog.formulaire", date=jour.isoformat()))
+
     projet_id = notif["post_projet_id"] or notif["tache_projet_id"]
     if projet_id:
         return redirect(url_for("projets.detail", projet_id=projet_id))
@@ -43,3 +51,18 @@ def ouvrir(notification_id: int):
 def marquer_toutes_lues():
     notifications_repo.marquer_toutes_lues(g.user["id"])
     return redirect(url_for("notifications.liste"))
+
+
+_RE_JOUR_DAILY_LOG = re.compile(r"^(?:Rappel DailyLog|Daily log du)\b.*?([0-9]{2})/([0-9]{2})/([0-9]{4})")
+
+
+def _jour_daily_log(message: str | None):
+    """Date citée par une notification de rappel ou de correction du Daily
+    log (« … votre journée du 03/10/2026. »), None sinon."""
+    m = _RE_JOUR_DAILY_LOG.match(message or "")
+    if not m:
+        return None
+    try:
+        return datetime.date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+    except ValueError:
+        return None

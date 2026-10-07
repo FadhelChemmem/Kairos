@@ -104,12 +104,12 @@
           {% if dailylog_jours_manques|length > 1 %}{{ dailylog_jours_manques|length }} jours sans saisie, depuis le {{ premier_manque }}{% else %}1 jour sans saisie&nbsp;: le {{ premier_manque }}{% endif %}{{ '' if premier_manque.endswith('.') else '.' }}
         </div>
       {% else %}
-        {# Texte neutre : la route ne dit pas si la journée du jour est déjà
-           saisie (l'ancien « Vous n'avez pas encore réparti… » s'affichait
-           aussi après la saisie). Blanc : 4,86:1 sur le vert (#d6efe8 : 4,02). #}
-        <div style="font-size:12px; color:#fff; margin-bottom:12px; line-height:1.4;">Répartissez vos heures de la journée par projet.</div>
+        {# Lot 10 : la route dit si la journée du jour est déjà renseignée
+           (heures ou absence), au fuseau de la personne. Blanc : 4,86:1 sur
+           le vert (#d6efe8 : 4,02). #}
+        <div style="font-size:12px; color:#fff; margin-bottom:12px; line-height:1.4;">{% if dailylog_aujourdhui %}Journée du jour renseignée. Vous pouvez encore l’ajuster.{% else %}Répartissez vos heures de la journée par projet.{% endif %}</div>
       {% endif %}
-      <a href="{{ url_for('dailylog.formulaire') }}" class="btn-primary{{ ' btn-danger' if dailylog_jours_manques }}" style="display:block; text-align:center; text-decoration:none;">Remplir mon Daily log</a>
+      <a href="{{ url_for('dailylog.formulaire') }}" class="btn-primary{{ ' btn-danger' if dailylog_jours_manques }}" style="display:block; text-align:center; text-decoration:none;">{{ 'Voir mon Daily log' if dailylog_aujourdhui and not dailylog_jours_manques else 'Remplir mon Daily log' }}</a>
     </div>
     {% endif %}
     {% endif %}

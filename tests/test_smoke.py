@@ -293,21 +293,19 @@ CHEFS_DE_PROJET = [
     {"id": 7, "prenom": "Sana", "nom": "Trabelsi"},
 ]
 
-DAILYLOG_PROJETS = [{"id": 1, "code": "26099X", "nom": "Tour Meridian"}]
 DAILYLOG_ENTREES = [{"id": 1, "projet_id": 1, "tache_id": None, "heures": 5.0, "projet_nom": "Tour Meridian", "tache_titre": None}]
+# Daily log v9 (lot 10) : catalogue de l'amorce (mes projets, mes tâches,
+# récemment travaillés) et état d'un jour (repositories.dailylog.lire_jour).
 DAILYLOG_SUGGESTIONS = {
-    "mine": [{"projet_id": 1, "code": "26099X", "nom": "Tour Meridian", "tache_id": 5, "tache_titre": "Plan ferraillage voile R+2"},
-             {"projet_id": 1, "code": "26099X", "nom": "Tour Meridian", "tache_id": None, "tache_titre": None}],
-    # Palier "Récemment travaillés" (retour Fadhel, 2026-09-27) — a
-    # remplacé l'ancienne clé "autres" (liste statique des 50 premiers
-    # projets de l'entreprise) ; voir dailylog.list_projets_recents.
-    "recentes": [{"projet_id": 9, "code": "24001X", "nom": "The Hub", "tache_id": None, "tache_titre": None}],
+    "mine": [{"projet_id": 1, "code": "26099X", "nom": "Tour Meridian", "tache_id": 5, "tache_titre": "Plan ferraillage voile R+2",
+              "nb_taches": 1, "date_debut": None},
+             {"projet_id": 1, "code": "26099X", "nom": "Tour Meridian", "tache_id": None, "tache_titre": None,
+              "nb_taches": 1, "date_debut": None}],
+    "recentes": [{"projet_id": 9, "code": "24001X", "nom": "The Hub", "tache_id": None, "tache_titre": None,
+                  "nb_taches": 0, "date_debut": None}],
 }
-# Lot 5 (retour Fadhel, 2026-09-28) : "calendrier à pastilles vert/bleu/
-# rouge" — voir dailylog.etats_jours_mois. Les trois états sont représentés
-# ici pour que les tests de rendu (pastilles/légende) puissent tous
-# s'appuyer sur ce même fixture par défaut.
-DAILYLOG_ETATS_JOURS = {"2026-09-11": "rempli", "2026-09-14": "absent", "2026-09-16": "manque"}
+DAILYLOG_JOUR_VIDE = {"absent": False, "version": 0, "lignes": [], "modifie_par": None,
+                      "modifie_par_id": None, "modifie_le": None}
 
 NOTIFICATIONS = [
     {"id": 10, "categorie": "projet", "message": "Foulen Chedly vous a mentionné dans un post.",
@@ -402,15 +400,19 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.posts.get_piece_jointe": PIECE_JOINTE_POST,
             "app.repositories.utilisateurs.list_actifs": UTILISATEURS_ACTIFS,
             "app.repositories.utilisateurs.list_collaborateurs_recents": [3],
-            "app.repositories.dailylog.list_projets_pour_dailylog": DAILYLOG_PROJETS,
             "app.repositories.dailylog.list_entrees_jour": DAILYLOG_ENTREES,
             "app.repositories.dailylog.list_lignes_suggerees": DAILYLOG_SUGGESTIONS,
-            "app.repositories.dailylog.etats_jours_mois": DAILYLOG_ETATS_JOURS,
             "app.repositories.dailylog.jours_manques_recents": [],
             "app.repositories.dailylog.rechercher_projets": [],
-            # Daily log v2 (migration 0008) : réglage du jour et jours
-            # renseignés (heures ou absence).
-            "app.repositories.dailylog.get_jour": None,
+            # Daily log v9 (lot 10) : état d'un jour, calendrier, copie,
+            # objectif, profils (une requête par période).
+            "app.repositories.dailylog.lire_jour": DAILYLOG_JOUR_VIDE,
+            "app.repositories.dailylog.projets_info": {},
+            "app.repositories.dailylog.dernier_jour_rempli": None,
+            "app.repositories.dailylog.etats_mois": {},
+            "app.repositories.dailylog.get_objectif": 480,
+            "app.repositories.dailylog.list_entrees_periode": [],
+            "app.repositories.dailylog.jours_absents": set(),
             "app.repositories.dailylog.jour_renseigne": True,
             "app.repositories.dailylog.jours_renseignes": set(),
             "app.repositories.utilisateurs.list_tous": UTILISATEURS_TOUS,
@@ -431,6 +433,7 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.notifications.marquer_lu": None,
             "app.repositories.notifications.marquer_toutes_lues": None,
             "app.repositories.notifications.creer": 201,
+            "app.repositories.notifications.a_deja_la_notification": False,
             "app.repositories.notifications.creer_pour_plusieurs": None,
             "app.repositories.audit.list_entrees": AUDIT_ENTREES,
             "app.repositories.audit.list_auteurs": AUDIT_AUTEURS,
@@ -537,370 +540,6 @@ class SmokeTestCase(SmokeBase):
         )
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         self.assertIn("0 h".encode(), resp.data)
-
-    def test_dailylog_renders(self):
-        resp = self._get("/dailylog")
-        self.assertEqual(resp.status_code, 200, resp.data[:2000])
-        self.assertIn("Daily log".encode(), resp.data)
-        # Interface curseur (voir spec) : lignes/catalogue de suggestions
-        # injectés en JSON pour le moteur JS, pas de formulaire une-ligne-
-        # à-la-fois comme dans l'ancienne version.
-        self.assertIn(b'id="dailylog-data"', resp.data)
-        self.assertIn("Tour Meridian".encode(), resp.data)
-        self.assertIn("The Hub".encode(), resp.data)
-        self.assertNotIn(b'name="projet_id"', resp.data)
-        # Bug corrigé (2026-09-27, retour Fadhel) : plus d'icône de
-        # cadenas visible sur les lignes DailyLog.
-        self.assertNotIn("\U0001F512".encode(), resp.data)  # 🔒
-        self.assertIn(b'id="sugg-recherche-wrap"', resp.data)
-
-    def test_dailylog_recherche_projets_api(self):
-        resp = self._get(
-            "/dailylog/recherche-projets?q=hub",
-            **{"app.repositories.dailylog.rechercher_projets": [
-                {"projet_id": 9, "code": "24001X", "nom": "The Hub", "tache_id": None, "tache_titre": None}
-            ]},
-        )
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.get_json()["resultats"][0]["nom"], "The Hub")
-
-    def test_dailylog_recherche_projets_api_ignore_requete_trop_courte(self):
-        resp = self._get("/dailylog/recherche-projets?q=h")
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.get_json(), {"resultats": []})
-
-    def test_dailylog_with_explicit_date_renders(self):
-        resp = self._get("/dailylog?date=2026-09-10")
-        self.assertEqual(resp.status_code, 200, resp.data[:2000])
-
-    def test_dailylog_future_date_is_clamped_to_today(self):
-        """Régression (2026-09-19, retour Fadhel) : on pouvait remplir le
-        DailyLog de demain (ou de n'importe quel jour futur) — la route
-        ramène maintenant silencieusement à aujourd'hui."""
-        demain = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
-        resp = self._get("/dailylog?date=" + demain)
-        self.assertEqual(resp.status_code, 200, resp.data[:2000])
-        self.assertIn("Aujourd'hui".encode(), resp.data)
-
-    def test_dailylog_next_day_arrow_hidden_on_today(self):
-        """Sur "aujourd'hui", plus de flèche vers un jour futur (même
-        correctif que ci-dessus, côté template) : le lien vers demain est
-        remplacé par un espace réservé désactivé."""
-        resp = self._get("/dailylog")
-        self.assertEqual(resp.status_code, 200, resp.data[:2000])
-        demain = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
-        self.assertNotIn(("date=" + demain).encode(), resp.data)
-        self.assertIn(b"Pas de saisie pour un jour futur", resp.data)
-
-    # --- Validation des lignes DailyLog à l'enregistrement (POST) —
-    # PROMPT_CORRECTIONS.md P1 #10 : avant ce correctif, rien de tout ceci
-    # n'était vérifié côté serveur (le curseur JS protège l'usage normal,
-    # pas une requête forgée à la main). ---
-
-    def test_dailylog_enregistrer_ignore_les_ids_non_numeriques(self):
-        self._login()
-        patchers = self._patched()
-        for p in patchers:
-            p.start()
-        try:
-            with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
-                resp = self.client.post("/dailylog", data={
-                    "date": "2026-09-15",
-                    "ligne_projet_id": ["abc"],
-                    "ligne_tache_id": [""],
-                    "ligne_heures": ["4"],
-                })
-            self.assertEqual(resp.status_code, 302)
-            self.assertEqual(mock_remplacer.call_args.args[2], [])
-        finally:
-            for p in reversed(patchers):
-                p.stop()
-
-    def test_dailylog_enregistrer_ignore_les_heures_hors_bornes(self):
-        self._login()
-        patchers = self._patched()
-        for p in patchers:
-            p.start()
-        try:
-            with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
-                resp = self.client.post("/dailylog", data={
-                    "date": "2026-09-15",
-                    "duree": "5",  # valeur déjà enregistrée, conservée
-                    "ligne_projet_id": ["1", "1"],
-                    "ligne_tache_id": ["", ""],
-                    "ligne_heures": ["30", "-5"],
-                })
-            self.assertEqual(resp.status_code, 302)
-            self.assertEqual(mock_remplacer.call_args.args[2], [])
-        finally:
-            for p in reversed(patchers):
-                p.stop()
-
-    def test_dailylog_enregistrer_ignore_un_projet_non_visible(self):
-        self._login()
-        patchers = self._patched(**{"app.repositories.projets.user_can_view": False})
-        for p in patchers:
-            p.start()
-        try:
-            with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
-                resp = self.client.post("/dailylog", data={
-                    "date": "2026-09-15",
-                    "duree": "5",  # valeur déjà enregistrée, conservée
-                    "ligne_projet_id": ["1"],
-                    "ligne_tache_id": [""],
-                    "ligne_heures": ["4"],
-                })
-            self.assertEqual(resp.status_code, 302)
-            self.assertEqual(mock_remplacer.call_args.args[2], [])
-        finally:
-            for p in reversed(patchers):
-                p.stop()
-
-    def test_dailylog_enregistrer_ignore_une_tache_dun_autre_projet(self):
-        """La tâche indiquée sur une ligne doit appartenir au projet
-        indiqué sur cette MÊME ligne."""
-        self._login()
-        patchers = self._patched(**{
-            "app.repositories.taches.get_tache": {**TACHE_POUR_FICHIERS, "projet_id": 99},
-            "app.repositories.dailylog.list_entrees_jour": [{"projet_id": 1, "tache_id": 5, "heures": 4.0}],
-        })
-        for p in patchers:
-            p.start()
-        try:
-            with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
-                resp = self.client.post("/dailylog", data={
-                    "date": "2026-09-15",
-                    "duree": "4",
-                    "ligne_projet_id": ["1"],
-                    "ligne_tache_id": ["5"],
-                    "ligne_heures": ["4"],
-                })
-            self.assertEqual(resp.status_code, 302)
-            self.assertEqual(mock_remplacer.call_args.args[2], [])
-        finally:
-            for p in reversed(patchers):
-                p.stop()
-
-    def test_dailylog_enregistrer_accepte_une_ligne_valide(self):
-        self._login()
-        patchers = self._patched()
-        for p in patchers:
-            p.start()
-        try:
-            with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
-                resp = self.client.post("/dailylog", data={
-                    "date": "2026-09-15",
-                    "duree": "4",
-                    "ligne_projet_id": ["1"],
-                    "ligne_tache_id": ["5"],
-                    "ligne_heures": ["4"],
-                })
-            self.assertEqual(resp.status_code, 302)
-            self.assertEqual(
-                mock_remplacer.call_args.args[2],
-                [{"projet_id": 1, "tache_id": 5, "heures": 4.0}],
-            )
-        finally:
-            for p in reversed(patchers):
-                p.stop()
-
-    @staticmethod
-    def _duree_pour(heures):
-        """Daily log v2 : la journée doit être répartie à 100 % de sa durée —
-        les tests d'une ligne unique envoient donc une durée égale à son
-        total (8 h sinon, pour les valeurs que la validation refuse)."""
-        try:
-            total = sum(float(h) for h in heures)
-        except ValueError:
-            return "8"
-        if 0 < total <= 24 and abs(total * 4 - round(total * 4)) < 1e-9:
-            return str(total)
-        return "8"
-
-    def _poster_dailylog(self, heures, duree=None, **overrides):
-        """`duree` : durée de la journée envoyée (par défaut le total des
-        heures). Une ligne refusée garde sa valeur déjà enregistrée
-        (DAILYLOG_ENTREES : 5 h sur le projet 1), qui compte dans le total
-        de la journée (audit du 2026-09-29)."""
-        self._login()
-        patchers = self._patched(**overrides)
-        for p in patchers:
-            p.start()
-        try:
-            with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
-                resp = self.client.post("/dailylog", data={
-                    "date": "2026-09-15",
-                    "duree": duree or self._duree_pour(heures),
-                    "ligne_projet_id": ["1"] * len(heures),
-                    "ligne_tache_id": [""] * len(heures),
-                    "ligne_heures": heures,
-                })
-        finally:
-            for p in reversed(patchers):
-                p.stop()
-        self.assertEqual(resp.status_code, 302)
-        return mock_remplacer
-
-    # --- Daily log v2 (maquette validée le 2026-09-29) : durée du jour,
-    #     absence, total toujours = 100 %. ---
-
-    def _poster_jour(self, data, **overrides):
-        self._login()
-        patchers = self._patched(**overrides)
-        for p in patchers:
-            p.start()
-        try:
-            with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
-                resp = self.client.post("/dailylog", data=dict({"date": "2026-09-15"}, **data))
-        finally:
-            for p in reversed(patchers):
-                p.stop()
-        self.assertEqual(resp.status_code, 302)
-        return mock_remplacer
-
-    def test_dailylog_refuse_un_total_different_de_la_duree(self):
-        mock = self._poster_jour({"duree": "8", "ligne_projet_id": ["1"], "ligne_tache_id": [""], "ligne_heures": ["4"]})
-        mock.assert_not_called()
-        with self.client.session_transaction() as sess:
-            flashes = sess.get("_flashes", [])
-        self.assertTrue(any("100 %" in msg for _, msg in flashes))
-
-    def test_dailylog_enregistre_la_duree_du_jour(self):
-        mock = self._poster_jour({"duree": "6.5", "ligne_projet_id": ["1", "2"], "ligne_tache_id": ["", ""],
-                                  "ligne_heures": ["4.25", "2.25"]})
-        self.assertEqual(mock.call_args.kwargs["duree_heures"], 6.5)
-        self.assertFalse(mock.call_args.kwargs["absent"])
-        self.assertEqual([l["heures"] for l in mock.call_args.args[2]], [4.25, 2.25])
-
-    def test_dailylog_journee_absente_sans_lignes(self):
-        mock = self._poster_jour({"duree": "8", "absent": "1", "ligne_projet_id": ["1"], "ligne_tache_id": [""], "ligne_heures": ["3"]})
-        self.assertTrue(mock.call_args.kwargs["absent"])
-
-    def test_dailylog_refuse_une_duree_invalide(self):
-        for duree in ("0", "25", "abc", "7.3", "nan"):
-            with self.subTest(duree=duree):
-                mock = self._poster_jour({"duree": duree, "ligne_projet_id": ["1"], "ligne_tache_id": [""], "ligne_heures": ["4"]})
-                mock.assert_not_called()
-
-    def test_dailylog_page_transmet_duree_et_absence(self):
-        resp = self._get("/dailylog?date=2026-09-15", **{
-            "app.repositories.dailylog.get_jour": {"duree_heures": 6.5, "absent": False},
-        })
-        self.assertEqual(resp.status_code, 200, resp.data[:2000])
-        self.assertIn(b'"duree": 6.5', resp.data)
-        self.assertIn(b'"absent": false', resp.data)
-        self.assertNotIn("Journée type".encode(), resp.data)
-
-    def test_duree_et_absence_option_b_pour_une_ancienne_journee(self):
-        """Journée enregistrée avant le v2 (pas de dailylog_jour) : sa durée
-        vaut le total de ses heures — elles ne sont jamais modifiées."""
-        from app.repositories import dailylog as dailylog_repo
-        with patch("app.repositories.dailylog.get_jour", return_value=None):
-            self.assertEqual(dailylog_repo.duree_et_absence(1, "2026-09-29", [{"heures": 2.2}, {"heures": 0.98}, {"heures": 0.82}]), (4.0, False))
-            self.assertEqual(dailylog_repo.duree_et_absence(1, "2026-09-29", []), (8.0, False))
-        with patch("app.repositories.dailylog.get_jour", return_value={"duree_heures": 7.5, "absent": True}):
-            self.assertEqual(dailylog_repo.duree_et_absence(1, "2026-09-29", [{"heures": 3}]), (7.5, True))
-
-    def test_dailylog_refuse_nan_et_infini(self):
-        """Audit n°2 : `nan` passait les bornes (toute comparaison avec NaN
-        est fausse) et rendait les totaux d'heures du projet égaux à NaN."""
-        for valeur in ("nan", "NaN", "inf", "-inf"):
-            with self.subTest(valeur=valeur):
-                mock_remplacer = self._poster_dailylog([valeur], duree="5")
-                self.assertEqual(mock_remplacer.call_args.args[2], [])
-
-    def test_dailylog_bornes_24h_exactes(self):
-        self.assertEqual(
-            self._poster_dailylog(["24"]).call_args.args[2],
-            [{"projet_id": 1, "tache_id": None, "heures": 24.0}],
-        )
-        self.assertEqual(self._poster_dailylog(["24.01"], duree="5").call_args.args[2], [])
-
-    def test_dailylog_ligne_refusee_ne_contourne_plus_le_total(self):
-        """Audit du 2026-09-29 : une ligne invalide faisait sauter le
-        contrôle du total — 3 × 24 h passaient pour une journée de 8 h."""
-        mock_remplacer = self._poster_dailylog(["abc", "24", "24", "24"], duree="8")
-        mock_remplacer.assert_not_called()
-        with self.client.session_transaction() as sess:
-            flashes = sess.get("_flashes", [])
-        self.assertTrue(any("100 %" in msg for _, msg in flashes))
-
-    def test_dailylog_curseurs_gardent_le_total(self):
-        """Bug remonté par Fadhel (2026-09-29) : après le retrait ou la
-        désélection d'un projet, cliquer sur une ligne la mettait à la
-        journée entière sans rien reprendre aux autres (12 h sur 8 h). Les
-        règles de répartition passent désormais par normaliser() (au plus
-        n-1 projets "touchés", total = journée) — comportement vérifié par
-        1 000 clics aléatoires sous Playwright, ici on verrouille le câblage."""
-        import pathlib
-        tpl = (pathlib.Path(__file__).resolve().parent.parent / "app" / "templates" / "dailylog.html").read_text(encoding="utf-8")
-        regler = tpl[tpl.index("function regler("):tpl.index("function reglerSansControle(")]
-        self.assertEqual(regler.count("normaliser();"), 2)
-        for fonction in ("function toggleSelect(", "function removeLine(", "function addLine(", "function deplacerLimite("):
-            corps = tpl[tpl.index(fonction):]
-            corps = corps[:corps.index("\n  }\n")]
-            self.assertIn("normaliser();", corps, fonction)
-
-    def test_dailylog_ligne_refusee_conservee_et_signalee(self):
-        """Audit n°2 : une ligne refusée (ici, projet devenu invisible) ne
-        doit plus être supprimée en silence — sa clé est transmise à
-        remplacer_jour pour conserver la valeur déjà enregistrée, et
-        l'utilisateur est prévenu."""
-        mock_remplacer = self._poster_dailylog(
-            ["4"], duree="5", **{"app.repositories.projets.user_can_view": False},
-        )
-        self.assertEqual(mock_remplacer.call_args.kwargs["conserver"], {(1, 0)})
-        with self.client.session_transaction() as sess:
-            flashes = sess.get("_flashes", [])
-        self.assertTrue(any("valeur précédente a été conservée" in msg for _, msg in flashes))
-
-    def test_dailylog_enregistrer_date_invalide_repliee_sur_aujourdhui(self):
-        self._login()
-        patchers = self._patched()
-        for p in patchers:
-            p.start()
-        try:
-            with patch("app.repositories.dailylog.remplacer_jour") as mock_remplacer:
-                resp = self.client.post("/dailylog", data={
-                    "date": "n-importe-quoi",
-                    "ligne_projet_id": [], "ligne_tache_id": [], "ligne_heures": [],
-                })
-            self.assertEqual(resp.status_code, 302)
-            self.assertEqual(mock_remplacer.call_args.args[1], datetime.date.today().isoformat())
-        finally:
-            for p in reversed(patchers):
-                p.stop()
-
-    def test_dailylog_recherche_projets_filtre_par_visibilite(self):
-        """PROMPT_CORRECTIONS.md P1 #10 : rechercher_projets() doit
-        maintenant recevoir l'utilisateur courant (filtre de visibilité)."""
-        self._login()
-        patchers = self._patched()
-        for p in patchers:
-            p.start()
-        try:
-            with patch("app.repositories.dailylog.rechercher_projets", return_value=[]) as mock_recherche:
-                self.client.get("/dailylog/recherche-projets?q=hub")
-            mock_recherche.assert_called_once_with("hub", user_id=1)
-        finally:
-            for p in reversed(patchers):
-                p.stop()
-
-    def test_dailylog_jours_remplis_api(self):
-        """Lot 5 (retour Fadhel, 2026-09-28) : la réponse porte désormais un
-        état par jour (rempli/partiel/manque), pas seulement une liste de
-        jours "remplis" — voir dailylog.etats_jours_mois."""
-        self._login()
-        patchers = self._patched()
-        for p in patchers:
-            p.start()
-        try:
-            resp = self.client.get("/dailylog/jours-remplis?annee=2026&mois=9")
-        finally:
-            for p in reversed(patchers):
-                p.stop()
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.get_json(), {"etats": DAILYLOG_ETATS_JOURS})
 
     def test_deadlines_renders_gantt(self):
         resp = self._get("/deadlines")
@@ -1628,7 +1267,6 @@ class SmokeTestCase(SmokeBase):
             patch("app.repositories.posts.create_post", return_value=101),
             patch("app.repositories.posts.react", return_value=None),
             patch("app.repositories.posts.add_comment", return_value=102),
-            patch("app.repositories.dailylog.remplacer_jour", return_value=None),
             patch("app.repositories.projets.create_projet", return_value=42),
             patch("app.routes.fichiers.save_upload", return_value=("note.pdf", "taches/5/xyz.pdf")),
             patch("app.routes.posts.save_upload", return_value=("plan.pdf", "posts/101/xyz.pdf")),
@@ -1675,13 +1313,10 @@ class SmokeTestCase(SmokeBase):
             r7 = self.client.post("/posts/1/commenter", data={"contenu": "Un commentaire"})
             self.assertEqual(r7.status_code, 302)
 
-            r8 = self.client.post("/dailylog", data={
-                "date": "2026-09-15",
-                "ligne_projet_id": ["1", "2"],
-                "ligne_tache_id": ["5", ""],
-                "ligne_heures": ["4", "4"],
-            })
-            self.assertEqual(r8.status_code, 302)
+            # Daily log v9 : plus de POST /dailylog (API JSON, voir
+            # tests/test_dailylog.py) — la route n'accepte plus que GET.
+            r8 = self.client.post("/dailylog", data={"date": "2026-09-15"})
+            self.assertEqual(r8.status_code, 405)
 
             r9 = self.client.post("/projets/nouveau", data={
                 "nom": "Nouveau Projet Test", "code": "26099X", "phase": "EXE", "lots": ["GO"],
@@ -2200,112 +1835,6 @@ class SmokeTestCase(SmokeBase):
     # par échéance, carte Daily log rouge en cas de retard, commentaires/
     # réactions sur les posts, rebond enrichi (Tâche/Info/Requête), filtres
     # à puces + colonne Deadlines sur "Tous les projets", et page "Infos perso".
-
-    def test_jours_manques_recents_ignore_weekends_et_jours_deja_remplis(self):
-        from app.repositories import dailylog as dailylog_repo
-
-        aujourdhui = datetime.date(2026, 9, 21)
-        fenetre = [aujourdhui - datetime.timedelta(days=i) for i in range(1, 6)]
-        jours_ouvres = [j for j in fenetre if j.weekday() < 5]
-        deja_rempli = jours_ouvres[:1]
-        attendu = sorted(j for j in jours_ouvres if j not in deja_rempli)
-
-        # `maintenant` figé à 10h (revérification du 2026-09-29) : sans ce
-        # paramètre, jours_manques_recents() prend l'heure RÉELLE, et depuis
-        # le Lot 5 ("rouge à partir de 16h") ajoute aujourd'hui à la liste
-        # après 16h — ce test échouait donc seulement quand la suite était
-        # lancée l'après-midi/le soir. Le cas "après 16h" est couvert par le
-        # test suivant.
-        with patch("app.repositories.dailylog.db.query_all", return_value=[{"date": j} for j in deja_rempli]):
-            resultat = dailylog_repo.jours_manques_recents(
-                user_id=1, aujourdhui=aujourdhui, fenetre_jours=5,
-                maintenant=datetime.datetime(2026, 9, 21, 10, 0),
-            )
-
-        self.assertEqual(resultat, attendu)
-        self.assertTrue(all(j.weekday() < 5 for j in resultat))
-
-    def test_jours_manques_recents_ajoute_aujourdhui_seulement_apres_16h(self):
-        """Lot 5 (retour Fadhel, 2026-09-28) : aujourd'hui ne compte comme
-        manquant qu'à partir de 16h, jamais le matin."""
-        from app.repositories import dailylog as dailylog_repo
-
-        lundi = datetime.date(2026, 9, 21)
-        with patch("app.repositories.dailylog.db.query_all", return_value=[]):
-            matin = dailylog_repo.jours_manques_recents(
-                user_id=1, aujourdhui=lundi, fenetre_jours=1,
-                maintenant=datetime.datetime(2026, 9, 21, 15, 59),
-            )
-            apres_16h = dailylog_repo.jours_manques_recents(
-                user_id=1, aujourdhui=lundi, fenetre_jours=1,
-                maintenant=datetime.datetime(2026, 9, 21, 16, 0),
-            )
-
-        self.assertNotIn(lundi, matin)
-        self.assertIn(lundi, apres_16h)
-
-    # --- Lot 5 (retour Fadhel, 2026-09-28) : "calendrier à pastilles
-    #     vert/bleu/rouge" — voir dailylog.etats_jours_mois. ---
-
-    def test_etats_jours_mois_distingue_rempli_et_absent(self):
-        """Daily log v2 (2026-09-29) : vert = heures saisies, bleu = journée
-        marquée absente (dailylog_jour.absent)."""
-        from app.repositories import dailylog as dailylog_repo
-
-        with patch("app.repositories.dailylog.db.query_all", side_effect=[
-                 [{"date": datetime.date(2026, 9, 10)}],
-                 [{"date": datetime.date(2026, 9, 11)}],
-             ]), \
-             patch("app.repositories.dailylog.jours_manques_recents", return_value=[]):
-            resultat = dailylog_repo.etats_jours_mois(user_id=1, annee=2026, mois=9)
-        self.assertEqual(resultat, {"2026-09-10": "rempli", "2026-09-11": "absent"})
-
-    def test_etats_jours_mois_ancienne_journee_incomplete_reste_rempli(self):
-        """Plus d'état "partiel" : une journée enregistrée avant le v2 avec
-        moins de 8 h (option B, heures conservées) est "rempli"."""
-        from app.repositories import dailylog as dailylog_repo
-
-        with patch("app.repositories.dailylog.db.query_all", side_effect=[
-                 [{"date": datetime.date(2026, 9, 29)}], [],
-             ]), \
-             patch("app.repositories.dailylog.jours_manques_recents", return_value=[]):
-            resultat = dailylog_repo.etats_jours_mois(user_id=1, annee=2026, mois=9)
-        self.assertEqual(resultat, {"2026-09-29": "rempli"})
-
-    def test_etats_jours_mois_manque_reprend_jours_manques_recents_du_mois_affiche(self):
-        """"manque" (rouge) reprend jours_manques_recents (même fenêtre
-        glissante/heuristique que la carte DailyLog de l'accueil) — un jour
-        manqué HORS du mois demandé est exclu, pas de fuite entre mois."""
-        from app.repositories import dailylog as dailylog_repo
-
-        jours_manques = [datetime.date(2026, 9, 16), datetime.date(2026, 8, 31)]
-        with patch("app.repositories.dailylog.db.query_all", return_value=[]), \
-             patch("app.repositories.dailylog.jours_manques_recents", return_value=jours_manques):
-            resultat = dailylog_repo.etats_jours_mois(user_id=1, annee=2026, mois=9)
-        self.assertEqual(resultat, {"2026-09-16": "manque"})
-
-    def test_etats_jours_mois_priorise_rempli_sur_manque(self):
-        """Un jour avec des heures déjà enregistrées n'est jamais écrasé en
-        "manque" (défensif)."""
-        from app.repositories import dailylog as dailylog_repo
-
-        with patch("app.repositories.dailylog.db.query_all", side_effect=[
-                 [{"date": datetime.date(2026, 9, 16)}], [],
-             ]), \
-             patch("app.repositories.dailylog.jours_manques_recents", return_value=[datetime.date(2026, 9, 16)]):
-            resultat = dailylog_repo.etats_jours_mois(user_id=1, annee=2026, mois=9)
-        self.assertEqual(resultat, {"2026-09-16": "rempli"})
-
-    def test_dailylog_calendrier_affiche_les_trois_pastilles(self):
-        resp = self._get("/dailylog")
-        self.assertEqual(resp.status_code, 200, resp.data[:2000])
-        body = resp.data.decode()
-        self.assertIn("rempli", body)
-        self.assertIn("absent", body)
-        self.assertIn("non rempli", body)
-        self.assertNotIn("partiel", body)
-        self.assertIn("2026-09-16", body)
-        self.assertIn('"manque"', body)
 
     def test_accueil_bandeau_deadlines_pleine_largeur(self):
         resp = self._get("/accueil")
@@ -4378,6 +3907,8 @@ class TestVerifierRappelDailylog(unittest.TestCase):
         mock_creer.assert_not_called()
 
 
+
+
 class TestJournalAudit(unittest.TestCase):
     """Lot 5 (retour Fadhel, 2026-09-28) : page admin de parcours du
     journal d'audit — aucune nouvelle infrastructure (audit_log + triggers
@@ -5503,12 +5034,6 @@ class TestRelectureLot6(SmokeBase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn("· modifié", resp.data.decode())
 
-    def test_ancienne_journee_duree_au_quart_d_heure(self):
-        from app.repositories import dailylog as dailylog_repo
-        with patch("app.repositories.dailylog.get_jour", return_value=None):
-            self.assertEqual(dailylog_repo.duree_et_absence(1, "2026-09-01", [{"heures": 2.67}] * 3), (8.0, False))
-            self.assertEqual(dailylog_repo.duree_et_absence(1, "2026-09-01", [{"heures": 0.05}]), (0.25, False))
-
     def test_reponse_a_une_information_d_equipe_garde_ses_equipes(self):
         self._login()
         parent = {**POST_POUR_ACCES, "id": 9, "projet_id": None, "projet_etat": None}
@@ -5623,20 +5148,6 @@ class TestAuditV3(SmokeBase):
         import pathlib
         css = (pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / "css" / "app.css").read_text(encoding="utf-8")
         self.assertRegex(css, r"@media \(hover: none\) \{ \.task-join-form \{ opacity: 1; \} \}")
-
-    def test_rappel_dailylog_lisible_en_theme_sombre(self):
-        """Le bandeau "DailyLog d'hier non rempli" suit le thème (plus de
-        fond clair en dur avec un lien vert illisible en sombre)."""
-        import pathlib
-        racine = pathlib.Path(__file__).resolve().parent.parent / "app"
-        tpl = (racine / "templates" / "dailylog.html").read_text(encoding="utf-8")
-        css = (racine / "static" / "css" / "app.css").read_text(encoding="utf-8")
-        self.assertIn('class="card warn-banner"', tpl)
-        self.assertNotIn("#fdf3ec", tpl)
-        sombre = css[css.index(':root[data-theme="dark"] {'):]
-        sombre = sombre[:sombre.index("}")]
-        self.assertIn("--warn-bg:", sombre)
-        self.assertIn("--text-faint: #8a9680", sombre)
 
     def test_page_projet_n_agrege_plus_tout_le_dailylog(self):
         """Les heures de l'en-tête projet et des tâches sont calculées pour ce
@@ -5917,28 +5428,6 @@ class TestDecisionsLot7(SmokeBase):
         self.assertIn("THEN COALESCE(date_cloture, CURRENT_DATE) END", src)
         self.assertIn("honoraires, client, etat, projet_id)", src)
 
-    def test_daily_log_refuse_apres_la_cloture(self):
-        self._login()
-        # Rien d'enregistré ce jour-là (une ligne déjà enregistrée est gardée,
-        # voir test_daily_log_garde_les_heures_deja_enregistrees).
-        patchers = self._patched(**{"app.repositories.projets.get_projet": PROJET_CLOS,
-                                    "app.repositories.dailylog.list_entrees_jour": []})
-        for p in patchers:
-            p.start()
-        try:
-            with patch("app.repositories.dailylog.remplacer_jour") as remplacer:
-                self.client.post("/dailylog", data={"date": "2026-09-15", "duree": "8", "ligne_projet_id": ["1"],
-                                                    "ligne_tache_id": [""], "ligne_heures": ["8"]})
-                remplacer.assert_not_called()
-                # Jour de la clôture : encore permis.
-                self.client.post("/dailylog", data={"date": "2026-09-10", "duree": "8", "ligne_projet_id": ["1"],
-                                                    "ligne_tache_id": [""], "ligne_heures": ["8"]})
-                remplacer.assert_called_once()
-        finally:
-            for p in reversed(patchers):
-                p.stop()
-
-    # --- Co-chef ------------------------------------------------------------
     def test_rejoindre_comme_co_chef_previent_le_chef(self):
         _, mocks = self._requete(
             "post", "/projets/1/rejoindre",
@@ -6094,20 +5583,6 @@ class TestLot8(SmokeBase):
                                      **{"app.repositories.posts.peut_voir": True}))
         self.assertFalse(self._refuse("/posts", {"projet_id": "1", "type_code": "requete", "contenu": "x" * 10000},
                                       "app.repositories.posts.create_post"))
-
-    def test_daily_log_refuse_avant_le_debut_du_projet(self):
-        projet = {**PROJET, "date_debut": datetime.date(2026, 9, 20)}
-        base = {"duree": "8", "ligne_projet_id": ["1"], "ligne_tache_id": [""], "ligne_heures": ["8"]}
-        self.assertTrue(self._refuse("/dailylog", {**base, "date": "2026-09-15"}, "app.repositories.dailylog.remplacer_jour",
-                                     **{"app.repositories.projets.get_projet": projet,
-                                        "app.repositories.dailylog.list_entrees_jour": []}))
-        # Heures déjà enregistrées ce jour-là sur ce projet (DAILYLOG_ENTREES :
-        # 5 h sur le projet 1) : gardées, la journée reste enregistrable.
-        self.assertFalse(self._refuse("/dailylog", {**base, "date": "2026-09-15", "duree": "5", "ligne_heures": ["5"]},
-                                      "app.repositories.dailylog.remplacer_jour",
-                                      **{"app.repositories.projets.get_projet": projet}))
-        self.assertFalse(self._refuse("/dailylog", {**base, "date": "2026-09-21"}, "app.repositories.dailylog.remplacer_jour",
-                                      **{"app.repositories.projets.get_projet": projet}))
 
     def test_fiche_utilisateur_saisies_verifiees(self):
         base = {"prenom": "Ali", "nom": "Ben", "email": "ali@midgard.tn", "role": "intervenant"}
