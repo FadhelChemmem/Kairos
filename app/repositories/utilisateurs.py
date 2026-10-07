@@ -306,6 +306,21 @@ def get_mot_de_passe_hash(user_id: int) -> str | None:
     return row["mot_de_passe_hash"] if row else None
 
 
+def revoquer_sessions(user_id: int) -> None:
+    """Invalide TOUTES les sessions ouvertes de ce compte (déconnexion,
+    audit sécurité I7) : la génération de sessions est incrémentée, un
+    cookie copié avant n'est plus accepté (voir auth.load_logged_in_user).
+    La désactivation d'un compte fait de même, en base (trigger
+    trg_revoquer_sessions_si_desactive, migration 0013)."""
+    db.execute(
+        """
+        INSERT INTO utilisateur_session (utilisateur_id, generation) VALUES (%s, 1)
+        ON CONFLICT (utilisateur_id) DO UPDATE SET generation = utilisateur_session.generation + 1
+        """,
+        (user_id,),
+    )
+
+
 def set_reset_token(user_id: int, token_hash: str, expires_at) -> None:
     """Enregistre le jeton "mot de passe oublié" (son empreinte SHA-256,
     jamais le jeton en clair — voir app/auth.py)."""

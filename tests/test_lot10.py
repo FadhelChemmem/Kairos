@@ -427,5 +427,60 @@ class TestDoublonsEtIdempotence(_BaseLot10):
         self.assertEqual(execute.call_args.args[1], (False, 4))
 
 
+
+class TestSessions(_BaseLot10):
+    """Audit sécurité I7 (cookie rejouable après déconnexion ou
+    réactivation, pas de durée absolue) et I13 (rappel Daily log)."""
+
+    def _accueil(self, utilisateur=None, **session):
+        self._login()
+        with self.client.session_transaction() as sess:
+            sess.update(session)
+        return self._requete("get", "/accueil", espions=[("app.auth._verifier_rappel_dailylog", None)],
+                             **{"app.auth.get_user_by_id": utilisateur or smoke.USER})
+
+    def test_deconnexion_revoque_toutes_les_sessions(self):
+        _, m = self._requete("post", "/deconnexion", espions=[("app.repositories.utilisateurs.revoquer_sessions", None)])
+        m["app.repositories.utilisateurs.revoquer_sessions"].assert_called_once_with(1)
+
+    def test_cookie_d_une_generation_revoquee_refuse(self):
+        resp, _ = self._accueil({**smoke.USER, "session_gen": 2}, gen=1)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/connexion", resp.headers["Location"])
+
+    def test_session_d_avant_le_correctif_reste_valide(self):
+        resp, _ = self._accueil({**smoke.USER, "session_gen": 0})
+        self.assertEqual(resp.status_code, 200)
+
+    def test_duree_absolue_depassee(self):
+        import time
+        trop_vieux = int(time.time()) - 31 * 86400
+        resp, _ = self._accueil(iat=trop_vieux)
+        self.assertEqual(resp.status_code, 302)
+        resp, _ = self._accueil(iat=int(time.time()) - 86400)
+        self.assertEqual(resp.status_code, 200)
+
+    def test_connexion_memorise_generation_et_debut(self):
+        user_row = {**smoke.USER, "mot_de_passe_hash": "h", "session_gen": 4}
+        with patch("app.auth.get_user_by_email", return_value=user_row), \
+             patch("app.auth.verify_password", return_value=True), \
+             patch("app.repositories.utilisateurs.set_password"), \
+             patch("app.auth._verifier_rappel_dailylog"), \
+             patch("app.repositories.securite.compter_tentatives_recentes", return_value=0):
+            self.client.post("/connexion", data={"email": "a@b.tn", "password": "x"})
+        with self.client.session_transaction() as sess:
+            self.assertEqual(sess["gen"], 4)
+            self.assertIsInstance(sess["iat"], int)
+
+    def test_rappel_daily_log_une_fois_par_jour_sans_reconnexion(self):
+        import datetime
+        _, m = self._accueil()
+        m["app.auth._verifier_rappel_dailylog"].assert_called_once_with(1)
+        _, m = self._accueil(rappel_le=datetime.date.today().isoformat())
+        m["app.auth._verifier_rappel_dailylog"].assert_not_called()
+        _, m = self._accueil(RH)
+        m["app.auth._verifier_rappel_dailylog"].assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

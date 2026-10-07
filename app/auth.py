@@ -7,6 +7,7 @@ import functools
 import hashlib
 import logging
 import secrets
+import time
 
 from flask import Blueprint, current_app, g, redirect, render_template, request, session, url_for, flash
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -70,9 +71,11 @@ def get_user_by_email(email: str) -> dict | None:
     """Recherche insensible à la casse — cohérent avec idx_utilisateur_email_lower."""
     return db.query_one(
         """
-        SELECT id, email, mot_de_passe_hash, nom, prenom, role, actif
-        FROM utilisateur
-        WHERE lower(email) = lower(%s)
+        SELECT u.id, u.email, u.mot_de_passe_hash, u.nom, u.prenom, u.role, u.actif,
+               COALESCE(s.generation, 0) AS session_gen
+        FROM utilisateur u
+        LEFT JOIN utilisateur_session s ON s.utilisateur_id = u.id
+        WHERE lower(u.email) = lower(%s)
         """,
         (email,),
     )
@@ -81,9 +84,11 @@ def get_user_by_email(email: str) -> dict | None:
 def get_user_by_id(user_id: int) -> dict | None:
     return db.query_one(
         """
-        SELECT id, email, nom, prenom, role, actif, poste, equipe_code, avatar_chemin
-        FROM utilisateur
-        WHERE id = %s
+        SELECT u.id, u.email, u.nom, u.prenom, u.role, u.actif, u.poste, u.equipe_code,
+               u.avatar_chemin, COALESCE(s.generation, 0) AS session_gen
+        FROM utilisateur u
+        LEFT JOIN utilisateur_session s ON s.utilisateur_id = u.id
+        WHERE u.id = %s
         """,
         (user_id,),
     )
@@ -132,7 +137,50 @@ def load_logged_in_user() -> None:
             g.user = None
             flash("Votre mot de passe a été changé, veuillez vous reconnecter.", "error")
 
+    if g.user is not None and _session_revoquee_ou_expiree():
+        session.clear()
+        g.user = None
+        flash("Votre session a expiré, veuillez vous reconnecter.", "error")
+
+    if g.user is not None:
+        _rappel_dailylog_du_jour()
+
     g.notifications_non_lues = notifications_repo.compter_non_lues(g.user["id"]) if g.user else 0
+
+
+def _session_revoquee_ou_expiree() -> bool:
+    """Audit sécurité I7 (lot 10) :
+    - session révoquée : la génération mémorisée à la connexion ne
+      correspond plus à celle du compte (déconnexion ailleurs, compte
+      désactivé — voir utilisateurs_repo.revoquer_sessions) ; une session
+      ouverte avant ce correctif n'a pas de génération et vaut 0, comme un
+      compte jamais révoqué : personne n'est déconnecté au déploiement ;
+    - durée absolue dépassée (SESSION_DUREE_ABSOLUE, config.py) depuis la
+      connexion ; une session d'avant ce correctif démarre maintenant."""
+    if session.get("gen", 0) != (g.user.get("session_gen") or 0):
+        return True
+    maintenant = int(time.time())
+    debut = session.get("iat")
+    if not isinstance(debut, int):
+        session["iat"] = maintenant
+        return False
+    duree = current_app.config.get("SESSION_DUREE_ABSOLUE")
+    return bool(duree) and maintenant - debut > duree.total_seconds()
+
+
+def _rappel_dailylog_du_jour() -> None:
+    """Rappel Daily log une fois par jour et par session (audit sécurité
+    I13) : il n'était créé qu'à la connexion explicite, or la session dure
+    30 jours — il ne partait presque jamais. Jamais bloquant : une erreur
+    est journalisée, la page s'affiche."""
+    aujourdhui = datetime.date.today().isoformat()
+    if g.user["role"] in ("rh", "client") or session.get("rappel_le") == aujourdhui:
+        return
+    session["rappel_le"] = aujourdhui
+    try:
+        _verifier_rappel_dailylog(g.user["id"])
+    except Exception:
+        current_app.logger.exception("Rappel Daily log impossible (id=%s)", g.user["id"])
 
 
 def login_required(view):
@@ -304,9 +352,13 @@ def login():
             # Empreinte du mot de passe actuel (PROMPT_CORRECTIONS.md P2 #17)
             # — voir password_fingerprint().
             session["pw_fingerprint"] = password_fingerprint(user["mot_de_passe_hash"])
+            # Révocation et durée absolue (audit sécurité I7, lot 10).
+            session["gen"] = user.get("session_gen") or 0
+            session["iat"] = int(time.time())
             # Pas de Daily log pour le RH ni un Client (lot 7).
             if user["role"] not in ("rh", "client"):
                 _verifier_rappel_dailylog(user["id"])
+                session["rappel_le"] = datetime.date.today().isoformat()
             # Ouverture de redirection (PROMPT_CORRECTIONS.md P0 #5) : ?next=
             # n'est jamais fiable tel quel (lien envoyé par un tiers) — voir
             # is_safe_next() dans utils.py.
@@ -324,7 +376,18 @@ def login():
 def logout():
     """POST uniquement (PROMPT_CORRECTIONS.md P2 #25) : en GET, un simple
     <img src="/deconnexion"> sur n'importe quelle page suffisait à
-    déconnecter l'utilisateur. Le formulaire est dans base.html."""
+    déconnecter l'utilisateur. Le formulaire est dans base.html.
+
+    Audit sécurité I7 (lot 10) : vider le cookie ne suffisait pas — une
+    copie de ce cookie restait valable 30 jours. La génération de sessions
+    du compte est incrémentée : toutes ses sessions sont fermées (cet
+    appareil et les autres)."""
+    user_id = session.get("user_id")
+    if user_id:
+        try:
+            utilisateurs_repo.revoquer_sessions(user_id)
+        except Exception:
+            current_app.logger.exception("Révocation des sessions impossible (id=%s)", user_id)
     session.clear()
     return redirect(url_for("auth.login"))
 

@@ -43,10 +43,17 @@ def _install_fake_psycopg2():
     pool_mod = types.ModuleType("psycopg2.pool")
 
     class ThreadedConnectionPool:
+        # Nombre d'appels à la vraie base (audit QA I3, lot 10) : l'appli
+        # avale certaines exceptions (re-hachage, rappel, révocation) ; sans
+        # ce compteur, un test qui touchait la base sans mock restait vert.
+        # Vérifié à la fin de chaque test de SmokeBase (tearDown).
+        appels = 0
+
         def __init__(self, *args, **kwargs):
             pass
 
         def getconn(self):
+            ThreadedConnectionPool.appels += 1
             raise RuntimeError("Ne devrait jamais être appelé dans les tests de fumée (DB mockée)")
 
         def putconn(self, conn):
@@ -347,8 +354,13 @@ class SmokeBase(unittest.TestCase):
     suite de SmokeTestCase (2026-09-29)."""
 
     def setUp(self):
+        sys.modules["psycopg2.pool"].ThreadedConnectionPool.appels = 0
         self.app = create_app(TestConfig)
         self.client = self.app.test_client()
+
+    def tearDown(self):
+        self.assertEqual(sys.modules["psycopg2.pool"].ThreadedConnectionPool.appels, 0,
+                         "appel à la base non simulé (exception avalée par l'appli ?)")
 
     def _login(self):
         with self.client.session_transaction() as sess:
@@ -1760,6 +1772,7 @@ class SmokeTestCase(SmokeBase):
         user_row = {**USER, "mot_de_passe_hash": "hash-bidon"}
         with patch("app.auth.get_user_by_email", return_value=user_row), \
              patch("app.auth.verify_password", return_value=True), \
+             patch("app.repositories.utilisateurs.set_password"), \
              patch("app.auth._verifier_rappel_dailylog") as mock_rappel, \
              patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
              patch("app.repositories.notifications.compter_non_lues", return_value=0):
@@ -1777,6 +1790,7 @@ class SmokeTestCase(SmokeBase):
         user_row = {**USER, "mot_de_passe_hash": "hash-bidon"}
         with patch("app.auth.get_user_by_email", return_value=user_row), \
              patch("app.auth.verify_password", return_value=True), \
+             patch("app.repositories.utilisateurs.set_password"), \
              patch("app.auth._verifier_rappel_dailylog"), \
              patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
              patch("app.repositories.notifications.compter_non_lues", return_value=0):
@@ -1793,6 +1807,7 @@ class SmokeTestCase(SmokeBase):
         user_row = {**USER, "mot_de_passe_hash": "hash-bidon"}
         with patch("app.auth.get_user_by_email", return_value=user_row), \
              patch("app.auth.verify_password", return_value=True), \
+             patch("app.repositories.utilisateurs.set_password"), \
              patch("app.auth._verifier_rappel_dailylog"), \
              patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
              patch("app.repositories.notifications.compter_non_lues", return_value=0):
@@ -2614,6 +2629,7 @@ class SmokeTestCase(SmokeBase):
         user_row = {**USER, "mot_de_passe_hash": "hash-bidon"}
         with patch("app.auth.get_user_by_email", return_value=user_row), \
              patch("app.auth.verify_password", return_value=True), \
+             patch("app.repositories.utilisateurs.set_password"), \
              patch("app.auth._verifier_rappel_dailylog"), \
              patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
              patch("app.repositories.notifications.compter_non_lues", return_value=0):
@@ -4216,7 +4232,9 @@ class TestProtectionCSRF(unittest.TestCase):
 
     def test_deconnexion_en_post_avec_jeton(self):
         jeton = self._jeton()
-        resp = self.client.post("/deconnexion", data={"csrf_token": jeton})
+        with patch("app.repositories.utilisateurs.revoquer_sessions") as revoquer:
+            resp = self.client.post("/deconnexion", data={"csrf_token": jeton})
+        revoquer.assert_called_once_with(1)
         self.assertEqual(resp.status_code, 302)
         self.assertIn("/connexion", resp.headers["Location"])
         with self.client.session_transaction() as sess:

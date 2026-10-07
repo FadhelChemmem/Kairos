@@ -32,6 +32,12 @@ class Config:
     # automatique (et cette durée est reconduite à chaque visite, puisque
     # SESSION_REFRESH_EACH_REQUEST est activé par défaut dans Flask).
     PERMANENT_SESSION_LIFETIME = datetime.timedelta(days=30)
+    # Durée de vie ABSOLUE d'une session (audit sécurité I7, lot 10) : la
+    # durée ci-dessus est glissante (reconduite à chaque visite), donc un
+    # cookie volé restait valable indéfiniment. Au-delà de cette durée
+    # depuis la connexion, il faut se reconnecter, même en étant actif.
+    SESSION_DUREE_ABSOLUE = datetime.timedelta(
+        days=int(os.environ.get("SESSION_DUREE_ABSOLUE_JOURS") or 30))
     # En développement local (hors Docker), FLASK_ENV=development active
     # le mode debug (rechargement auto, pages d'erreur détaillées).
     DEBUG = os.environ.get("FLASK_ENV", "production") == "development"
