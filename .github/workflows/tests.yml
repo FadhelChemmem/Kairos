@@ -1,47 +1,85 @@
 name: Tests
 
-# Recommandation "architecte logiciel" (2026-09-20) : jusqu'ici, rien ne
-# vérifiait qu'un push passait les tests avant d'aller en prod (docker
-# compose up --build directement sur le NAS). Ce workflow tourne sur
-# GitHub, gratuitement pour un repo, à chaque push et pull request.
-#
-# PROMPT_CORRECTIONS.md P2 #18 : `branches: [main]` ne correspondait à
-# rien — la branche par défaut de ce dépôt est `master` — donc aucun push
-# ne déclenchait jamais ce workflow depuis sa création. Corrigé en
-# `master`.
+# Audit QA du 2026-10-07 (lot 10) : en plus des tests de fumée (psycopg2
+# simulé) et du schéma, la CI joue maintenant le VRAI code SQL
+# (tests_integration/, vrai PostgreSQL 16 + vrai psycopg2), vérifie qu'aucune
+# migration publiée n'est modifiée, compare schéma neuf / schéma migré /
+# schéma « comme en production », contrôle les scripts shell (restauration,
+# sauvegarde avant migration, reprise Chronos sur vraie base) et fait un
+# déploiement Docker complet avec sauvegarde/restauration.
 on:
   push:
     branches: [master]
   pull_request:
+  workflow_dispatch:
 
-# Jeton GitHub en lecture seule : ce workflow ne fait que lire le code.
 permissions:
   contents: read
 
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PGHOST: localhost
+  PGUSER: kairos
+  PGPASSWORD: kairos
+  PYTHONDONTWRITEBYTECODE: "1"
+
 jobs:
-  tests:
-    runs-on: ubuntu-latest
+  unitaires:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-
+          python-version: "3.12"   # même version que le Dockerfile
+          cache: pip
       - name: Installer les dépendances
         run: pip install -r requirements.txt
+      - name: Tests de fumée et unitaires (psycopg2 simulé)
+        run: python -m unittest discover -s tests -v
 
-      - name: Lancer les tests
-        run: python3 -m unittest discover -s tests -v
+  migrations-immuables:
+    # Une migration déjà publiée sur master ne doit plus jamais changer :
+    # les bases en production ne la rejouent pas (cas 0011/0012, 2026-09-29).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Aucune migration publiée modifiée, renommée ou supprimée
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            reference="origin/${{ github.base_ref }}"
+          else
+            reference="${{ github.event.before }}"
+            if [ -z "$reference" ] || ! git cat-file -e "$reference" 2>/dev/null; then
+              echo "Pas de commit de référence (premier push) : contrôle sauté."; exit 0
+            fi
+          fi
+          modifiees=$(git diff --name-status --diff-filter=MDR "$reference"...HEAD -- migrations/ || true)
+          if [ -n "$modifiees" ]; then
+            echo "::error::Migration(s) publiée(s) modifiée(s) — créer une NOUVELLE migration à la place :"
+            echo "$modifiees"; exit 1
+          fi
+      - name: Numérotation continue et schema.sql à jour
+        run: |
+          set -euo pipefail
+          ls migrations/*.sql | sed -E 's#migrations/([0-9]{4})_.*#\1#' > /tmp/numeros
+          sort -c /tmp/numeros
+          [ "$(sort /tmp/numeros | uniq -d)" = "" ] || { echo "::error::numéro de migration en double"; exit 1; }
+          for f in migrations/*.sql; do
+            v=$(basename "$f" .sql)
+            grep -q "('$v')" schema.sql || { echo "::error::$v absente de l'INSERT INTO schema_migrations de schema.sql"; exit 1; }
+          done
 
-  # PROMPT_CORRECTIONS.md P2 #18 : les tests ci-dessus stubent psycopg2 et
-  # ne touchent jamais une vraie base — une erreur SQL dans schema.sql ou
-  # dans une migration (typo, contrainte invalide, ordre de création...)
-  # ne serait donc repérée qu'au déploiement sur le NAS. Ce job applique
-  # les deux, dans l'ordre, sur un vrai PostgreSQL 16 (même image que
-  # docker-compose.yml) pour attraper ces erreurs ici.
   schema:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     services:
       db:
         image: postgres:16
@@ -59,50 +97,194 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # historique complet : schéma d'origine pour le test de montée de version
+          fetch-depth: 0  # historique complet : schéma d'origine et migrations telles que publiées
 
       - name: Appliquer schema.sql puis les migrations
-        env:
-          PGPASSWORD: kairos
         run: |
           set -e
-          psql -h localhost -U kairos -d kairos -v ON_ERROR_STOP=1 -f schema.sql
+          psql -d kairos -v ON_ERROR_STOP=1 -q -f schema.sql
           for fichier in migrations/*.sql; do
             echo "--- $fichier ---"
-            psql -h localhost -U kairos -d kairos -v ON_ERROR_STOP=1 -f "$fichier"
+            psql -d kairos -v ON_ERROR_STOP=1 -q -f "$fichier"
           done
 
-      # Chemin de mise à jour réel (audit n°2) : appliquer les migrations
-      # sur schema.sql, qui les contient déjà, ne prouve pas qu'elles
-      # fonctionnent sur une base de PRODUCTION créée avant elles. On part
-      # donc du schéma de la première version livrée, puis on joue toutes
-      # les migrations, deux fois (elles doivent rester rejouables).
-      - name: Montée de version depuis le schéma d'origine
-        env:
-          PGPASSWORD: kairos
+      - name: Montée de version depuis le schéma d'origine (deux passes)
         run: |
           set -e
-          psql -h localhost -U kairos -d kairos -c "CREATE DATABASE montee_version"
+          psql -d kairos -c "CREATE DATABASE montee_version"
           git show "$(git rev-list --max-parents=0 HEAD | tail -n1)":schema.sql > /tmp/schema_origine.sql
-          psql -h localhost -U kairos -d montee_version -v ON_ERROR_STOP=1 -q -f /tmp/schema_origine.sql
+          psql -d montee_version -v ON_ERROR_STOP=1 -q -f /tmp/schema_origine.sql
           for passe in 1 2; do
             for fichier in migrations/*.sql; do
-              psql -h localhost -U kairos -d montee_version -v ON_ERROR_STOP=1 -q -f "$fichier"
+              psql -d montee_version -v ON_ERROR_STOP=1 -q -f "$fichier"
             done
           done
 
-      # Règles écrites en SQL (audit du 2026-09-29, point K) : visibilité
-      # des projets par rôle, garde-fous RH/Client... jouées sur la base
-      # neuve ET sur la base montée de version (tests/sql/, tout est annulé
-      # par un ROLLBACK en fin de script).
-      - name: Tests SQL (tests/sql)
-        env:
-          PGPASSWORD: kairos
+      - name: Base « comme en production » (chaque migration dans sa version publiée)
         run: |
           set -e
-          for base in kairos montee_version; do
+          psql -d kairos -c "CREATE DATABASE comme_prod"
+          psql -d comme_prod -v ON_ERROR_STOP=1 -q -f /tmp/schema_origine.sql
+          for fichier in migrations/*.sql; do
+            premier=$(git log --diff-filter=A --format=%H -- "$fichier" | tail -n1)
+            if [ -n "$premier" ]; then
+              git show "$premier:$fichier" | psql -d comme_prod -v ON_ERROR_STOP=1 -q -f -
+            else
+              psql -d comme_prod -v ON_ERROR_STOP=1 -q -f "$fichier"
+            fi
+          done
+
+      - name: Schéma neuf = schéma migré = schéma « comme en production »
+        run: |
+          set -e
+          for base in kairos montee_version comme_prod; do
+            psql -d "$base" -At -f scripts/empreinte_schema.sql | grep -v schema_migrations > "/tmp/empreinte_$base.txt"
+          done
+          diff -u /tmp/empreinte_kairos.txt /tmp/empreinte_montee_version.txt
+          diff -u /tmp/empreinte_kairos.txt /tmp/empreinte_comme_prod.txt
+
+      # tests/test_smoke.py:test_tests_sql_joues_par_la_ci lit ce texte :
+      # y remplacer « kairos montee_version » par « kairos montee_version comme_prod ».
+      - name: Tests SQL (tests/sql)
+        run: |
+          set -e
+          for base in kairos montee_version comme_prod; do
             for fichier in tests/sql/*.sql; do
               echo "--- $base : $fichier ---"
-              psql -h localhost -U kairos -d "$base" -v ON_ERROR_STOP=1 -q -f "$fichier"
+              psql -d "$base" -v ON_ERROR_STOP=1 -q -f "$fichier"
             done
           done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: empreintes-schema
+          path: /tmp/empreinte_*.txt
+
+  integration:
+    # Vrai code Python + vrai SQL : repositories, routes et `flask migrer`
+    # sur PostgreSQL 16, avec le vrai psycopg2 (tests_integration/).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      db:
+        image: postgres:16
+        env:
+          POSTGRES_DB: kairos_it
+          POSTGRES_USER: kairos
+          POSTGRES_PASSWORD: kairos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kairos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      KAIROS_TEST_DATABASE_URL: postgresql://kairos:kairos@localhost:5432/kairos_it
+      TZ: Africa/Tunis
+      PGTZ: Africa/Tunis
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Base de test (schema.sql + migrations)
+        run: |
+          set -e
+          psql -d kairos_it -v ON_ERROR_STOP=1 -q -f schema.sql
+          for fichier in migrations/*.sql; do psql -d kairos_it -v ON_ERROR_STOP=1 -q -f "$fichier"; done
+      - name: Tests d'intégration
+        run: python -m unittest discover -s tests_integration -t . -v
+      - name: Scripts sur vraie base (restauration, sauvegarde avant migration, reprise Chronos)
+        run: python -m unittest -v tests.test_restore_db tests.test_sauvegarde_avant_migration tests.test_migrate_from_chronos
+
+  scripts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      # -S error : les avertissements n'ont pas encore été passés en revue
+      # (shellcheck indisponible lors de l'audit) ; à durcir en -S warning.
+      - name: shellcheck
+        run: shellcheck -S error scripts/*.sh tests/fixtures_backup/* tests/fixtures_restore/*
+      - name: Scripts exécutables dans git
+        run: |
+          for f in scripts/*.sh; do
+            [ "$(git ls-files -s "$f" | cut -c1-6)" = "100755" ] || { echo "::error::$f doit être en 100755"; exit 1; }
+          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Tests JavaScript (node --test, sans dépendance)
+        run: |
+          if ls tests_js/*.test.mjs >/dev/null 2>&1; then node --test tests_js/; else echo "Aucun test JS"; fi
+
+  deploiement:
+    # Déploiement réel comme sur le NAS : build, démarrage (flask migrer
+    # dans le CMD), premier compte, sauvegarde puis restauration.
+    needs: [unitaires, schema]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: .env de CI
+        run: |
+          umask 077
+          {
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)"
+            echo "SECRET_KEY=$(openssl rand -hex 32)"
+            echo "APP_BASE_URL=http://127.0.0.1:8000"
+            echo "WEB_BIND=127.0.0.1"
+          } > .env
+      - name: docker compose config
+        run: docker compose config -q
+      # Pas de --wait : le service ponctuel sauvegarde-migrations se termine
+      # (normal) et certaines versions de Compose le prennent pour un échec.
+      - name: Build et démarrage
+        run: |
+          set -e
+          docker compose up -d --build
+          for i in $(seq 60); do
+            etat=$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q web)" 2>/dev/null || true)
+            [ "$etat" = "healthy" ] && exit 0
+            sleep 3
+          done
+          echo "::error::web n'est pas « healthy »"; exit 1
+      - name: Journal de démarrage (migrations)
+        if: always()
+        run: docker compose logs web | tail -n 40
+      - name: Premier compte et page de connexion
+        run: |
+          set -e
+          docker compose exec -T web flask create-user --email ci@kairos.tn --prenom C --nom I \
+            --password "$(openssl rand -hex 12)" --role admin
+          curl -fsS -o /dev/null http://127.0.0.1:8000/connexion
+          docker compose exec -T web flask migrer | grep -q "Rien à faire"
+      - name: Sauvegarde puis restauration
+        run: |
+          set -e
+          bash scripts/backup_db.sh
+          dump=$(ls -1t backups/kairos_2*.sql.gz | head -n1)
+          uploads=$(ls -1t backups/kairos_uploads_*.tar.gz | head -n1)
+          # TRUNCATE (pas DELETE) : le trigger « dernier Admin actif »
+          # (migration 0013) refuse à raison la suppression du seul Admin.
+          docker compose exec -T db psql -U kairos -d kairos -c "TRUNCATE utilisateur CASCADE"
+          bash scripts/restore_db.sh --oui "$dump" "$uploads"
+          n=$(docker compose exec -T db psql -U kairos -d kairos -Atc "SELECT count(*) FROM utilisateur WHERE email='ci@kairos.tn'")
+          [ "$n" = "1" ] || { echo "::error::restauration incomplète"; exit 1; }
+      - name: Restauration d'un dump tronqué refusée sans rien casser
+        run: |
+          set -e
+          dump=$(ls -1t backups/kairos_2*.sql.gz | head -n1)
+          gunzip -c "$dump" | head -n 200 | gzip > backups/tronque.sql.gz
+          if bash scripts/restore_db.sh --oui backups/tronque.sql.gz; then echo "::error::dump tronqué accepté"; exit 1; fi
+          n=$(docker compose exec -T db psql -U kairos -d kairos -Atc "SELECT count(*) FROM utilisateur")
+          [ "$n" -ge 1 ]
+      - name: Arrêt
+        if: always()
+        run: docker compose down -v

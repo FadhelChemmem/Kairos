@@ -5704,7 +5704,7 @@ class TestDecisionsLot7(SmokeBase):
         racine = pathlib.Path(__file__).resolve().parent.parent
         ci = (racine / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
         self.assertIn("for fichier in tests/sql/*.sql; do", ci)
-        self.assertIn("for base in kairos montee_version; do", ci)
+        self.assertIn("for base in kairos montee_version comme_prod; do", ci)
         self.assertTrue(list((racine / "tests" / "sql").glob("*.sql")))
 
     def test_visibilite_sans_rh_et_client_limite_a_son_equipe(self):
