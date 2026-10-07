@@ -76,25 +76,31 @@ def redirect_vers_next(default_endpoint: str = "main.accueil"):
 # lisibles (contraste ≥ 4,5:1, contre 3,0 à 4,0 auparavant).
 _AVATAR_PALETTE = ["#4a7c59", "#b8520f", "#2f65b8", "#5f52d1", "#c0401d", "#1f7a55"]
 
+# Lot 10 (audit front §3.6, §7) : textes des pastilles assombris pour
+# atteindre 4,5:1 sur leur fond clair (#3b7de0 → #2f66b0, #7c6ff0 →
+# #5f52d1, #e3512c → #b93a1a, #4a7c59 → #2f6b45, #6c766f → #5f6962).
+# « libelle » : état de TÂCHE accordé au féminin pour l'affichage (« Tâche
+# bloquée ») ; « label » reste inchangé, il sert aussi au texte des posts
+# automatiques enregistrés en base (repositories/taches.py).
 _TACHE_ETAT_STYLE = {
-    "en_cours": {"bg": "#eaf1fd", "fg": "#3b7de0", "label": "En cours"},
-    "bloque": {"bg": "#fdeae4", "fg": "#e3512c", "label": "Bloqué"},
-    "verifie": {"bg": "#efecfd", "fg": "#7c6ff0", "label": "Vérifié"},
-    "termine": {"bg": "#eaf3ee", "fg": "#4a7c59", "label": "Terminé"},
-    "arret": {"bg": "#f2f4f0", "fg": "#55605a", "label": "Arrêt"},
-    "abandonne": {"bg": "#f2f4f0", "fg": "#6c766f", "label": "Abandonné"},
+    "en_cours": {"bg": "#eaf1fd", "fg": "#2f66b0", "label": "En cours", "libelle": "En cours"},
+    "bloque": {"bg": "#fdeae4", "fg": "#b93a1a", "label": "Bloqué", "libelle": "Bloquée"},
+    "verifie": {"bg": "#efecfd", "fg": "#5f52d1", "label": "Vérifié", "libelle": "Vérifiée"},
+    "termine": {"bg": "#eaf3ee", "fg": "#2f6b45", "label": "Terminé", "libelle": "Terminée"},
+    "arret": {"bg": "#f2f4f0", "fg": "#55605a", "label": "Arrêt", "libelle": "Arrêtée"},
+    "abandonne": {"bg": "#f2f4f0", "fg": "#5f6962", "label": "Abandonné", "libelle": "Abandonnée"},
 }
 
 _PROJET_ETAT_STYLE = {
-    "en_cours": {"dot": "#2fa876", "bg": "#eaf3ee", "fg": "#4a7c59", "label": "En cours"},
-    "bloque": {"dot": "#e3512c", "bg": "#fdeae4", "fg": "#e3512c", "label": "Bloqué"},
+    "en_cours": {"dot": "#2fa876", "bg": "#eaf3ee", "fg": "#2f6b45", "label": "En cours"},
+    "bloque": {"dot": "#e3512c", "bg": "#fdeae4", "fg": "#b93a1a", "label": "Bloqué"},
     "termine": {"dot": "#c7cdc4", "bg": "#f2f4f0", "fg": "#55605a", "label": "Terminé"},
-    "abandonne": {"dot": "#c7cdc4", "bg": "#f2f4f0", "fg": "#6c766f", "label": "Abandonné"},
+    "abandonne": {"dot": "#c7cdc4", "bg": "#f2f4f0", "fg": "#5f6962", "label": "Abandonné"},
 }
 
 _POST_TYPE_STYLE = {
-    "envoi": {"bg": "#eaf3ee", "fg": "#4a7c59", "label": "Envoi"},
-    "reponse": {"bg": "#eaf1fd", "fg": "#3b7de0", "label": "Réponse"},
+    "envoi": {"bg": "#eaf3ee", "fg": "#2f6b45", "label": "Envoi"},
+    "reponse": {"bg": "#eaf1fd", "fg": "#2f66b0", "label": "Réponse"},
     "question": {"bg": "#f2f4f0", "fg": "#55605a", "label": "Question"},
     "requete": {"bg": "#fdeee4", "fg": "#a3480d", "label": "Requête"},
     # Teinte propre (2026-09-29) : Information est publiable depuis la
@@ -105,15 +111,15 @@ _POST_TYPE_STYLE = {
 # Pill "Tâche" utilisée pour les posts système de création de tâche
 # (voir partials/post_card.html) ; ne correspond à aucun type_code,
 # c'est une présentation dédiée aux événements liés à une tâche.
-POST_TACHE_PILL = {"bg": "#efecfd", "fg": "#7c6ff0", "label": "Tâche"}
+POST_TACHE_PILL = {"bg": "#efecfd", "fg": "#5f52d1", "label": "Tâche"}
 
 # Couleurs/labels de rôle (page Utilisateurs), reprises de Utilisateurs.dc.html.
 _ROLE_STYLE = {
-    "admin": {"bg": "#efecfd", "fg": "#7c6ff0", "label": "Admin"},
-    "chef_de_projet": {"bg": "#eaf1fd", "fg": "#3b7de0", "label": "Chef de projet"},
+    "admin": {"bg": "#efecfd", "fg": "#5f52d1", "label": "Administrateur"},
+    "chef_de_projet": {"bg": "#eaf1fd", "fg": "#2f66b0", "label": "Chef de projet"},
     "intervenant": {"bg": "#f2f4f0", "fg": "#55605a", "label": "Intervenant"},
-    "rh": {"bg": "#f2f4f0", "fg": "#6c766f", "label": "RH"},
-    "client": {"bg": "#f2f4f0", "fg": "#6c766f", "label": "Client"},
+    "rh": {"bg": "#f2f4f0", "fg": "#5f6962", "label": "RH"},
+    "client": {"bg": "#f2f4f0", "fg": "#5f6962", "label": "Client"},
 }
 
 # Équipes de référence (table `equipe`, schema.sql) — codes stockés en
@@ -153,7 +159,7 @@ def avatar_color(user_id: int) -> str:
 
 
 def tache_etat_style(etat: str) -> dict:
-    return _TACHE_ETAT_STYLE.get(etat, {"bg": "#f2f4f0", "fg": "#55605a", "label": etat or ""})
+    return _TACHE_ETAT_STYLE.get(etat, {"bg": "#f2f4f0", "fg": "#55605a", "label": etat or "", "libelle": etat or ""})
 
 
 def projet_etat_style(etat: str) -> dict:
@@ -167,7 +173,7 @@ def post_type_style(type_code: str) -> dict:
 # Deux catégories de notification (voir spec : "un seul mécanisme... avec
 # une différenciation par catégorie : Projet/Travail vs Info/RH").
 _NOTIF_CATEGORIE_STYLE = {
-    "projet": {"bg": "#eaf1fd", "fg": "#3b7de0", "label": "Projet"},
+    "projet": {"bg": "#eaf1fd", "fg": "#2f66b0", "label": "Projet"},
     "rh_info": {"bg": "#f2f4f0", "fg": "#55605a", "label": "RH & Infos"},
 }
 
@@ -254,14 +260,16 @@ def build_gantt(taches: list[dict], today, window_days: int = 21) -> dict:
         if echeance is None:
             continue
         offset = (echeance - today).days
+        # Teintes assombries (lot 10, audit front §3.6) : texte blanc sur la
+        # barre à 5,19:1 et 4,94:1 (contre 3,83 et 3,15 avant).
         if offset < 0:
-            span, couleur, label_barre = 1, "#e3512c", "◀ en retard"
+            span, couleur, label_barre = 1, "#c2401f", "◀ en retard"
         else:
             span = min(offset + 1, window_days)
             if offset <= 1:
-                couleur = "#e3512c"
+                couleur = "#c2401f"
             elif offset <= 6:
-                couleur = "#ea6c1a"
+                couleur = "#b8520f"
             else:
                 couleur = "#4a7c59"
             label_barre = echeance.strftime("%d/%m")

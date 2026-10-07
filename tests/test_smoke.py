@@ -3409,7 +3409,7 @@ class SmokeTestCase(SmokeBase):
         self.assertIn(
             "g\xe9r\xe9s par l'administrateur ou le RH".encode(), resp.data,
         )
-        self.assertIn(">Admin<".encode(), resp.data)
+        self.assertIn(">Administrateur<".encode(), resp.data)
 
     def test_mon_profil_semaine_derniere_sans_week_end(self):
         """"Ne pas afficher samedi et dimanche" — la semaine dernière ne

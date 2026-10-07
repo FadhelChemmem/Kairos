@@ -15,7 +15,7 @@
 <div class="subbar">
   <div class="subbar-inner" style="max-width:900px;">
     <h1 class="page-titre">{{ utilisateur.prenom }} {{ utilisateur.nom }}</h1>
-    <span class="pill" style="background:var(--hover-bg); color:var(--text-faint); margin-left:auto;">Profil — lecture seule</span>
+    <span class="pill" style="background:var(--hover-bg); color:var(--text-muted); margin-left:auto;">Profil en lecture seule</span>
   </div>
 </div>
 
@@ -28,7 +28,7 @@
         <div style="min-width:0;">
           <div style="font-size:16px; font-weight:800;">{{ utilisateur.prenom }} {{ utilisateur.nom }}</div>
           <span class="pill pill-sm" style="background:{{ role_style(utilisateur.role).bg }}; color:{{ role_style(utilisateur.role).fg }};">{{ role_style(utilisateur.role).label }}</span>
-          {% if not utilisateur.actif %}<span class="pill pill-sm" style="background:var(--hover-bg); color:var(--border-hover); margin-left:4px;">Parti</span>{% endif %}
+          {% if not utilisateur.actif %}<span class="pill pill-sm" style="background:var(--hover-bg-strong); color:var(--text-secondary); margin-left:4px;">Inactif</span>{% endif %}
         </div>
       </div>
       <div style="display:flex; flex-direction:column; gap:8px; font-size:12.5px;">
@@ -44,14 +44,14 @@
         <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" style="display:block; padding:9px 0; border-bottom:1px solid var(--border-soft); color:inherit;">
           <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
             <span style="font-size:12.5px; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ t.titre }}</span>
-            <span class="pill pill-sm" style="background:{{ tst.bg }}; color:{{ tst.fg }}; flex-shrink:0;">{{ tst.label }}</span>
+            <span class="pill pill-sm" style="background:{{ tst.bg }}; color:{{ tst.fg }}; flex-shrink:0;">{{ tst.libelle }}</span>
           </div>
-          <div style="font-size:11.5px; color:var(--text-faint); margin-top:2px;">
+          <div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;">
             {{ t.projet_code }}_{{ t.projet_nom }}{% if t.date_echeance %} · {{ t.date_echeance|date_courte }}{% endif %}
           </div>
         </a>
       {% else %}
-        <p style="font-size:12.5px; color:var(--text-faint);">Aucune tâche en cours (parmi celles que vous pouvez voir).</p>
+        <p style="font-size:12.5px; color:var(--text-muted);">Aucune tâche en cours (parmi celles que vous pouvez voir).</p>
       {% endfor %}
     </div>
   </div>
@@ -64,22 +64,22 @@
         {% for jour in jours %}
           <div style="border:1px solid var(--border-soft); border-radius:10px; padding:10px 14px;">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:{{ '8px' if jour.entrees else '0' }};">
-              <span style="font-size:12.5px; font-weight:700; text-transform:capitalize;">{{ date_fr(jour.date) }}</span>
-              <span style="font-size:12px; color:{{ 'var(--text-muted)' if jour.total_heures else 'var(--border-hover)' }};">{{ jour.total_heures|round(1) }} h</span>
+              <span style="font-size:12.5px; font-weight:700; ">{{ date_fr(jour.date) }}</span>
+              <span style="font-size:12px; color:var(--text-muted);">{{ heures_courtes(jour.total_heures) }} h</span>
             </div>
             {% for e in jour.entrees %}
               <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-secondary); padding:2px 0;">
                 <span>{{ e.projet_nom }}{% if e.tache_titre %} · {{ e.tache_titre }}{% endif %}</span>
-                <span style="color:var(--text-muted);">{{ e.heures }} h</span>
+                <span style="color:var(--text-muted);">{{ heures_courtes(e.heures) }} h</span>
               </div>
             {% endfor %}
           </div>
         {% endfor %}
       </div>
       {% if semaines < 12 %}
-        <a href="{{ url_for('utilisateurs.profil_personne', user_id=utilisateur.id, semaines=semaines + 1) }}#dailylog" class="bouton-texte" style="display:inline-block; margin-top:10px;">Voir +</a>
+        <a href="{{ url_for('utilisateurs.profil_personne', user_id=utilisateur.id, semaines=semaines + 1) }}#dailylog" class="bouton-texte" style="display:inline-block; margin-top:10px;">Voir la semaine précédente</a>
       {% endif %}
-      <div style="font-size:11px; color:var(--text-faint); margin-top:10px;">Seules les entrées sur des projets que vous pouvez voir sont affichées ici.</div>
+      <div style="font-size:11px; color:var(--text-muted); margin-top:10px;">Seules les entrées sur des projets que vous pouvez voir sont affichées ici.</div>
     </div>
     {% endif %}
 
@@ -92,10 +92,10 @@
           {% endwith %}
         </div>
       {% else %}
-        <p style="font-size:12.5px; color:var(--text-faint);">Aucun post {{ 'cette dernière semaine' if semaines == 1 else 'sur cette période' }} (parmi ceux que vous pouvez voir).</p>
+        <p style="font-size:12.5px; color:var(--text-muted);">Aucun post {{ 'la semaine dernière' if semaines == 1 else 'sur cette période' }} (parmi ceux que vous pouvez voir).</p>
       {% endfor %}
       {% if posts_plus_anciens and semaines < 12 %}
-        <a href="{{ url_for('utilisateurs.profil_personne', user_id=utilisateur.id, semaines=semaines + 1) }}#posts" class="bouton-texte">Voir +</a>
+        <a href="{{ url_for('utilisateurs.profil_personne', user_id=utilisateur.id, semaines=semaines + 1) }}#posts" class="bouton-texte">Voir des posts plus anciens</a>
       {% endif %}
     </div>
   </div>

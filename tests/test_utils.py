@@ -33,6 +33,8 @@ class TestAvatarColor(unittest.TestCase):
 class TestEtatStyles(unittest.TestCase):
     def test_known_tache_etat(self):
         self.assertEqual(tache_etat_style("bloque")["label"], "Bloqué")
+        # Affichage : état de tâche accordé au féminin (lot 10).
+        self.assertEqual(tache_etat_style("bloque")["libelle"], "Bloquée")
 
     def test_unknown_tache_etat_falls_back_gracefully(self):
         style = tache_etat_style("valeur_inconnue")
@@ -80,19 +82,19 @@ class TestBuildGantt(unittest.TestCase):
         g = build_gantt(taches, self.TODAY)
         row = g["rows"][0]
         self.assertEqual(row["span"], 1)
-        self.assertEqual(row["couleur"], "#e3512c")
+        self.assertEqual(row["couleur"], "#c2401f")
         self.assertIn("retard", row["label_barre"])
 
     def test_imminent_task_is_red(self):
         taches = [{"titre": "Demain", "date_echeance": self.TODAY + datetime.timedelta(days=1)}]
         row = build_gantt(taches, self.TODAY)["rows"][0]
-        self.assertEqual(row["couleur"], "#e3512c")
+        self.assertEqual(row["couleur"], "#c2401f")
         self.assertEqual(row["span"], 2)
 
     def test_this_week_task_is_orange(self):
         taches = [{"titre": "Cette semaine", "date_echeance": self.TODAY + datetime.timedelta(days=5)}]
         row = build_gantt(taches, self.TODAY)["rows"][0]
-        self.assertEqual(row["couleur"], "#ea6c1a")
+        self.assertEqual(row["couleur"], "#b8520f")
 
     def test_later_task_is_green(self):
         taches = [{"titre": "Plus tard", "date_echeance": self.TODAY + datetime.timedelta(days=14)}]

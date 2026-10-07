@@ -157,7 +157,7 @@
         {% for t in mes_taches %}
           {% set st = tache_etat_style(t.etat) %}
           <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" style="display:flex; align-items:flex-start; gap:9px; color:inherit;">
-            <span class="pill pill-sm" style="background:{{ st.bg }}; color:{{ st.fg }}; flex-shrink:0; margin-top:1px;">{{ st.label }}</span>
+            <span class="pill pill-sm" style="background:{{ st.bg }}; color:{{ st.fg }}; flex-shrink:0; margin-top:1px;">{{ st.libelle }}</span>
             <div style="min-width:0;">
               <div style="font-size:12.5px; font-weight:600; line-height:1.3;">{{ t.titre }}</div>
               <div style="font-size:11px; color:var(--text-muted);">{{ t.projet_nom }}{% if t.date_echeance %} · échéance le {{ t.date_echeance|date_courte }}{% endif %}</div>

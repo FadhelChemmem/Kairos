@@ -38,6 +38,8 @@
     var source = lien.querySelector('img');
     img.src = lien.href;
     img.alt = source ? source.alt : '';
+    // Lot 10 (audit front I17) : la fenêtre porte le nom de l'image.
+    dialog.setAttribute('aria-label', img.alt || 'Image jointe');
     if (typeof dialog.showModal === 'function') {
       dialog.showModal();
     } else {

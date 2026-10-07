@@ -70,7 +70,8 @@
   /* Pastille "partiel" du calendrier DailyLog (Lot 5, retour Fadhel,
      2026-09-28 : "calendrier à pastilles vert/bleu/rouge") — même bleu
      que la pastille d'état de projet "En cours" (app/utils.py). */
-  --info-text: #3b7de0;
+  /* Lot 10 (audit front §3.6) : #3b7de0 faisait 4,04:1 en texte sur blanc. */
+  --info-text: #2f66b0;
 }
 
 :root[data-theme="dark"] {
@@ -232,7 +233,8 @@ main:focus { outline: none; }
 }
 .topbar-search-box {
   width: 100%; max-width: 420px; display: flex; align-items: center; gap: 8px;
-  background: var(--hover-bg); border-radius: 10px; padding: 7px 13px;
+  background: var(--hover-bg); border-radius: 10px; padding: 6px 12px;
+  border: 1px solid var(--control-border);
 }
 .topbar-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 /* Résultats de la recherche globale (construits par le script de base.html). */
@@ -286,7 +288,7 @@ main:focus { outline: none; }
 
 .search-mini {
   display: flex; align-items: center; gap: 8px; background: var(--surface);
-  border: 1px solid var(--border); border-radius: 11px; padding: 9px 14px;
+  border: 1px solid var(--control-border); border-radius: 11px; padding: 9px 14px;
 }
 .search-mini span { font-size: 13.5px; color: var(--text-muted-2); }
 
@@ -372,14 +374,23 @@ main:focus { outline: none; }
   background: var(--hover-bg); color: var(--text-secondary); border: none; border-radius: 9px;
   padding: 8px 0; font-size: 12.5px; font-weight: 700; cursor: pointer; width: 100%;
 }
+/* Bordure des champs : --control-border (≥ 3:1, WCAG 1.4.11 — lot 10 ;
+   l'ancien --border faisait 1,22:1). */
 input, select, textarea {
   font-family: inherit; font-size: 13px; padding: 8px 10px;
-  border: 1px solid var(--border); border-radius: 8px; width: 100%;
+  border: 1px solid var(--control-border); border-radius: 8px; width: 100%;
   /* Sans ça, un <input>/<select> garde le fond blanc par défaut du
      navigateur en thème sombre (retour Fadhel, 2026-09-27). */
   background: var(--surface); color: var(--text);
 }
-label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px; }
+::placeholder { color: var(--text-faint); opacity: 1; }
+label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px; }
+/* Bouton « Fermer » (×) des fenêtres flottantes : cible de 32 px. */
+.dialog-fermer {
+  width: 32px; height: 32px; padding: 0; margin: -6px -6px -6px 0; flex-shrink: 0; border: 0; border-radius: 8px;
+  background: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.dialog-fermer:hover { background: var(--hover-bg); color: var(--text); }
 .form-row { margin-bottom: 10px; }
 
 .login-wrap {
@@ -403,10 +414,10 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
   box-shadow: 0 30px 60px rgba(20,30,25,0.10), 0 6px 16px rgba(20,30,25,0.05);
 }
 .login-card .form-row input {
-  padding: 11px 14px; border: 1px solid var(--border-2); border-radius: 10px;
+  padding: 11px 14px; border: 1px solid var(--control-border); border-radius: 10px;
   font-size: 14px; background: var(--bg-subtle-5); transition: border-color 0.12s, background 0.12s;
 }
-.login-card .form-row input:focus { outline: none; border-color: #4a7c59; background: var(--surface); }
+.login-card .form-row input:focus { border-color: var(--accent-fill); background: var(--surface); }
 .btn-login {
   width: 100%; background: #4a7c59; color: #ffffff; border: none; border-radius: 12px;
   padding: 13px 0; font-size: 14.5px; font-weight: 700; font-family: inherit; cursor: pointer;
@@ -458,7 +469,7 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
    <input type=file> couvre toute la zone (opacité 0), donc le clic ET le
    glisser-déposer fonctionnent tous les deux nativement. --- */
 .dropzone {
-  position: relative; border: 1.5px dashed var(--border-3); border-radius: 12px;
+  position: relative; border: 1.5px dashed var(--control-border); border-radius: 12px;
   padding: 16px 14px; text-align: center; background: var(--bg-subtle-4); cursor: pointer;
   transition: border-color 0.12s, background 0.12s; display: flex; align-items: center;
   justify-content: center; gap: 8px;
@@ -503,7 +514,11 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
 .uhead { padding: 0 4px 8px; font-size: 11px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.03em; }
 .urow { padding: 13px 4px; border-bottom: 1px solid var(--border-soft); }
 .urow:last-child { border-bottom: none; }
-.urow.inactif { opacity: 0.55; }
+.urow.inactif { background: var(--bg-subtle-1); }
+/* Interrupteur « Compte actif » de la liste : cible de 40×24 px. */
+.toggle.toggle-liste { width: 40px; height: 24px; }
+.toggle.toggle-liste .toggle-knob { width: 20px; height: 20px; }
+.toggle[disabled] { cursor: not-allowed; opacity: 0.6; }
 
 .toggle {
   display: inline-flex; align-items: center; width: 36px; height: 20px;
@@ -659,7 +674,7 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
 /* --- Cloche de notifications (topbar) + page /notifications --- */
 .iconbtn-badge {
   position: absolute; top: 3px; right: 3px; min-width: 15px; height: 15px;
-  padding: 0 3px; border-radius: 999px; background: #e3512c; color: #ffffff;
+  padding: 0 3px; border-radius: 999px; background: #c2401f; color: #ffffff;
   font-size: 9.5px; font-weight: 700; line-height: 1;
   display: flex; align-items: center; justify-content: center;
   border: 2px solid var(--surface);
@@ -784,10 +799,10 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
    n'est nécessaire pour les cas simples. Voir app/static/js/chip-select.js. */
 .chip-select-wrap { display: flex; flex-direction: column; gap: 8px; }
 .chip-select-filter {
-  width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 7px 11px;
+  width: 100%; border: 1px solid var(--control-border); border-radius: 9px; padding: 7px 11px;
   font-size: 12.5px; font-family: inherit; color: var(--text-strong);
 }
-.chip-select-filter:focus { outline: none; border-color: #4a7c59; }
+.chip-select-filter:focus { border-color: var(--accent-fill); }
 .chip-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip-opt {
   display: inline-flex; align-items: center; gap: 6px;
@@ -828,11 +843,13 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
   border: 2px solid transparent; background: var(--hover-bg);
   color: #ffffff; font-size: 11px; font-weight: 700;
   align-items: center; justify-content: center; overflow: hidden;
-  opacity: 0.55; transition: opacity 0.12s ease, border-color 0.12s ease;
+  /* Lot 10 (audit front §3.6) : non sélectionnées, désaturées plutôt
+     qu'estompées (l'opacité 0,55 faisait tomber les initiales à 2,6:1). */
+  filter: grayscale(0.7); transition: filter 0.12s ease, border-color 0.12s ease;
 }
 .chip-opt.chip-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.chip-opt.chip-avatar:hover { opacity: 0.85; border-color: transparent; }
-.chip-opt.chip-avatar.chip-selected { opacity: 1; border-color: #4a7c59; background: var(--hover-bg); }
+.chip-opt.chip-avatar:hover { filter: grayscale(0.3); border-color: transparent; }
+.chip-opt.chip-avatar.chip-selected { filter: none; border-color: var(--accent-fill); background: var(--hover-bg); box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent-fill); }
 
 /* --- Combobox de recherche à sélection unique (data-search-combobox,
    voir app/static/js/search-combobox.js) — retour Fadhel, 2026-09-28 :
@@ -842,10 +859,10 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
    la topbar. */
 .search-combobox-wrap { position: relative; }
 .search-combobox-input {
-  width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 7px 11px;
+  width: 100%; border: 1px solid var(--control-border); border-radius: 9px; padding: 7px 11px;
   font-size: 13px; font-family: inherit; color: var(--text-strong); background: var(--surface);
 }
-.search-combobox-input:focus { outline: none; border-color: #4a7c59; }
+.search-combobox-input:focus { border-color: var(--accent-fill); }
 .search-combobox-list {
   position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0;
   max-height: 220px; overflow-y: auto; background: var(--surface);
@@ -961,7 +978,7 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
 .comment-composer.comment-edit { margin: 6px 0 0 0; }
 .comment-composer.dragover .comment-input { border-color: #4a7c59; background: var(--brand-bg-soft); }
 .comment-input { position: relative; flex: 1; min-width: 0; display: flex; align-items: flex-end;
-  border: 1px solid var(--border); border-radius: 18px; background: var(--surface); padding: 0 6px 0 12px; }
+  border: 1px solid var(--control-border); border-radius: 18px; background: var(--surface); padding: 0 6px 0 12px; }
 .comment-input textarea {
   flex: 1; min-width: 0; border: none; outline: none; background: none; resize: none;
   font: inherit; font-size: 12.5px; line-height: 1.45; padding: 7px 0; min-height: 32px; max-height: 180px; color: var(--text);
@@ -1159,3 +1176,19 @@ label { font-size: 12px; color: var(--text-muted); font-weight: 600; display: bl
 /* Titres des groupes de filtres de « Tous les projets » (lot 10 : avec un
    id, ils nomment leur groupe de puces via aria-labelledby). */
 .filtre-titre { font-size: 11px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.03em; }
+
+/* Journal d'audit (lot 10, audit front I13) : filtres à leur taille, et non
+   empilés en pleine largeur ; actions en pastilles contrastées dans les
+   deux thèmes ; données en JSON indenté. */
+.filtres-journal select { width: auto; min-width: 160px; flex: 0 1 auto; }
+@media (max-width: 860px) { .filtres-journal select { flex: 1 1 140px; } }
+.pill-action-insert { background: var(--brand-bg-soft); color: var(--brand-text-strong); }
+.pill-action-update { background: var(--warn-bg); color: var(--warn-text); }
+.pill-action-delete { background: var(--error-bg); color: var(--error-text); }
+.journal-donnees {
+  margin: 4px 0 0; padding: 8px 10px; max-height: 320px; overflow: auto; border-radius: 8px;
+  background: var(--bg-subtle-1); border: 1px solid var(--border-soft);
+  font-size: 11px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+/* Aide sous un champ (règle de mot de passe…), reliée par aria-describedby. */
+.aide-champ { margin: 4px 0 0; font-size: 11.5px; color: var(--text-muted); }

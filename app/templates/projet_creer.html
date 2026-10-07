@@ -32,8 +32,8 @@
     <div class="form-row">
       <label for="lots">Lot(s)</label>
       <select id="lots" name="lots" multiple data-chip-select>
-        <option value="CM" {{ 'selected' if 'CM' in (saisie.lots or []) }}>CM — Charpente Métallique</option>
-        <option value="GO" {{ 'selected' if 'GO' in (saisie.lots or []) }}>GO — Gros Œuvre</option>
+        <option value="CM" {{ 'selected' if 'CM' in (saisie.lots or []) }}>CM — Charpente métallique</option>
+        <option value="GO" {{ 'selected' if 'GO' in (saisie.lots or []) }}>GO — Gros œuvre</option>
       </select>
     </div>
     <div class="form-row">
@@ -44,13 +44,13 @@
         {% endfor %}
       </select>
     </div>
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+    <div class="form-row-2" style="margin-bottom:0;">
       <div class="form-row">
         <label for="client">Client</label>
         <input type="text" id="client" name="client" value="{{ saisie.client if saisie else 'IPCO' }}" maxlength="150">
       </div>
       <div class="form-row">
-        <label for="honoraires">Honoraires <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+        <label for="honoraires">Honoraires <span style="font-weight:400; color:var(--text-faint);">— facultatif</span></label>
         <input type="text" id="honoraires" name="honoraires" inputmode="decimal" placeholder="12 500,00" value="{{ saisie.honoraires if saisie else '' }}">
       </div>
     </div>
@@ -59,7 +59,7 @@
       <input type="date" id="date_debut" name="date_debut" value="{{ saisie.date_debut if saisie else date_du_jour }}">
     </div>
     <div class="form-row">
-      <label for="phase_liee_id">Phase liée <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+      <label for="phase_liee_id">Phase liée <span style="font-weight:400; color:var(--text-faint);">— facultatif</span></label>
       {# Lier le nouveau projet à un projet existant dès sa création (ex. le
          EXE qui suit un DCE) — retour Fadhel, lot 7 ; même champ que la
          fenêtre Informations. #}
@@ -70,7 +70,7 @@
         {% endfor %}
       </select>
     </div>
-    <button type="submit" class="btn-primary" style="background:#4a7c59; color:#fff;">Créer le projet</button>
+    <button type="submit" class="btn-primary btn-accent">Créer le projet</button>
   </form>
 </div>
 <script>

@@ -15,11 +15,12 @@
 
     <div class="form-row" style="margin-bottom:16px;">
       <label for="mot_de_passe">Nouveau mot de passe</label>
-      <input type="password" id="mot_de_passe" name="mot_de_passe" placeholder="••••••••••" minlength="8" required autofocus>
+      <input type="password" id="mot_de_passe" name="mot_de_passe" minlength="8" autocomplete="new-password" aria-describedby="aide-mdp" required autofocus>
+      <p id="aide-mdp" class="aide-champ">8 caractères minimum.</p>
     </div>
     <div class="form-row" style="margin-bottom:20px;">
       <label for="confirmation">Confirmer le mot de passe</label>
-      <input type="password" id="confirmation" name="confirmation" placeholder="••••••••••" minlength="8" required>
+      <input type="password" id="confirmation" name="confirmation" minlength="8" autocomplete="new-password" required>
     </div>
 
     <button type="submit" class="btn-login">Changer le mot de passe</button>

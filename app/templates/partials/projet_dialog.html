@@ -19,7 +19,7 @@
 <dialog id="dialog-nouveau-projet" class="post-dialog" aria-labelledby="dialog-nouveau-projet-titre" data-url-code-propose="{{ url_for('projets.api_code_propose') }}">
   <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
     <span id="dialog-nouveau-projet-titre" style="font-size:15px; font-weight:800;">Nouveau projet</span>
-    <button type="button" data-close-projet-dialog aria-label="Fermer" style="background:none; border:none; cursor:pointer; color:var(--text-faint); padding:4px;">
+    <button type="button" data-close-projet-dialog aria-label="Fermer" class="dialog-fermer">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
     </button>
   </div>
@@ -45,8 +45,8 @@
     <div class="form-row">
       <label for="dialog-projet-lots">Lot(s)</label>
       <select id="dialog-projet-lots" name="lots" multiple data-chip-select>
-        <option value="CM">CM — Charpente Métallique</option>
-        <option value="GO">GO — Gros Œuvre</option>
+        <option value="CM">CM — Charpente métallique</option>
+        <option value="GO">GO — Gros œuvre</option>
       </select>
     </div>
     <div class="form-row">
@@ -59,13 +59,13 @@
     </div>
     {# Client (« IPCO » par défaut) et honoraires — retour Fadhel,
        Remarques du 2026-09-28, migration 0010. #}
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+    <div class="form-row-2" style="margin-bottom:0;">
       <div class="form-row">
         <label for="dialog-projet-client">Client</label>
         <input type="text" id="dialog-projet-client" name="client" value="IPCO" maxlength="150">
       </div>
       <div class="form-row">
-        <label for="dialog-projet-honoraires">Honoraires <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+        <label for="dialog-projet-honoraires">Honoraires <span style="font-weight:400; color:var(--text-faint);">— facultatif</span></label>
         <input type="text" id="dialog-projet-honoraires" name="honoraires" inputmode="decimal" placeholder="12 500,00">
       </div>
     </div>
@@ -74,7 +74,7 @@
       <input type="date" id="dialog-projet-debut" name="date_debut" value="{{ date_du_jour }}">
     </div>
     <div class="form-row" style="margin-bottom:0;">
-      <label for="dialog-projet-phase-liee">Phase liée <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+      <label for="dialog-projet-phase-liee">Phase liée <span style="font-weight:400; color:var(--text-faint);">— facultatif</span></label>
       {# Lier le nouveau projet à un projet existant dès sa création (ex. le
          EXE qui suit un DCE) — retour Fadhel, lot 7 ; même champ que la
          fenêtre Informations. #}
@@ -88,7 +88,7 @@
 
     <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border-soft);">
       <button type="button" data-close-projet-dialog class="btn-secondary" style="width:auto; padding:9px 16px;">Annuler</button>
-      <button type="submit" class="btn-primary" style="width:auto; padding:9px 18px; background:#4a7c59; color:#fff;">Créer le projet</button>
+      <button type="submit" class="btn-primary btn-accent" style="width:auto; padding:9px 18px;">Créer le projet</button>
     </div>
   </form>
 </dialog>

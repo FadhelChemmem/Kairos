@@ -8,8 +8,8 @@
 <div class="subbar">
   <div class="subbar-inner">
     <h1 class="page-titre">Utilisateurs</h1>
-    <span style="font-size:12.5px; color:var(--text-muted);">{{ compte.total }} compte{{ 's' if compte.total != 1 else '' }} · {{ compte.actifs }} actif{{ 's' if compte.actifs != 1 else '' }}</span>
-    <span class="pill" style="background:var(--hover-bg); color:var(--text-faint); margin-left:auto;">Visible par : Admin, RH, Chef de projet</span>
+    <span style="font-size:12.5px; color:var(--text-muted);">{{ compte.total }} compte{{ 's' if compte.total > 1 else '' }} · {{ compte.actifs }} actif{{ 's' if compte.actifs > 1 else '' }}</span>
+    <span class="pill" style="background:var(--hover-bg); color:var(--text-muted); margin-left:auto;">Visible par&nbsp;: administrateur, RH, chef de projet</span>
   </div>
 </div>
 
@@ -17,28 +17,32 @@
 
   <form method="get" class="filtres-utilisateurs" style="display:flex; align-items:center; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
     <div class="search-mini" style="flex:1 1 220px;">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="text" name="q" value="{{ q }}" placeholder="Filtrer par nom, équipe, rôle…" aria-label="Filtrer les utilisateurs" style="flex:1; width:auto; min-width:0; border:none; padding:0; background:transparent;">
+      <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="search" name="q" value="{{ q }}" placeholder="Filtrer par nom, équipe, rôle…" aria-label="Filtrer les utilisateurs" style="flex:1; width:auto; min-width:0; border:none; outline:none; padding:0; background:transparent;">
     </div>
-    <select name="equipe_code" aria-label="Équipe" onchange="this.form.submit()">
+    {# Lot 10 (audit front I9, WCAG 3.2.2) : plus de rechargement au
+       simple changement d'une liste (↓ au clavier rechargeait la page) —
+       bouton « Filtrer » explicite. #}
+    <select name="equipe_code" aria-label="Équipe">
       <option value="">Toutes les équipes</option>
       {% for code, libelle in equipe_choices %}
         <option value="{{ code }}" {{ 'selected' if equipe_code == code }}>{{ libelle }}</option>
       {% endfor %}
     </select>
-    <select name="role" aria-label="Rôle" onchange="this.form.submit()">
+    <select name="role" aria-label="Rôle">
       <option value="">Tous les rôles</option>
-      <option value="admin" {{ 'selected' if role == 'admin' }}>Admin</option>
+      <option value="admin" {{ 'selected' if role == 'admin' }}>Administrateur</option>
       <option value="chef_de_projet" {{ 'selected' if role == 'chef_de_projet' }}>Chef de projet</option>
       <option value="intervenant" {{ 'selected' if role == 'intervenant' }}>Intervenant</option>
       <option value="rh" {{ 'selected' if role == 'rh' }}>RH</option>
       <option value="client" {{ 'selected' if role == 'client' }}>Client</option>
     </select>
-    <select name="actif" aria-label="Statut du compte" onchange="this.form.submit()">
+    <select name="actif" aria-label="Statut du compte">
       <option value="" {{ 'selected' if actif_param == '' }}>Actifs et inactifs</option>
       <option value="actifs" {{ 'selected' if actif_param == 'actifs' }}>Actifs seulement</option>
       <option value="inactifs" {{ 'selected' if actif_param == 'inactifs' }}>Inactifs seulement</option>
     </select>
+    <button type="submit" class="btn-secondary" style="width:auto; padding:9px 16px;">Filtrer</button>
     {% if peut_gerer %}
       <a href="{{ url_for('utilisateurs.creer') }}" class="quickadd quickadd-primary" style="padding:9px 16px;">+ Nouvel utilisateur</a>
     {% endif %}
@@ -50,29 +54,32 @@
       <span>Équipe</span>
       <span>Rôle</span>
       <span>Téléphone</span>
-      <span>Email</span>
-      <span>Embauche</span>
+      <span>E-mail</span>
+      <span>Embauché(e) le</span>
       <span>Actif</span>
     </div>
 
     {% for u in utilisateurs %}
       {% set rs = role_style(u.role) %}
       <div class="urow {{ 'inactif' if not u.actif }}">
+        {# Lot 10 (audit front §3.6) : compte inactif repéré par un fond et
+           une pastille « Inactif », plus par une opacité qui rendait les
+           textes illisibles (1,3 à 2,4:1). #}
         <a href="{{ url_for('utilisateurs.fiche', user_id=u.id) }}" style="display:flex; align-items:center; gap:10px; min-width:0; text-decoration:none; color:inherit;">
-          {{ avatarm.avatar(u.id, u.prenom, u.nom, u.avatar_chemin, css_class='avatar avatar-md', couleur=(none if u.actif else 'var(--border-hover)')) }}
+          {{ avatarm.avatar(u.id, u.prenom, u.nom, u.avatar_chemin, css_class='avatar avatar-md', couleur=(none if u.actif else '#6c766f')) }}
           <div style="min-width:0;">
-            <div style="font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; {{ 'color:var(--text-faint);' if not u.actif }}">{{ u.prenom }} {{ u.nom }}</div>
-            <div style="font-size:11px; color:{{ 'var(--border-hover)' if not u.actif else 'var(--text-faint)' }};">{{ u.poste or '—' }}{{ ' (parti)' if not u.actif }}</div>
+            <div style="font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; {{ 'color:var(--text-muted);' if not u.actif }}">{{ u.prenom }} {{ u.nom }}{% if not u.actif %} <span class="pill pill-sm" style="background:var(--hover-bg-strong); color:var(--text-secondary); font-weight:700;">Inactif</span>{% endif %}</div>
+            <div style="font-size:11px; color:var(--text-muted);">{{ u.poste or '—' }}</div>
           </div>
         </a>
-        <span style="font-size:12.5px; color:{{ 'var(--text-faint)' if not u.actif else 'var(--text-secondary)' }};">{{ equipe_libelle(u.equipe_code) }}</span>
+        <span style="font-size:12.5px; color:{{ 'var(--text-muted)' if not u.actif else 'var(--text-secondary)' }};">{{ equipe_libelle(u.equipe_code) }}</span>
         <span class="pill pill-sm" style="background:{{ rs.bg }}; color:{{ rs.fg }};">{{ rs.label }}</span>
         <span style="font-size:12px; color:var(--text-secondary);">{{ u.telephone or '—' }}</span>
         <div style="display:flex; align-items:center; gap:6px; min-width:0;">
-          <span style="font-size:12.5px; color:{{ 'var(--text-faint)' if not u.actif else 'var(--text-secondary)' }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ u.email }}</span>
+          <span style="font-size:12.5px; color:{{ 'var(--text-muted)' if not u.actif else 'var(--text-secondary)' }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="{{ u.email }}">{{ u.email }}</span>
           {% if u.actif %}
             {% if u.verifie %}
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2fa876" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><title>Vérifié</title><path d="M20 6 9 17l-5-5"/></svg>
+              <svg role="img" aria-label="Adresse vérifiée" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1f7a55" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><title>Adresse vérifiée</title><path d="M20 6 9 17l-5-5"/></svg>
             {% else %}
               <span class="pill pill-warn" style="font-size:10px; padding:1px 7px;" title="En attente de vérification">Non vérifié</span>
             {% endif %}
@@ -87,12 +94,17 @@
             <input type="hidden" name="role" value="{{ role or '' }}">
             <input type="hidden" name="actif" value="{{ actif_param }}">
             <input type="hidden" name="actif_cible" value="{{ '0' if u.actif else '1' }}">
-            <button type="submit" class="toggle" style="background:{{ '#4a7c59' if u.actif else 'var(--border)' }}; justify-content:{{ 'flex-end' if u.actif else 'flex-start' }};" title="{{ 'Désactiver' if u.actif else 'Réactiver' }} ce compte">
+            {# Lot 10 (audit front I8) : interrupteur nommé et à état
+               (role=switch), désactivé sur son propre compte (le serveur
+               refuse de toute façon). #}
+            <button type="submit" class="toggle toggle-liste" role="switch" aria-checked="{{ 'true' if u.actif else 'false' }}" aria-label="Compte actif : {{ u.prenom }} {{ u.nom }}"
+                    style="background:{{ 'var(--accent-fill)' if u.actif else 'var(--control-border)' }}; justify-content:{{ 'flex-end' if u.actif else 'flex-start' }};"
+                    {% if u.id == g.user.id %}disabled title="Vous ne pouvez pas désactiver votre propre compte"{% else %}title="{{ 'Désactiver' if u.actif else 'Réactiver' }} ce compte"{% endif %}>
               <span class="toggle-knob"></span>
             </button>
           </form>
         {% else %}
-          <span class="pill pill-sm" style="background:{{ 'var(--brand-bg-soft)' if u.actif else 'var(--hover-bg)' }}; color:{{ 'var(--brand-text-strong)' if u.actif else 'var(--text-faint)' }};">{{ 'Actif' if u.actif else 'Inactif' }}</span>
+          <span class="pill pill-sm" style="background:{{ 'var(--brand-bg-soft)' if u.actif else 'var(--hover-bg)' }}; color:{{ 'var(--brand-text-strong)' if u.actif else 'var(--text-muted)' }};">{{ 'Actif' if u.actif else 'Inactif' }}</span>
         {% endif %}
       </div>
     {% else %}
@@ -100,7 +112,7 @@
     {% endfor %}
   </div>
 
-  <div style="font-size:11px; color:var(--text-faint); margin-top:10px;">Désactiver un compte le retire des listes d'affectation sans rien supprimer — tout l'historique (projets, tâches, posts) reste intact.</div>
+  <div style="font-size:11px; color:var(--text-muted); margin-top:10px;">Désactiver un compte le retire des listes d'affectation sans rien supprimer — tout l'historique (projets, tâches, posts) reste intact.</div>
 
 </div>
 {% endblock %}

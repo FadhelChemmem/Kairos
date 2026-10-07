@@ -33,8 +33,8 @@
 <dialog id="dialog-nouveau-post" class="post-dialog" aria-labelledby="dialog-nouveau-post-titre">
   <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
     <span id="dialog-nouveau-post-titre" style="font-size:15px; font-weight:800;">Nouveau post</span>
-    <button type="button" data-close-post-dialog aria-label="Fermer" style="background:none; border:none; cursor:pointer; color:var(--text-faint); padding:4px;">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+    <button type="button" data-close-post-dialog aria-label="Fermer" class="dialog-fermer">
+      <svg aria-hidden="true" focusable="false" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
     </button>
   </div>
 
@@ -49,7 +49,7 @@
     <div class="form-row" data-post-dialog-projet-row>
       {# Information : projet vide par défaut, "optionnel" (retour Fadhel,
          Remarques/J.docx) — voir post-dialog.js. #}
-      <label for="dialog-post-projet">Projet <span data-projet-optionnel style="display:none; font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+      <label for="dialog-post-projet">Projet <span data-projet-optionnel style="display:none; font-weight:400; color:var(--text-faint);">— facultatif</span></label>
       {# Champ recherche (retour Fadhel, 2026-09-28) : la liste des
          projets s'allonge, un <select> natif devenait pénible à
          parcourir — voir app/static/js/search-combobox.js. Le <select>
@@ -63,12 +63,12 @@
           <option value="{{ p.id }}" data-gere="{{ '1' if p.mon_role in ('chef_de_projet', 'co_chef') else '0' }}">{{ p.code }}_{{ p.nom }}</option>
         {% endfor %}
         {% if sans_projet_possible %}
-        <option value="aucun" data-sans-projet="1">Aucun projet — information d'équipe</option>
+        <option value="aucun" data-sans-projet="1">Aucun projet (information d'équipe)</option>
         {% endif %}
       </select>
     </div>
     <div class="form-row" data-post-dialog-projet-figee style="display:none;">
-      <label>Projet</label>
+      <span class="label">Projet</span>
       <div style="font-size:13px; font-weight:600; padding:8px 0;" data-post-dialog-projet-figee-label></div>
     </div>
   {% endif %}
@@ -105,7 +105,8 @@
           <label for="dialog-titre-tache">Titre de la tâche</label>
           <input type="text" id="dialog-titre-tache" name="titre" maxlength="255" placeholder="Ex. Note de calcul EXE lot GO" required>
         </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        {# .form-row-2 : une colonne sur téléphone (champ date de 146 px à 320 px). #}
+        <div class="form-row-2" style="margin-bottom:0;">
           <div class="form-row">
             <label for="dialog-echeance-tache">Échéance</label>
             {# Préremplie à aujourd'hui (retour Fadhel, 2026-09-28) — l'utilisateur
@@ -116,7 +117,7 @@
             <input type="date" id="dialog-echeance-tache" name="date_echeance" value="{{ [today(), debut_projet]|select|max if debut_projet else today() }}"{% if debut_projet %} min="{{ debut_projet.isoformat() }}"{% endif %}>
           </div>
           <div class="form-row">
-            <label for="dialog-type-deadline-tache">Type de deadline</label>
+            <label for="dialog-type-deadline-tache">Type d'échéance</label>
             <select id="dialog-type-deadline-tache" name="type_deadline">
               <option value="rendu_client">Rendu client</option>
               <option value="interne">Interne</option>
@@ -124,14 +125,14 @@
           </div>
         </div>
         <div class="form-row">
-          <label for="dialog-intervenants-tache">Intervenant(s) <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+          <label for="dialog-intervenants-tache">Intervenant(s) <span style="font-weight:400; color:var(--text-faint);">— facultatif</span></label>
           <select id="dialog-intervenants-tache" name="intervenants" multiple data-chip-select data-chip-filter="1" data-chip-recent="1" data-chip-filter-placeholder="Rechercher une autre personne…">
             {{ options_personnes(sans_clients=true) }}
           </select>
         </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border-soft);">
           <button type="button" data-close-post-dialog class="btn-secondary" style="width:auto; padding:9px 16px;">Annuler</button>
-          <button type="submit" class="btn-primary" style="width:auto; padding:9px 18px; background:#4a7c59; color:#fff;">Publier la tâche</button>
+          <button type="submit" class="btn-primary btn-accent" style="width:auto; padding:9px 18px;">Publier la tâche</button>
         </div>
       </form>
     </div>
@@ -147,7 +148,7 @@
         <input type="hidden" name="parent_post_id" value="">
 
         <div class="form-row">
-          <label for="dialog-contenu-information">Information</label>
+          <label for="dialog-contenu-information">Texte de l'information</label>
           <textarea id="dialog-contenu-information" name="contenu" maxlength="10000" required></textarea>
         </div>
         {% if projet_id is none and sans_projet_possible %}
@@ -169,27 +170,27 @@
         </div>
         {% endif %}
         <div class="form-row">
-          <label for="dialog-mentions-information">Personnes taguées <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+          <label for="dialog-mentions-information">Personnes mentionnées <span style="font-weight:400; color:var(--text-faint);">— facultatif</span></label>
           <select id="dialog-mentions-information" name="mentions" multiple data-chip-select data-chip-filter="1" data-chip-recent="1" data-chip-filter-placeholder="Rechercher une autre personne…">
             {{ options_personnes() }}
           </select>
         </div>
         <div class="form-row">
-          <label for="dialog-lien-information">Lien <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+          <label for="dialog-lien-information">Lien <span style="font-weight:400; color:var(--text-faint);">— facultatif</span></label>
           <input type="text" id="dialog-lien-information" name="lien" maxlength="2000" placeholder="\\NAS\Projets\...">
         </div>
         <div class="form-row" style="margin-bottom:0;">
-          <label>Pièce jointe <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+          <label for="dialog-pj-information">Pièce jointe <span style="font-weight:400; color:var(--text-faint);">— facultatif</span></label>
           <div class="dropzone" data-dropzone>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
-            <span class="dropzone-label" data-dropzone-label>Glisser un fichier ici, ou cliquer pour parcourir</span>
-            <input type="file" name="fichier" class="dropzone-input">
+            <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+            <span class="dropzone-label" data-dropzone-label>Glissez un fichier ici ou cliquez pour parcourir</span>
+            <input type="file" name="fichier" id="dialog-pj-information" class="dropzone-input" aria-label="Pièce jointe (facultatif)">
           </div>
         </div>
 
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border-soft);">
           <button type="button" data-close-post-dialog class="btn-secondary" style="width:auto; padding:9px 16px;">Annuler</button>
-          <button type="submit" class="btn-primary" style="width:auto; padding:9px 18px; background:#4a7c59; color:#fff;">Publier l'information</button>
+          <button type="submit" class="btn-primary btn-accent" style="width:auto; padding:9px 18px;">Publier l'information</button>
         </div>
       </form>
     </div>
@@ -208,31 +209,31 @@
           <input type="text" id="dialog-objet-requete" name="objet" maxlength="200" placeholder="Ex. Demande de plans mis à jour" required>
         </div>
         <div class="form-row">
-          <label for="dialog-description-requete">Description <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+          <label for="dialog-description-requete">Description <span style="font-weight:400; color:var(--text-faint);">— facultatif</span></label>
           <textarea id="dialog-description-requete" name="contenu" maxlength="10000" placeholder="Détaillez la demande…"></textarea>
         </div>
         <div class="form-row">
-          <label for="dialog-mentions-requete">Personnes taguées <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+          <label for="dialog-mentions-requete">Personnes mentionnées <span style="font-weight:400; color:var(--text-faint);">— facultatif</span></label>
           <select id="dialog-mentions-requete" name="mentions" multiple data-chip-select data-chip-filter="1" data-chip-recent="1" data-chip-filter-placeholder="Rechercher une autre personne…">
             {{ options_personnes() }}
           </select>
         </div>
         <div class="form-row">
-          <label for="dialog-lien-requete">Lien <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+          <label for="dialog-lien-requete">Lien <span style="font-weight:400; color:var(--text-faint);">— facultatif</span></label>
           <input type="text" id="dialog-lien-requete" name="lien" maxlength="2000" placeholder="\\NAS\Projets\...">
         </div>
         <div class="form-row" style="margin-bottom:0;">
-          <label>Pièce jointe <span style="font-weight:400; color:var(--text-faint);">— optionnel</span></label>
+          <label for="dialog-pj-requete">Pièce jointe <span style="font-weight:400; color:var(--text-faint);">— facultatif</span></label>
           <div class="dropzone" data-dropzone>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
-            <span class="dropzone-label" data-dropzone-label>Glisser un fichier ici, ou cliquer pour parcourir</span>
-            <input type="file" name="fichier" class="dropzone-input">
+            <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+            <span class="dropzone-label" data-dropzone-label>Glissez un fichier ici ou cliquez pour parcourir</span>
+            <input type="file" name="fichier" id="dialog-pj-requete" class="dropzone-input" aria-label="Pièce jointe (facultatif)">
           </div>
         </div>
 
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border-soft);">
           <button type="button" data-close-post-dialog class="btn-secondary" style="width:auto; padding:9px 16px;">Annuler</button>
-          <button type="submit" class="btn-primary" style="width:auto; padding:9px 18px; background:#4a7c59; color:#fff;">Publier la requête</button>
+          <button type="submit" class="btn-primary btn-accent" style="width:auto; padding:9px 18px;">Publier la requête</button>
         </div>
       </form>
     </div>

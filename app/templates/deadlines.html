@@ -5,7 +5,7 @@
 <div class="subbar">
   <div class="subbar-inner">
     <h1 class="page-titre">Deadlines</h1>
-    <span style="font-size:12.5px; color:var(--text-muted);">{{ nb_taches }} tâche{{ 's' if nb_taches != 1 else '' }} avec échéance</span>
+    <span style="font-size:12.5px; color:var(--text-muted);">{{ nb_taches }} tâche{{ 's' if nb_taches > 1 else '' }} avec échéance</span>
   </div>
 </div>
 
@@ -13,12 +13,13 @@
 
   <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
     <div class="search-mini" style="flex:1; min-width:200px;">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="text" id="filtre-deadlines" autocomplete="off" placeholder="Filtrer par projet…" style="flex:1; border:none; outline:none; background:none; font-size:13.5px; font-family:inherit;">
+      <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="search" id="filtre-deadlines" autocomplete="off" aria-label="Filtrer par projet ou tâche" placeholder="Filtrer par projet ou tâche…" style="flex:1; min-width:0; border:none; outline:none; background:none; padding:0; font-size:13.5px; font-family:inherit;">
     </div>
-    <div style="display:flex; align-items:center; gap:6px 16px; flex-wrap:wrap; font-size:11.5px; color:var(--text-muted);">
-      <span style="display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:3px; background:#e3512c;"></span> En retard / imminent</span>
-      <span style="display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:3px; background:#ea6c1a;"></span> Cette semaine</span>
+    {# Légende alignée sur les couleurs des barres (app/utils.py:build_gantt). #}
+    <div style="display:flex; align-items:center; gap:6px 16px; flex-wrap:wrap; font-size:11.5px; color:var(--text-muted);" aria-hidden="true">
+      <span style="display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:3px; background:#c2401f;"></span> En retard / imminent</span>
+      <span style="display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:3px; background:#b8520f;"></span> Cette semaine</span>
       <span style="display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:3px; background:#4a7c59;"></span> Plus tard</span>
     </div>
   </div>
@@ -31,8 +32,10 @@
       </div>
       {% for d in gantt.days %}
         <div class="g-daycell" style="background:{{ 'var(--brand-bg-soft)' if d.date == gantt.days[0].date else ('var(--bg-subtle-1)' if d.est_weekend else 'transparent') }};">
-          <span style="font-size:10px; font-weight:700; color:{{ 'var(--brand-text-strong)' if d.date == gantt.days[0].date else ('var(--border-hover)' if d.est_weekend else 'var(--text-faint)') }};">{{ d.lettre }}</span>
-          <span style="font-size:11px; font-weight:800; color:{{ 'var(--brand-text-strong)' if d.date == gantt.days[0].date else ('var(--border-hover)' if d.est_weekend else 'var(--text-secondary)') }};">{{ d.label }}</span>
+          {# Week-end : repéré par le fond (--bg-subtle-1), texte lisible
+             (l'ancien --border-hover faisait 1,5:1). #}
+          <span style="font-size:10px; font-weight:700; color:{{ 'var(--brand-text-strong)' if d.date == gantt.days[0].date else 'var(--text-muted)' }};">{{ d.lettre }}</span>
+          <span style="font-size:11px; font-weight:800; color:{{ 'var(--brand-text-strong)' if d.date == gantt.days[0].date else ('var(--text-muted)' if d.est_weekend else 'var(--text-secondary)') }};">{{ d.label }}</span>
         </div>
       {% endfor %}
 
@@ -40,10 +43,10 @@
         <div class="g-row" style="display:contents;" data-filtre="{{ (t.projet_code ~ ' ' ~ t.projet_nom ~ ' ' ~ t.titre)|lower }}">
           <div class="g-label">
             <div style="font-size:12.5px; font-weight:600; line-height:1.3;">{{ t.titre }}</div>
-            <div style="font-size:11px; color:var(--text-muted);">{{ t.projet_code }}_{{ t.projet_nom }}{% if t.type_deadline == 'interne' %} · #interne{% endif %}</div>
+            <div style="font-size:11px; color:var(--text-muted);">{{ t.projet_code }}_{{ t.projet_nom }}{% if t.type_deadline == 'interne' %} · interne{% endif %}</div>
           </div>
           <div class="g-row-track">
-            <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" class="g-bar{% if t.en_retard %} g-bar-retard{% endif %}" style="grid-column: 1 / span {{ t.span }}; background:{{ t.couleur }}; justify-content:flex-start;">{{ t.label_barre }}</a>
+            <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" class="g-bar{% if t.en_retard %} g-bar-retard{% endif %}" style="grid-column: 1 / span {{ t.span }}; background:{{ t.couleur }}; justify-content:flex-start;" aria-label="{{ t.titre }} ({{ t.projet_code }}) : {{ 'en retard, ' if t.en_retard }}échéance le {{ t.date_echeance|date_courte }} — ouvrir le projet">{{ t.label_barre }}</a>
           </div>
         </div>
       {% else %}
@@ -56,7 +59,8 @@
   </div>
 
   {# Indication affichée seulement s'il y a vraiment à défiler (2026-09-29). #}
-  <div id="gantt-aide-defilement" hidden style="font-size:11.5px; color:var(--text-faint); margin-top:10px;">Faites défiler horizontalement pour voir les semaines suivantes →</div>
+  <div id="deadlines-vide" role="status" style="font-size:12.5px; color:var(--text-muted); margin-top:10px;"></div>
+  <div id="gantt-aide-defilement" hidden style="font-size:11.5px; color:var(--text-muted); margin-top:10px;">Faites défiler horizontalement pour voir les semaines suivantes <span aria-hidden="true">→</span></div>
 
 </div>
 <script>
@@ -67,6 +71,7 @@
   function maj() { aide.hidden = carte.scrollWidth <= carte.clientWidth + 1; }
   maj();
   window.addEventListener('resize', maj);
+  window.kairosMajAideGantt = maj;
 })();
 
 // Filtre "Filtrer par projet…" (voir plus haut) — masque les lignes du
@@ -75,12 +80,21 @@
 (function () {
   var input = document.getElementById('filtre-deadlines');
   if (!input) return;
+  // Lot 10 (audit front M15, I11) : sans accents, état vide annoncé, aide
+  // au défilement recalculée.
+  function norm(s) { return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
   var rows = Array.prototype.slice.call(document.querySelectorAll('.g-row'));
+  rows.forEach(function (r) { r._filtre = norm(r.dataset.filtre); });
+  var vide = document.getElementById('deadlines-vide');
   input.addEventListener('input', function () {
-    var q = input.value.trim().toLowerCase();
+    var q = norm(input.value.trim()), visibles = 0;
     rows.forEach(function (row) {
-      row.style.display = (!q || row.dataset.filtre.indexOf(q) !== -1) ? 'contents' : 'none';
+      var ok = !q || row._filtre.indexOf(q) !== -1;
+      row.style.display = ok ? 'contents' : 'none';
+      if (ok) visibles++;
     });
+    if (vide) vide.textContent = (rows.length && !visibles) ? 'Aucune échéance ne correspond à ce filtre.' : '';
+    if (window.kairosMajAideGantt) window.kairosMajAideGantt();
   });
 })();
 </script>
