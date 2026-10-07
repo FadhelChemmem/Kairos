@@ -310,6 +310,60 @@ async function contrastes(p) {
   etape('« Reprendre la version enregistrée »', (await statut(a)) === 'Enregistré' && (await etat(a)).total === 600, (await etat(a)).total);
   await a.close(); await b.close();
 
+  // 16 bis. Échecs de l'enregistrement automatique au changement de jour
+  // (revue 2) : la saisie du jour quitté n'est jamais perdue en silence.
+  const OMAR = 4;
+  const omar = await contexte(navigateur, 'omar@x.tn');
+  const d1 = ouvre(T, -2);
+  const o = await ouvrir(omar, '/dailylog?date=' + d1);
+  etape('Omar : son projet proposé à 0 h', (await etat(o)).rows.some((r) => r.cle === '5:0'), (await etat(o)).rows.map((r) => r.cle));
+  await plus(o, '5:0', 2);
+  const urlD1 = '**/dailylog/api/jour/' + d1;
+  await o.route(urlD1, (r) => (r.request().method() === 'PUT' ? r.abort('internetdisconnected') : r.continue()));
+  await o.click('#dl-prec');
+  await attendre(async () => (await toast(o)).includes('non enregistré'));
+  etape('réseau coupé au changement de jour : toast daté, saisie gardée, « Revenir »',
+    (await toast(o)).includes('connexion impossible') && (await toast(o)).includes('gardée') &&
+    (await o.$$('#dl-toast .dl-undo >> text=Revenir à ce jour')).length === 1, await toast(o));
+  await o.unroute(urlD1);
+  await o.click('#dl-toast .dl-undo >> text=Revenir à ce jour');
+  await attendre(async () => (await etat(o)).sel === d1 && (await toast(o)).includes('non enregistrée'));
+  etape('retour sur le jour : brouillon proposé', (await etat(o)).sel === d1 && (await toast(o)).includes('non enregistrée'), await toast(o));
+  await o.click('#dl-toast .dl-undo >> text=Restaurer');
+  await o.click('#dl-enregistrer');
+  await attendre(async () => (await statut(o)) === 'Enregistré');
+  etape('brouillon restauré et enregistré (1 h)', heures(OMAR, d1) === '1.00', heures(OMAR, d1));
+  // session expirée pendant l'enregistrement automatique
+  await plus(o, '5:0');
+  await omar.clearCookies();
+  await o.click('#dl-prec');
+  await attendre(async () => (await toast(o)).includes('Session expirée'));
+  await o.goto(BASE + '/connexion');
+  await o.fill('#email', 'omar@x.tn'); await o.fill('#password', MDP);
+  await Promise.all([o.waitForNavigation(), o.click('button[type=submit]')]);
+  await o.goto(BASE + '/dailylog?date=' + d1); await pret(o);
+  await attendre(async () => (await toast(o)).includes('non enregistrée'));
+  etape('session expirée au changement de jour : brouillon proposé au retour', (await toast(o)).includes('non enregistrée'), await toast(o));
+  await o.click('#dl-toast .dl-undo >> text=Restaurer');
+  etape('brouillon : 1 h 30 restauré', (await valeur(o, '5:0')) === '1 h 30', await valeur(o, '5:0'));
+  await o.click('#dl-enregistrer');
+  await attendre(async () => (await statut(o)) === 'Enregistré');
+  // modification pendant un enregistrement lent : jamais « Enregistré » à tort
+  await o.route(urlD1, async (r) => { if (r.request().method() === 'PUT') await pause(1000); r.continue(); });
+  await plus(o, '5:0', 2);
+  await o.click('#dl-enregistrer');
+  await pause(150);
+  await moins(o, '5:0', 2);
+  await attendre(() => heures(OMAR, d1) === '2.50', 4000);
+  await pause(300);
+  etape('saisie modifiée pendant l\'envoi : pas « Enregistré » à tort',
+    (await statut(o)) !== 'Enregistré' && (await valeur(o, '5:0')) === '1 h 30', [await statut(o), heures(OMAR, d1)]);
+  await o.unroute(urlD1);
+  await o.click('#dl-enregistrer');
+  await attendre(async () => (await statut(o)) === 'Enregistré');
+  etape('puis enregistrée telle qu\'affichée', heures(OMAR, d1) === '1.50', heures(OMAR, d1));
+  await o.close(); await omar.close();
+
   // 17. Au-delà de 14 jours : lecture seule
   const j20 = isoTunis(-20);
   await p.goto(BASE + '/dailylog?date=' + j20); await pret(p);

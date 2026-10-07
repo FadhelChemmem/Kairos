@@ -150,7 +150,8 @@
     function f(m) { return N.fmt(m, U); }
     function tr(texte, x, y) { return String(texte).split('{x}').join(x == null ? '' : x).split('{y}').join(y == null ? '' : y); }
     function jourNum(d) { return d === 1 ? '1er' : String(d); }
-    function dateCourte(k) { var d = N.versDate(k); return T.jours_courts[N.jourSemaine(k)] + ' ' + d.getUTCDate() + ' ' + T.mois_courts[d.getUTCMonth()]; }
+    // espaces insécables : « ven. 2 oct. » ne se coupe pas dans un toast ou une puce
+    function dateCourte(k) { var d = N.versDate(k); return T.jours_courts[N.jourSemaine(k)] + ' ' + d.getUTCDate() + ' ' + T.mois_courts[d.getUTCMonth()]; }
     function dateLongue(k) { var d = N.versDate(k); return T.jours_longs[N.jourSemaine(k)] + ' ' + jourNum(d.getUTCDate()) + ' ' + T.mois[d.getUTCMonth()]; }
     function url(modele, valeur) { return modele.replace(/AAAA-MM(-JJ)?/, valeur); }
     function avecParam(u, cleParam, valeur) { return u + (u.indexOf('?') >= 0 ? '&' : '?') + cleParam + '=' + encodeURIComponent(valeur); }
@@ -764,7 +765,7 @@
         return !rows.some(function (x) { return !x.modifiable && x.cle === r.cle; });
       }));
       touched(); render();
-      toast(tr(T.copie_depuis, dateCourte(c.date)) + (c.exclues ? tr(T.copie_exclues, c.exclues) : ''), {
+      toast(tr(T.copie_depuis, dateCourte(c.date)) + (c.exclues ? tr(c.exclues > 1 ? T.copie_exclues_pl : T.copie_exclues, c.exclues) : ''), {
         back: copierBtn,
         undo: function () { if (sel !== k0) return; rows = avant; touched(); render(); }
       });
@@ -851,8 +852,13 @@
       recalcSaved();
       render();
     }
-    function sauverBrouillon(k, lignes) {
-      try { sessionStorage.setItem(cleBrouillon + k, JSON.stringify({ lignes: lignes, rows: k === sel ? cloneRows() : null })); } catch (e) { /* commodité locale */ }
+    /** snap : lignes affichées au moment de l'envoi. Sans lui, un échec
+     *  survenu après un changement de jour gardait rows: null — brouillon
+     *  jamais proposé au retour (revue 2). */
+    function sauverBrouillon(k, lignes, snap) {
+      var r = snap || (k === sel ? cloneRows() : null);
+      if (!r) return;
+      try { sessionStorage.setItem(cleBrouillon + k, JSON.stringify({ lignes: lignes, rows: r })); } catch (e) { /* commodité locale */ }
     }
     function marquerErreurs(lignesEnvoyees, erreurs) {
       Array.prototype.forEach.call(listeEl.querySelectorAll('.dl-row-err'), function (el) {
@@ -865,13 +871,18 @@
         if (el) { el.classList.add('dl-row-err'); var v = el.querySelector('.dl-val'); if (v) v.setAttribute('aria-invalid', 'true'); }
       });
     }
-    function traiterEchec(k, r, corps) {
+    /** snap : lignes du jour k au moment de l'envoi (persist). Un échec sur
+     *  un jour qui n'est plus affiché (enregistrement automatique au
+     *  changement de jour) garde la saisie en brouillon, proposée au retour. */
+    function traiterEchec(k, r, corps, snap) {
       var courant = k === sel;
+      var garder = function () { if (snap) sauverBrouillon(k, corps && corps.lignes, snap); };
       if (r.status === 409 && r.data && r.data.jour) {
         var srv = r.data.jour;
         versions[k] = srv.version;
         if (!courant) {
-          toast(dateCourte(k) + ' : ' + T.conflit, { warn: true, duree: 0, actions: [{ texte: T.reprendre, fn: function () { goDay(k); } }] });
+          garder();
+          toast(dateCourte(k) + ' : ' + T.conflit + (snap ? T.brouillon_garde : ''), { warn: true, duree: 0, actions: [{ texte: T.revenir, fn: function () { goDay(k); } }] });
           return;
         }
         if (egales(lignesLocales(), lignesServeur(srv))) { fusionnerApresEnregistrement(srv); renderStatus(); return; }
@@ -884,7 +895,9 @@
         return;
       }
       if (r.status === 401 || (r.status === 400 && r.data && r.data.erreur === 'csrf')) {
-        sauverBrouillon(k, corps && corps.lignes);
+        // Un GET (chargement d'un jour) n'a rien à garder : ne pas écraser un
+        // brouillon existant par une liste vide.
+        if (corps && corps.lignes) sauverBrouillon(k, corps.lignes, snap);
         if (courant) { saved = 'erreur'; renderStatus(); render(); }
         dernierEchec = true;
         toast(T.session_expiree, { warn: true, duree: 0, actions: [{ texte: T.se_reconnecter, fn: function () {
@@ -895,6 +908,7 @@
       if (r.status === 422 && r.data) {
         var er = (r.data.erreurs && r.data.erreurs[0]) || { code: r.data.erreur };
         if (courant) { saved = 'erreur'; renderStatus(); render(); marquerErreurs(corps.lignes || [], r.data.erreurs); }
+        else garder();
         toast((courant ? '' : dateCourte(k) + ' : ') + (T.erreurs[er.code] || r.data.message || T.erreurs.refus_base), { warn: true, duree: 8000 });
         return;
       }
@@ -904,8 +918,16 @@
         return;
       }
       dernierEchec = true;
-      if (courant) { saved = 'erreur'; renderStatus(); render(); }
-      toast(r.status === 0 ? T.reseau : T.erreur_serveur, { warn: true, duree: 6000 });
+      garder();
+      if (courant) {
+        saved = 'erreur'; renderStatus(); render();
+        toast(r.status === 0 ? T.reseau : T.erreur_serveur, { warn: true, duree: 6000 });
+        return;
+      }
+      // Jour quitté (enregistrement automatique) : la saisie n'est plus à
+      // l'écran — le dire, et offrir d'y revenir (brouillon proposé).
+      toast(tr(T.non_enregistre_autre_jour, dateCourte(k), r.status === 0 ? T.cause_reseau : T.cause_serveur) + (snap ? T.brouillon_garde : ''),
+        { warn: true, duree: 0, actions: [{ texte: T.revenir, fn: function () { goDay(k); } }] });
     }
     /** opts : {auto, silencieux, keepalive, vider} */
     function persist(opts) {
@@ -914,7 +936,7 @@
       if (isAbsent() || chargement) return Promise.resolve(false);
       var d = droits();
       if (!d.saisie_libre && !d.lignes_de_ses_projets) return Promise.resolve(false);
-      var k = sel, lignes = aEnvoyer(), somme = total(), monRev = rev;
+      var k = sel, lignes = aEnvoyer(), somme = total(), monRev = rev, snap = cloneRows();
       if (somme <= 0 && !opts.vider) return Promise.resolve(false);
       hideToastIfStale();
       if (opts.keepalive) {
@@ -928,11 +950,14 @@
         var corps = { version: versions[k] || 0, lignes: lignes };
         if (opts.vider) corps.vider = true;
         return requete('PUT', urlJour(k), corps, !!opts.keepalive).then(function (r) {
-          if (r.status !== 200 || !r.data) { traiterEchec(k, r, corps); return false; }
+          if (r.status !== 200 || !r.data) { traiterEchec(k, r, corps, snap); return false; }
           majApresEcriture(r.data);
           if (k === sel) {
             if (rev === monRev) fusionnerApresEnregistrement(r.data);
-            else { jour.version = r.data.version; jour.manques = r.data.manques; recalcSaved(); render(); }
+            // Saisie modifiée pendant l'envoi : on garde l'écran, mais la
+            // référence devient l'état ENREGISTRÉ (sinon revenir à l'ancienne
+            // valeur affichait « Enregistré » alors que la base avait l'envoi).
+            else { jour = r.data; recalcSaved(); render(); }
             renderStatus();
             if (opts.vider) toast(T.journee_videe);
             else if (!opts.silencieux) toast(T.journee_enregistree);
