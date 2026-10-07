@@ -48,12 +48,41 @@ services:
         max-size: "10m"
         max-file: "5"
 
+  # Sauvegarde automatique avant migration (audit QA du lot 10) : `web`
+  # applique les migrations à son démarrage (CMD du Dockerfile) ; ce service
+  # ponctuel passe juste avant et sauvegarde la base si une migration est en
+  # attente (scripts/sauvegarde_avant_migration.sh, pg_dump de l'image
+  # postgres:16, donc de la même version que le serveur). S'il échoue,
+  # `web` ne démarre pas et rien n'est migré. Fichiers dans
+  # ${KAIROS_BACKUP_DIR:-./backups}/avant_migration_*.sql.gz.
+  sauvegarde-migrations:
+    image: postgres:16
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["bash", "/sauvegarde_avant_migration.sh"]
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-kairos}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-kairos}
+      TZ: Africa/Tunis
+      PGTZ: Africa/Tunis
+    volumes:
+      - ./scripts/sauvegarde_avant_migration.sh:/sauvegarde_avant_migration.sh:ro
+      - ./migrations:/migrations:ro
+      - ${KAIROS_BACKUP_DIR:-./backups}:/sauvegardes
+    logging: *journaux
+
   web:
     build: .
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
+      sauvegarde-migrations:
+        condition: service_completed_successfully
     environment:
       # Mot de passe passé à part (PGPASSWORD, lu par libpq) plutôt que dans
       # l'URL (audit n°2) : un mot de passe contenant @, /, : ou % cassait

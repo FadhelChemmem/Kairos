@@ -262,45 +262,99 @@ def _register_cli(app: Flask) -> None:
         après chaque mise à jour qui touche schema.sql :
 
             docker compose exec web flask migrer
+
+        Lot 10 (audits données et QA) : une seule exécution à la fois
+        (verrou consultatif), jamais bloquée plus de 15 s derrière un autre
+        verrou, et empreinte SHA-256 de chaque migration — une migration
+        modifiée après son application est signalée (ATTENTION) au lieu
+        d'être ignorée en silence. La sauvegarde préalable est faite par le
+        service `sauvegarde-migrations` de docker-compose.yml, avant le
+        démarrage de `web`.
         """
+        import hashlib
         import pathlib
 
         migrations_dir = pathlib.Path(__file__).resolve().parent.parent / "migrations"
-
-        with db.get_cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS schema_migrations (
-                    version     VARCHAR(255) PRIMARY KEY,
-                    applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-                )
-            """)
-            cur.execute("SELECT version FROM schema_migrations")
-            deja_appliquees = {row["version"] for row in cur.fetchall()}
-
         fichiers = sorted(migrations_dir.glob("*.sql")) if migrations_dir.exists() else []
-        a_jouer = [f for f in fichiers if f.stem not in deja_appliquees]
+        empreintes = {f.stem: hashlib.sha256(f.read_bytes()).hexdigest() for f in fichiers}
 
-        if not a_jouer:
-            click.echo("Rien à faire : toutes les migrations sont déjà appliquées.")
-            return
+        # Une seule exécution à la fois (audit données lot 10) : deux
+        # `flask migrer` simultanés (démarrage du conteneur + commande du
+        # README) se marchaient dessus. Verrou consultatif de SESSION, tenu
+        # sur une connexion dédiée pendant toute la commande.
+        verrou = db._pool.getconn()
+        verrou.autocommit = True
+        try:
+            with verrou.cursor() as vc:
+                vc.execute("SELECT pg_advisory_lock(hashtext('kairos:flask-migrer'))")
 
-        for f in a_jouer:
-            click.echo(f"Application de {f.name}...")
-            sql = f.read_text(encoding="utf-8")
-            try:
-                with db.get_cursor() as cur:
-                    cur.execute(sql)
-                    cur.execute(
-                        "INSERT INTO schema_migrations (version) VALUES (%s)", (f.stem,)
+            with db.get_cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS schema_migrations (
+                        version     VARCHAR(255) PRIMARY KEY,
+                        applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
                     )
-            except Exception as exc:
-                click.echo(f"Erreur dans {f.name} : {exc}", err=True)
-                click.echo(
-                    "Migration arrêtée — les précédentes de cette exécution "
-                    "sont déjà enregistrées, celle-ci et les suivantes non.",
-                    err=True,
-                )
-                raise SystemExit(1)
-            click.echo("  -> OK")
+                """)
+                cur.execute("ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS checksum VARCHAR(64)")
+                cur.execute("SELECT version, checksum FROM schema_migrations")
+                deja = {row["version"]: row["checksum"] for row in cur.fetchall()}
 
+            # Migration modifiée APRÈS avoir été appliquée : jamais rejouée,
+            # donc la base ne reçoit pas la correction. On le signale fort
+            # (l'empreinte manquante des migrations antérieures à 0013 est
+            # simplement enregistrée).
+            for version, empreinte in deja.items():
+                actuelle = empreintes.get(version)
+                if actuelle is None:
+                    continue
+                if empreinte is None:
+                    with db.get_cursor() as cur:
+                        cur.execute("UPDATE schema_migrations SET checksum = %s WHERE version = %s AND checksum IS NULL",
+                                    (actuelle, version))
+                elif empreinte != actuelle:
+                    click.echo(
+                        f"ATTENTION : {version}.sql a été modifiée après son application sur cette base "
+                        "— la modification n'y sera JAMAIS jouée. Écrire une nouvelle migration.",
+                        err=True,
+                    )
+
+            a_jouer = [f for f in fichiers if f.stem not in deja]
+            if not a_jouer:
+                click.echo("Rien à faire : toutes les migrations sont déjà appliquées.")
+                return
+
+            for f in a_jouer:
+                click.echo(f"Application de {f.name}...")
+                sql = f.read_text(encoding="utf-8")
+                try:
+                    with db.get_cursor() as cur:
+                        avis = getattr(getattr(cur, "connection", None), "notices", None)
+                        if isinstance(avis, list):
+                            del avis[:]  # connexion du pool : messages d'une requête précédente
+                        # Jamais bloqué indéfiniment derrière une session qui
+                        # tient un verrou (psql ouvert, sauvegarde en cours).
+                        cur.execute("SET LOCAL lock_timeout = '15s'")
+                        cur.execute(sql)
+                        cur.execute(
+                            "INSERT INTO schema_migrations (version, checksum) VALUES (%s, %s)",
+                            (f.stem, empreintes[f.stem]),
+                        )
+                        # WARNING émis par la migration (contrainte laissée
+                        # NOT VALID, etc.) : visibles dans `docker compose logs web`.
+                        for message in avis or []:
+                            if "WARNING" in message:
+                                click.echo("  " + message.strip(), err=True)
+                except Exception as exc:
+                    click.echo(f"Erreur dans {f.name} : {exc}", err=True)
+                    click.echo(
+                        "Migration arrêtée — les précédentes de cette exécution "
+                        "sont déjà enregistrées, celle-ci et les suivantes non.",
+                        err=True,
+                    )
+                    raise SystemExit(1)
+                click.echo("  -> OK")
+        finally:
+            with verrou.cursor() as vc:
+                vc.execute("SELECT pg_advisory_unlock(hashtext('kairos:flask-migrer'))")
+            db._pool.putconn(verrou)
         click.echo(f"{len(a_jouer)} migration(s) appliquée(s).")
