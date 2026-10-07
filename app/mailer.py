@@ -17,6 +17,67 @@ from flask import current_app
 logger = logging.getLogger(__name__)
 
 
+def _liste_autorisee(config) -> tuple[set[str], set[str]] | None:
+    """MAIL_DESTINATAIRES_AUTORISES (mode test, décision du gérant, fin du
+    lot 10) -> (adresses, domaines « @domaine »), en minuscules. None si la
+    variable est vide ou absente : comportement normal, aucun filtre.
+    Renseignée mais sans aucune entrée valide : rien n'est autorisé (on ne
+    retombe jamais sur « tout le monde » à cause d'une faute de frappe)."""
+    brut = (config.get("MAIL_DESTINATAIRES_AUTORISES") or "").strip()
+    if not brut:
+        return None
+    adresses, domaines = set(), set()
+    for entree in (e.strip().lower() for e in brut.split(",")):
+        if not entree:
+            continue
+        if entree.startswith("@") and len(entree) > 1 and "@" not in entree[1:]:
+            domaines.add(entree)
+        elif entree.count("@") == 1 and not entree.endswith("@"):
+            adresses.add(entree)
+        else:
+            logger.error("MAIL_DESTINATAIRES_AUTORISES : « %s » n'est ni une adresse ni un "
+                         "@domaine : ignoré.", entree)
+    return adresses, domaines
+
+
+def masquer(adresse: str) -> str:
+    """« medfadhel@gmail.com » -> « me***@gmail.com » (journaux)."""
+    adresse = (adresse or "").strip()
+    local, arobase, domaine = adresse.rpartition("@")
+    if not arobase:
+        return adresse[:2] + "***"
+    return f"{local[:2]}***@{domaine}"
+
+
+def destinataire_autorise(adresse: str) -> bool:
+    """Vrai si un e-mail peut partir vers `adresse` : toujours sans
+    MAIL_DESTINATAIRES_AUTORISES ; sinon seulement une adresse de la liste
+    ou d'un de ses @domaines (casse ignorée). Ne dépend que de l'adresse et
+    de la configuration, jamais de la base : le dire à l'écran ne révèle
+    pas si un compte existe."""
+    liste = _liste_autorisee(current_app.config)
+    if liste is None:
+        return True
+    adresses, domaines = liste
+    adresse = (adresse or "").strip().lower()
+    if adresse.count("@") != 1:
+        return False
+    return adresse in adresses or "@" + adresse.split("@")[1] in domaines
+
+
+def journaliser_mode_test(app) -> None:
+    """Au démarrage : rappelle dans `docker compose logs web` que les
+    e-mails sont limités (mode test)."""
+    liste = _liste_autorisee(app.config)
+    if liste is not None:
+        adresses, domaines = liste
+        logger.warning(
+            "Mode test des e-mails (MAIL_DESTINATAIRES_AUTORISES) : seuls %s recevront un e-mail ; "
+            "tout autre envoi est bloqué et journalisé.",
+            ", ".join(sorted(adresses | domaines)) or "personne (aucune entrée valide)",
+        )
+
+
 def est_configure() -> bool:
     """Vrai si un serveur SMTP est renseigné (SMTP_HOST). Permet de dire
     clairement « l'e-mail n'a pas pu partir » au lieu d'un faux succès —
@@ -27,7 +88,17 @@ def est_configure() -> bool:
 
 def envoyer(destinataire: str, sujet: str, corps: str) -> bool:
     """Envoie un email texte simple. Retourne True si l'envoi a réussi,
-    False sinon (et log la raison — jamais d'exception qui remonte)."""
+    False sinon (et log la raison — jamais d'exception qui remonte).
+
+    Mode test (MAIL_DESTINATAIRES_AUTORISES) : un destinataire hors liste
+    n'est JAMAIS contacté — c'est vérifié ici, pour tous les chemins
+    d'envoi ; journalisé sans le contenu, adresse masquée."""
+    if not destinataire_autorise(destinataire):
+        logger.warning(
+            "E-mail NON envoyé à %s (mode test : adresse hors de MAIL_DESTINATAIRES_AUTORISES) : %s",
+            masquer(destinataire), sujet,
+        )
+        return False
     hote = current_app.config.get("SMTP_HOST")
     if not hote:
         logger.warning(

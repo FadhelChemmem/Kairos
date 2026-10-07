@@ -122,3 +122,7 @@ class Config:
     SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD") or None
     SMTP_FROM = os.environ.get("SMTP_FROM") or None
     SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "true").lower() == "true"
+    # Mode test des e-mails (décision du gérant, fin du lot 10) : adresses
+    # et/ou domaines (@domaine), séparés par des virgules, seuls autorisés à
+    # recevoir un e-mail. Vide ou absente : aucun filtre. Voir app/mailer.py.
+    MAIL_DESTINATAIRES_AUTORISES = os.environ.get("MAIL_DESTINATAIRES_AUTORISES", "")

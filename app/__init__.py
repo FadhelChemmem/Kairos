@@ -98,6 +98,9 @@ def create_app(config_class=Config) -> Flask:
             "cookie de session peut circuler en clair. Passez-le à true dans .env."
         )
 
+    from . import mailer
+    mailer.journaliser_mode_test(app)
+
     db.init_pool(app.config["DATABASE_URL"])
     utils.register(app)
 

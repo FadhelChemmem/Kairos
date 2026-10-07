@@ -418,6 +418,20 @@ def mot_de_passe_oublie():
             )
             return redirect(url_for("auth.mot_de_passe_oublie"))
 
+        if email and not mailer.destinataire_autorise(email):
+            # Mode test des e-mails (MAIL_DESTINATAIRES_AUTORISES, décision
+            # du gérant) : rien ne partira vers cette adresse, on le dit au
+            # lieu d'un faux « lien envoyé ». La réponse ne dépend que de
+            # l'adresse SAISIE et de la configuration, jamais de la base :
+            # elle ne révèle pas si un compte existe.
+            flash(
+                "Kairos est en phase de test : les e-mails ne partent que vers "
+                "quelques adresses autorisées, et aucun lien ne peut être envoyé "
+                "à cette adresse. Contactez le RH ou l'administrateur.",
+                "error",
+            )
+            return redirect(url_for("auth.mot_de_passe_oublie"))
+
         if email:
             if securite_repo.compter_tentatives_recentes(
                 "mot_de_passe_oublie", email, FENETRE_TENTATIVES_MINUTES

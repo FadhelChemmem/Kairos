@@ -89,6 +89,7 @@ cp .env.example .env
 #   APP_BASE_URL et SMTP_* (la création de compte envoie un email pour choisir son mot de passe)
 #   Derrière un reverse proxy HTTPS : SESSION_COOKIE_SECURE=true, TRUSTED_PROXY_COUNT=1 et
 #   TRUSTED_PROXY_IPS = adresse(s) du proxy vue(s) par l'appli (voir « Reverse proxy » plus bas)
+#   Mode test des e-mails : MAIL_DESTINATAIRES_AUTORISES (voir « E-mails en mode test » plus bas)
 
 docker compose up -d --build
 ```
@@ -140,6 +141,24 @@ TRUSTED_PROXY_IPS=172.16.0.0/12
 SESSION_COOKIE_SECURE=true
 WEB_BIND=0.0.0.0
 ```
+
+### E-mails en mode test
+
+Tant que Kairos est en test, `MAIL_DESTINATAIRES_AUTORISES` limite les
+destinataires possibles : adresses et/ou domaines `@domaine`, séparés par
+des virgules, casse ignorée.
+
+```
+MAIL_DESTINATAIRES_AUTORISES=medfadhelchemmem@gmail.com,kairos@midgardengineering.com
+```
+
+Un e-mail vers une autre adresse n'est **jamais** envoyé, quel que soit le
+chemin (contrôle dans `app/mailer.py`) : il est journalisé sans son contenu,
+adresse masquée (`E-mail NON envoyé à me***@exemple.tn (mode test …)`), et
+l'écran le dit — « Envoyer un lien de réinitialisation » et création de
+compte (« mode test : cette adresse n'est pas dans la liste… »), « Mot de
+passe oublié » (message qui ne dépend que de l'adresse saisie, pas de
+l'existence d'un compte). Vide ou absente : comportement normal.
 
 ## Mettre à jour (après un `git pull`)
 

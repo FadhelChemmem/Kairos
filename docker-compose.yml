@@ -130,6 +130,9 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      # Mode test des e-mails : seules ces adresses / @domaines reçoivent
+      # un e-mail ; vide = aucun filtre (voir .env.example, app/mailer.py).
+      MAIL_DESTINATAIRES_AUTORISES: ${MAIL_DESTINATAIRES_AUTORISES:-}
     ports:
       # WEB_BIND=127.0.0.1 quand le reverse proxy HTTPS tourne sur la même
       # machine HORS conteneur : sinon le port 8000 reste joignable en HTTP

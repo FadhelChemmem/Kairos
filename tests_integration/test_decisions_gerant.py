@@ -141,3 +141,27 @@ class TestClientVoitHeuresHonorairesPiecesJointes(BaseIntegration):
         collegue = self.user("intervenant")
         self.login(collegue)
         self.assertNotIn('id="dailylog"', self.client.get(f"/utilisateurs/{inter}/profil").data.decode())
+
+
+class TestEmailsModeTest(BaseIntegration):
+    def test_lien_rh_hors_liste_aucun_jeton_aucun_envoi(self):
+        from unittest.mock import patch
+        rh = self.user("rh")
+        cible = self.user("intervenant", email="w.rekik@midgard.tn")
+        autorisee = self.user("intervenant", email="Kairos@MidgardEngineering.com")
+        self.app.config.update(SMTP_HOST="smtp.exemple.tn", SMTP_USE_TLS=False,
+                               APP_BASE_URL="https://kairos.exemple.tn",
+                               MAIL_DESTINATAIRES_AUTORISES="medfadhelchemmem@gmail.com,@midgardengineering.com")
+        try:
+            self.login(rh)
+            with patch("smtplib.SMTP") as smtp:
+                self.client.post(f"/utilisateurs/{cible}/envoyer-lien")
+                smtp.assert_not_called()
+                self.client.post(f"/utilisateurs/{autorisee}/envoyer-lien")
+                smtp.assert_called_once()
+            jetons = {r["id"]: r["reset_token_hash"] for r in self.sql(
+                "SELECT id, reset_token_hash FROM utilisateur WHERE id IN (%s, %s)", (cible, autorisee))}
+            self.assertIsNone(jetons[cible])
+            self.assertIsNotNone(jetons[autorisee])
+        finally:
+            self.app.config.update(SMTP_HOST=None, MAIL_DESTINATAIRES_AUTORISES="", APP_BASE_URL="")

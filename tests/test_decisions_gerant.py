@@ -441,5 +441,170 @@ class TestDecision5ProxyDeConfiance(unittest.TestCase):
         self.assertIn("\nTRUSTED_PROXY_IPS=", exemple)
 
 
+# ---------------------------------------------------------------------------
+# Décision 6 : mode test des e-mails (MAIL_DESTINATAIRES_AUTORISES)
+# ---------------------------------------------------------------------------
+LISTE_TEST = "MedFadhelChemmem@gmail.com, @midgardengineering.com"
+CIBLE_HORS_LISTE = {**smoke.AUTRE_UTILISATEUR, "id": 10, "email": "w.rekik@midgard.tn"}
+CIBLE_DANS_LISTE = {**CIBLE_HORS_LISTE, "email": "Kairos@MidgardEngineering.com"}
+RH = {**smoke.USER, "id": 7, "role": "rh"}
+
+
+class TestDecision6MailerModeTest(unittest.TestCase):
+    def setUp(self):
+        from app import create_app
+        self.app = create_app(smoke.TestConfig)
+        self.app.config.update(SMTP_HOST="smtp.exemple.tn", SMTP_USE_TLS=False)
+
+    def _envoyer(self, liste, destinataire, corps="Lien secret : /reinitialiser/JETON123"):
+        from app import mailer
+        self.app.config["MAIL_DESTINATAIRES_AUTORISES"] = liste
+        with self.app.app_context(), patch("smtplib.SMTP") as smtp:
+            ok = mailer.envoyer(destinataire, "Kairos — sujet", corps)
+        return ok, smtp
+
+    def test_liste_vide_ou_absente_comportement_normal(self):
+        for liste in ("", "  ", None):
+            with self.subTest(liste=liste):
+                ok, smtp = self._envoyer(liste, "n.importe@qui.tn")
+                self.assertTrue(ok)
+                smtp.assert_called_once()
+
+    def test_adresse_et_domaine_autorises_casse_ignoree(self):
+        for adresse in ("medfadhelchemmem@GMAIL.com", " MedFadhelChemmem@gmail.com ",
+                        "kairos@midgardengineering.com", "Autre@MIDGARDENGINEERING.COM"):
+            with self.subTest(adresse=adresse):
+                ok, smtp = self._envoyer(LISTE_TEST, adresse)
+                self.assertTrue(ok)
+                smtp.assert_called_once()
+
+    def test_hors_liste_rien_ne_part_journal_sans_contenu_adresse_masquee(self):
+        for adresse in ("w.rekik@midgard.tn", "medfadhelchemmem@gmail.com.pirate.tn",
+                        "x@sous.midgardengineering.com", "medfadhelchemmem@gmail.co", "pas-une-adresse"):
+            with self.subTest(adresse=adresse):
+                with self.assertLogs("app.mailer", "WARNING") as journal:
+                    ok, smtp = self._envoyer(LISTE_TEST, adresse)
+                self.assertFalse(ok)
+                smtp.assert_not_called()
+                ligne = "\n".join(journal.output)
+                self.assertIn("NON envoyé", ligne)
+                self.assertNotIn("JETON123", ligne)
+                self.assertNotIn(adresse, ligne)
+
+    def test_masquage(self):
+        from app.mailer import masquer
+        self.assertEqual(masquer("w.rekik@midgard.tn"), "w.***@midgard.tn")
+        self.assertEqual(masquer("a@b.tn"), "a***@b.tn")
+
+    def test_liste_sans_entree_valide_rien_n_est_autorise(self):
+        with self.assertLogs("app.mailer", "ERROR"):
+            ok, smtp = self._envoyer("gmail.com, @", "a@gmail.com")
+        self.assertFalse(ok)
+        smtp.assert_not_called()
+
+    def test_arriere_plan_filtre_aussi(self):
+        from app import mailer
+        self.app.config["MAIL_DESTINATAIRES_AUTORISES"] = LISTE_TEST
+        with self.app.app_context(), patch("smtplib.SMTP") as smtp, self.assertLogs("app.mailer", "WARNING"):
+            mailer.envoyer_en_arriere_plan("w.rekik@midgard.tn", "s", "c")
+        smtp.assert_not_called()
+
+    def test_avertissement_au_demarrage(self):
+        from app import create_app
+
+        class C(smoke.TestConfig):
+            MAIL_DESTINATAIRES_AUTORISES = LISTE_TEST
+        with self.assertLogs("app.mailer", "WARNING") as journal:
+            create_app(C)
+        self.assertIn("medfadhelchemmem@gmail.com", journal.output[0])
+        self.assertIn("@midgardengineering.com", journal.output[0])
+
+    def test_seul_mailer_envoie(self):
+        """Tous les chemins d'envoi passent par mailer.envoyer (contrôle
+        unique) : aucun autre fichier n'utilise smtplib."""
+        fichiers = [f for f in (RACINE / "app").rglob("*.py") if "smtplib" in f.read_text(encoding="utf-8")]
+        fichiers += [f for f in (RACINE / "scripts").rglob("*.py") if "smtplib" in f.read_text(encoding="utf-8")]
+        self.assertEqual([f.relative_to(RACINE).as_posix() for f in fichiers], ["app/mailer.py"])
+
+    def test_docker_compose_et_env_example(self):
+        self.assertIn("MAIL_DESTINATAIRES_AUTORISES: ${MAIL_DESTINATAIRES_AUTORISES:-}",
+                      (RACINE / "docker-compose.yml").read_text(encoding="utf-8"))
+        self.assertIn("\nMAIL_DESTINATAIRES_AUTORISES=\n", (RACINE / ".env.example").read_text(encoding="utf-8"))
+
+
+class TestDecision6Interface(_Base):
+    LIEN = "/utilisateurs/10/envoyer-lien"
+    JETON = "app.repositories.utilisateurs.set_reset_token"
+    SMTP = "smtplib.SMTP"
+
+    def setUp(self):
+        super().setUp()
+        self.app.config.update(SMTP_HOST="smtp.exemple.tn", SMTP_USE_TLS=False,
+                               MAIL_DESTINATAIRES_AUTORISES=LISTE_TEST,
+                               APP_BASE_URL="https://kairos.exemple.tn")
+
+    def test_rh_lien_hors_liste_pas_de_faux_succes_ni_jeton(self):
+        with self.assertLogs("app", "WARNING"):
+            resp, m = self._requete("post", self.LIEN, espions=[(self.JETON, None), (self.SMTP, None)],
+                                    **{"app.auth.get_user_by_id": RH,
+                                       "app.repositories.utilisateurs.get_utilisateur": CIBLE_HORS_LISTE})
+        self.assertEqual(resp.status_code, 302)
+        m[self.JETON].assert_not_called()
+        m[self.SMTP].assert_not_called()
+        flashes = self._flashes()
+        self.assertTrue(any("n'a pas pu être envoyé" in f and "mode test" in f
+                            and "MAIL_DESTINATAIRES_AUTORISES" in f for f in flashes), flashes)
+        self.assertFalse(any("Lien de réinitialisation envoyé" in f for f in flashes), flashes)
+
+    def test_rh_lien_dans_la_liste_part(self):
+        resp, m = self._requete("post", self.LIEN, espions=[(self.JETON, None), (self.SMTP, MagicMock())],
+                                **{"app.auth.get_user_by_id": RH,
+                                   "app.repositories.utilisateurs.get_utilisateur": CIBLE_DANS_LISTE})
+        m[self.JETON].assert_called_once()
+        m[self.SMTP].assert_called_once()
+        self.assertTrue(any("Lien de réinitialisation envoyé" in f for f in self._flashes()))
+
+    def test_creation_hors_liste_compte_cree_message_mode_test(self):
+        data = {"prenom": "N", "nom": "Ouveau", "email": "nouveau@midgard.tn", "role": "intervenant",
+                "equipe_code": "URBS", "actif": "on"}
+        with self.assertLogs("app", "WARNING"):
+            _, m = self._requete("post", "/utilisateurs/nouveau", data,
+                                 espions=[("app.repositories.utilisateurs.create_utilisateur", 11),
+                                          (self.JETON, None), (self.SMTP, None)],
+                                 **{"app.auth.get_user_by_id": RH})
+        m["app.repositories.utilisateurs.create_utilisateur"].assert_called_once()
+        m[self.JETON].assert_not_called()
+        m[self.SMTP].assert_not_called()
+        flashes = self._flashes()
+        self.assertTrue(any(f.startswith("Compte créé") and "mode test" in f for f in flashes), flashes)
+
+    def _oublie(self, email, utilisateur):
+        self._login()
+        with self.client.session_transaction() as sess:
+            sess.clear()
+        with patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
+                patch("app.repositories.securite.enregistrer_tentative"), \
+                patch("app.auth.get_user_by_email", return_value=utilisateur) as chercher, \
+                patch(self.JETON), patch(self.SMTP) as smtp:
+            resp = self.client.post("/mot-de-passe-oublie", data={"email": email})
+        return resp, self._flashes(), chercher, smtp
+
+    def test_mot_de_passe_oublie_hors_liste_message_honnete_identique(self):
+        _, connu, chercher, smtp = self._oublie("w.rekik@midgard.tn", {**smoke.USER, "email": "w.rekik@midgard.tn"})
+        _, inconnu, _, _ = self._oublie("w.rekik@midgard.tn", None)
+        self.assertEqual(connu, inconnu)  # ne révèle pas si le compte existe
+        chercher.assert_not_called()      # la base n'est même pas consultée
+        smtp.assert_not_called()
+        self.assertTrue(any("phase de test" in f and "aucun lien" in f for f in connu), connu)
+        self.assertFalse(any("va lui être envoyé" in f for f in connu), connu)
+
+    def test_mot_de_passe_oublie_dans_la_liste_comportement_normal(self):
+        _, connu, _, smtp = self._oublie("medfadhelchemmem@gmail.com",
+                                         {**smoke.USER, "id": 1, "email": "medfadhelchemmem@gmail.com"})
+        _, inconnu, _, _ = self._oublie("medfadhelchemmem@gmail.com", None)
+        self.assertEqual(connu, inconnu)
+        self.assertTrue(any("un lien de réinitialisation va lui être envoyé" in f for f in connu), connu)
+
+
 if __name__ == "__main__":
     unittest.main()

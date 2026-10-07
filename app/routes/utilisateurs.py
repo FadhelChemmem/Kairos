@@ -69,11 +69,15 @@ def _refuser_mot_de_passe_hors_admin() -> None:
         abort(403)
 
 
-def _motif_echec_email() -> str:
+def _motif_echec_email(email: str | None = None) -> str:
     """Raison affichée quand un e-mail n'a pas pu partir — jamais de faux
-    succès (lot 10)."""
+    succès (lot 10). Mode test (MAIL_DESTINATAIRES_AUTORISES, décision du
+    gérant) : une adresse hors liste est dite comme telle."""
     if not mailer.est_configure():
         return "SMTP non configuré sur ce serveur"
+    if email is not None and not mailer.destinataire_autorise(email):
+        return ("mode test : cette adresse n'est pas dans la liste des destinataires "
+                "autorisés, MAIL_DESTINATAIRES_AUTORISES")
     return "serveur SMTP indisponible ou en erreur"
 
 
@@ -82,7 +86,12 @@ def _envoyer_lien_mot_de_passe(user_id: int, email: str, creation: bool) -> bool
     auth.generer_lien_reset) et l'envoie, de façon synchrone, à `email` —
     l'adresse ENREGISTRÉE du compte, jamais une adresse saisie à côté.
     Retourne False si l'e-mail n'est pas parti, sans lever d'exception :
-    le compte, lui, existe déjà."""
+    le compte, lui, existe déjà. Adresse hors de MAIL_DESTINATAIRES_AUTORISES
+    (mode test) : aucun jeton n'est généré, rien ne part."""
+    if not mailer.destinataire_autorise(email):
+        current_app.logger.warning("Lien de mot de passe non envoyé à %s (mode test des e-mails).",
+                                   mailer.masquer(email))
+        return False
     try:
         lien = generer_lien_reset(user_id, current_user_id=g.user["id"])
     except Exception:
@@ -435,7 +444,7 @@ def creer():
                     )
                     flash(
                         f"Compte créé pour {prenom} {nom}, mais l'e-mail n'a "
-                        f"pas pu être envoyé ({_motif_echec_email()}) : la "
+                        f"pas pu être envoyé ({_motif_echec_email(email)}) : la "
                         "personne ne pourra pas se connecter tant qu'un mot de "
                         "passe n'est pas défini. Renvoyez-lui le lien depuis sa fiche "
                         "(« Envoyer un lien de réinitialisation ») une fois "
@@ -719,11 +728,16 @@ def envoyer_lien_reinitialisation(user_id: int):
             "Ce compte est désactivé : réactivez-le avant d'envoyer un lien "
             "(un compte désactivé ne peut pas définir de mot de passe).", "error",
         )
-    elif not mailer.est_configure():
+    elif not mailer.est_configure() or not mailer.destinataire_autorise(cible["email"]):
         # Aucun jeton généré : il remplacerait pour rien un lien encore
-        # valable (celui de la création du compte, par exemple).
+        # valable (celui de la création du compte, par exemple). Mode test
+        # (MAIL_DESTINATAIRES_AUTORISES) : adresse hors liste, rien ne part.
+        if mailer.est_configure():
+            current_app.logger.warning("Lien de réinitialisation non envoyé à %s (mode test des e-mails).",
+                                       mailer.masquer(cible["email"]))
         flash(
-            f"L'e-mail de réinitialisation n'a pas pu être envoyé ({_motif_echec_email()}) : "
+            f"L'e-mail de réinitialisation n'a pas pu être envoyé "
+            f"({_motif_echec_email(cible['email'])}) : "
             f"aucun lien n'a été transmis à {cible['email']}.", "error",
         )
     elif _envoyer_lien_mot_de_passe(user_id, cible["email"], creation=False):
@@ -734,7 +748,7 @@ def envoyer_lien_reinitialisation(user_id: int):
         )
     else:
         flash(
-            f"L'e-mail de réinitialisation n'a pas pu être envoyé ({_motif_echec_email()}) : "
+            f"L'e-mail de réinitialisation n'a pas pu être envoyé ({_motif_echec_email(cible['email'])}) : "
             f"aucun lien n'a été transmis à {cible['email']}. Réessayez plus tard.", "error",
         )
     return redirect(url_for("utilisateurs.fiche", user_id=user_id))
