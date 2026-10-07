@@ -8,6 +8,7 @@ renvoie False (ex. flash d'avertissement pour l'admin).
 """
 import logging
 import smtplib
+import ssl
 import threading
 from email.message import EmailMessage
 
@@ -41,7 +42,9 @@ def envoyer(destinataire: str, sujet: str, corps: str) -> bool:
     try:
         with smtplib.SMTP(hote, port, timeout=10) as serveur:
             if use_tls:
-                serveur.starttls()
+                # Certificat du serveur vérifié (audit sécurité I9) : sans
+                # contexte, starttls() ne vérifie ni le certificat ni le nom.
+                serveur.starttls(context=ssl.create_default_context())
             if utilisateur and mot_de_passe:
                 serveur.login(utilisateur, mot_de_passe)
             serveur.send_message(msg)

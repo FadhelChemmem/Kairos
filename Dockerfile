@@ -1,4 +1,6 @@
-FROM python:3.12-slim
+# Distribution épinglée (audit QA I8) : « 3.12-slim » change de Debian sans
+# prévenir (bookworm -> trixie).
+FROM python:3.12-slim-bookworm
 
 # libpq-dev n'est pas nécessaire avec psycopg2-binary, mais on garde les
 # certificats à jour et un utilisateur non-root par hygiène de base.
@@ -11,18 +13,23 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
-
 # Le dossier uploads/ est un volume Docker monté par-dessus /app/uploads
 # (voir docker-compose.yml) : le créer ici, avec les bonnes permissions,
 # AVANT le montage garantit que Docker copie ces permissions dans le
 # volume à sa toute première création. Sur un volume déjà existant créé
 # avant ce correctif (2026-09-20), un chown manuel une seule fois reste
 # nécessaire : `docker compose exec -u root web chown -R appuser:appuser
-# /app/uploads` — voir le README.
+# /app/uploads` — voir le README. UID inchangé (premier utilisateur créé,
+# 1000) : le volume existant reste lisible.
 RUN useradd --create-home appuser \
     && mkdir -p /app/uploads \
-    && chown -R appuser:appuser /app
+    && chown appuser:appuser /app/uploads
+
+# Code en propriété de root (audit QA I8) : l'appli, qui tourne en
+# appuser, ne peut pas réécrire son propre code ; seul /app/uploads lui
+# est accessible en écriture. Ce qui entre dans l'image est fixé par
+# .dockerignore (liste blanche).
+COPY . .
 USER appuser
 
 ENV FLASK_APP=wsgi.py \
@@ -38,7 +45,8 @@ EXPOSE 8000
 #   clients lents (upload de 25 Mo, envoi SMTP) bloquaient toute l'appli.
 #   Le pool de connexions (db.py, 10 max par worker) couvre les 4 threads.
 # - --access-logfile - : les requêtes apparaissent dans `docker compose
-#   logs web` (utile pour reconstituer un incident).
+#   logs web` (utile pour reconstituer un incident) ; gunicorn.conf.py y
+#   masque les jetons de réinitialisation (audit sécurité I10).
 # - --worker-tmp-dir /dev/shm : évite les blocages de heartbeat gunicorn
 #   sur un disque lent (NAS).
 # Les en-têtes X-Forwarded-* d'un reverse proxy sont interprétés par
@@ -53,4 +61,4 @@ EXPOSE 8000
 # jour ; si une migration échoue, le conteneur ne démarre pas (erreur
 # visible dans `docker compose logs web`) plutôt que de servir une appli
 # à moitié à jour.
-CMD ["sh", "-c", "flask migrer && exec gunicorn --bind 0.0.0.0:8000 --workers 3 --threads 4 --worker-class gthread --timeout 60 --worker-tmp-dir /dev/shm --access-logfile - wsgi:app"]
+CMD ["sh", "-c", "flask migrer && exec gunicorn -c gunicorn.conf.py --bind 0.0.0.0:8000 --workers 3 --threads 4 --worker-class gthread --timeout 60 --worker-tmp-dir /dev/shm --access-logfile - wsgi:app"]

@@ -482,5 +482,67 @@ class TestSessions(_BaseLot10):
         m["app.auth._verifier_rappel_dailylog"].assert_not_called()
 
 
+
+class TestDurcissement(unittest.TestCase):
+    """Audit sécurité I8, I9, I10 ; audit QA m5, m6."""
+
+    def test_starttls_verifie_le_certificat(self):
+        import ssl
+        app = create_app(smoke.TestConfig)
+        app.config.update(SMTP_HOST="smtp.exemple.tn", SMTP_USE_TLS=True)
+        from app import mailer
+        with app.app_context(), patch("smtplib.SMTP") as smtp:
+            self.assertTrue(mailer.envoyer("a@b.tn", "s", "c"))
+        serveur = smtp.return_value.__enter__.return_value
+        contexte = serveur.starttls.call_args.kwargs["context"]
+        self.assertEqual(contexte.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(contexte.check_hostname)
+
+    def _config(self, proxys, bind):
+        class C(smoke.TestConfig):
+            TESTING = False
+            SECRET_KEY = "k" * 40
+            TRUSTED_PROXY_COUNT = proxys
+            WEB_BIND = bind
+        return C
+
+    def test_proxy_de_confiance_exige_web_bind_local(self):
+        with self.assertRaises(RuntimeError):
+            create_app(self._config(1, "0.0.0.0"))
+        create_app(self._config(1, "127.0.0.1"))
+        create_app(self._config(0, "0.0.0.0"))
+
+    def test_jeton_masque_dans_le_journal_gunicorn(self):
+        import importlib.util
+        import logging
+        spec = importlib.util.spec_from_file_location("gunicorn_conf", RACINE / "gunicorn.conf.py")
+        conf = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(conf)
+        args = {"r": "GET /reinitialiser/AbC-123_x HTTP/1.1", "f": "https://k.tn/reinitialiser/AbC-123_x?a=1",
+                "U": "/reinitialiser/AbC-123_x", "s": "200"}
+        record = logging.LogRecord("gunicorn.access", logging.INFO, "", 0, '%(r)s %(s)s "%(f)s"', None, None)
+        record.args = args
+        self.assertTrue(conf.MasqueJetonReset().filter(record))
+        ligne = record.getMessage()
+        self.assertNotIn("AbC-123_x", ligne)
+        self.assertIn("GET /reinitialiser/*** HTTP/1.1 200", ligne)
+        self.assertIn("/reinitialiser/***?a=1", ligne)
+
+    def test_dockerfile_charge_gunicorn_conf(self):
+        self.assertIn("gunicorn -c gunicorn.conf.py", (RACINE / "Dockerfile").read_text(encoding="utf-8"))
+
+    def test_variables_vides_dans_env_sans_plantage(self):
+        import importlib
+        import os
+        from app import config
+        with patch.dict(os.environ, {"SMTP_PORT": "", "MAX_CONTENT_LENGTH": ""}):
+            importlib.reload(config)
+            self.assertEqual(config.Config.SMTP_PORT, 587)
+        importlib.reload(config)
+
+    def test_serveur_de_dev_local_seulement(self):
+        self.assertIn('host="127.0.0.1"', (RACINE / "wsgi.py").read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()

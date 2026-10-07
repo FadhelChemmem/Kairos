@@ -78,6 +78,13 @@ services:
   web:
     build: .
     restart: unless-stopped
+    # Durcissement (audit QA m8) : aucun privilège supplémentaire possible,
+    # aucune capacité Linux (gunicorn écoute sur 8000, en appuser), et le
+    # temps de finir les requêtes en cours à l'arrêt.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    stop_grace_period: 30s
     depends_on:
       db:
         condition: service_healthy
@@ -94,6 +101,11 @@ services:
       APP_BASE_URL: ${APP_BASE_URL:-}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       TRUSTED_PROXY_COUNT: ${TRUSTED_PROXY_COUNT:-0}
+      # Transmis à l'appli pour qu'elle refuse de démarrer si elle croit
+      # X-Forwarded-For (TRUSTED_PROXY_COUNT > 0) alors que le port 8000
+      # reste joignable sans passer par le proxy (audit sécurité I8).
+      WEB_BIND: ${WEB_BIND:-0.0.0.0}
+      SESSION_DUREE_ABSOLUE_JOURS: ${SESSION_DUREE_ABSOLUE_JOURS:-30}
       # Fuseau horaire (PROMPT_CORRECTIONS.md P2 #16) : sans ça, le
       # conteneur (Debian slim) tourne en UTC — `datetime.date.today()`
       # (utilisé partout : DailyLog, deadlines, verrouillage du jour...)

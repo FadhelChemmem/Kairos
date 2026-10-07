@@ -76,6 +76,12 @@ class Config:
     # nginx/Synology en HTTPS devant gunicorn). 0 = accès direct : les
     # en-têtes X-Forwarded-* sont alors ignorés. Voir app/__init__.py.
     TRUSTED_PROXY_COUNT = int(os.environ.get("TRUSTED_PROXY_COUNT", "0") or 0)
+    # Adresse sur laquelle docker-compose.yml publie le port 8000 (WEB_BIND
+    # du .env, transmis au conteneur). Avec TRUSTED_PROXY_COUNT > 0, elle
+    # DOIT être 127.0.0.1 : sinon n'importe qui sur le LAN parle directement
+    # à gunicorn et choisit son X-Forwarded-For (limiteur de connexion
+    # contourné, audit sécurité I8) — voir app/__init__.py.
+    WEB_BIND = os.environ.get("WEB_BIND", "0.0.0.0")
 
     # Protection CSRF (Flask-WTF CSRFProtect, PROMPT_CORRECTIONS.md P2 #25) :
     # chaque POST doit porter le jeton de session, soit dans le champ caché
@@ -93,7 +99,7 @@ class Config:
     UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/app/uploads")
 
     # Taille de fichier max acceptée pour un upload (défaut 25 Mo).
-    MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH", 25 * 1024 * 1024))
+    MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH") or 25 * 1024 * 1024)
 
     # Envoi d'email (mot de passe oublié, mot de passe à la création d'un
     # compte — retour Fadhel, 2026-09-20). Tant que SMTP_HOST n'est pas
@@ -101,7 +107,9 @@ class Config:
     # logguer un avertissement — l'appli fonctionne normalement sans, ces
     # deux fonctionnalités précises sont juste inactives.
     SMTP_HOST = os.environ.get("SMTP_HOST") or None
-    SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
+    # « or » : une variable présente mais vide dans .env (SMTP_PORT=) faisait
+    # planter le démarrage (audit QA m5).
+    SMTP_PORT = int(os.environ.get("SMTP_PORT") or 587)
     SMTP_USER = os.environ.get("SMTP_USER") or None
     SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD") or None
     SMTP_FROM = os.environ.get("SMTP_FROM") or None

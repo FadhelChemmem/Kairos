@@ -41,6 +41,28 @@ def _valider_secret_key(app: Flask) -> None:
         )
 
 
+_ADRESSES_LOCALES = {"127.0.0.1", "localhost", "::1", "[::1]"}
+
+
+def _valider_proxy(app: Flask) -> None:
+    """Refuse de démarrer si l'appli croit l'en-tête X-Forwarded-For
+    (TRUSTED_PROXY_COUNT > 0) alors que le port 8000 est publié sur le LAN
+    (WEB_BIND différent de 127.0.0.1) : n'importe qui pourrait alors
+    contacter gunicorn directement, choisir son « IP » à chaque tentative
+    et contourner le limiteur de connexion (audit sécurité I8, lot 10 —
+    40 échecs sur un même compte, 40 IP inventées, aucun blocage).
+    Ignoré en test, comme _valider_secret_key."""
+    if app.testing or not app.config.get("TRUSTED_PROXY_COUNT"):
+        return
+    if (app.config.get("WEB_BIND") or "0.0.0.0").strip() not in _ADRESSES_LOCALES:
+        raise RuntimeError(
+            "TRUSTED_PROXY_COUNT > 0 exige WEB_BIND=127.0.0.1 dans .env : le port 8000 ne "
+            "doit être joignable que par le reverse proxy, sinon l'en-tête X-Forwarded-For "
+            "est falsifiable et le limiteur de connexion contournable. Corrigez .env (ou "
+            "remettez TRUSTED_PROXY_COUNT=0 sans proxy) puis relancez."
+        )
+
+
 def _chemin_interne(url: str | None) -> str | None:
     """Réduit un Referer absolu ("http://hote/projets/3?x=1") à son chemin
     interne ("/projets/3?x=1"), pour le valider avec utils.is_safe_next
@@ -86,6 +108,7 @@ def create_app(config_class=Config) -> Flask:
     # confiance devant l'appli (0 = accès direct, aucun en-tête X-Forwarded-*
     # n'est cru — sinon n'importe qui pourrait usurper une IP).
     nb_proxys = app.config.get("TRUSTED_PROXY_COUNT", 0)
+    _valider_proxy(app)
     if nb_proxys:
         app.wsgi_app = ProxyFix(
             app.wsgi_app, x_for=nb_proxys, x_proto=nb_proxys,
