@@ -72,6 +72,7 @@ def get_user_by_email(email: str) -> dict | None:
     return db.query_one(
         """
         SELECT u.id, u.email, u.mot_de_passe_hash, u.nom, u.prenom, u.role, u.actif,
+               u.fuseau, COALESCE(u.date_embauche, u.created_at::date) AS debut_daily_log,
                COALESCE(s.generation, 0) AS session_gen
         FROM utilisateur u
         LEFT JOIN utilisateur_session s ON s.utilisateur_id = u.id
@@ -85,7 +86,8 @@ def get_user_by_id(user_id: int) -> dict | None:
     return db.query_one(
         """
         SELECT u.id, u.email, u.nom, u.prenom, u.role, u.actif, u.poste, u.equipe_code,
-               u.avatar_chemin, COALESCE(s.generation, 0) AS session_gen
+               u.avatar_chemin, u.fuseau, COALESCE(u.date_embauche, u.created_at::date) AS debut_daily_log,
+               COALESCE(s.generation, 0) AS session_gen
         FROM utilisateur u
         LEFT JOIN utilisateur_session s ON s.utilisateur_id = u.id
         WHERE u.id = %s
@@ -173,12 +175,13 @@ def _rappel_dailylog_du_jour() -> None:
     I13) : il n'était créé qu'à la connexion explicite, or la session dure
     30 jours — il ne partait presque jamais. Jamais bloquant : une erreur
     est journalisée, la page s'affiche."""
-    aujourdhui = datetime.date.today().isoformat()
+    # « Aujourd'hui » au fuseau de la personne (Tunis / Guyane, lot 10).
+    aujourdhui = dailylog_repo.aujourdhui_pour(g.user).isoformat()
     if g.user["role"] in ("rh", "client") or session.get("rappel_le") == aujourdhui:
         return
     session["rappel_le"] = aujourdhui
     try:
-        _verifier_rappel_dailylog(g.user["id"])
+        _verifier_rappel_dailylog(g.user)
     except Exception:
         current_app.logger.exception("Rappel Daily log impossible (id=%s)", g.user["id"])
 
@@ -197,28 +200,25 @@ def login_required(view):
     return wrapped
 
 
-def _verifier_rappel_dailylog(user_id: int, aujourdhui: "datetime.date | None" = None) -> None:
-    """Notification automatique si le DailyLog de la veille n'a pas été
-    rempli, déclenchée à la connexion du lendemain (voir spec). Une seule
-    fois par jour : on vérifie qu'un tel rappel n'a pas déjà été créé
-    aujourd'hui avant d'en recréer un. `aujourdhui` est injectable pour les
-    tests (voir tests/test_smoke.py) — sinon la date du jour."""
-    aujourdhui = aujourdhui or datetime.date.today()
-    hier = aujourdhui - datetime.timedelta(days=1)
-    # Pas de rappel pour un week-end non travaillé (heuristique simple, pas
-    # de notion de jour férié/congé modélisée pour l'instant). Corrigé
-    # 2026-09-19 (retour Fadhel) : ça ne sautait que le dimanche, pas le
-    # samedi — weekday() 5 = samedi, 6 = dimanche.
-    if hier.weekday() >= 5:
+def _verifier_rappel_dailylog(user: dict, aujourdhui: "datetime.date | None" = None) -> None:
+    """Notification automatique si le dernier jour ouvré (le lundi : le
+    vendredi) n'a ni heures ni absence — au plus une par jour. Lot 10 :
+    « aujourd'hui » au fuseau de la personne, et pas de rappel pour un jour
+    antérieur à son arrivée (date d'embauche, à défaut création du compte).
+    `aujourdhui` est injectable pour les tests."""
+    aujourdhui = aujourdhui or dailylog_repo.aujourdhui_pour(user)
+    jour = dailylog_repo.jour_ouvre_precedent(aujourdhui)
+    debut = dailylog_repo.debut_daily_log(user)
+    if debut is not None and jour < debut:
         return
-    # Heures saisies OU journée marquée absente (Daily log v2) : pas d'oubli.
-    if dailylog_repo.jour_renseigne(user_id, hier):
+    # Heures saisies OU journée marquée absente : pas d'oubli.
+    if dailylog_repo.jour_renseigne(user["id"], jour):
         return
-    if notifications_repo.a_deja_un_rappel_dailylog(user_id, aujourdhui):
+    if notifications_repo.a_deja_un_rappel_dailylog(user["id"], aujourdhui):
         return
     notifications_repo.creer(
-        user_id, "rh_info",
-        f"Rappel DailyLog : vous n'avez pas rempli votre journée du {hier.strftime('%d/%m/%Y')}.",
+        user["id"], "rh_info",
+        f"Rappel DailyLog : vous n'avez pas rempli votre journée du {jour.strftime('%d/%m/%Y')}.",
     )
 
 
@@ -357,8 +357,8 @@ def login():
             session["iat"] = int(time.time())
             # Pas de Daily log pour le RH ni un Client (lot 7).
             if user["role"] not in ("rh", "client"):
-                _verifier_rappel_dailylog(user["id"])
-                session["rappel_le"] = datetime.date.today().isoformat()
+                _verifier_rappel_dailylog(user)
+                session["rappel_le"] = dailylog_repo.aujourdhui_pour(user).isoformat()
             # Ouverture de redirection (PROMPT_CORRECTIONS.md P0 #5) : ?next=
             # n'est jamais fiable tel quel (lien envoyé par un tiers) — voir
             # is_safe_next() dans utils.py.

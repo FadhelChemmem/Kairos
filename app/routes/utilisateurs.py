@@ -127,63 +127,64 @@ def _parser_date_embauche(date_str: str | None):
     return datetime.date.fromisoformat(date_str)
 
 
-def _semaine_derniere(user_id: int, projets_visibles_ids: set | None = None) -> list[dict]:
+def _jours_daily_log(utilisateur: dict, jours: list, projets_visibles_ids: set | None) -> list[dict]:
+    """Daily log de `utilisateur` sur `jours`, en DEUX requêtes (lignes et
+    absences de la période) au lieu d'une par jour (lot 10 : jusqu'à 84
+    requêtes pour « 12 semaines »).
+
+    `projets_visibles_ids` : pour le Daily log d'une AUTRE personne, seules
+    les lignes des projets que le visiteur peut voir (audit du 2026-09-29) —
+    retirées, pas masquées : un profil ne doit pas laisser deviner qu'une
+    personne travaille sur un projet d'une autre équipe."""
+    if not jours:
+        return []
+    debut, fin = min(jours), max(jours)
+    par_jour: dict = {}
+    for e in dailylog_repo.list_entrees_periode(utilisateur["id"], debut, fin):
+        if projets_visibles_ids is not None and e["projet_id"] not in projets_visibles_ids:
+            continue
+        par_jour.setdefault(e["date"], []).append(e)
+    absents = dailylog_repo.jours_absents(utilisateur["id"], debut, fin)
+    return [
+        {
+            "date": jour,
+            "entrees": par_jour.get(jour, []),
+            "total_heures": sum(float(e["heures"]) for e in par_jour.get(jour, [])),
+            "absent": jour in absents,
+        }
+        for jour in jours
+    ]
+
+
+def _peut_corriger(utilisateur: dict) -> bool:
+    """Lien « Corriger » (lot 10) : l'Admin et les chefs de projet ouvrent le
+    Daily log d'un employé ; la page ne leur laisse modifier que ce qu'ils
+    ont le droit de corriger (lignes de leurs projets pour un chef)."""
+    return (g.user["role"] in ("admin", "chef_de_projet") and utilisateur["id"] != g.user["id"]
+            and utilisateur.get("role") in ("admin", "chef_de_projet", "intervenant"))
+
+
+def _semaine_derniere(utilisateur: dict, projets_visibles_ids: set | None = None) -> list[dict]:
     """Daily log en lecture seule de la semaine dernière — lundi à vendredi
     uniquement (retour Fadhel, 2026-09-21 : "ne pas afficher samedi et
-    dimanche"), partagé par /moi (mon_profil, où c'est le propre DailyLog
-    de l'utilisateur) et par la fiche en lecture seule d'un chef de projet
-    (fiche(), où c'est celui d'un autre utilisateur).
-
-    `projets_visibles_ids` (audit du 2026-09-29) : pour le DailyLog d'une
-    AUTRE personne, seules les lignes des projets que le visiteur peut voir
-    — sinon la fiche montrait les noms de projets d'autres équipes (même
-    règle que _fenetre_7_jours pour la page de profil)."""
-    aujourdhui = datetime.date.today()
+    dimanche"), partagé par /moi (mon_profil) et par la fiche en lecture
+    seule d'un chef de projet. Semaine calculée au fuseau de la personne
+    (lot 10)."""
+    aujourdhui = dailylog_repo.aujourdhui_pour(utilisateur)
     lundi_cette_semaine = aujourdhui - datetime.timedelta(days=aujourdhui.weekday())
     lundi_semaine_derniere = lundi_cette_semaine - datetime.timedelta(days=7)
-    jours = []
-    for i in range(5):  # lundi (0) à vendredi (4)
-        jour = lundi_semaine_derniere + datetime.timedelta(days=i)
-        entrees = dailylog_repo.list_entrees_jour(user_id, jour)
-        if projets_visibles_ids is not None:
-            entrees = [e for e in entrees if e["projet_id"] in projets_visibles_ids]
-        jours.append({
-            "date": jour,
-            "entrees": entrees,
-            "total_heures": sum(float(e["heures"]) for e in entrees),
-        })
-    return jours
+    jours = [lundi_semaine_derniere + datetime.timedelta(days=i) for i in range(5)]
+    return _jours_daily_log(utilisateur, jours, projets_visibles_ids)
 
 
-def _fenetre_7_jours(user_id: int, projets_visibles_ids: set, nb_jours: int = 7) -> list[dict]:
-    """DailyLog glissant sur 7 jours (aujourd'hui inclus, en remontant),
-    pour la page de profil d'une personne (Lot 5, retour Fadhel,
-    2026-09-28 : "fenêtre 7 jours") — différent de _semaine_derniere
-    ci-dessus (lundi-vendredi de la semaine PRÉCÉDENTE, utilisé par
-    /moi et la fiche chef de projet) : ici on veut l'activité RÉCENTE de
-    la personne consultée, weekends inclus s'il y a eu du DailyLog.
-
-    Chaque ligne dont le projet n'est PAS dans `projets_visibles_ids`
-    (ce que LE VISITEUR peut voir, voir projets.list_ids_visibles) est
-    retirée plutôt que masquée en clair : un profil ne doit pas laisser
-    deviner, même sans le nom, qu'une personne travaille sur un projet
-    d'une équipe à laquelle le visiteur n'a pas accès."""
-    aujourdhui = datetime.date.today()
-    jours = []
-    # Du plus récent au plus ancien (2026-09-29) : "Voir +" ajoute les
-    # semaines précédentes en dessous.
-    for i in range(nb_jours):
-        jour = aujourdhui - datetime.timedelta(days=i)
-        entrees = [
-            e for e in dailylog_repo.list_entrees_jour(user_id, jour)
-            if e["projet_id"] in projets_visibles_ids
-        ]
-        jours.append({
-            "date": jour,
-            "entrees": entrees,
-            "total_heures": sum(float(e["heures"]) for e in entrees),
-        })
-    return jours
+def _fenetre_7_jours(utilisateur: dict, projets_visibles_ids: set, nb_jours: int = 7) -> list[dict]:
+    """Daily log glissant (aujourd'hui inclus, en remontant, au fuseau de la
+    personne), pour la page de profil d'une personne (Lot 5, retour Fadhel,
+    2026-09-28 : "fenêtre 7 jours") ; week-ends inclus. Du plus récent au
+    plus ancien : « Voir + » ajoute les semaines précédentes en dessous."""
+    aujourdhui = dailylog_repo.aujourdhui_pour(utilisateur)
+    jours = [aujourdhui - datetime.timedelta(days=i) for i in range(nb_jours)]
+    return _jours_daily_log(utilisateur, jours, projets_visibles_ids)
 
 
 @bp.route("/<int:user_id>/profil")
@@ -225,8 +226,9 @@ def profil_personne(user_id: int):
     return render_template(
         "utilisateur_profil_personne.html",
         utilisateur=utilisateur,
-        jours=(_fenetre_7_jours(user_id, projets_visibles_ids, nb_jours=7 * semaines)
+        jours=(_fenetre_7_jours(utilisateur, projets_visibles_ids, nb_jours=7 * semaines)
                if voir_daily_log else None),
+        peut_corriger=voir_daily_log and _peut_corriger(utilisateur),
         semaines=semaines,
         posts_plus_anciens=posts_plus_anciens,
         taches_en_cours=taches_repo.list_en_cours_pour_profil(user_id, viewer_id, limit=8),
@@ -284,6 +286,7 @@ def creer():
         equipe_code = request.form.get("equipe_code") or None
         role = request.form.get("role", "intervenant")
         actif_compte = request.form.get("actif") == "on"
+        fuseau = request.form.get("fuseau") or dailylog_repo.FUSEAU_DEFAUT
 
         noms_champs = request.form.getlist("champ_perso_nom")
         valeurs_champs = request.form.getlist("champ_perso_valeur")
@@ -302,6 +305,8 @@ def creer():
             flash("Prénom, nom et email sont obligatoires.", "error")
         elif role not in _roles_attribuables():
             flash("Rôle invalide.", "error")
+        elif fuseau not in dailylog_repo.FUSEAUX:
+            flash("Bureau (fuseau horaire) invalide.", "error")
         elif date_embauche_valide is False:
             flash("Date d'embauche invalide.", "error")
         elif erreur := _erreur_fiche(prenom, nom, email, telephone, poste, adresse,
@@ -322,7 +327,7 @@ def creer():
                     prenom=prenom, nom=nom, role=role, telephone=telephone,
                     poste=poste, adresse=adresse, date_embauche=date_embauche_valide,
                     equipe_code=equipe_code, verifie=False, actif=actif_compte,
-                    champs_perso=champs_perso, current_user_id=g.user["id"],
+                    champs_perso=champs_perso, current_user_id=g.user["id"], fuseau=fuseau,
                 )
                 _enregistrer_avatar_si_fourni(user_id, g.user["id"])
                 email_envoye = False
@@ -376,6 +381,7 @@ def creer():
     rh_titulaire = utilisateurs_repo.rh_deja_attribue()
     return render_template(
         "utilisateur_creer.html", equipe_choices=EQUIPE_CHOICES, rh_titulaire=rh_titulaire,
+        fuseaux=dailylog_repo.FUSEAUX,
     )
 
 
@@ -413,7 +419,7 @@ def mon_profil():
     return render_template(
         "utilisateur_profil.html",
         utilisateur=utilisateur,
-        semaine_derniere=_semaine_derniere(user_id),
+        semaine_derniere=_semaine_derniere(utilisateur),
     )
 
 
@@ -479,7 +485,8 @@ def fiche(user_id: int):
         return render_template(
             "utilisateur_voir.html",
             utilisateur=utilisateur,
-            semaine_derniere=_semaine_derniere(user_id, projets_repo.list_ids_visibles(g.user["id"])),
+            semaine_derniere=_semaine_derniere(utilisateur, projets_repo.list_ids_visibles(g.user["id"])),
+            peut_corriger=_peut_corriger(utilisateur),
         )
 
     if request.method == "POST" and _cible_protegee(utilisateur):
@@ -496,6 +503,7 @@ def fiche(user_id: int):
         date_embauche = request.form.get("date_embauche") or None
         equipe_code = request.form.get("equipe_code") or None
         role = request.form.get("role", utilisateur["role"])
+        fuseau = request.form.get("fuseau") or utilisateur.get("fuseau") or dailylog_repo.FUSEAU_DEFAUT
 
         noms_champs = request.form.getlist("champ_perso_nom")
         valeurs_champs = request.form.getlist("champ_perso_valeur")
@@ -527,6 +535,8 @@ def fiche(user_id: int):
             flash("Vous ne pouvez pas changer votre propre rôle depuis cet écran.", "error")
         elif role not in _roles_attribuables() and role != utilisateur["role"]:
             flash("Rôle invalide.", "error")
+        elif fuseau not in dailylog_repo.FUSEAUX:
+            flash("Bureau (fuseau horaire) invalide.", "error")
         elif not prenom or not nom or not email:
             flash("Prénom, nom et email sont obligatoires.", "error")
         elif date_embauche_valide is False:
@@ -540,7 +550,7 @@ def fiche(user_id: int):
                     user_id, prenom=prenom, nom=nom, email=email, telephone=telephone,
                     poste=poste, adresse=adresse, date_embauche=date_embauche_valide,
                     equipe_code=equipe_code, role=role, champs_perso=champs_perso,
-                    current_user_id=g.user["id"],
+                    current_user_id=g.user["id"], fuseau=fuseau,
                 )
                 _enregistrer_avatar_si_fourni(user_id, g.user["id"])
                 nouveau_mot_de_passe = request.form.get("nouveau_mot_de_passe", "")
@@ -590,6 +600,7 @@ def fiche(user_id: int):
             "prenom": prenom, "nom": nom, "email": email, "telephone": telephone,
             "poste": poste, "adresse": adresse, "date_embauche": date_embauche,
             "equipe_code": equipe_code, "role": role, "champs_perso": champs_perso,
+            "fuseau": fuseau,
         }
 
     return render_template(
@@ -597,6 +608,7 @@ def fiche(user_id: int):
         utilisateur=utilisateur, equipe_choices=EQUIPE_CHOICES,
         roles_creables=_roles_attribuables(),
         lecture_seule=_cible_protegee(utilisateur),
+        fuseaux=dailylog_repo.FUSEAUX,
     )
 
 

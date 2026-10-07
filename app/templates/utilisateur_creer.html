@@ -96,6 +96,15 @@
       <label for="actif" class="toggle" aria-hidden="true"><span class="toggle-knob"></span></label>
     </div>
 
+    <div class="form-row">
+      <label for="fuseau">Bureau <span style="font-weight:400; color:var(--text-faint);">— fuseau horaire du Daily log</span></label>
+      <select id="fuseau" name="fuseau">
+        {% for code, libelle in fuseaux.items() %}
+          <option value="{{ code }}" {{ 'selected' if code == f.get('fuseau', 'Africa/Tunis') }}>{{ libelle }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
     <div class="section-title">Accès</div>
     <div class="radio-opt selected">
       <input type="radio" checked disabled aria-label="E-mail d'activation" style="margin-top:2px; width:auto;">

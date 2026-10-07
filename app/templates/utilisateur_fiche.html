@@ -107,6 +107,15 @@
       </div>
     </div>
 
+    <div class="form-row">
+      <label for="fuseau">Bureau <span style="font-weight:400; color:var(--text-faint);">— fuseau horaire du Daily log (« aujourd’hui », fenêtre de 14 jours, rappel)</span></label>
+      <select id="fuseau" name="fuseau">
+        {% for code, libelle in fuseaux.items() %}
+          <option value="{{ code }}" {{ 'selected' if code == (utilisateur.fuseau or 'Africa/Tunis') }}>{{ libelle }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
     <div class="section-title">Mot de passe</div>
     <div class="form-row">
       <label for="nouveau_mot_de_passe">Nouveau mot de passe <span style="font-weight:400; color:var(--text-faint);">— laisser vide pour ne pas le changer</span></label>
@@ -133,6 +142,14 @@
     </fieldset>
 
   </form>
+  {% if g.user.role == 'admin' and utilisateur.role in ('admin', 'chef_de_projet', 'intervenant') and utilisateur.id != g.user.id %}
+  {# Lot 10 : correction du Daily log par l'Admin (toute date, absence comprise). #}
+  <div class="card" style="padding:16px 22px; margin-top:16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+    <h2 class="carte-titre" style="margin:0;">Daily log</h2>
+    <span style="font-size:12.5px; color:var(--text-muted); flex:1; min-width:200px;">Corrections tracées à votre nom dans le journal d’audit.</span>
+    <a class="btn-secondary" style="width:auto; padding:8px 14px; text-decoration:none;" href="{{ url_for('dailylog.formulaire', utilisateur=utilisateur.id) }}">Corriger le Daily log de {{ utilisateur.prenom }} {{ utilisateur.nom }}</a>
+  </div>
+  {% endif %}
 </div>
 
 <script>

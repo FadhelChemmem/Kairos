@@ -657,6 +657,35 @@ class TestJoursManquesEtRappel(unittest.TestCase):
         self.assertEqual(manques, [datetime.date(2026, 10, 1), datetime.date(2026, 10, 5), datetime.date(2026, 10, 6)])
         self.assertTrue(all(j >= datetime.date(2026, 10, 1) for j in rens.call_args.args[1]))
 
+    def test_rappel_lundi_pour_le_vendredi(self):
+        from app.auth import _verifier_rappel_dailylog
+        user = {"id": 1, "fuseau": "Africa/Tunis", "debut_daily_log": datetime.date(2025, 1, 1)}
+        with patch("app.repositories.dailylog.jour_renseigne", return_value=False) as rens, \
+             patch("app.repositories.notifications.a_deja_un_rappel_dailylog", return_value=False), \
+             patch("app.repositories.notifications.creer") as creer:
+            _verifier_rappel_dailylog(user, aujourdhui=datetime.date(2026, 10, 5))  # lundi
+        self.assertEqual(rens.call_args.args[1], datetime.date(2026, 10, 2))  # vendredi
+        self.assertIn("02/10/2026", creer.call_args.args[2])
+        self.assertTrue(creer.call_args.args[2].startswith("Rappel DailyLog"))
+
+    def test_pas_de_rappel_le_week_end_ni_avant_l_arrivee_ni_en_double(self):
+        from app.auth import _verifier_rappel_dailylog
+        cas = [
+            ({"id": 1, "debut_daily_log": datetime.date(2026, 10, 5)}, datetime.date(2026, 10, 5), False, False),
+            ({"id": 1, "debut_daily_log": None}, datetime.date(2026, 10, 7), True, False),
+            ({"id": 1, "debut_daily_log": None}, datetime.date(2026, 10, 7), False, True),
+        ]
+        for user, jour, renseigne, deja in cas:
+            with self.subTest(user=user, jour=jour):
+                with patch("app.repositories.dailylog.jour_renseigne", return_value=renseigne), \
+                     patch("app.repositories.notifications.a_deja_un_rappel_dailylog", return_value=deja), \
+                     patch("app.repositories.notifications.creer") as creer:
+                    _verifier_rappel_dailylog(user, aujourdhui=jour)
+                creer.assert_not_called()
+        # samedi et dimanche : le jour visé reste le vendredi
+        self.assertEqual(dl.jour_ouvre_precedent(datetime.date(2026, 10, 4)), datetime.date(2026, 10, 2))
+        self.assertEqual(dl.jour_ouvre_precedent(datetime.date(2026, 10, 3)), datetime.date(2026, 10, 2))
+
     def test_recherche_sans_accents_et_jokers_litteraux(self):
         self.assertEqual(dl.sans_accents("Résidence ÉTÉ Œuvre"), "residence ete ouvre")
         self.assertEqual(dl.motif_sans_accents(" 50%_a\\b "), "%50\\%\\_a\\\\b%")
@@ -680,6 +709,54 @@ class TestAutresPages(_BaseDailyLog):
         html = self.appel("get", "/accueil", **{"app.repositories.dailylog.jour_renseigne": False}).data.decode()
         self.assertIn("Répartissez vos heures de la journée par projet.", html)
         self.assertIn("Remplir mon Daily log", html)
+
+    def test_profil_absent_et_lien_corriger(self):
+        jour = dl.aujourdhui_pour(EMPLOYE)
+        for user, lien in ((CHEF, True), (ADMIN, True), ({**INTERVENANT, "id": 1}, False)):
+            with self.subTest(role=user["role"]):
+                resp = self.appel("get", "/utilisateurs/2/profil", user=user,
+                                  **{"app.repositories.utilisateurs.get_utilisateur": EMPLOYE,
+                                     "app.repositories.dailylog.jours_absents": {jour}})
+                html = resp.data.decode()
+                self.assertEqual(f"/dailylog?date={jour}&amp;utilisateur=2" in html, lien)
+                if lien:
+                    self.assertIn("Absent", html)
+
+    def test_fiche_admin_lien_et_fuseau(self):
+        html = self.appel("get", "/utilisateurs/2", user=ADMIN,
+                          **{"app.repositories.utilisateurs.get_utilisateur": EMPLOYE}).data.decode()
+        self.assertIn('name="fuseau"', html)
+        self.assertIn("Guyane (UTC−3)", html)
+        self.assertIn("/dailylog?utilisateur=2", html)
+
+    def test_fuseau_modifiable_par_admin_et_rh_et_valide(self):
+        base = {"prenom": "Ali", "nom": "Ben", "email": "ali@midgard.tn", "role": "intervenant"}
+        self._login()
+        for user in (ADMIN, smoke.RH):
+            for fuseau, accepte in (("America/Cayenne", True), ("Africa/Tunis", True),
+                                    ("Europe/Tunis", False), ("Europe/Paris", False)):
+                with self.subTest(role=user["role"], fuseau=fuseau):
+                    patchers = self._patched(**{"app.auth.get_user_by_id": user,
+                                                "app.repositories.utilisateurs.get_utilisateur": EMPLOYE})
+                    for p in patchers:
+                        p.start()
+                    try:
+                        with patch("app.repositories.utilisateurs.update_utilisateur_complet") as maj, \
+                             patch("app.repositories.utilisateurs.create_utilisateur", return_value=9) as cree, \
+                             patch("app.routes.utilisateurs.generer_lien_reset", return_value="/x"), \
+                             patch("app.mailer.envoyer", return_value=True):
+                            self.client.post("/utilisateurs/2", data={**base, "fuseau": fuseau})
+                            self.client.post("/utilisateurs/nouveau",
+                                             data={**base, "email": "n@m.tn", "fuseau": fuseau, "actif": "on"})
+                    finally:
+                        for p in reversed(patchers):
+                            p.stop()
+                    self.assertEqual(maj.called, accepte)
+                    self.assertEqual(cree.called, accepte)
+                    if accepte:
+                        self.assertEqual(maj.call_args.kwargs["fuseau"], fuseau)
+                        self.assertEqual(cree.call_args.kwargs["fuseau"], fuseau)
+
 
 class TestRepriseChronos(unittest.TestCase):
     def test_set_local_juste_apres_begin(self):

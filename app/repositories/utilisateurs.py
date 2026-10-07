@@ -145,7 +145,8 @@ def get_utilisateur(user_id: int) -> dict | None:
     return db.query_one(
         """
         SELECT id, prenom, nom, email, telephone, poste, adresse, date_embauche,
-               equipe_code, role, verifie, actif, champs_perso, avatar_chemin
+               equipe_code, role, verifie, actif, champs_perso, avatar_chemin, fuseau,
+               COALESCE(date_embauche, created_at::date) AS debut_daily_log
         FROM utilisateur
         WHERE id = %s
         """,
@@ -167,7 +168,7 @@ def create_utilisateur(
     telephone: str | None = None, poste: str | None = None, adresse: str | None = None,
     date_embauche=None, equipe_code: str | None = None, verifie: bool = False,
     actif: bool = True, champs_perso: dict | None = None, avatar_chemin: str | None = None,
-    current_user_id: int | None = None,
+    current_user_id: int | None = None, fuseau: str = "Africa/Tunis",
 ) -> int:
     """Crée un compte utilisateur depuis la page Utilisateurs. Mêmes
     contraintes que la commande CLI `flask create-user` (idx_utilisateur_
@@ -191,13 +192,13 @@ def create_utilisateur(
         INSERT INTO utilisateur
             (email, mot_de_passe_hash, prenom, nom, telephone, poste, adresse,
              date_embauche, equipe_code, role, verifie, actif, champs_perso,
-             avatar_chemin, created_by)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+             avatar_chemin, created_by, fuseau)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s)
         RETURNING id
         """,
         (email, mot_de_passe_hash, prenom, nom, telephone, poste, adresse,
          date_embauche, equipe_code, role, verifie, actif,
-         json.dumps(champs_perso or {}), avatar_chemin, current_user_id),
+         json.dumps(champs_perso or {}), avatar_chemin, current_user_id, fuseau),
         user_id=current_user_id,
     )
     return row["id"]
@@ -251,7 +252,7 @@ def set_actif(user_id: int, actif: bool, current_user_id: int) -> bool:
 def update_utilisateur_complet(
     user_id: int, *, prenom: str, nom: str, email: str, telephone: str | None,
     poste: str | None, adresse: str | None, date_embauche, equipe_code: str | None,
-    role: str, champs_perso: dict | None, current_user_id: int,
+    role: str, champs_perso: dict | None, current_user_id: int, fuseau: str | None = None,
 ) -> None:
     """Édition complète d'un compte par un admin/RH (retour Fadhel,
     2026-09-20 : "voir et modifier les infos de n'importe quel
@@ -267,11 +268,11 @@ def update_utilisateur_complet(
         UPDATE utilisateur
         SET prenom = %s, nom = %s, email = %s, telephone = %s, poste = %s,
             adresse = %s, date_embauche = %s, equipe_code = %s, role = %s,
-            champs_perso = %s::jsonb
+            champs_perso = %s::jsonb, fuseau = COALESCE(%s, fuseau)
         WHERE id = %s
         """,
         (prenom, nom, email, telephone, poste, adresse, date_embauche,
-         equipe_code, role, json.dumps(champs_perso or {}), user_id),
+         equipe_code, role, json.dumps(champs_perso or {}), fuseau, user_id),
         user_id=current_user_id,
     )
 

@@ -474,9 +474,11 @@ class TestSessions(_BaseLot10):
 
     def test_rappel_daily_log_une_fois_par_jour_sans_reconnexion(self):
         import datetime
+        from app.repositories import dailylog
         _, m = self._accueil()
-        m["app.auth._verifier_rappel_dailylog"].assert_called_once_with(1)
-        _, m = self._accueil(rappel_le=datetime.date.today().isoformat())
+        # Lot 10 (Daily log v9) : la personne entière (fuseau, date d'arrivée).
+        self.assertEqual(m["app.auth._verifier_rappel_dailylog"].call_args.args[0]["id"], 1)
+        _, m = self._accueil(rappel_le=dailylog.aujourdhui_pour(smoke.USER).isoformat())
         m["app.auth._verifier_rappel_dailylog"].assert_not_called()
         _, m = self._accueil(RH)
         m["app.auth._verifier_rappel_dailylog"].assert_not_called()
@@ -624,14 +626,14 @@ class TestDailyLogDesCollegues(_BaseLot10):
 
     def _profil(self, visiteur, cible=5):
         return self._requete("get", f"/utilisateurs/{cible}/profil",
-                             espions=[("app.repositories.dailylog.list_entrees_jour", [])],
+                             espions=[("app.repositories.dailylog.list_entrees_periode", [])],
                              **{"app.auth.get_user_by_id": visiteur,
                                 "app.repositories.utilisateurs.get_utilisateur": {**smoke.AUTRE_UTILISATEUR, "id": 5}})
 
     def test_intervenant_ne_voit_pas_le_daily_log_d_un_collegue(self):
         resp, m = self._profil({**smoke.USER, "role": "intervenant"})
         self.assertEqual(resp.status_code, 200)
-        m["app.repositories.dailylog.list_entrees_jour"].assert_not_called()
+        m["app.repositories.dailylog.list_entrees_periode"].assert_not_called()
         self.assertNotIn('id="dailylog"', resp.data.decode())
 
     def test_soi_meme_admin_et_chef_le_voient(self):

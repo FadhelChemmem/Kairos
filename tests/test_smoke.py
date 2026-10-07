@@ -1417,7 +1417,8 @@ class SmokeTestCase(SmokeBase):
                 follow_redirects=False,
             )
         self.assertEqual(resp.status_code, 302, resp.data[:2000])
-        mock_rappel.assert_called_once_with(1)
+        mock_rappel.assert_called_once()
+        self.assertEqual(mock_rappel.call_args.args[0]["id"], 1)
 
     def test_login_next_ouverture_de_redirection_refusee(self):
         """PROMPT_CORRECTIONS.md P0 #5 : ?next=//evil.tld ne doit jamais
@@ -2945,21 +2946,26 @@ class SmokeTestCase(SmokeBase):
 
     def test_mon_profil_semaine_derniere_sans_week_end(self):
         """"Ne pas afficher samedi et dimanche" — la semaine dernière ne
-        comporte plus que 5 jours (lundi à vendredi)."""
+        comporte plus que 5 jours (lundi à vendredi). Lot 10 : UNE requête
+        pour la période (plus une par jour), absences comprises."""
         self._login()
         patchers = self._patched()
         for p in patchers:
             p.start()
         try:
-            with patch("app.repositories.dailylog.list_entrees_jour", return_value=[]) as mock_entrees:
+            with patch("app.repositories.dailylog.list_entrees_periode", return_value=[]) as mock_entrees, \
+                 patch("app.repositories.dailylog.jours_absents", return_value=set()) as mock_absents:
                 resp = self.client.get("/utilisateurs/moi")
         finally:
             for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(mock_entrees.call_count, 5)
-        for call in mock_entrees.call_args_list:
-            self.assertLess(call[0][1].weekday(), 5)
+        self.assertEqual(mock_entrees.call_count, 1)
+        self.assertEqual(mock_absents.call_count, 1)
+        _, debut, fin = mock_entrees.call_args.args
+        self.assertEqual(debut.weekday(), 0)
+        self.assertEqual(fin.weekday(), 4)
+        self.assertEqual((fin - debut).days, 4)
 
     def test_mon_profil_lignes_dailylog_menent_au_jour_correspondant(self):
         """Cliquer sur un jour de la semaine dernière doit aller
@@ -3845,70 +3851,6 @@ class TestSecretKeyValidation(unittest.TestCase):
         create_app(ConfigOk)  # ne doit pas lever
 
 
-class TestVerifierRappelDailylog(unittest.TestCase):
-    """_verifier_rappel_dailylog est testée isolément (sans passer par une
-    vraie requête HTTP) : logique de décision pure, seules les fonctions de
-    repository qu'elle appelle sont simulées."""
-
-    def test_cree_le_rappel_quand_veille_non_remplie(self):
-        from app.auth import _verifier_rappel_dailylog
-
-        mardi = datetime.date(2026, 9, 15)  # veille = lundi 14, pas un dimanche
-        with patch("app.repositories.dailylog.jour_renseigne", return_value=False), \
-             patch("app.repositories.notifications.a_deja_un_rappel_dailylog", return_value=False), \
-             patch("app.repositories.notifications.creer") as mock_creer:
-            _verifier_rappel_dailylog(1, aujourdhui=mardi)
-        mock_creer.assert_called_once()
-        args = mock_creer.call_args[0]
-        self.assertEqual(args[0], 1)
-        self.assertEqual(args[1], "rh_info")
-        self.assertIn("14/09/2026", args[2])
-
-    def test_ne_cree_rien_si_veille_deja_remplie(self):
-        from app.auth import _verifier_rappel_dailylog
-
-        mardi = datetime.date(2026, 9, 15)
-        with patch("app.repositories.dailylog.jour_renseigne", return_value=True), \
-             patch("app.repositories.notifications.a_deja_un_rappel_dailylog", return_value=False), \
-             patch("app.repositories.notifications.creer") as mock_creer:
-            _verifier_rappel_dailylog(1, aujourdhui=mardi)
-        mock_creer.assert_not_called()
-
-    def test_ne_cree_rien_si_rappel_deja_envoye_aujourdhui(self):
-        from app.auth import _verifier_rappel_dailylog
-
-        mardi = datetime.date(2026, 9, 15)
-        with patch("app.repositories.dailylog.jour_renseigne", return_value=False), \
-             patch("app.repositories.notifications.a_deja_un_rappel_dailylog", return_value=True), \
-             patch("app.repositories.notifications.creer") as mock_creer:
-            _verifier_rappel_dailylog(1, aujourdhui=mardi)
-        mock_creer.assert_not_called()
-
-    def test_ne_cree_rien_un_lundi_pour_un_dimanche(self):
-        from app.auth import _verifier_rappel_dailylog
-
-        lundi = datetime.date(2026, 9, 14)  # veille = dimanche 13
-        with patch("app.repositories.dailylog.jour_renseigne") as mock_list, \
-             patch("app.repositories.notifications.creer") as mock_creer:
-            _verifier_rappel_dailylog(1, aujourdhui=lundi)
-        mock_list.assert_not_called()
-        mock_creer.assert_not_called()
-
-    def test_ne_cree_rien_un_dimanche_pour_un_samedi(self):
-        """Régression (2026-09-19, retour Fadhel) : le week-end complet doit
-        être ignoré, pas seulement le dimanche — voir _verifier_rappel_dailylog."""
-        from app.auth import _verifier_rappel_dailylog
-
-        dimanche = datetime.date(2026, 9, 20)  # veille = samedi 19
-        with patch("app.repositories.dailylog.jour_renseigne") as mock_list, \
-             patch("app.repositories.notifications.creer") as mock_creer:
-            _verifier_rappel_dailylog(1, aujourdhui=dimanche)
-        mock_list.assert_not_called()
-        mock_creer.assert_not_called()
-
-
-
-
 class TestJournalAudit(unittest.TestCase):
     """Lot 5 (retour Fadhel, 2026-09-28) : page admin de parcours du
     journal d'audit — aucune nouvelle infrastructure (audit_log + triggers
@@ -4043,12 +3985,14 @@ class TestProfilPersonne(unittest.TestCase):
         """IDOR (PROMPT_CORRECTIONS.md P0 #1) : une entrée DailyLog sur un
         projet que LE VISITEUR ne peut pas voir doit disparaître de son
         profil, même si la personne consultée peut le voir, elle."""
-        entree_visible = {"id": 1, "projet_id": 1, "tache_id": None, "heures": 5.0,
+        from app.repositories import dailylog as dailylog_repo
+        jour = dailylog_repo.aujourdhui_pour(UTILISATEUR_PROFIL)
+        entree_visible = {"id": 1, "date": jour, "projet_id": 1, "tache_id": None, "heures": 5.0,
                            "projet_nom": "Tour Meridian", "tache_titre": None}
-        entree_masquee = {"id": 2, "projet_id": 99, "tache_id": None, "heures": 3.0,
+        entree_masquee = {"id": 2, "date": jour, "projet_id": 99, "tache_id": None, "heures": 3.0,
                            "projet_nom": "Projet d'une autre équipe", "tache_titre": None}
         resp = self._get("/utilisateurs/1/profil", **{
-            "app.repositories.dailylog.list_entrees_jour": [entree_visible, entree_masquee],
+            "app.repositories.dailylog.list_entrees_periode": [entree_visible, entree_masquee],
             "app.repositories.projets.list_ids_visibles": {1},
         })
         self.assertEqual(resp.status_code, 200)
@@ -5084,14 +5028,17 @@ class TestAuditV3(SmokeBase):
         """Un chef de projet ne voit, sur la fiche d'un autre, que les
         lignes de DailyLog des projets qu'il voit lui-même."""
         self._login()
-        entrees = [{"id": 1, "projet_id": 1, "tache_id": None, "heures": 3.0, "projet_code": "26099X",
+        from app.repositories import dailylog as dailylog_repo
+        aujourdhui = dailylog_repo.aujourdhui_pour(AUTRE_UTILISATEUR)
+        lundi = aujourdhui - datetime.timedelta(days=aujourdhui.weekday() + 7)
+        entrees = [{"id": 1, "date": lundi, "projet_id": 1, "tache_id": None, "heures": 3.0, "projet_code": "26099X",
                     "projet_nom": "Visible", "tache_titre": None},
-                   {"id": 2, "projet_id": 42, "tache_id": None, "heures": 5.0, "projet_code": "26042X",
+                   {"id": 2, "date": lundi, "projet_id": 42, "tache_id": None, "heures": 5.0, "projet_code": "26042X",
                     "projet_nom": "Projet Secret", "tache_titre": None}]
         patchers = self._patched(**{
             "app.auth.get_user_by_id": {**USER, "role": "chef_de_projet"},
             "app.repositories.utilisateurs.get_utilisateur": AUTRE_UTILISATEUR,
-            "app.repositories.dailylog.list_entrees_jour": entrees,
+            "app.repositories.dailylog.list_entrees_periode": entrees,
             "app.repositories.projets.list_ids_visibles": {1},
         })
         for p in patchers:
@@ -5214,7 +5161,7 @@ class TestDecisionsLot7(SmokeBase):
     def test_pas_de_rappel_daily_log_pour_rh_ni_client(self):
         import inspect
         from app import auth
-        self.assertIn('if user["role"] not in ("rh", "client"):\n                _verifier_rappel_dailylog(user["id"])',
+        self.assertIn('if user["role"] not in ("rh", "client"):\n                _verifier_rappel_dailylog(user)',
                       inspect.getsource(auth.login))
 
     def test_tests_sql_joues_par_la_ci(self):
