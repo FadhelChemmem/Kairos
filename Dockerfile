@@ -32,6 +32,12 @@ RUN useradd --create-home appuser \
 # est accessible en écriture. Ce qui entre dans l'image est fixé par
 # .dockerignore (liste blanche).
 COPY . .
+# COPY garde les droits du dossier de build, ici la copie de travail du
+# partage SMB du NAS : un fichier sans lecture pour « autres » (ACL du
+# partage) serait illisible pour appuser et le conteneur ne démarrerait
+# plus (revue 3 du lot 10 ; avant ce lot, le chown -R le masquait).
+# Lecture pour tous, écriture pour root seul ; /app/uploads reste à appuser.
+RUN chmod -R u=rwX,go=rX /app
 USER appuser
 
 ENV FLASK_APP=wsgi.py \
