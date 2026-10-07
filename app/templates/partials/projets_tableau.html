@@ -10,12 +10,12 @@
 </div>
 
 <div class="card table-scroll" style="padding:8px 18px;">
-  <div style="display:grid; grid-template-columns:1.2fr 80px 130px 1fr 90px 110px 90px; gap:10px; padding:10px 4px; font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em; border-bottom:1px solid var(--border-soft);">
+  <div class="ptable-head" style="padding:10px 4px; font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em; border-bottom:1px solid var(--border-soft);">
     <span>Projet</span><span>Phase</span><span>Lots</span><span>Chef de projet</span><span title="Heures intervenants / heures chef de projet">Heures i/c</span><span title="Prochain rendu client (tri de la liste)">Rendu</span><span>État</span>
   </div>
   {% for p in projets %}
     {% set st = projet_etat_style(p.etat) %}
-    <a href="{{ url_for('projets.detail', projet_id=p.id) }}" style="display:grid; grid-template-columns:1.2fr 80px 130px 1fr 90px 110px 90px; gap:10px; align-items:center; padding:12px 4px; border-bottom:1px solid var(--border-soft); color:inherit;">
+    <a href="{{ url_for('projets.detail', projet_id=p.id) }}" class="ptable-row" style="padding:12px 4px; border-bottom:1px solid var(--border-soft); color:inherit;">
       <span style="display:flex; align-items:center; gap:8px; min-width:0;">
         <span style="width:8px; height:8px; border-radius:999px; background:{{ st.dot }}; flex-shrink:0;"></span>
         <span style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.code }}_{{ p.nom }}</span>

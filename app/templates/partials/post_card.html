@@ -185,7 +185,7 @@
   {% elif post.est_creation_tache or post.est_cloture_tache or post.evenement|default(none) == 'creation_projet' %}
     <div style="font-size:13.5px; line-height:1.55; margin:12px 0 10px 46px; font-weight:600;">{{ post.contenu or post.tache_titre }}</div>
   {% else %}
-    <div style="font-size:13.5px; line-height:1.55; margin:12px 0 12px 46px;">{{ post.contenu }}</div>
+    <div class="post-texte" style="font-size:13.5px; line-height:1.55; margin:12px 0 12px 46px;">{{ post.contenu }}</div>
   {% endif %}
 
   {# « avec » + pastilles des personnes ajoutées au post (retour Fadhel,
