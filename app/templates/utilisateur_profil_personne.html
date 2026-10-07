@@ -57,6 +57,7 @@
   </div>
 
   <div class="col-center" style="max-width:none;">
+    {% if jours is not none %}
     <div class="card">
       <div style="font-size:14px; font-weight:700; margin-bottom:14px;" id="dailylog">Daily log — {{ 'dernière semaine' if semaines == 1 else semaines ~ ' dernières semaines' }}</div>
       <div style="display:flex; flex-direction:column; gap:10px;">
@@ -80,6 +81,7 @@
       {% endif %}
       <div style="font-size:11px; color:var(--text-faint); margin-top:10px;">Seules les entrées sur des projets que vous pouvez voir sont affichées ici.</div>
     </div>
+    {% endif %}
 
     <div class="card">
       <div style="font-size:14px; font-weight:700; margin-bottom:14px;" id="posts">Posts — {{ 'dernière semaine' if semaines == 1 else semaines ~ ' dernières semaines' }}</div>

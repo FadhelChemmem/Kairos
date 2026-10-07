@@ -215,11 +215,18 @@ def profil_personne(user_id: int):
     depuis = datetime.date.today() - datetime.timedelta(days=7 * semaines - 1)
     posts_recents = posts_repo.list_feed_auteur(user_id, viewer_id, limit=100, depuis=depuis)
     posts_plus_anciens = bool(posts_repo.list_feed_auteur(user_id, viewer_id, limit=1, avant=depuis))
+    # Daily log d'un collègue (audit sécurité I5, lot 10) : spec du 16/09
+    # « intervenant = accès limité à ses tâches/Daily log », le chef voit
+    # tout (18/09). Visible pour soi-même, l'Admin et le chef de projet ;
+    # plus pour un intervenant. Client : inchangé en attendant la décision
+    # sur ce que voit un Client (audit sécurité I4, question 5 du 05/10).
+    voir_daily_log = user_id == viewer_id or g.user["role"] in ("admin", "chef_de_projet", "client")
 
     return render_template(
         "utilisateur_profil_personne.html",
         utilisateur=utilisateur,
-        jours=_fenetre_7_jours(user_id, projets_visibles_ids, nb_jours=7 * semaines),
+        jours=(_fenetre_7_jours(user_id, projets_visibles_ids, nb_jours=7 * semaines)
+               if voir_daily_log else None),
         semaines=semaines,
         posts_plus_anciens=posts_plus_anciens,
         taches_en_cours=taches_repo.list_en_cours_pour_profil(user_id, viewer_id, limit=8),

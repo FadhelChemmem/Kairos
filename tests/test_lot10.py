@@ -617,5 +617,30 @@ class TestVerrouProjet(unittest.TestCase):
                 self.assertEqual(cur.sql[0], "SELECT 1 FROM projet WHERE id = %s FOR NO KEY UPDATE")
 
 
+
+class TestDailyLogDesCollegues(_BaseLot10):
+    """Audit sécurité I5 : un intervenant lisait le Daily log de ses
+    collègues sur leur profil."""
+
+    def _profil(self, visiteur, cible=5):
+        return self._requete("get", f"/utilisateurs/{cible}/profil",
+                             espions=[("app.repositories.dailylog.list_entrees_jour", [])],
+                             **{"app.auth.get_user_by_id": visiteur,
+                                "app.repositories.utilisateurs.get_utilisateur": {**smoke.AUTRE_UTILISATEUR, "id": 5}})
+
+    def test_intervenant_ne_voit_pas_le_daily_log_d_un_collegue(self):
+        resp, m = self._profil({**smoke.USER, "role": "intervenant"})
+        self.assertEqual(resp.status_code, 200)
+        m["app.repositories.dailylog.list_entrees_jour"].assert_not_called()
+        self.assertNotIn('id="dailylog"', resp.data.decode())
+
+    def test_soi_meme_admin_et_chef_le_voient(self):
+        for visiteur, cible in (({**smoke.USER, "role": "intervenant"}, 1), (smoke.USER, 5),
+                                ({**smoke.USER, "role": "chef_de_projet"}, 5)):
+            with self.subTest(role=visiteur["role"], cible=cible):
+                resp, _ = self._profil(visiteur, cible)
+                self.assertIn('id="dailylog"', resp.data.decode())
+
+
 if __name__ == "__main__":
     unittest.main()
