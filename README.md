@@ -84,6 +84,8 @@ cp .env.example .env
 #   POSTGRES_PASSWORD, SECRET_KEY (32 caractères minimum, sinon l'appli refuse de démarrer),
 #   APP_BASE_URL et SMTP_* (la création de compte envoie un email pour choisir son mot de passe)
 #   Derrière un reverse proxy HTTPS : SESSION_COOKIE_SECURE=true, TRUSTED_PROXY_COUNT=1, WEB_BIND=127.0.0.1
+#   (TRUSTED_PROXY_COUNT > 0 sans WEB_BIND=127.0.0.1 : l'appli REFUSE de démarrer ; un proxy
+#   en conteneur Docker ou sur une autre machine ne joint pas un port publié sur 127.0.0.1)
 
 docker compose up -d --build
 ```
@@ -104,9 +106,20 @@ L'application est ensuite accessible sur `http://<adresse-du-serveur>:8000/`.
 
 ```bash
 git pull
-docker compose up -d --build
-docker compose exec web flask migrer
+sudo docker compose up -d --build
+sudo docker compose logs sauvegarde-migrations web --tail 60
 ```
+
+Avant toute mise à jour qui contient une migration : sauvegarde manuelle
+(`sudo bash scripts/backup_db.sh`, voir « Sauvegardes ») et repères pour
+le retour arrière (tag git et tag de l'image `web`). La procédure pas à pas
+d'un lot, retour arrière compris, est livrée avec le lot.
+
+Au démarrage, le service ponctuel `sauvegarde-migrations` sauvegarde
+d'abord la base si une migration est en attente
+(`avant_migration_*.sql.gz` dans `KAIROS_BACKUP_DIR`, défaut `./backups`) ;
+s'il échoue, `web` ne démarre pas et rien n'est migré. Il apparaît ensuite
+« Exited (0) » dans `docker compose ps -a` : c'est normal.
 
 `flask migrer` (voir `migrations/`) applique les changements de schéma
 qui ne sont pas déjà dans `schema.sql` d'une installation neuve —
@@ -136,7 +149,7 @@ peut plus changer de propriétaire ; l'image `postgres:16` est déjà
 présente sur la machine, `1000` est l'UID d'`appuser`) :
 
 ```bash
-sudo docker run --rm -v kairos_uploads:/u postgres:16 chown -R 1000:1000 /u
+sudo docker run --rm -v kairos_uploads:/u --entrypoint chown postgres:16 -R 1000:1000 /u
 ```
 
 ### Dépannage : renommage des volumes Docker (workflowbook → Kairos, 2026-09-21)
@@ -180,34 +193,47 @@ place : `docker volume rm <ancien_pgdata> <ancien_uploads>`. Pas d'urgence
 
 ## Sauvegardes
 
-`./scripts/backup_db.sh` fait un `pg_dump` compressé de la base **et** une
-archive des pièces jointes (volume `kairos_uploads`) dans `./backups/`
+`scripts/backup_db.sh` fait un `pg_dump` compressé de la base **et** une
+archive des pièces jointes (volume `kairos_uploads`) dans
+`KAIROS_BACKUP_DIR` (variable d'environnement ou ligne du `.env` ; défaut
+`./backups/`, dans la copie de travail — à éviter : un `git clean` ou le
+partage SMB peuvent l'effacer). Fichiers lisibles par leur seul
+propriétaire (root via `sudo` ou le cron) : lancer les scripts avec `sudo`.
 (30 dernières copies conservées, le reste est supprimé automatiquement,
 sous le préfixe `kairos_` depuis le 2026-09-21 — les anciens fichiers
 `workflowbook_*.sql.gz` restent sur disque mais ne sont plus comptés dans
 ce nettoyage automatique, à supprimer à la main si besoin). À planifier
 une fois par jour via **TrueNAS SCALE > Système > Tâches planifiées
-(Cron Jobs)**, commande :
+(Cron Jobs)**, utilisateur root, commande (`bash` devant : ne dépend pas
+du bit exécutable, fragile sur le partage SMB) :
 
 ```
-/chemin/vers/kairos-app/scripts/backup_db.sh
+KAIROS_BACKUP_DIR=/mnt/Pool/sauvegardes/kairos bash /mnt/Pool/Kairos/scripts/backup_db.sh
 ```
 
 Sans ça, toutes les données (projets, tâches, heures, historique) ne
 vivent que dans un seul volume Docker sur ce NAS. Les sauvegardes restent
-elles aussi sur ce NAS : copiez régulièrement `./backups/` ailleurs
-(autre disque, autre machine), sinon un disque mort emporte tout.
+elles aussi sur ce NAS : copiez régulièrement le dossier de sauvegarde
+ailleurs (autre disque, autre machine), sinon un disque mort emporte tout.
 
 ### Restaurer une sauvegarde
 
 ```bash
-./scripts/restore_db.sh backups/kairos_AAAA-MM-JJ_HHMM.sql.gz \
-    backups/kairos_uploads_AAAA-MM-JJ_HHMM.tar.gz
+sudo bash scripts/restore_db.sh /mnt/Pool/sauvegardes/kairos/kairos_AAAA-MM-JJ_HHMM.sql.gz \
+    /mnt/Pool/sauvegardes/kairos/kairos_uploads_AAAA-MM-JJ_HHMM.tar.gz
 ```
 
-Le script vérifie les archives, demande confirmation (taper `RESTAURER`),
-démarre les services, vide le schéma, recharge la base, restaure les
-pièces jointes puis lance `flask migrer`. Il fonctionne aussi sur une
+Le script refuse une archive corrompue ou un dump incomplet AVANT de
+toucher à quoi que ce soit, demande confirmation (taper `RESTAURER` ;
+`--oui` en premier argument la saute), arrête `web`, fait une copie de
+sécurité de la base actuelle (`avant_restauration_*.sql.gz`), recharge le
+dump en UNE transaction (à la moindre erreur, la base reste telle
+qu'avant), restaure les pièces jointes, puis redémarre `web`, qui applique
+lui-même les migrations plus récentes que la sauvegarde (précédées de la
+sauvegarde automatique de `sauvegarde-migrations`). Pour revenir à une
+version PRÉCÉDENTE de l'appli, remettre d'abord l'ancien code et l'ancienne
+image : sinon la nouvelle image rejoue aussitôt ses migrations sur la base
+restaurée (voir la procédure de retour arrière du lot). Il fonctionne aussi sur une
 installation toute neuve (`docker compose up` vient de créer une base
 vide avec `schema.sql`) — c'est exactement le cas "le disque est mort,
 je repars de zéro". **Remplace toutes les données actuelles.** Testez-le
@@ -303,36 +329,24 @@ flask run
 
 ## Tests
 
-```bash
-python3 -m unittest discover -s tests -v
-```
+| Suite | Commande | Base réelle |
+|---|---|---|
+| Fumée et unitaires (psycopg2 simulé) | `python3 -m unittest discover -s tests` | non (9 tests sautés sans `KAIROS_TEST_DATABASE_URL`) |
+| Intégration (vrai SQL, vrai psycopg2) | `KAIROS_TEST_DATABASE_URL=postgresql://kairos:kairos@127.0.0.1:5432/kairos_it python3 -m unittest discover -s tests_integration -t .` | oui : base chargée avec `schema.sql` + `migrations/` |
+| SQL | `psql -d <base> -v ON_ERROR_STOP=1 -f tests/sql/<fichier>.sql` | oui |
+| JavaScript | `node --test tests_js/*.test.mjs` | non |
+| Scénario navigateur (Playwright) | `bash tests_e2e/lancer.sh` | oui (base jetable) ; non lancé par la CI |
 
-Tous verts (lancés automatiquement sur GitHub à chaque push sur `master`
-et à chaque pull request, voir `.github/workflows/tests.yml` — un second
-job y applique aussi `schema.sql` et toutes les migrations sur un vrai
-PostgreSQL 16). Ces tests ne nécessitent PAS de base de
-données réelle : ils simulent psycopg2 et remplacent les fonctions de
-repository par des données de test, pour vérifier que les pages se
-construisent sans erreur (Jinja2, routage, `url_for`) — c'est le risque
-principal sur du code jamais exécuté de bout en bout dans cet
-environnement. La logique SQL elle-même (transactions, upserts, requêtes
-du fil, contraintes RH/équipe, notifications) a été validée séparément,
-en conditions réelles, sur un PostgreSQL 16 local à chaque fonctionnalité
-livrée — voir les sections "Implémentation" de la spec pour le détail
-des scénarios rejoués.
+Ne jamais lancer `tests_integration/` dans le même processus que `tests/`
+(qui installe un faux psycopg2). Sous Windows, les 8 tests de
+`test_backup_db` exigent `bash` et échouent : c'est attendu.
 
-**Note de transparence :** ce code a été écrit dans un environnement où
-psycopg2 (le pilote PostgreSQL pour Python) ne peut pas être installé
-(accès réseau restreint côté pip/apt) — il n'a donc jamais pu tourner de
-bout en bout, avec sa vraie configuration Docker/gunicorn, avant cette
-livraison. Ton premier `docker compose up` sera le premier run réel de
-l'application complète telle qu'elle sera réellement déployée. Le risque
-a été limité au maximum : le schéma et toutes les requêtes SQL un peu
-sensibles ont été rejouées, en réel, via `psql` (pas juste relues) à
-chaque fonctionnalité ; l'assemblage Flask/Jinja2/routes est couvert par
-les tests ci-dessus. Si quelque chose casse au premier démarrage, ce sera
-très probablement un détail d'environnement (variable manquante, port
-déjà utilisé) plutôt qu'un problème de fond dans le code.
+La CI (`.github/workflows/tests.yml`, à chaque push sur `master` et à
+chaque pull request) joue : unitaires ; migrations publiées inchangées ;
+schéma neuf = schéma migré = schéma « comme en production » et
+`tests/sql` sur les trois ; intégration et scripts de sauvegarde /
+restauration sur PostgreSQL 16 ; shellcheck et tests JavaScript ;
+déploiement Docker complet avec sauvegarde puis restauration.
 
 ## Structure du projet
 
@@ -347,11 +361,15 @@ app/
   repositories/     tout le SQL, une fonction = une requête (ou une petite transaction)
   routes/           les vues Flask (accueil, projets, posts, dailylog, deadlines, fichiers, utilisateurs, notifications)
   templates/        Jinja2, porté fidèlement des maquettes .dc.html
-  static/           CSS partagé, JS (sélecteur à puces, composeur de post) + logo Kairos
+  static/           CSS partagé, JS (sélecteur à puces, composeur de post, Daily log) + logo Kairos
 schema.sql          schéma canonique (source de vérité, appliqué tel quel à l'installation)
 migrations/         changements de schéma à appliquer sur une base déjà en place (`flask migrer`)
-scripts/            exploitation : backup_db.sh, restore_db.sh, migrate_from_chronos.py (+ mysqldump_parser.py)
-tests/              tests de fumée (rendu des pages) + tests unitaires purs
+scripts/            exploitation : backup_db.sh, restore_db.sh, sauvegarde_avant_migration.sh,
+                    empreinte_schema.sql (CI), migrate_from_chronos.py (+ mysqldump_parser.py)
+tests/              tests de fumée (rendu des pages) + tests unitaires purs + tests/sql
+tests_integration/  tests sur vrai PostgreSQL (KAIROS_TEST_DATABASE_URL)
+tests_js/           tests JavaScript (node --test)
+tests_e2e/          scénario Playwright du Daily log
 .github/workflows/  CI (tests automatiques à chaque push/pull request)
-docker-compose.yml, Dockerfile, .env.example
+docker-compose.yml, Dockerfile, gunicorn.conf.py, .env.example
 ```
