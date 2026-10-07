@@ -37,7 +37,7 @@
    avec le trombone du champ) ; Entrée envoie, Maj+Entrée va à la ligne.
    Sert aussi pour "Répondre" à un commentaire de premier niveau
    (parent_commentaire_id) — voir comment-composer.js. #}
-{% macro composer_commentaire(post, next_url, parent_commentaire_id=none, placeholder='Écrire un commentaire…', autofocus=false, etiquette=none) %}
+{% macro composer_commentaire(post, next_url, parent_commentaire_id=none, placeholder='Commenter…', autofocus=false, etiquette=none) %}
   <form method="post" action="{{ url_for('posts.commenter', post_id=post.id) }}" enctype="multipart/form-data" class="comment-composer" data-comment-composer>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">

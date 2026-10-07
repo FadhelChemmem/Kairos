@@ -64,7 +64,7 @@
         <span class="pill pill-sm pill-action-{{ e.action|lower }}">{{ libelles_action.get(e.action, e.action) }}</span>
         <span style="font-size:12.5px; font-weight:600;">{{ libelles_table.get(e.table_cible, e.table_cible) }}{% if e.ligne_id %} <span style="font-weight:400; color:var(--text-muted);">n°&nbsp;{{ e.ligne_id }}</span>{% endif %}</span>
         <details style="font-size:11.5px; color:var(--text-secondary); min-width:0;">
-          <summary style="cursor:pointer; color:var(--text-muted); font-weight:600;">Voir les données</summary>
+          <summary class="journal-resume" style="cursor:pointer; color:var(--text-muted); font-weight:600;">Voir les données</summary>
           {% if e.donnees_avant %}
             <div style="margin-top:4px;"><strong style="font-weight:600;">Avant&nbsp;:</strong> <pre class="journal-donnees">{{ e.donnees_avant|tojson(indent=2) if e.donnees_avant is mapping else e.donnees_avant }}</pre></div>
           {% endif %}

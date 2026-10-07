@@ -2361,7 +2361,10 @@ class SmokeTestCase(SmokeBase):
         resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [post_avec_commentaire]})
         self.assertEqual(resp.status_code, 200)
         self.assertIn("Bien reçu, merci.".encode(), resp.data)
-        self.assertIn("Écrire un commentaire".encode(), resp.data)
+        # Champ de commentaire présent (placeholder raccourci au lot 10 pour
+        # tenir sur téléphone, nom accessible explicite).
+        self.assertIn('placeholder="Commenter…"'.encode(), resp.data)
+        self.assertIn('aria-label="Commenter le post de'.encode(), resp.data)
 
     def test_post_card_reposter_ouvre_la_fenetre_a_trois_options(self):
         """"Reposter" (retour Fadhel, 2026-09-29, P2) remplace le trombone

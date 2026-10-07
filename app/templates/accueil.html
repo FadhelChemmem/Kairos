@@ -51,7 +51,7 @@
 {% endif %}
 
 <h1 class="sr-only">Accueil</h1>
-<div class="page-body">
+<div class="page-body page-body-accueil">
 
   <!-- Colonne gauche -->
   <div class="col">
@@ -61,7 +61,7 @@
     <div class="card">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
         <h2 class="carte-titre">Mes projets</h2>
-        <a href="{{ url_for('projets.liste') }}" style="font-size:12px; font-weight:600;">Tout voir</a>
+        <a href="{{ url_for('projets.liste') }}" class="lien-carte" style="font-size:12px; font-weight:600;">Tout voir</a>
       </div>
       <div style="display:flex; flex-direction:column; gap:10px;">
         {% for p in mes_projets %}
@@ -99,7 +99,9 @@
            points de suspension ; le plus ancien jour manquant est le premier
            de la liste. #}
         <div style="font-size:12px; color:var(--text-secondary); margin-bottom:12px; line-height:1.4;">
-          {% if dailylog_jours_manques|length > 1 %}{{ dailylog_jours_manques|length }} jours sans saisie, depuis le {{ (dailylog_jours_manques|min)|date_courte }}.{% else %}1 jour sans saisie&nbsp;: le {{ dailylog_jours_manques[0]|date_courte }}.{% endif %}
+          {% set premier_manque = (dailylog_jours_manques|min)|date_courte %}
+          {# Pas de second point après une abréviation (« 23 sept. »). #}
+          {% if dailylog_jours_manques|length > 1 %}{{ dailylog_jours_manques|length }} jours sans saisie, depuis le {{ premier_manque }}{% else %}1 jour sans saisie&nbsp;: le {{ premier_manque }}{% endif %}{{ '' if premier_manque.endswith('.') else '.' }}
         </div>
       {% else %}
         {# Texte neutre : la route ne dit pas si la journée du jour est déjà
@@ -151,7 +153,7 @@
     <div class="card">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
         <h2 class="carte-titre">Mes tâches</h2>
-        <a href="{{ url_for('deadlines.liste') }}" style="font-size:12px; font-weight:600;">Toutes les échéances</a>
+        <a href="{{ url_for('deadlines.liste') }}" class="lien-carte" style="font-size:12px; font-weight:600;">Toutes les échéances</a>
       </div>
       <div style="display:flex; flex-direction:column; gap:12px;">
         {% for t in mes_taches %}

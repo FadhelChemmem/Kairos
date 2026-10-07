@@ -68,8 +68,8 @@
         <a href="{{ url_for('utilisateurs.fiche', user_id=u.id) }}" style="display:flex; align-items:center; gap:10px; min-width:0; text-decoration:none; color:inherit;">
           {{ avatarm.avatar(u.id, u.prenom, u.nom, u.avatar_chemin, css_class='avatar avatar-md', couleur=(none if u.actif else '#6c766f')) }}
           <div style="min-width:0;">
-            <div style="font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; {{ 'color:var(--text-muted);' if not u.actif }}">{{ u.prenom }} {{ u.nom }}{% if not u.actif %} <span class="pill pill-sm" style="background:var(--hover-bg-strong); color:var(--text-secondary); font-weight:700;">Inactif</span>{% endif %}</div>
-            <div style="font-size:11px; color:var(--text-muted);">{{ u.poste or '—' }}</div>
+            <div style="font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; {{ 'color:var(--text-muted);' if not u.actif }}">{{ u.prenom }} {{ u.nom }}</div>
+            <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px; min-width:0;"><span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ u.poste or '—' }}</span>{% if not u.actif %}<span class="pill pill-sm" style="background:var(--hover-bg-strong); color:var(--text-secondary); font-weight:700; flex-shrink:0;">Inactif</span>{% endif %}</div>
           </div>
         </a>
         <span style="font-size:12.5px; color:{{ 'var(--text-muted)' if not u.actif else 'var(--text-secondary)' }};">{{ equipe_libelle(u.equipe_code) }}</span>
