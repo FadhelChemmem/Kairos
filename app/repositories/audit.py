@@ -71,9 +71,9 @@ def list_auteurs() -> list[dict]:
     filtre "Auteur" (inclut les comptes désactivés : on veut pouvoir
     retrouver l'historique de quelqu'un qui est parti)."""
     sql = """
-        SELECT DISTINCT u.id, u.prenom, u.nom
-        FROM audit_log a
-        JOIN utilisateur u ON u.id = a.utilisateur_id
+        SELECT u.id, u.prenom, u.nom
+        FROM utilisateur u
+        WHERE EXISTS (SELECT 1 FROM audit_log a WHERE a.utilisateur_id = u.id)
         ORDER BY u.prenom, u.nom
     """
     with db.get_cursor() as cur:

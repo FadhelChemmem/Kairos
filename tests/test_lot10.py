@@ -578,5 +578,44 @@ class TestFichiersIgnores(unittest.TestCase):
         self.assertEqual(autorises, {"app/", "migrations/", "wsgi.py", "requirements.txt", "gunicorn.conf.py"})
 
 
+
+class TestVerrouProjet(unittest.TestCase):
+    """Audit données I2 : verrou du projet AVANT tout changement d'état de
+    tâche (write skew « projet resté Bloqué »). La concurrence réelle est
+    testée sur PostgreSQL (tests_integration)."""
+
+    def test_premiere_instruction_verrouille_le_projet(self):
+        from app.repositories import taches
+
+        class Curseur:
+            rowcount = 0
+
+            def __init__(self):
+                self.sql = []
+
+            def execute(self, sql, params=None):
+                self.sql.append(" ".join(sql.split()))
+
+            def fetchone(self):
+                return None
+
+        for appel in (lambda: taches.set_etat(5, 1, "termine", 1),
+                      lambda: taches.close_tache(5, 1, 1, "information"),
+                      lambda: taches.create_tache(1, "T", 1)):
+            cur = Curseur()
+
+            @contextlib.contextmanager
+            def faux(*a, **k):
+                yield cur
+
+            with patch.object(db, "get_cursor", faux):
+                try:
+                    appel()
+                except Exception:
+                    pass  # le faux curseur ne renvoie rien : seul l'ordre compte
+            with self.subTest(sql=cur.sql[:1]):
+                self.assertEqual(cur.sql[0], "SELECT 1 FROM projet WHERE id = %s FOR NO KEY UPDATE")
+
+
 if __name__ == "__main__":
     unittest.main()

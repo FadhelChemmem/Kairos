@@ -203,6 +203,17 @@ def list_deadlines(user_id: int, limit: int = 20) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def _verrouiller_projet(cur, projet_id: int) -> None:
+    """À appeler EN PREMIER dans toute transaction qui peut changer l'état
+    d'une tâche (audit données lot 10, I2). Sans ce verrou, deux tâches
+    bloquées clôturées en même temps voient chacune l'autre encore bloquée
+    (instantanés concurrents) : aucune ne débloque le projet, qui reste
+    « Bloqué » sans tâche bloquée. Pris au début et en NO KEY UPDATE : pas
+    d'interblocage avec les verrous FOR KEY SHARE que posent les clés
+    étrangères des posts insérés dans la même transaction."""
+    cur.execute("SELECT 1 FROM projet WHERE id = %s FOR NO KEY UPDATE", (projet_id,))
+
+
 def _suivre_etat_projet(cur, projet_id: int, etat_tache: str, current_user_id: int,
                         ancien_etat: str | None = None) -> None:
     """État du projet qui suit ses tâches (décision Fadhel, lot 8) : une
@@ -257,6 +268,7 @@ def create_tache(
     quand la tâche est créée via un "rebond" (voir routes/projets.py:
     creer_tache, qui vérifie que ce post appartient au même projet)."""
     with db.get_cursor(user_id=current_user_id) as cur:
+        _verrouiller_projet(cur, projet_id)
         cur.execute(
             """
             INSERT INTO tache (projet_id, titre, type_deadline, date_debut, date_echeance, created_by)
@@ -346,6 +358,7 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int) -> 
     from ..utils import tache_etat_style
 
     with db.get_cursor(user_id=current_user_id) as cur:
+        _verrouiller_projet(cur, projet_id)
         cur.execute(
             "SELECT etat FROM tache WHERE id = %s AND projet_id = %s FOR UPDATE",
             (tache_id, projet_id),
@@ -454,6 +467,7 @@ def close_tache(
     ce projet, ou est déjà clôturée — la route transforme ça en message
     flash plutôt qu'en erreur 500."""
     with db.get_cursor(user_id=current_user_id) as cur:
+        _verrouiller_projet(cur, projet_id)
         # `avant` (CTE) : l'état AVANT la clôture — une tâche bloquée qui se
         # termine peut débloquer le projet (_suivre_etat_projet).
         cur.execute(
