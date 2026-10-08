@@ -12,6 +12,13 @@
  * recherche sans accents, ↑/↓/Entrée/Échap, combobox ARIA, ajout sans
  * rechargement, co-chef), gzip et cache des statiques, téléphone 375 px
  * en thème sombre, aucune erreur JavaScript.
+ *
+ * Lot 11 b : résultat « tâche » de la recherche globale et notification
+ * d'affectation -> fenêtre de la tâche ouverte (tâche close dépliée, focus,
+ * retour du focus, adresse nettoyée, 404 sans droit) ; rappel Daily log
+ * (texte, lien vers le jour) ; changement du chef de projet dans la fenêtre
+ * Informations (clavier, base, post, notification, projet clos) et lien
+ * « Changer le chef » de l'encart Admin ; 1280 / 375 px, clair / sombre.
  */
 'use strict';
 const { execFileSync } = require('child_process');
@@ -252,6 +259,170 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     await capture(pt, 'e2e-projet-375-sombre-selecteur.png');
     await tel.close();
     await ali.close();
+
+    // --- 9. Lot 11 b : recherche globale -> fenêtre de la tâche ----------
+    const rim2 = await contexte(navigateur, 'rim@x.tn');
+    let pg = await ouvrir(rim2, '/accueil');
+    await pg.fill('#recherche-globale', 'ferraillage');
+    await pg.waitForSelector('#recherche-globale-resultats a[href$="/projets/1?tache=2"]');
+    etape('recherche : la tâche pointe vers ?tache=<id> (projet invisible exclu)',
+      await pg.locator('#recherche-globale-resultats a').count() === 1);
+    await pg.keyboard.press('ArrowDown');
+    await Promise.all([pg.waitForNavigation(), pg.keyboard.press('Enter')]);
+    await pg.waitForSelector('#dialog-tache [data-tache-fenetre="2"]');
+    etape('clavier ↓ Entrée : fiche ouverte, fenêtre de la tâche affichée',
+      await pg.evaluate(() => document.getElementById('dialog-tache').matches(':modal')));
+    etape('focus dans la fenêtre', await pg.evaluate(() => document.getElementById('dialog-tache').contains(document.activeElement)));
+    await capture(pg, 'e2e-11b-recherche-tache-1280-clair.png');
+    await pg.keyboard.press('Escape');
+    await pause(150);
+    a = await actif(pg);
+    etape('Échap : focus rendu à la ligne de la tâche', a.cls.includes('taskrow-titre') && a.texte === 'Plans de ferraillage', a);
+    etape('adresse nettoyée à la fermeture', await pg.evaluate(() => location.search === '' && location.pathname === '/projets/1'));
+    await pg.fill('#recherche-globale', 'dossier doe');
+    await pg.waitForSelector('#recherche-globale-resultats a[href$="/projets/1?tache=8"]');
+    await Promise.all([pg.waitForNavigation(), pg.click('#recherche-globale-resultats a[href$="/projets/1?tache=8"]')]);
+    await pg.waitForSelector('#dialog-tache [data-tache-fenetre="8"]');
+    etape('tâche close : tâches closes dépliées, fenêtre ouverte',
+      await pg.evaluate(() => document.getElementById('taches-closes').open));
+    await pg.click('#dialog-tache [data-close-tache]');
+    await pause(150);
+    a = await actif(pg);
+    etape('Fermer : focus sur la ligne de la tâche close', a.texte === 'Dossier DOE', a);
+    await pg.goto(BASE + '/projets/1#tache-3');
+    await pg.waitForSelector('#dialog-tache [data-tache-fenetre="3"]');
+    etape('ancre #tache-3 : fenêtre ouverte', true);
+    await pg.keyboard.press('Escape');
+    const r404 = await pg.goto(BASE + '/projets/2?tache=13');
+    etape('sans droit sur le projet : 404 (comme avant)', r404.status() === 404, r404.status());
+
+    // --- 10. Notification d'affectation -> fenêtre de la tâche -----------
+    sql("INSERT INTO notification (utilisateur_id, categorie, message, tache_id) VALUES (3, 'projet', 'Vous avez été affecté à la tâche « Coffrage dalle R+1 ».', 4)");
+    pg = await ouvrir(rim2, '/notifications');
+    await Promise.all([pg.waitForNavigation(), pg.click('button.notif-item:has-text("Coffrage dalle R+1")')]);
+    await pg.waitForSelector('#dialog-tache [data-tache-fenetre="4"]');
+    etape('notification d’affectation : fenêtre de la tâche ouverte', pg.url().endsWith('/projets/1?tache=4'), pg.url());
+
+    // --- 11. Rappel Daily log : texte clair, une notification, lien -------
+    pg = await ouvrir(rim2, '/notifications');
+    const rappels = await pg.locator('button.notif-item:has-text("Daily log")').allInnerTexts();
+    etape('rappel Daily log regroupé en une notification au texte clair',
+      rappels.length === 1 && /(\d+ jours de Daily log non remplis(, du | : )|Daily log du )/.test(rappels[0]) && !/Rappel DailyLog/.test(rappels[0]), rappels);
+    const premierJour = sql("SELECT rappel_jours[1] FROM notification WHERE utilisateur_id = 3 AND rappel_jours IS NOT NULL");
+    await Promise.all([pg.waitForNavigation(), pg.click('button.notif-item:has-text("Daily log")')]);
+    etape('lien du rappel : /dailylog?date=AAAA-MM-JJ du premier jour', pg.url().endsWith('/dailylog?date=' + premierJour), [pg.url(), premierJour]);
+    await rim2.close();
+
+    // --- 12. Changement de chef (chef titulaire, clavier) ----------------
+    const ali2 = await contexte(navigateur, 'ali@x.tn');
+    pg = await ouvrir(ali2, FICHE);
+    await pg.focus('button.bouton-texte[data-open-informations-dialog]');
+    await pg.keyboard.press('Enter');
+    await pg.waitForSelector('#dialog-informations-projet[open]');
+    const champChef = pg.locator('#dialog-info-chef ~ .search-combobox-wrap .search-combobox-input');
+    etape('champ « Chef de projet » : combobox nommée et décrite',
+      await champChef.getAttribute('role') === 'combobox'
+      && await pg.evaluate(() => {
+        const c = document.querySelector('#dialog-info-chef ~ .search-combobox-wrap .search-combobox-input');
+        return document.getElementById(c.getAttribute('aria-labelledby')).textContent.trim() === 'Chef de projet'
+          && /ancien chef devient co-chef/.test(document.getElementById(c.getAttribute('aria-describedby')).textContent);
+      }));
+    etape('champ prérempli avec le chef actuel', await champChef.inputValue() === 'Ali Chef');
+    await champChef.focus();
+    const nomsChefs = await pg.$$eval('#dialog-info-chef ~ .search-combobox-wrap [role=option] .search-combobox-nom', (els) => els.map((e) => e.textContent.trim()));
+    etape('candidats : chefs de projet et Admin actifs seulement',
+      JSON.stringify(nomsChefs.slice().sort()) === JSON.stringify(['Ali Chef', 'Fadhel Admin', 'Sami Chérif'].sort()), nomsChefs);
+    etape('avatar et sous-titre dans la liste', await pg.locator('#dialog-info-chef ~ .search-combobox-wrap [role=option]:has-text("Sami") .search-combobox-avatar').count() === 1
+      && (await pg.locator('#dialog-info-chef ~ .search-combobox-wrap [role=option]:has-text("Ali") .search-combobox-sous').innerText()).startsWith('Chef actuel'));
+    await champChef.fill('cherif');
+    await capture(pg, 'e2e-11b-chef-liste-1280-clair.png');
+    await champChef.press('Enter');
+    etape('Entrée : Sami Chérif choisi', await champChef.inputValue() === 'Sami Chérif'
+      && await pg.evaluate(() => document.getElementById('dialog-info-chef').value) === '5');
+    await pg.focus('#dialog-informations-projet button[type=submit]');
+    await Promise.all([pg.waitForNavigation(), pg.keyboard.press('Enter')]);
+    await pg.waitForSelector('#flash-wrap .flash');
+    etape('message : projet confié, l’ancien chef devient co-chef',
+      (await pg.locator('#flash-wrap .flash').allInnerTexts()).join(' ').includes('projet confié à Sami Chérif (Ali Chef devient co-chef)'));
+    etape('base : Sami chef, Ali co-chef, Sami ni co-chef ni intervenant',
+      sql('SELECT chef_projet_id FROM projet WHERE id=1') === '5'
+      && sql('SELECT string_agg(utilisateur_id::text, \',\' ORDER BY utilisateur_id) FROM projet_co_chef WHERE projet_id=1') === '2'
+      && sql('SELECT count(*) FROM projet_intervenant WHERE projet_id=1 AND utilisateur_id=5') === '0');
+    etape('équipe du projet inchangée', sql('SELECT equipe_code FROM projet WHERE id=1') === 'MIDGARD');
+    etape('post « Ali Chef a confié le projet à Sami Chérif » dans le fil',
+      (await pg.locator('#fil-posts').innerText()).includes('Ali Chef a confié le projet à Sami Chérif.'));
+    etape('notification au nouveau chef, journal d’audit',
+      sql("SELECT count(*) FROM notification WHERE utilisateur_id=5 AND message LIKE 'Ali Chef vous a confié le projet « 21114X_Siemens »%' AND post_id IS NOT NULL") === '1'
+      && sql("SELECT count(*) FROM audit_log WHERE table_cible='projet' AND ligne_id=1 AND utilisateur_id=2 AND donnees_avant->>'chef_projet_id'='2' AND donnees_apres->>'chef_projet_id'='5'") === '1');
+    etape('en-tête et carte Intervenants à jour', (await pg.locator('.lien-personne .nom-personne').first().innerText()) === 'Sami Chérif'
+      && (await pg.locator('#carte-intervenants').innerText()).includes('Co-chef'));
+    await capture(pg, 'e2e-11b-chef-change-1280-clair.png');
+
+    // --- 13. Projet clos : rouvrir d'abord (non-Admin) -------------------
+    sql("UPDATE projet SET etat='termine' WHERE id=1");
+    await pg.reload();
+    await pg.click('button.bouton-texte[data-open-informations-dialog]');
+    etape('projet clos : chef en lecture seule pour un co-chef',
+      await pg.locator('#dialog-info-chef').count() === 0
+      && (await pg.locator('#dialog-informations-projet').innerText()).includes('Projet clos : rouvrez-le d’abord'.replace('’', "'")));
+    await pg.keyboard.press('Escape');
+    sql("UPDATE projet SET etat='en_cours' WHERE id=1");
+    await ali2.close();
+
+    // --- 14. Encart Admin -> fenêtre Informations, champ prêt (375 sombre)
+    sql('UPDATE utilisateur SET actif=false WHERE id=5');
+    const adm = await contexte(navigateur, 'admin@x.tn', { largeur: 375, hauteur: 800, theme: 'dark' });
+    pg = await ouvrir(adm, '/utilisateurs');
+    etape('encart Admin : lien « Changer le chef »', await pg.locator('a.lien-changer-chef[href="/projets/1?informations=chef"]').count() === 1);
+    await Promise.all([pg.waitForNavigation(), pg.click('a.lien-changer-chef')]);
+    await pg.waitForSelector('#dialog-informations-projet[open]');
+    await pause(150);
+    a = await actif(pg);
+    etape('fenêtre Informations ouverte, focus dans le champ chef, liste ouverte',
+      a.cls.includes('search-combobox-input') && await pg.locator('#dialog-info-chef ~ .search-combobox-wrap .search-combobox-input').getAttribute('aria-expanded') === 'true', a);
+    etape('adresse nettoyée (?informations retiré)', await pg.evaluate(() => location.search === ''));
+    etape('chef désactivé affiché, signalé et sélectionné (la frappe le remplace)',
+      (await pg.locator('#dialog-info-chef ~ .search-combobox-wrap .search-combobox-input').inputValue()) === 'Sami Chérif (désactivé)'
+      && await pg.evaluate(() => { const c = document.activeElement; return c.selectionStart === 0 && c.selectionEnd === c.value.length; }));
+    etape('375 px sombre : aucun débordement, fenêtre dans l’écran', await debordement(pg) === 0
+      && await pg.evaluate(() => { const r = document.getElementById('dialog-informations-projet').getBoundingClientRect(); return r.left >= 0 && r.right <= 375; }));
+    const listeChef = await pg.locator('#dialog-info-chef ~ .search-combobox-wrap .search-combobox-list').boundingBox();
+    etape('375 px : la liste des chefs tient dans la largeur', listeChef && listeChef.x >= 0 && listeChef.x + listeChef.width <= 375, listeChef);
+    await capture(pg, 'e2e-11b-encart-chef-375-sombre.png');
+    await pg.keyboard.type('ali');
+    await pg.keyboard.press('Enter');
+    await Promise.all([pg.waitForNavigation(), pg.click('#dialog-informations-projet button[type=submit]')]);
+    etape('Admin : projet du chef désactivé confié à Ali, Sami devient co-chef',
+      sql('SELECT chef_projet_id FROM projet WHERE id=1') === '2'
+      && sql('SELECT count(*) FROM projet_co_chef WHERE projet_id=1 AND utilisateur_id=5') === '1'
+      && sql('SELECT count(*) FROM projet_co_chef WHERE projet_id=1 AND utilisateur_id=2') === '0');
+    pg = await ouvrir(adm, '/utilisateurs');
+    etape('encart vidé', await pg.locator('a.lien-changer-chef').count() === 0);
+    await adm.close();
+
+    // --- 15. 1280 / 375 px, clair / sombre : fenêtres de tâche et Informations
+    for (const [largeur, theme] of [[1280, 'light'], [1280, 'dark'], [375, 'light'], [375, 'dark']]) {
+      const ctx = await contexte(navigateur, 'ali@x.tn', { largeur, hauteur: 860, theme });
+      const pv = await ouvrir(ctx, '/projets/1?tache=9');
+      await pv.waitForSelector('#dialog-tache [data-tache-fenetre="9"]');
+      const bt = await pv.locator('#dialog-tache').boundingBox();
+      etape(`${largeur} px ${theme} : tâche close ouverte par ?tache, dans l’écran`, bt.x >= 0 && bt.x + bt.width <= largeur
+        && await debordement(pv) === 0, bt);
+      await capture(pv, `e2e-11b-tache-${largeur}-${theme}.png`);
+      await pv.keyboard.press('Escape');
+      await pv.click('button.bouton-texte[data-open-informations-dialog]');
+      await pv.locator('#dialog-info-chef ~ .search-combobox-wrap .search-combobox-input').focus();
+      const bi = await pv.locator('#dialog-informations-projet').boundingBox();
+      const bl = await pv.locator('#dialog-info-chef ~ .search-combobox-wrap .search-combobox-list').boundingBox();
+      etape(`${largeur} px ${theme} : Informations et liste des chefs dans l’écran`,
+        bi.x >= 0 && bi.x + bi.width <= largeur && bl && bl.x + bl.width <= largeur && await debordement(pv) === 0, [bi, bl]);
+      if (theme === 'dark') {
+        const fondListe = await pv.evaluate(() => getComputedStyle(document.querySelector('#dialog-info-chef ~ .search-combobox-wrap .search-combobox-list')).backgroundColor);
+        etape(`${largeur} px sombre : liste des chefs sur fond sombre`, fondListe.match(/\d+/g).slice(0, 3).every((v) => +v < 80), fondListe);
+      }
+      await capture(pv, `e2e-11b-informations-${largeur}-${theme}.png`);
+      await ctx.close();
+    }
 
     etape('aucune erreur JavaScript', erreursJs.length === 0, erreursJs);
   } catch (e) {

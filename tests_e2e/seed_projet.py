@@ -6,7 +6,8 @@ Comptes (mot de passe Kairos2026!) : ali@x.tn (chef du projet 1),
 rim@x.tn (intervenante du projet), helene@x.tn (« Hélène », à ajouter),
 sami@x.tn (chef de projet, deviendra co-chef), rh@x.tn, client@x.tn,
 ancien@x.tn (désactivé). Projet 1 : 12 tâches dont 5 closes
-(terminée, vérifiée, arrêtée, abandonnée).
+(terminée, vérifiée, arrêtée, abandonnée). Lot 11 b : projet 2 de
+l'équipe URBS (invisible pour Rim), avec la tâche 13.
 """
 import os
 import subprocess
@@ -28,8 +29,9 @@ INSERT INTO utilisateur (id, email, mot_de_passe_hash, prenom, nom, role, equipe
  (9, 'omar@x.tn', '{H}', 'Omar', 'Mahjoub', 'intervenant', 'MIDGARD', 'Technicien', now() - interval '200 days', true, true, 'Africa/Tunis');
 SELECT setval(pg_get_serial_sequence('utilisateur','id'), 9);
 INSERT INTO projet (id, code, nom, phase, chef_projet_id, equipe_code, etat) VALUES
- (1, '21114X', 'Siemens', 'EXE', 2, 'MIDGARD', 'en_cours');
-SELECT setval(pg_get_serial_sequence('projet','id'), 1);
+ (1, '21114X', 'Siemens', 'EXE', 2, 'MIDGARD', 'en_cours'),
+ (2, '21115X', 'Urbs', 'EXE', 1, 'URBS', 'en_cours');
+SELECT setval(pg_get_serial_sequence('projet','id'), 2);
 INSERT INTO projet_intervenant (projet_id, utilisateur_id) VALUES (1, 3);
 INSERT INTO tache (id, projet_id, titre, created_by, etat, date_echeance, type_deadline) VALUES
  (1, 1, 'Note de calcul fondations', 2, 'en_cours', CURRENT_DATE + 7, 'rendu_client'),
@@ -43,8 +45,9 @@ INSERT INTO tache (id, projet_id, titre, created_by, etat, date_echeance, type_d
  (9, 1, 'Contrôle externe', 2, 'verifie', CURRENT_DATE - 40, 'rendu_client'),
  (10, 1, 'Variante charpente', 2, 'arret', CURRENT_DATE - 50, 'interne'),
  (11, 1, 'Étude pieux', 2, 'abandonne', CURRENT_DATE - 60, 'rendu_client'),
- (12, 1, 'Note hypothèses', 2, 'termine', CURRENT_DATE - 70, 'rendu_client');
-SELECT setval(pg_get_serial_sequence('tache','id'), 12);
+ (12, 1, 'Note hypothèses', 2, 'termine', CURRENT_DATE - 70, 'rendu_client'),
+ (13, 2, 'Ferraillage Urbs', 1, 'en_cours', CURRENT_DATE + 9, 'rendu_client');
+SELECT setval(pg_get_serial_sequence('tache','id'), 13);
 INSERT INTO tache_intervenant (tache_id, utilisateur_id) VALUES (1, 3), (8, 3);
 """
 base = sys.argv[1]

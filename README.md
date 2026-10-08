@@ -45,7 +45,18 @@ Notifications et fil de posts (étape 1, complète). Flask + PostgreSQL
   (comptes désactivés signalés), insensible aux accents et à la casse
   (extension PostgreSQL `unaccent`, créée par la migration 0016 : elle est
   fournie par l'image `postgres:16` et peut être créée par le propriétaire
-  de la base).
+  de la base). Un résultat « tâche » ouvre la fiche du projet ET la
+  fenêtre de la tâche (`/projets/<id>?tache=<id>`, tâches closes dépliées
+  au besoin) ; même chose pour une notification d'affectation (lot 11 b).
+- **Changer le chef de projet** (lot 11 b) : champ « Chef de projet » de la
+  fenêtre Informations de la fiche, mêmes droits que le reste de la
+  fenêtre (Admin, chef titulaire, co-chefs). Nouveau chef : compte actif,
+  chef de projet ou Admin. L'ancien chef devient co-chef ; l'équipe du
+  projet ne change pas ; post « X a confié le projet à Y », notification
+  au nouveau chef, ligne d'audit. Projet clos : le rouvrir d'abord (l'Admin
+  peut toujours réaffecter). Garde en base : migration 0017. L'encart Admin
+  « Projets ouverts dont le chef est désactivé » (liste Utilisateurs) a un
+  lien « Changer le chef » qui ouvre directement la fenêtre.
 - **Utilisateurs** (`/utilisateurs`, admin/RH, et en lecture seule pour
   les chefs de projet — voir plus bas) : liste avec filtres, bascule
   actif/inactif (admin/RH), création de compte (`/utilisateurs/nouveau`)
@@ -78,7 +89,11 @@ Notifications et fil de posts (étape 1, complète). Flask + PostgreSQL
 - **Notifications** : cloche dans la barre du haut avec compteur temps
   réel, page `/notifications`, déclenchées par mention (post/commentaire),
   affectation à une tâche, ajout comme intervenant, et rappel automatique
-  si le dernier jour ouvré n'a pas été rempli (le lundi : le vendredi).
+  des jours ouvrés passés non remplis (lot 11 b : « Daily log du mardi 7
+  octobre non rempli » ; plusieurs jours jamais rappelés regroupés en une
+  seule notification ; lien vers `/dailylog?date=…` ; un jour n'est
+  rappelé qu'une fois — colonne `notification.rappel_jours`, migration
+  0017, qui reconnaît aussi les rappels de l'ancien format).
 
 **Reste à construire** (étape 2, plus tard) : Congés/Télétravail,
 rôle Client, fil "Information" hors-projet ciblé par équipe.
@@ -359,8 +374,8 @@ rechargement des projets et tâches sans toucher aux comptes) appliquent la
 même cohérence des états (lot 11) : une tâche En cours ou Bloquée d'un
 projet Terminé devient Terminée (Abandonnée si le projet est Abandonné), un
 projet ouvert est Bloqué si et seulement si une de ses tâches l'est. Le
-rechargement exige une base à jour (migration 0016) et signale les projets
-ouverts sans tâche ouverte et ceux dont le chef est désactivé.
+rechargement exige une base à jour (dernière migration : 0017) et signale
+les projets ouverts sans tâche ouverte et ceux dont le chef est désactivé.
 
 Volontairement laissé hors périmètre (pas encore modélisé en étape 1) :
 Congés/Télétravail, notifications historiques, jours fériés, sessions,
