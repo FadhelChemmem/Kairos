@@ -24,6 +24,19 @@ csrf = CSRFProtect()
 # (Daily log v9, lot 10).
 API_JSON_PREFIXES = ("/dailylog/api/", "/dailylog/recherche-projets")
 
+# Pages d'erreur HTML (lot 11) : titre et message, jamais de détail technique.
+PAGES_ERREUR = {
+    400: ("Requête invalide", "La demande envoyée n’a pas pu être comprise. Revenez en arrière et réessayez."),
+    403: ("Accès refusé", "Vous n’avez pas les droits nécessaires pour ouvrir cette page."),
+    404: ("Page introuvable", "Cette page n’existe pas, ou vous n’y avez pas accès. Vérifiez l’adresse, "
+                              "ou repartez de l’accueil."),
+    405: ("Action non autorisée", "Cette adresse ne s’utilise pas de cette façon. Repartez de l’accueil."),
+    413: ("Fichier trop volumineux", "L’envoi dépasse la taille autorisée."),
+    500: ("Erreur du serveur", "Une erreur inattendue s’est produite. Réessayez dans un instant ; si elle "
+                               "persiste, prévenez l’administrateur."),
+}
+PAGES_ERREUR_DEFAUT = ("Demande impossible", "Cette demande n’a pas pu aboutir. Repartez de l’accueil.")
+
 
 def _valider_secret_key(app: Flask) -> None:
     """Refuse de démarrer sans une SECRET_KEY correcte (revue sécurité,
@@ -141,6 +154,17 @@ def create_app(config_class=Config) -> Flask:
             response.headers.setdefault(
                 "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
             )
+        # Lot 11 (audit sécurité de la prod, I1 et M3) : aucune réponse
+        # authentifiée (pages, API, export Excel, pièces jointes, avatars)
+        # ne doit rester dans le cache du navigateur ou d'un proxy — poste
+        # partagé, bouton « Précédent » après déconnexion, xlsx des
+        # honoraires. Remplace le « no-cache » posé par send_file. Seuls
+        # les fichiers statiques gardent leur politique de cache.
+        if g.get("user") is not None and request.endpoint != "static" and not request.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-store"
+            response.headers.pop("Expires", None)
+            response.headers.pop("ETag", None)
+            response.headers.pop("Last-Modified", None)
         return response
 
     def _est_api_json() -> bool:
@@ -149,15 +173,36 @@ def create_app(config_class=Config) -> Flask:
     @app.errorhandler(HTTPException)
     def _erreur_http(exc):
         """Sous /dailylog/api/, toute erreur (404, 405, 400, 500…) répond
-        en JSON ; ailleurs, la page d'erreur habituelle."""
+        en JSON ; ailleurs, la page d'erreur de Kairos (lot 11), en
+        français, sans information technique."""
         if not _est_api_json():
-            return exc
+            return _page_erreur(exc)
         codes = {400: ("requete_invalide", "Requête invalide."), 401: ("non_connecte", "Session expirée : reconnectez-vous."),
                  403: ("interdit", "Action non autorisée."), 404: ("introuvable", "Adresse inconnue."),
                  405: ("methode_interdite", "Méthode non autorisée."), 413: ("trop_volumineux", "Requête trop volumineuse."),
                  500: ("erreur_serveur", "Erreur du serveur.")}
         code, message = codes.get(exc.code, ("erreur", "Requête refusée."))
         return {"erreur": code, "message": message}, exc.code or 500
+
+    def _page_erreur(exc):
+        from flask import render_template
+
+        code = exc.code or 500
+        titre, message = PAGES_ERREUR.get(code, PAGES_ERREUR_DEFAUT if code < 500 else PAGES_ERREUR[500])
+        try:
+            reponse = app.make_response((render_template("erreur.html", code=code, titre=titre, message=message), code))
+        except Exception:
+            # La page d'erreur ne doit jamais elle-même échouer (base
+            # indisponible, gabarit cassé…) : texte minimal, toujours sans
+            # détail technique.
+            app.logger.exception("Page d'erreur %s impossible à afficher", code)
+            reponse = app.make_response((f"Erreur {code} — {titre}. {message}", code,
+                                         {"Content-Type": "text/plain; charset=utf-8"}))
+        # 405 : la liste des méthodes permises reste dans l'en-tête Allow.
+        for nom, valeur in exc.get_headers():
+            if nom.lower() == "allow":
+                reponse.headers[nom] = valeur
+        return reponse
 
     @app.errorhandler(CSRFError)
     def _csrf_error(exc):

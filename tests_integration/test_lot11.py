@@ -195,3 +195,22 @@ class TestRechercheSansAccents(BaseIntegration):
         self.sql("UPDATE projet SET nom = 'Gros Œuvre' WHERE id = %s", (self.residence,))
         trouves = dailylog.rechercher_projets("oeuvre", self.chef, datetime.date(2026, 10, 1))
         self.assertEqual([p["projet_id"] for p in trouves], [self.residence])
+
+
+class TestEnTetesEtPagesErreur(BaseIntegration):
+    def test_no_store_et_pages_d_erreur(self):
+        chef = self.user("chef_de_projet")
+        p = self.projet(chef)
+        self.login(chef)
+        for url in ("/accueil", f"/projets/{p}", "/projets/export.xlsx", "/dailylog/api/mois/2026-10"):
+            with self.subTest(url=url):
+                r = self.client.get(url)
+                self.assertEqual(r.status_code, 200)
+                self.assertEqual(r.headers["Cache-Control"], "no-store")
+        r = self.client.get("/projets/999999")
+        self.assertEqual(r.status_code, 404)
+        self.assertIn("Page introuvable", r.get_data(as_text=True))
+        self.assertEqual(r.headers["Cache-Control"], "no-store")
+        r = self.client.get("/dailylog/api/jour/2026-13-40")
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.get_json()["erreur"], "date_invalide")

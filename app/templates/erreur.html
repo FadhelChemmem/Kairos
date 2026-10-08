@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ titre }} — Kairos{% endblock %}
+{% block body %}
+{# Page d'erreur de Kairos (lot 11) : 403, 404, 405, 500… en français, au
+   style de l'appli, sans aucune information technique (ni trace, ni
+   version, ni chemin) — voir app/__init__.py:_erreur_http. Les API JSON
+   gardent leurs réponses JSON. #}
+<div class="page-wrap" style="max-width:560px; padding-top:56px; padding-bottom:60px;">
+  <div class="card" style="padding:32px 28px; text-align:center;">
+    <p style="margin:0 0 6px; font-size:13px; font-weight:700; letter-spacing:0.04em; color:var(--text-faint);">Erreur {{ code }}</p>
+    <h1 class="page-titre" style="margin:0 0 12px; font-size:22px;">{{ titre }}</h1>
+    <p style="margin:0 0 24px; font-size:14px; line-height:1.5; color:var(--text-secondary);">{{ message }}</p>
+    <a href="{{ url_for('main.accueil') }}" class="btn-primary" style="display:inline-block; width:auto; padding:10px 18px; text-decoration:none;">Retour à l’accueil</a>
+  </div>
+</div>
+{% endblock %}

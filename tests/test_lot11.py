@@ -242,5 +242,89 @@ class TestRechercheGlobale(_Base):
         self.assertEqual(motif_recherche("50%_a\\b"), "%50\\%\\_a\\\\b%")
 
 
+class TestEnTetesCache(_Base):
+    def test_no_store_sur_tout_ce_qui_est_authentifie(self):
+        for url in ("/accueil", "/projets", "/projets/1", "/deadlines", "/notifications",
+                    "/recherche/api?q=ab", "/projets/code-propose?phase=EXE", "/projets/export.xlsx",
+                    "/page-inexistante"):
+            with self.subTest(url=url):
+                resp = self._get(url)
+                self.assertEqual(resp.headers.get("Cache-Control"), "no-store")
+
+    def test_piece_jointe_et_avatar(self):
+        from flask import Response
+
+        def fichier(*args, **kwargs):
+            r = Response(b"%PDF", mimetype="application/pdf")
+            r.headers["Cache-Control"] = "no-cache"
+            r.headers["ETag"] = '"abc"'
+            return r
+        with patch("app.routes.fichiers.send_from_directory", side_effect=fichier):
+            resp = self._get("/fichiers/taches/1")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.headers["Cache-Control"], "no-store")
+        self.assertNotIn("ETag", resp.headers)
+        # Toujours les en-têtes de sécurité habituels.
+        self.assertEqual(resp.headers["X-Content-Type-Options"], "nosniff")
+
+    def test_statiques_et_anonyme_inchanges(self):
+        resp = self._get("/static/css/app.css")
+        self.assertNotEqual(resp.headers.get("Cache-Control"), "no-store")
+        resp.close()
+        resp = self.app.test_client().get("/connexion")
+        self.assertNotEqual(resp.headers.get("Cache-Control"), "no-store")
+
+
+class TestPagesErreur(_Base):
+    def setUp(self):
+        super().setUp()
+        from flask import abort
+
+        @self.app.route("/__test/interdit")
+        def _interdit():
+            abort(403)
+
+        @self.app.route("/__test/plante")
+        def _plante():
+            raise RuntimeError("secret technique : /app/routes/x.py ligne 12")
+
+    def _verifier(self, resp, code, titre):
+        body = resp.get_data(as_text=True)
+        self.assertEqual(resp.status_code, code)
+        self.assertIn("text/html", resp.headers["Content-Type"])
+        self.assertIn('<html lang="fr">', body)
+        self.assertIn(f"Erreur {code}", body)
+        self.assertIn(titre, body)
+        self.assertIn("Retour à l’accueil", body)
+        self.assertIn('href="/accueil"', body)
+        for technique in ("Werkzeug", "Traceback", "Not Found", "The requested URL", "secret technique"):
+            self.assertNotIn(technique, body)
+        return body
+
+    def test_404_403_405(self):
+        self._verifier(self._get("/page-inexistante"), 404, "Page introuvable")
+        self._verifier(self._get("/projets/1", **{"app.repositories.projets.user_can_view": False}),
+                       404, "Page introuvable")
+        self._verifier(self._get("/__test/interdit"), 403, "Accès refusé")
+        resp = self._get("/notifications/1/ouvrir")  # POST seulement
+        self._verifier(resp, 405, "Action non autorisée")
+        self.assertIn("POST", resp.headers["Allow"])
+
+    def test_404_anonyme(self):
+        self._verifier(self.client.get("/inexistante"), 404, "Page introuvable")
+
+    def test_500_sans_detail_technique(self):
+        self.app.testing = False
+        self.app.config["PROPAGATE_EXCEPTIONS"] = False
+        with self.assertLogs(self.app.logger, level="ERROR"):
+            body = self._verifier(self._get("/__test/plante"), 500, "Erreur du serveur")
+        self.assertIn("prévenez l’administrateur", body)
+
+    def test_api_json_inchangee(self):
+        resp = self._get("/dailylog/api/inexistante")
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.get_json()["erreur"], "introuvable")
+
+
 if __name__ == "__main__":
     unittest.main()
