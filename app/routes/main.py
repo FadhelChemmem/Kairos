@@ -123,7 +123,8 @@ def recherche_api():
     if len(q) < 2:
         return {"resultats": []}
     projets_trouves = projets.search(g.user["id"], q, limit=6)
-    personnes_trouvees = utilisateurs.search(q, limit=6)
+    # Comptes désactivés : jamais pour un Client (extérieur à l'entreprise).
+    personnes_trouvees = utilisateurs.search(q, limit=6, inclure_inactifs=g.user["role"] != "client")
     # Le RH ne voit aucun projet, donc aucune tâche (v_projet_visibilite).
     taches_trouvees = taches.search(g.user["id"], q, limit=6)
     resultats = [

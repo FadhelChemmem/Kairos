@@ -112,3 +112,14 @@ class TestRechercheNavigateurCommeServeur(BaseIntegration):
         for e, n, s in zip(self.ECHANTILLONS, navigateur, serveur):
             with self.subTest(texte=e):
                 self.assertEqual(n, s)
+
+
+class TestRechercheClient(BaseIntegration):
+    def test_client_sans_comptes_desactives(self):
+        inactif = self.user("intervenant", actif=False)
+        self.sql("UPDATE utilisateur SET prenom = 'Omrane', nom = 'Zéphyr' WHERE id = %s", (inactif,))
+        for role, trouve in (("client", False), ("chef_de_projet", True)):
+            with self.subTest(role=role):
+                self.login(self.user(role))
+                r = self.client.get("/recherche/api", query_string={"q": "zephyr"}).get_json()["resultats"]
+                self.assertEqual(any(x["label"] == "Omrane Zéphyr (inactif)" for x in r), trouve)

@@ -174,5 +174,28 @@ class TestFenetreDatesEtHeures(_Base):
         lister.assert_called_once_with(1, tache_id=5)
 
 
+class TestRevueRecherche(_Base):
+    def test_client_ne_trouve_pas_les_comptes_desactives(self):
+        for role, attendu in (("client", False), ("chef_de_projet", True), ("admin", True)):
+            with self.subTest(role=role):
+                self._login()
+                patchers = self._patched(**{"app.auth.get_user_by_id": {**smoke.USER, "role": role},
+                                            "app.repositories.projets.search": [],
+                                            "app.repositories.taches.search": []})
+                for p in patchers:
+                    p.start()
+                try:
+                    with patch("app.repositories.utilisateurs.search", return_value=[]) as chercher:
+                        self.assertEqual(self.client.get("/recherche/api?q=omrane").status_code, 200)
+                finally:
+                    for p in reversed(patchers):
+                        p.stop()
+                chercher.assert_called_once_with("omrane", limit=6, inclure_inactifs=attendu)
+
+    def test_champ_de_recherche_mentionne_les_taches(self):
+        html = self._get("/accueil").data.decode()
+        self.assertIn('placeholder="Rechercher un projet, une tâche, une personne…"', html)
+
+
 if __name__ == "__main__":
     unittest.main()

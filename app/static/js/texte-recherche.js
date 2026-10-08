@@ -22,13 +22,13 @@
   // Lettres que la décomposition NFD ne sépare pas de leur « accent »
   // (règles du dictionnaire unaccent de PostgreSQL).
   var SPECIAUX = {
-    'œ': 'oe', 'Œ': 'oe', 'æ': 'ae', 'Æ': 'ae', 'ß': 'ss', 'ø': 'o', 'Ø': 'o',
-    'ł': 'l', 'Ł': 'l', 'đ': 'd', 'Đ': 'd', 'ð': 'd', 'Ð': 'd', 'þ': 'th', 'Þ': 'th',
-    'ı': 'i', 'ĸ': 'q', 'ŀ': 'l', 'Ŀ': 'l', 'ŉ': "'n",
-    '‘': "'", '’': "'", '‚': ',', '‛': "'", 'ʼ': "'", '′': "'",
-    '“': '"', '”': '"', '„': ',,',
-    '‐': '-', '‑': '-', '‒': '-', '–': '-', '—': '-', '―': '-',
-    '«': '<<', '»': '>>', ' ': ' ', ' ': ' '
+    '\u0153': 'oe', '\u0152': 'oe', '\u00e6': 'ae', '\u00c6': 'ae', '\u00df': 'ss', '\u00f8': 'o', '\u00d8': 'o',
+    '\u0142': 'l', '\u0141': 'l', '\u0111': 'd', '\u0110': 'd', '\u00f0': 'd', '\u00d0': 'd', '\u00fe': 'th', '\u00de': 'th',
+    '\u0131': 'i', '\u0138': 'q', '\u0140': 'l', '\u013f': 'l', '\u0149': "'n",
+    '\u2018': "'", '\u2019': "'", '\u201a': ',', '\u201b': "'", '\u02bc': "'", '\u2032': "'",
+    '\u201c': '"', '\u201d': '"', '\u201e': ',,',
+    '\u2010': '-', '\u2011': '-', '\u2012': '-', '\u2013': '-', '\u2014': '-', '\u2015': '-',
+    '\u00ab': '<<', '\u00bb': '>>', '\u00a0': ' ', '\u202f': ' '
   };
   var MOTIF_SPECIAUX = new RegExp('[' + Object.keys(SPECIAUX).join('') + ']', 'g');
 
@@ -36,7 +36,7 @@
   function sansAccents(texte) {
     return String(texte == null ? '' : texte)
       .replace(MOTIF_SPECIAUX, function (c) { return SPECIAUX[c]; })
-      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .toLowerCase();
   }
 

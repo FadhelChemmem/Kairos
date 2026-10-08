@@ -77,7 +77,7 @@ def list_collaborateurs_recents(user_id: int, limit: int = 5) -> list[int]:
     return [r["id"] for r in rows]
 
 
-def search(q: str, limit: int = 6) -> list[dict]:
+def search(q: str, limit: int = 6, inclure_inactifs: bool = True) -> list[dict]:
     """Recherche de personnes pour la barre de recherche topbar (Lot 5,
     retour Fadhel, 2026-09-28 — jusqu'ici différée, voir l'ancien
     commentaire de main.recherche_api : "pas de page de profil publique").
@@ -89,17 +89,20 @@ def search(q: str, limit: int = 6) -> list[dict]:
     Lot 11 : sans accents ni casse, sur le prénom, le nom, « prénom nom » et
     « nom prénom » (« Fadhel Chem » trouvait 0 résultat) ; les comptes
     désactivés sont trouvés aussi (chef d'un projet encore ouvert…),
-    après les actifs, avec `actif` pour les signaler."""
+    après les actifs, avec `actif` pour les signaler. `inclure_inactifs=False`
+    (revue d'intégration du lot 11) : un Client, extérieur à l'entreprise,
+    ne trouve que les comptes actifs, comme avant le lot 11."""
     return db.query_all(
         """
         SELECT id, prenom, nom, poste, actif
         FROM utilisateur
-        WHERE fn_recherche(prenom || ' ' || nom) LIKE fn_recherche(%(q)s)
-           OR fn_recherche(nom || ' ' || prenom) LIKE fn_recherche(%(q)s)
+        WHERE (fn_recherche(prenom || ' ' || nom) LIKE fn_recherche(%(q)s)
+               OR fn_recherche(nom || ' ' || prenom) LIKE fn_recherche(%(q)s))
+          AND (%(inactifs)s OR actif)
         ORDER BY actif DESC, nom, prenom
         LIMIT %(limit)s
         """,
-        {"q": motif_recherche(q), "limit": limit},
+        {"q": motif_recherche(q), "limit": limit, "inactifs": bool(inclure_inactifs)},
     )
 
 
