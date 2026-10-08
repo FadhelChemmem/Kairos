@@ -170,5 +170,44 @@ class TestDatesEtHeures(_Base):
         self.assertIn("· en retard de 3 j", body)  # bandeau des échéances
 
 
+class TestCodePropose(unittest.TestCase):
+    """Numéro d'affaire global à l'année (toutes phases), lettre selon la
+    phase, série 9xx jamais proposée, phase liée = même numéro."""
+
+    def propose(self, codes, phase, **kw):
+        from app.repositories import projets
+        with patch("app.db.query_all", return_value=[{"code": c} for c in codes]) as requete:
+            code = projets.propose_code(phase, annee=2026, **kw)
+        self.assertEqual(requete.call_args.args[1], ("26%",))  # toutes les phases de l'année
+        return code
+
+    def test_numero_global_toutes_phases(self):
+        codes = ["26076D", "26077X", "26088X", "26085P", "26922X", "26924X", "25999X", "26C9P", "26077X-2"]
+        self.assertEqual(self.propose(codes, "APS"), "26089P")
+        self.assertEqual(self.propose(codes, "APD"), "26089P")
+        self.assertEqual(self.propose(codes, "DCE"), "26089D")
+        self.assertEqual(self.propose(codes, "EXE"), "26089X")
+        self.assertEqual(self.propose(codes, "DOE"), "26089E")
+
+    def test_serie_9xx_jamais_proposee(self):
+        self.assertEqual(self.propose(["26901X", "26950P"], "EXE"), "26001X")
+        self.assertEqual(self.propose(["26899P", "26900X"], "EXE"), "261000X")
+        self.assertEqual(self.propose(["26899P", "261003D"], "DCE"), "261004D")
+
+    def test_phase_liee_garde_son_numero(self):
+        from app.repositories import projets
+        with patch("app.db.query_one", return_value=None), patch("app.db.query_all") as requete:
+            self.assertEqual(projets.propose_code("EXE", annee=2026, phase_liee_code="26922D"), "26922X")
+        requete.assert_not_called()
+        # Même lettre (APS -> APD) : déjà pris, numéro suivant de l'année.
+        with patch("app.db.query_one", return_value={"pris": 1}), \
+                patch("app.db.query_all", return_value=[{"code": "26012P"}, {"code": "26040X"}]):
+            self.assertEqual(projets.propose_code("APD", annee=2026, phase_liee_code="26012P"), "26041P")
+
+    def test_neuf_cents_saisissable_a_la_main(self):
+        from app.repositories.projets import code_valide
+        self.assertTrue(code_valide("26924X", "EXE"))
+
+
 if __name__ == "__main__":
     unittest.main()

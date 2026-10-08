@@ -625,18 +625,30 @@ def code_valide(code: str, phase: str) -> bool:
     return bool(lettre) and re.fullmatch(rf"\d{{5,19}}{lettre}", code or "") is not None
 
 
+# Série 9xx (lot 11, décision du gérant) : numéros réservés, saisis à la
+# main (projets internes, essais…) — jamais proposés automatiquement, et
+# jamais pris comme « dernier numéro » de l'année.
+SERIE_RESERVEE = range(900, 1000)
+
+
 def propose_code(phase: str, annee: int | None = None, phase_liee_code: str | None = None) -> str:
     """Propose le prochain code projet pour une année/phase données
     (ex. "26099X"), modifiable ensuite par l'utilisateur — voir spec :
     le code reste semi-automatique côté application, la base ne fait que
     garantir son unicité (contrainte UNIQUE sur projet.code).
 
-    PROMPT_CORRECTIONS.md P2 #22 : le numéro n'est plus déduit d'un tri
-    texte (`ORDER BY code DESC LIMIT 1`), qui casse dès que le numéro
-    dépasse 999 — "26999X" est lexicalement supérieur à "261000X" bien
-    qu'inférieur numériquement, ce qui aurait proposé un code déjà pris.
-    On récupère tous les codes de l'année/phase et on prend le MAX() du
-    numéro extrait par regex.
+    Lot 11 (décision du gérant) : le numéro d'AFFAIRE est global à
+    l'année, toutes phases confondues — le plus grand numéro de l'année
+    hors série 9xx, + 1 ; seule la lettre dépend de la phase (APS/APD → P,
+    DCE → D, EXE → X, DOE → E). Avant, le maximum était calculé par lettre :
+    26922P était proposé alors que 26922 était déjà l'affaire 26922X, et la
+    série 9xx était proposée. Si le numéro suivant tombe dans la série 9xx,
+    on passe à 1000 et au-delà (comparaison numérique, pas de tri texte :
+    PROMPT_CORRECTIONS.md P2 #22).
+
+    Une phase liée garde le numéro de sa phase liée, avec la lettre de la
+    nouvelle phase (26001D → 26001X), s'il est libre ; sinon (APS → APD,
+    même lettre P) on retombe sur le numéro suivant de l'année.
     """
     import datetime
     import re
@@ -645,9 +657,6 @@ def propose_code(phase: str, annee: int | None = None, phase_liee_code: str | No
         phase = "EXE"
     lettre = LETTRE_PHASE[phase]
 
-    # Projet lié (retour Fadhel, lot 8) : même code que la phase liée, avec
-    # la lettre de la nouvelle phase (26001D → 26001X) — s'il est libre ;
-    # sinon (ex. APS → APD, même lettre P) on retombe sur le numéro suivant.
     if phase_liee_code:
         m = re.fullmatch(r"(\d{5,})[A-Z]", phase_liee_code)
         if m:
@@ -658,15 +667,13 @@ def propose_code(phase: str, annee: int | None = None, phase_liee_code: str | No
     annee = annee or datetime.date.today().year
     prefixe = f"{annee % 100:02d}"
 
-    sql = "SELECT code FROM projet WHERE code LIKE %s"
-    rows = db.query_all(sql, (f"{prefixe}%{lettre}",))
-    motif = re.compile(rf"^{re.escape(prefixe)}(\d+){re.escape(lettre)}$")
-    numero_max = 0
-    for row in rows:
-        m = motif.match(row["code"])
-        if m:
-            numero_max = max(numero_max, int(m.group(1)))
-    return f"{prefixe}{numero_max + 1:03d}{lettre}"
+    rows = db.query_all("SELECT code FROM projet WHERE code LIKE %s", (f"{prefixe}%",))
+    motif = re.compile(rf"^{re.escape(prefixe)}(\d{{3,}})[A-Z]$")
+    numeros = [int(m.group(1)) for m in (motif.match(r["code"]) for r in rows) if m]
+    suivant = max((n for n in numeros if n < SERIE_RESERVEE.start), default=0) + 1
+    if suivant in SERIE_RESERVEE:
+        suivant = max((n for n in numeros if n >= SERIE_RESERVEE.stop), default=SERIE_RESERVEE.stop - 1) + 1
+    return f"{prefixe}{suivant:03d}{lettre}"
 
 
 def create_projet(

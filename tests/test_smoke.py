@@ -4297,7 +4297,9 @@ class TestProposeCode(unittest.TestCase):
         pris, au lieu de "261001X"."""
         from app.repositories import projets as projets_repo
 
-        with patch("app.db.query_all", return_value=[{"code": "26999X"}, {"code": "261000X"}]):
+        # Lot 11 : la série 9xx est réservée (jamais proposée) ; après 899,
+        # on continue au-delà de 999.
+        with patch("app.db.query_all", return_value=[{"code": "26899X"}, {"code": "26999X"}, {"code": "261000X"}]):
             self.assertEqual(projets_repo.propose_code("EXE", annee=2026), "261001X")
 
     def test_phase_invalide_repliee_sur_exe(self):

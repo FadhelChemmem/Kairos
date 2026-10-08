@@ -111,3 +111,19 @@ class TestListeDesProjets(BaseIntegration):
                                f"&chef_id={moi}&q=louison", headers=ajax).get_data(as_text=True)
         self.assertIn("24102X_Villa Louison", body)
         self.assertIn("est ignoré", body)
+
+
+class TestCodePropose(BaseIntegration):
+    def test_numero_d_affaire_global_hors_serie_9xx(self):
+        from app.repositories import projets
+        chef = self.user("chef_de_projet")
+        for code in ("26076D", "26077X", "26088X", "26085P", "26922X", "26924X", "25120X"):
+            self.projet(chef, code=code)
+        self.assertEqual(projets.propose_code("APS", annee=2026), "26089P")
+        self.assertEqual(projets.propose_code("DCE", annee=2026), "26089D")
+        self.assertEqual(projets.propose_code("EXE", annee=2025), "25121X")
+        self.assertEqual(projets.propose_code("EXE", annee=2026, phase_liee_code="26076D"), "26076X")
+        self.assertEqual(projets.propose_code("DCE", annee=2026, phase_liee_code="26076D"), "26089D")  # pris
+        self.login(chef)
+        self.assertEqual(self.client.get("/projets/code-propose?phase=DOE").get_json()["code"],
+                         f"{datetime.date.today().year % 100:02d}001E" if datetime.date.today().year != 2026 else "26089E")
