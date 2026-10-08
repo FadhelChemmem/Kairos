@@ -181,6 +181,9 @@ def _rappel_dailylog_du_jour() -> None:
         return
     session["rappel_le"] = aujourdhui
     try:
+        # Lot 11 : les anciens rappels dont le jour a été rempli depuis (par
+        # la personne, un chef, une reprise…) sont marqués lus.
+        notifications_repo.marquer_rappels_dailylog_lus(g.user["id"])
         _verifier_rappel_dailylog(g.user)
     except Exception:
         current_app.logger.exception("Rappel Daily log impossible (id=%s)", g.user["id"])

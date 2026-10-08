@@ -436,6 +436,7 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.notifications.marquer_lu": None,
             "app.repositories.notifications.marquer_toutes_lues": None,
             "app.repositories.notifications.creer": 201,
+            "app.repositories.notifications.marquer_rappels_dailylog_lus": None,
             "app.repositories.notifications.a_deja_la_notification": False,
             "app.repositories.notifications.creer_pour_plusieurs": None,
             "app.repositories.audit.list_entrees": AUDIT_ENTREES,

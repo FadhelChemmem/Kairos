@@ -548,7 +548,13 @@ def enregistrer_jour(user_id: int, date, version_attendue: int, acteur_id: int, 
             """,
             (user_id, date, absent, acteur_id),
         )
-        return {"version": int(cur.fetchone()["version"]), "change": True}
+        version = int(cur.fetchone()["version"])
+        # Jour rempli ou marqué absent : son rappel n'a plus lieu d'être
+        # (lot 11), dans la même transaction.
+        if absent or voulues:
+            from . import notifications
+            notifications.marquer_rappels_dailylog_lus(user_id, cur=cur)
+        return {"version": version, "change": True}
 
 
 def get_objectif(user_id: int) -> int:

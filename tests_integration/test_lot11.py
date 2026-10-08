@@ -229,3 +229,67 @@ class TestAdminChefDesactive(BaseIntegration):
         body = self.client.get("/utilisateurs").get_data(as_text=True)
         self.assertIn("Projets ouverts dont le chef est désactivé (1)", body)
         self.assertIn(f'href="/projets/{ouvert}"', body)
+
+
+class TestRappelDailyLogMarqueLu(BaseIntegration):
+    """Lot 11 : le rappel d'un jour est marqué lu dès que ce jour est rempli
+    ou marqué absent (Daily log v9, routes JSON et triggers réels)."""
+
+    def setUp(self):
+        super().setUp()
+        from app.repositories import dailylog
+        self.dl = dailylog
+        self.chef = self.user("chef_de_projet")
+        self.moi = self.user("intervenant")
+        self.p = self.projet(self.chef, code="26069D")
+        self.sql("UPDATE utilisateur SET created_at = now() - interval '400 days'")
+        self.auj = dailylog.aujourdhui_pour({"fuseau": "Africa/Tunis"})
+        self.j1 = self.auj - datetime.timedelta(days=1)
+        self.j2 = self.auj - datetime.timedelta(days=2)
+        for j in (self.j1, self.j2):
+            self.rappel(j)
+
+    def rappel(self, jour):
+        self.sql("INSERT INTO notification (utilisateur_id, categorie, message) VALUES (%s, 'rh_info', %s)",
+                 (self.moi, f"Rappel DailyLog : vous n'avez pas rempli votre journée du {jour.strftime('%d/%m/%Y')}."))
+
+    def lus(self):
+        return {r["message"][-11:-1]: r["lu"] for r in self.sql(
+            "SELECT message, lu FROM notification WHERE utilisateur_id = %s", (self.moi,))}
+
+    def test_jour_rempli_puis_jour_absent(self):
+        self.login(self.moi)
+        r = self.client.put(f"/dailylog/api/jour/{self.j1.isoformat()}",
+                            json={"version": 0, "lignes": [{"projet_id": self.p, "tache_id": None, "minutes": 120}]})
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        self.assertEqual(self.lus(), {self.j1.strftime("%d/%m/%Y"): True, self.j2.strftime("%d/%m/%Y"): False})
+        r = self.client.post(f"/dailylog/api/jour/{self.j2.isoformat()}/absence", json={"version": 0, "absent": True})
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        self.assertEqual(set(self.lus().values()), {True})
+
+    def test_correction_par_le_chef(self):
+        self.login(self.chef)
+        r = self.client.put(f"/dailylog/api/jour/{self.j1.isoformat()}?utilisateur={self.moi}",
+                            json={"version": 0, "lignes": [{"projet_id": self.p, "tache_id": None, "minutes": 60}]})
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        self.assertTrue(self.lus()[self.j1.strftime("%d/%m/%Y")])
+
+    def test_rappel_quotidien_nettoie_les_anciens(self):
+        from app.repositories import notifications
+        with self.db.get_cursor() as cur:  # jour rempli hors de l'appli (reprise, script)
+            cur.execute("SET LOCAL kairos.reprise_historique = 'on'")
+            cur.execute("INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (%s, %s, %s, 8)",
+                        (self.moi, self.j2, self.p))
+        self.sql("INSERT INTO notification (utilisateur_id, categorie, message) VALUES (%s, 'rh_info', 'Autre message 01/01/2026')",
+                 (self.moi,))
+        notifications.marquer_rappels_dailylog_lus(self.moi)
+        lus = self.lus()
+        self.assertTrue(lus[self.j2.strftime("%d/%m/%Y")])
+        self.assertFalse(lus[self.j1.strftime("%d/%m/%Y")])
+        self.assertEqual(self.sql("SELECT lu FROM notification WHERE message LIKE 'Autre%%'")[0]["lu"], False)
+        # Par la session : une fois par jour, à la première page.
+        self.sql("INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (%s, %s, %s, 2)",
+                 (self.moi, self.j1, self.p))
+        self.login(self.moi)
+        self.assertEqual(self.client.get("/accueil").status_code, 200)
+        self.assertTrue(self.lus()[self.j1.strftime("%d/%m/%Y")])

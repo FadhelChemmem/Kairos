@@ -114,6 +114,35 @@ def a_deja_un_rappel_dailylog(user_id: int, jour) -> bool:
     return row is not None
 
 
+# Rappels Daily log dont le jour cité (« … votre journée du 28/09/2026. »)
+# est depuis rempli (au moins une ligne d'heures) ou marqué absent.
+_SQL_RAPPELS_DEVENUS_INUTILES = """
+    UPDATE notification n SET lu = true
+    FROM (
+        SELECT id, to_date(substring(message from '([0-9]{2}/[0-9]{2}/[0-9]{4})'), 'DD/MM/YYYY') AS jour
+        FROM notification
+        WHERE utilisateur_id = %(uid)s AND NOT lu AND categorie = 'rh_info'
+          AND message LIKE 'Rappel DailyLog%%'
+          AND message ~ '[0-9]{2}/[0-9]{2}/[0-9]{4}'
+    ) r
+    WHERE n.id = r.id
+      AND (EXISTS (SELECT 1 FROM dailylog_entree e WHERE e.utilisateur_id = %(uid)s AND e.date = r.jour)
+           OR EXISTS (SELECT 1 FROM dailylog_jour j WHERE j.utilisateur_id = %(uid)s AND j.date = r.jour AND j.absent))
+"""
+
+
+def marquer_rappels_dailylog_lus(user_id: int, cur=None) -> None:
+    """Lot 11 : un rappel « journée du … non remplie » est marqué lu dès que
+    ce jour est rempli ou marqué absent — par la personne ou par un chef qui
+    corrige (appelé dans la transaction d'enregistrement du Daily log,
+    `cur`), et une fois par jour au rappel quotidien (rappels d'avant ce
+    correctif, jours remplis autrement)."""
+    if cur is not None:
+        cur.execute(_SQL_RAPPELS_DEVENUS_INUTILES, {"uid": user_id})
+    else:
+        db.execute(_SQL_RAPPELS_DEVENUS_INUTILES, {"uid": user_id})
+
+
 def a_deja_la_notification(user_id: int, message: str, jour) -> bool:
     """Même message déjà envoyé ce jour-là à cette personne (ex. « Daily
     log du … corrigé par … » : un chef qui corrige plusieurs fois le même
