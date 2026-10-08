@@ -89,15 +89,14 @@ class TestEtatsReserves(BaseIntegration):
     def test_interface_n_affiche_que_les_etats_autorises(self):
         chef, _, _, inter, p, t = self._contexte()
         self.login(inter)
-        page = self.client.get(f"/projets/{p}").data.decode()
-        dialogue = page[page.index(f'id="dialog-tache-{t}"'):]
-        dialogue = dialogue[:dialogue.index("</dialog>")]
+        # Lot 11 : la fenêtre de la tâche est un fragment chargé à la demande.
+        dialogue = self.client.get(f"/projets/{p}/taches/{t}/fenetre").data.decode()
         self.assertIn('<option value="bloque"', dialogue)
         self.assertNotIn('<option value="verifie"', dialogue)
         self.assertNotIn('<option value="abandonne"', dialogue)
         self.login(chef)
-        page = self.client.get(f"/projets/{p}").data.decode()
-        self.assertIn('<option value="abandonne"', page)
+        dialogue = self.client.get(f"/projets/{p}/taches/{t}/fenetre").data.decode()
+        self.assertIn('<option value="abandonne"', dialogue)
 
 
 class TestClientVoitHeuresHonorairesPiecesJointes(BaseIntegration):
@@ -125,7 +124,10 @@ class TestClientVoitHeuresHonorairesPiecesJointes(BaseIntegration):
         page = self.client.get(f"/projets/{p}").data.decode()
         self.assertIn("Honoraires", page)
         self.assertIn("3\u00a0h\u00a030", page)  # lot 11 : heures et minutes
-        self.assertIn(f'href="/fichiers/taches/{pj}"', page)
+        # Pièce jointe : dans la fenêtre de la tâche, chargée à la demande (lot 11).
+        fenetre = self.client.get(f"/projets/{p}/taches/{t}/fenetre")
+        self.assertEqual(fenetre.status_code, 200)
+        self.assertIn(f'href="/fichiers/taches/{pj}"', fenetre.data.decode())
         r = self.client.get(f"/fichiers/taches/{pj}")
         self.assertEqual((r.status_code, r.data), (200, b"%PDF client"))
         r.close()
