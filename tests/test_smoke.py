@@ -5267,9 +5267,11 @@ class TestDecisionsLot7(SmokeBase):
                                  **{"app.repositories.utilisateurs.list_actifs": actifs})
         self.assertEqual(mocks["app.repositories.taches.create_tache"].call_args.kwargs["intervenant_ids"], [3])
         # Et il n'est pas proposé dans la liste "+ Ajouter un intervenant".
+        actifs.append({"id": 9, "prenom": "Lina", "nom": "Nouvelle", "poste": "", "role": "intervenant"})
         resp, _ = self._requete("get", "/projets/1", **{"app.repositories.utilisateurs.list_actifs": actifs})
         bloc = resp.data.decode().split('name="utilisateur_id"')[1].split("</select>")[0]
         self.assertNotIn("Karim", bloc)
+        self.assertIn("Lina", bloc)
 
     def test_anciens_rattachements_d_un_client_ne_donnent_aucun_droit(self):
         """Relecture : un Client (ou RH) resté co-chef/intervenant d'avant la

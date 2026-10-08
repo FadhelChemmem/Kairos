@@ -15,15 +15,51 @@
  * changer.
  *
  * Utilisation : <select data-search-combobox data-search-placeholder="…">
+ *
+ * Lot 11 :
+ *   - recherche sans accents ni casse (« helene » trouve « Hélène ») ;
+ *   - data-search-riche : chaque résultat montre un avatar (data-photo, à
+ *     défaut initiales sur data-couleur, depuis data-prenom/data-nom) et un
+ *     sous-titre (data-sous-titre) — sélecteur d'intervenant de la fiche
+ *     projet (demande du gérant : « un champ où on appuie et on choisit qui
+ *     rajouter ») ;
+ *   - data-search-action : le champ sert à DÉCLENCHER une action (ajouter
+ *     quelqu'un), pas à garder une valeur : il revient vide après le choix ;
+ *   - data-search-vide : texte quand rien ne correspond ;
+ *   - window.KairosSearchCombobox.init(racine) pour les contenus insérés
+ *     après coup.
  */
 (function () {
+  function sansAccents(s) {
+    return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  }
+
+  function avatarDe(o) {
+    var photo = o.getAttribute('data-photo');
+    var el;
+    if (photo) {
+      el = document.createElement('img');
+      el.src = photo;
+      el.alt = '';
+    } else {
+      el = document.createElement('span');
+      el.textContent = ((o.getAttribute('data-prenom') || '').charAt(0) + (o.getAttribute('data-nom') || '').charAt(0)).toUpperCase() || '?';
+      el.style.background = o.getAttribute('data-couleur') || '';
+    }
+    el.className = 'avatar avatar-sm search-combobox-avatar';
+    el.setAttribute('aria-hidden', 'true');
+    return el;
+  }
+
   function build(select) {
     if (select.dataset.comboInit) return;
     select.dataset.comboInit = '1';
     select.style.display = 'none';
+    var riche = select.hasAttribute('data-search-riche');
+    var modeAction = select.hasAttribute('data-search-action');
 
     var wrap = document.createElement('div');
-    wrap.className = 'search-combobox-wrap';
+    wrap.className = 'search-combobox-wrap' + (riche ? ' search-combobox-riche' : '');
 
     var input = document.createElement('input');
     input.type = 'text';
@@ -68,6 +104,8 @@
     }
 
     function labelFor(valeur) {
+      // Mode action : le champ revient toujours vide (texte d'aide visible).
+      if (modeAction) return '';
       var trouve = options().filter(function (o) { return o.value === valeur; })[0];
       // « — Aucune — » choisi : champ vide (le texte d'aide réapparaît).
       return trouve && !trouve.hasAttribute('data-vide') ? trouve.textContent : '';
@@ -99,14 +137,17 @@
 
     function afficher(filtre) {
       list.innerHTML = '';
-      var f = (filtre || '').trim().toLowerCase();
+      var f = sansAccents((filtre || '').trim());
       var matches = options().filter(function (o) {
-        return !f || o.textContent.toLowerCase().indexOf(f) !== -1;
+        if (!f) return true;
+        var texte = sansAccents(o.textContent);
+        // « fadhel chem » comme « chem fadhel » : chaque mot doit figurer.
+        return f.split(/\s+/).every(function (mot) { return texte.indexOf(mot) !== -1; });
       });
       if (!matches.length) {
         var vide = document.createElement('div');
         vide.className = 'search-combobox-empty';
-        vide.textContent = 'Aucun résultat';
+        vide.textContent = select.getAttribute('data-search-vide') || 'Aucun résultat';
         list.appendChild(vide);
       }
       trouves = matches;
@@ -122,8 +163,26 @@
         item.className = 'search-combobox-item';
         item.setAttribute('role', 'option');
         item.setAttribute('aria-selected', 'false');
-        item.textContent = o.textContent;
-        if (o.value === select.value) item.classList.add('is-selected');
+        if (riche) {
+          item.appendChild(avatarDe(o));
+          var texte = document.createElement('span');
+          texte.className = 'search-combobox-texte';
+          var nom = document.createElement('span');
+          nom.className = 'search-combobox-nom';
+          nom.textContent = o.textContent;
+          texte.appendChild(nom);
+          var sous = o.getAttribute('data-sous-titre');
+          if (sous) {
+            var st = document.createElement('span');
+            st.className = 'search-combobox-sous';
+            st.textContent = sous;
+            texte.appendChild(st);
+          }
+          item.appendChild(texte);
+        } else {
+          item.textContent = o.textContent;
+        }
+        if (!modeAction && o.value === select.value) item.classList.add('is-selected');
         item.addEventListener('click', function () { choisir(o); });
         list.appendChild(item);
       });
@@ -133,6 +192,9 @@
     }
 
     input.addEventListener('focus', function () {
+      // Focus rendu par le code après une action (data-sans-ouverture) :
+      // la liste reste fermée (flèche ↓ ou clic pour l'ouvrir).
+      if (input.dataset.sansOuverture) { delete input.dataset.sansOuverture; return; }
       // Au premier focus (rien tapé, ou le texte affiché est juste la
       // sélection actuelle) : montrer toute la liste plutôt qu'un filtre
       // déjà réduit à une seule entrée.
@@ -211,12 +273,13 @@
     });
   }
 
-  function init() {
-    document.querySelectorAll('select[data-search-combobox]').forEach(build);
+  function init(racine) {
+    (racine && racine.querySelectorAll ? racine : document).querySelectorAll('select[data-search-combobox]').forEach(build);
   }
+  window.KairosSearchCombobox = { init: init };
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', function () { init(); });
   } else {
     init();
   }

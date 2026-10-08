@@ -232,7 +232,8 @@
 
   <!-- Colonne droite -->
   <div class="col">
-    <div class="card">
+    {# id : la carte est remplacée en place après un ajout (projet-intervenants.js). #}
+    <div class="card" id="carte-intervenants">
       <h2 class="carte-titre" style="margin-bottom:12px;">Intervenants</h2>
       <div style="display:flex; flex-direction:column; gap:12px;">
         {% for iv in intervenants %}
@@ -249,23 +250,35 @@
       </div>
       {% if peut_gerer and not projet_clos %}
       <div class="divider" style="margin-left:0;"></div>
-      <details>
-        <summary class="btn-secondary" style="list-style:none; cursor:pointer; text-align:center;">+ Ajouter un intervenant</summary>
-        {# Lot 10 (audit front I9) : liste nommée, sans présélection (la
-           1re personne partait si l'on validait trop vite), sans les
-           membres actuels. #}
-        {% set ids_membres = intervenants|map(attribute='id')|list %}
-        <form method="post" action="{{ url_for('projets.ajouter_intervenant', projet_id=projet.id) }}" style="margin-top:10px; display:flex; gap:6px;">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <select name="utilisateur_id" aria-label="Personne à ajouter" required style="flex:1; min-width:0;">
+      {# Lot 11 (demande du gérant : « c'est moche le rajout, fais un champ
+         où on appuie et on choisit qui rajouter ») : un seul champ de
+         recherche (search-combobox.js, mode riche + action) ; le choix
+         ajoute immédiatement la personne (POST projets.ajouter_intervenant,
+         carte remplacée sans recharger — projet-intervenants.js). Sans
+         JavaScript : liste déroulante + bouton « Ajouter ». Mêmes
+         candidats qu'avant : comptes actifs, ni RH (list_actifs) ni
+         Client, sans les personnes déjà rattachées. #}
+      {% set ids_membres = intervenants|map(attribute='id')|list %}
+      {% set candidats = utilisateurs_affectables|rejectattr('id', 'in', ids_membres)|list %}
+      {% if candidats %}
+      <form method="post" action="{{ url_for('projets.ajouter_intervenant', projet_id=projet.id) }}" class="ajout-intervenant" data-ajout-intervenant>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label for="ajout-intervenant-choix" class="sr-only">Ajouter un intervenant</label>
+        <div class="ajout-intervenant-champ">
+          <select id="ajout-intervenant-choix" name="utilisateur_id" required data-search-combobox data-search-riche data-search-action data-search-placeholder="+ Ajouter un intervenant…" data-search-vide="Aucune personne trouvée">
             <option value="" disabled selected>Choisir…</option>
-            {% for u in utilisateurs_affectables if u.id not in ids_membres %}
-              <option value="{{ u.id }}">{{ u.prenom }} {{ u.nom }}</option>
+            {% for u in candidats %}
+              {% set rs = role_style(u.role) %}
+              <option value="{{ u.id }}" data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}" data-couleur="{{ avatar_color(u.id) }}"{% if u.avatar_chemin %} data-photo="{{ url_for('fichiers.avatar', user_id=u.id) }}"{% endif %} data-sous-titre="{{ rs.label }}{% if u.poste and u.poste|lower != rs.label|lower %} · {{ u.poste }}{% endif %}">{{ u.prenom }} {{ u.nom }}</option>
             {% endfor %}
           </select>
-          <button type="submit" class="btn-secondary" style="width:auto; padding:8px 12px;">Ajouter</button>
-        </form>
-      </details>
+          <noscript><button type="submit" class="btn-secondary" style="width:auto; padding:8px 12px;">Ajouter</button></noscript>
+        </div>
+        <p class="ajout-intervenant-statut" data-ajout-statut role="status"></p>
+      </form>
+      {% else %}
+      <p class="ajout-intervenant-statut">Toutes les personnes affectables sont déjà sur ce projet.</p>
+      {% endif %}
       {% endif %}
       {# "Rejoindre ce projet" (retour Fadhel, 2026-09-28) : ajout immédiat
          comme intervenant, sans validation — proposé seulement à qui voit
@@ -299,6 +312,7 @@
   <div class="tache-dialog-corps" data-tache-corps></div>
 </dialog>
 <script src="{{ url_for('static', filename='js/tache-dialog.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/projet-intervenants.js') }}" defer></script>
 
 {% with projet_id=projet.id, projets_choix=None, next_url=request.path %}
   {% include "partials/post_dialog.html" %}

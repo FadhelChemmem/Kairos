@@ -34,6 +34,11 @@
  *                             puce n'est que la photo ou deux initiales.
  */
 (function () {
+  // Lot 11 : filtre sans accents ni casse (« helene » trouve « Hélène »).
+  function sansAccents(s) {
+    return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  }
+
   function buildChipSelect(select) {
     if (select.dataset.chipInit) return;
     select.dataset.chipInit = '1';
@@ -80,7 +85,7 @@
       chip.type = 'button';
       chip.className = 'chip-opt' + (avatarMode ? ' chip-avatar' : '') + (opt.selected ? ' chip-selected' : '');
       chip.setAttribute('aria-pressed', opt.selected ? 'true' : 'false');
-      chip.dataset.label = opt.textContent.trim().toLowerCase();
+      chip.dataset.label = sansAccents(opt.textContent.trim());
       if (opt.title) chip.title = opt.title;
       chip._opt = opt;
 
@@ -133,7 +138,7 @@
     var MAX_RESULTATS = 8;
 
     function filtrer() {
-      var q = filterInput.value.trim().toLowerCase();
+      var q = sansAccents(filterInput.value.trim());
       var montres = 0;
       chips.forEach(function (chip) {
         var visible;

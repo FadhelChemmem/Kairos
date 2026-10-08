@@ -228,5 +228,45 @@ class TestTachesClosesEtRejoindre(_Base):
         self.assertIn("Afficher la tâche close", html)
 
 
+class TestSelecteurIntervenant(_Base):
+    ACTIFS = smoke.UTILISATEURS_ACTIFS + [
+        {"id": 8, "prenom": "Karim", "nom": "Client", "poste": "", "role": "client"},
+        {"id": 9, "prenom": "Hélène", "nom": "Ben Salah", "poste": "Dessinatrice", "role": "intervenant"},
+        {"id": 10, "prenom": "Sami", "nom": "Chef", "poste": "", "role": "chef_de_projet", "avatar_chemin": "a.png"},
+    ]
+
+    def test_champ_de_recherche_avec_candidats(self):
+        html = self._requete("/projets/1", **{"app.repositories.utilisateurs.list_actifs": self.ACTIFS}).data.decode()
+        self.assertNotIn("+ Ajouter un intervenant</summary>", html)
+        select = re.search(r'<select id="ajout-intervenant-choix".*?</select>', html, re.S).group(0)
+        for attr in ("data-search-combobox", "data-search-riche", "data-search-action", 'name="utilisateur_id"'):
+            self.assertIn(attr, select)
+        # Ni membres (1, 3), ni client (8).
+        self.assertNotIn('value="1"', select)
+        self.assertNotIn('value="3"', select)
+        self.assertNotIn("Karim", select)
+        self.assertIn('data-sous-titre="Intervenant · Dessinatrice"', select)
+        self.assertIn('data-sous-titre="Chef de projet"', select)
+        self.assertIn('data-photo="/fichiers/avatars/10"', select)
+        self.assertIn('id="carte-intervenants"', html)
+        self.assertIn('action="/projets/1/intervenants"', html)
+        self.assertIn("js/projet-intervenants.js", html)
+        # Sans JavaScript : bouton d'envoi classique.
+        self.assertIn("<noscript><button type=\"submit\"", html)
+
+    def test_rien_a_ajouter(self):
+        html = self._requete("/projets/1").data.decode()
+        self.assertNotIn('id="ajout-intervenant-choix"', html)
+        self.assertIn("Toutes les personnes affectables sont déjà sur ce projet.", html)
+
+    def test_reserve_au_gestionnaire_d_un_projet_ouvert(self):
+        for overrides in ({"app.repositories.projets.user_can_manage": False},
+                          {"app.repositories.projets.get_projet": {**smoke.PROJET, "etat": "termine"}}):
+            with self.subTest(overrides=list(overrides)):
+                html = self._requete("/projets/1", **{"app.repositories.utilisateurs.list_actifs": self.ACTIFS,
+                                                      **overrides}).data.decode()
+                self.assertNotIn('id="ajout-intervenant-choix"', html)
+
+
 if __name__ == "__main__":
     unittest.main()
