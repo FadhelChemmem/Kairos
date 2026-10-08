@@ -162,11 +162,27 @@ def create_app(config_class=Config) -> Flask:
         # partagé, bouton « Précédent » après déconnexion, xlsx des
         # honoraires. Remplace le « no-cache » posé par send_file. Seuls
         # les fichiers statiques gardent leur politique de cache.
+        # Intégration lot 11 :
+        # - /static : cache long « immutable » posé par perf.py quand l'URL
+        #   porte l'empreinte du fichier — jamais écrasé ici ;
+        # - avatar demandé avec l'empreinte de la photo courante : cache
+        #   PRIVÉ d'une heure (g.cache_prive, fichiers.avatar) — le
+        #   sélecteur d'intervenant et les piles d'avatars ne retéléchargent
+        #   plus chaque photo à chaque page ;
+        # - pièces jointes, exports, pages, API : no-store.
+        # perf.installer() est enregistré AVANT cette fonction : son
+        # after_request passe donc APRÈS (ordre inverse de Flask) — la
+        # compression gzip porte sur la réponse aux en-têtes définitifs.
         if g.get("user") is not None and request.endpoint != "static" and not request.path.startswith("/static/"):
-            response.headers["Cache-Control"] = "no-store"
-            response.headers.pop("Expires", None)
-            response.headers.pop("ETag", None)
-            response.headers.pop("Last-Modified", None)
+            cache_prive = g.get("cache_prive")
+            if cache_prive and response.status_code in (200, 304):
+                response.headers["Cache-Control"] = cache_prive
+                response.headers.pop("Expires", None)
+            else:
+                response.headers["Cache-Control"] = "no-store"
+                response.headers.pop("Expires", None)
+                response.headers.pop("ETag", None)
+                response.headers.pop("Last-Modified", None)
         return response
 
     def _est_api_json() -> bool:

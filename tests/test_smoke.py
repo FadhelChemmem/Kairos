@@ -1833,7 +1833,8 @@ class SmokeTestCase(SmokeBase):
         post_avec_avatar = {**FEED_POST_MANUEL, "auteur_avatar_chemin": "avatars/2/xyz.png"}
         resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [post_avec_avatar]})
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
-        self.assertIn(b'src="/fichiers/avatars/2"', resp.data)
+        # Lot 11 : URL versionnée par la photo (cache privé d'une heure).
+        self.assertRegex(resp.data, rb'src="/fichiers/avatars/2\?v=[0-9a-f]{12}"')
 
     def test_fil_retombe_sur_les_initiales_sans_photo_de_profil(self):
         resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [FEED_POST_MANUEL]})

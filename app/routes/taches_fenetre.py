@@ -15,9 +15,9 @@ from ..repositories import projets, taches
 bp = Blueprint("taches_fenetre", __name__, url_prefix="/projets")
 
 # Tâches closes : repliées dans le tableau de la fiche, et jamais
-# « Rejoindre cette tâche » (audit front I9). Même liste que les compteurs
-# de tâches ouvertes de repositories/projets.py.
-ETATS_TACHE_CLOSES = ("termine", "verifie", "arret", "abandonne")
+# « Rejoindre cette tâche » (audit front I9 ; refus serveur dans
+# taches.add_intervenant).
+ETATS_TACHE_CLOSES = taches.ETATS_CLOS
 
 
 @bp.record_once
@@ -34,7 +34,7 @@ def fenetre(projet_id: int, tache_id: int):
         abort(404)
     # La ligne du tableau (intervenants, pièces jointes, heures) : même
     # source que la fiche, pour un contenu identique à l'ancienne fenêtre.
-    tache = next((t for t in taches.list_taches_projet(projet_id) if t["id"] == tache_id), None)
+    tache = next((t for t in taches.list_taches_projet(projet_id, tache_id=tache_id) if t["id"] == tache_id), None)
     if tache is None:
         abort(404)
     html = render_template(

@@ -69,9 +69,9 @@ test('dates : jours ouvrés (les flèches sautent le week-end), mois voisins', (
   assert.ok(!dl.estWeekEnd('2026-10-02'));
 });
 
-test('recherche sans accents (comme fn_sans_accents)', () => {
+test('recherche sans accents (comme fn_recherche, lot 11 : unaccent)', () => {
   assert.equal(dl.norm('Résidence ÉTÉ'), 'residence ete');
-  assert.equal(dl.norm('Œuvre Ça'), 'ouvre ca');
+  assert.equal(dl.norm('Œuvre Ça'), 'oeuvre ca');
   assert.equal(dl.cle(3, null), '3:0');
   assert.equal(dl.cle(3, 7), '3:7');
   assert.match(dl.couleur('26069D'), /^#[0-9a-f]{6}$/);

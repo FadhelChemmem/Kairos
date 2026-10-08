@@ -7,9 +7,11 @@ from ..repositories import projets as projets_repo
 from ..repositories import taches as taches_repo
 from ..repositories import utilisateurs as utilisateurs_repo
 from ..storage import delete_upload, is_image_filename, save_upload
-from ..utils import redirect_vers_next
+from ..utils import avatar_version, redirect_vers_next
 
 bp = Blueprint("fichiers", __name__, url_prefix="/fichiers")
+
+CACHE_AVATAR = "private, max-age=3600"
 
 
 def _safe_redirect(default_endpoint="main.accueil"):
@@ -126,4 +128,12 @@ def avatar(user_id: int):
     utilisateur = utilisateurs_repo.get_utilisateur(user_id)
     if utilisateur is None or not utilisateur["avatar_chemin"]:
         abort(404)
+    # Lot 11 (intégration) : toute réponse authentifiée est en no-store
+    # (app/__init__.py), sauf l'avatar demandé avec l'empreinte de la photo
+    # COURANTE (?v=, voir utils.avatar_url) — cache privé d'une heure :
+    # jamais dans un proxy partagé, et une nouvelle photo change l'URL.
+    # Sans empreinte ou avec une ancienne : no-store, comme avant. Les
+    # pièces jointes restent en no-store (documents de projet).
+    if request.args.get("v") == avatar_version(utilisateur["avatar_chemin"]):
+        g.cache_prive = CACHE_AVATAR
     return send_from_directory(current_app.config["UPLOAD_DIR"], utilisateur["avatar_chemin"])

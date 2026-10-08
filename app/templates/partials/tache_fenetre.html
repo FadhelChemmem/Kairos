@@ -27,6 +27,9 @@
   {% endif %}
   <div style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
     {% if t.date_echeance %}Échéance {{ t.date_echeance|date_courte }}{% if t.type_deadline == 'interne' %} · interne{% endif %} · {% endif %}{{ t.intervenants|map(attribute='prenom')|join(', ') or 'Aucun intervenant' }}
+    {#- Heures en h min (filtre |heures) ; l'échéance porte l'année dès
+        qu'elle n'est pas celle en cours (date_courte, lot 11). #}
+    {%- if t.heures_cumulees %} · <span class="tache-fenetre-heures">{{ t.heures_intervenant|heures }} intervenants / {{ t.heures_chef|heures }} chef de projet</span>{% endif %}
   </div>
   {# « Rejoindre cette tâche » au clavier (lot 11, audit front I9) : dans la
      ligne du tableau, le bouton n'est plus un arrêt de tabulation (une seule

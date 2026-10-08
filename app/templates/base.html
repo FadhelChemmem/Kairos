@@ -76,6 +76,9 @@
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  {# Recherche sans accents commune (mêmes règles que fn_recherche côté
+     serveur) : avant chip-select, search-combobox et dailylog. #}
+  <script src="{{ url_for('static', filename='js/texte-recherche.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/chip-select.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/search-combobox.js') }}" defer></script>
   {# Lot 11 (audit front M8) : scripts du fil (réaction, glisser-déposer,

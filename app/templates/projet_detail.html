@@ -269,7 +269,7 @@
             <option value="" disabled selected>Choisir…</option>
             {% for u in candidats %}
               {% set rs = role_style(u.role) %}
-              <option value="{{ u.id }}" data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}" data-couleur="{{ avatar_color(u.id) }}"{% if u.avatar_chemin %} data-photo="{{ url_for('fichiers.avatar', user_id=u.id) }}"{% endif %} data-sous-titre="{{ rs.label }}{% if u.poste and u.poste|lower != rs.label|lower %} · {{ u.poste }}{% endif %}">{{ u.prenom }} {{ u.nom }}</option>
+              <option value="{{ u.id }}" data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}" data-couleur="{{ avatar_color(u.id) }}"{% if u.avatar_chemin %} data-photo="{{ avatar_url(u.id, u.avatar_chemin) }}"{% endif %} data-sous-titre="{{ rs.label }}{% if u.poste and u.poste|lower != rs.label|lower %} · {{ u.poste }}{% endif %}">{{ u.prenom }} {{ u.nom }}</option>
             {% endfor %}
           </select>
           <noscript><button type="submit" class="btn-secondary" style="width:auto; padding:8px 12px;">Ajouter</button></noscript>

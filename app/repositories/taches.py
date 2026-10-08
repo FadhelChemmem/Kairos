@@ -22,6 +22,17 @@ MESSAGE_ETAT_RESERVE = (
 )
 
 
+# Tâches closes (lot 11) : repliées dans le tableau de la fiche projet,
+# et jamais « Rejoindre cette tâche » (bouton masqué ET refus serveur,
+# add_intervenant). Même liste que les compteurs de tâches ouvertes de
+# repositories/projets.py.
+ETATS_CLOS = ("termine", "verifie", "arret", "abandonne")
+
+
+class TacheClose(Exception):
+    """« Rejoindre cette tâche » refusé : la tâche est close (ETATS_CLOS)."""
+
+
 class EtatReserve(Exception):
     """Changement d'état refusé : il touche un état réservé (voir
     ETATS_RESERVES_GESTION) et l'utilisateur ne gère pas le projet."""
@@ -39,7 +50,10 @@ def est_refus_etat_reserve(exc: Exception) -> bool:
     return getattr(exc, "pgcode", None) == "42501" and "Vérifiée, Arrêtée ou Abandonnée" in str(exc)
 
 
-def list_taches_projet(projet_id: int) -> list[dict]:
+def list_taches_projet(projet_id: int, tache_id: int | None = None) -> list[dict]:
+    """Tâches du projet, telles qu'affichées dans la fiche. `tache_id` :
+    une seule (fenêtre de tâche chargée à la demande, lot 11) — même
+    requête, donc même contenu que la ligne du tableau."""
     sql = """
         SELECT t.id, t.projet_id, t.titre, t.etat, t.type_deadline,
                t.date_debut, t.date_echeance, t.date_fin, t.dossier_lien,
@@ -81,6 +95,7 @@ def list_taches_projet(projet_id: int) -> list[dict]:
           WHERE de.tache_id = t.id
         ) h ON true
         WHERE t.projet_id = %s
+          AND (%s::int IS NULL OR t.id = %s)
         -- Tri (retour Fadhel, lot 8) : échéance la plus proche d'abord ; les
         -- tâches closes (terminée, vérifiée, abandonnée) en bas — une tâche
         -- « vérifiée » restait avant mêlée aux tâches en cours.
@@ -88,7 +103,7 @@ def list_taches_projet(projet_id: int) -> list[dict]:
                  t.date_echeance NULLS LAST,
                  t.id
     """
-    return db.query_all(sql, (projet_id,))
+    return db.query_all(sql, (projet_id, tache_id, tache_id))
 
 
 def premiere_date(projet_id: int):
@@ -370,11 +385,18 @@ def add_intervenant(tache_id: int, projet_id: int, utilisateur_id: int, current_
     `projet_id` au WHERE : même garde-fou que set_etat/close_tache
     (PROMPT_CORRECTIONS.md P0 #2) — la tâche doit bien appartenir à ce
     projet. Retourne False (au lieu de planter) si la tâche n'existe pas
-    ou n'appartient pas à ce projet."""
+    ou n'appartient pas à ce projet.
+
+    Lot 11 : lève TacheClose si la tâche est close — le bouton n'est plus
+    proposé, mais une requête forgée (ou une page restée ouverte) passait.
+    FOR SHARE : un changement d'état concurrent attend la fin de l'ajout."""
     with db.get_cursor(user_id=current_user_id) as cur:
-        cur.execute("SELECT 1 FROM tache WHERE id = %s AND projet_id = %s", (tache_id, projet_id))
-        if cur.fetchone() is None:
+        cur.execute("SELECT etat FROM tache WHERE id = %s AND projet_id = %s FOR SHARE", (tache_id, projet_id))
+        ligne = cur.fetchone()
+        if ligne is None:
             return False
+        if ligne["etat"] in ETATS_CLOS:
+            raise TacheClose()
         cur.execute(
             """
             INSERT INTO tache_intervenant (tache_id, utilisateur_id)

@@ -86,7 +86,7 @@
               <option value="{{ u.id }}" {{ 'selected' if u.id in chef_ids }}
                 data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}"
                 data-couleur="{{ avatar_color(u.id) }}"
-                data-photo="{{ url_for('fichiers.avatar', user_id=u.id) if u.avatar_chemin else '' }}"
+                data-photo="{{ avatar_url(u.id, u.avatar_chemin) if u.avatar_chemin else '' }}"
                 >{{ u.prenom }} {{ u.nom }}</option>
             {% endfor %}
           </select>

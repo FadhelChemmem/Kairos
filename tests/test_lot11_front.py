@@ -247,7 +247,8 @@ class TestSelecteurIntervenant(_Base):
         self.assertNotIn("Karim", select)
         self.assertIn('data-sous-titre="Intervenant · Dessinatrice"', select)
         self.assertIn('data-sous-titre="Chef de projet"', select)
-        self.assertIn('data-photo="/fichiers/avatars/10"', select)
+        # URL versionnée par la photo (intégration lot 11 : cache privé court).
+        self.assertRegex(select, r'data-photo="/fichiers/avatars/10\?v=[0-9a-f]{12}"')
         self.assertIn('id="carte-intervenants"', html)
         self.assertIn('action="/projets/1/intervenants"', html)
         self.assertIn("js/projet-intervenants.js", html)

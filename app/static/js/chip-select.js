@@ -35,8 +35,17 @@
  */
 (function () {
   // Lot 11 : filtre sans accents ni casse (« helene » trouve « Hélène »).
+  // Mêmes règles que fn_recherche côté serveur (texte-recherche.js,
+  // chargé avant par base.html) ; repli minimal si le fichier manque.
   function sansAccents(s) {
-    return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    if (window.KairosTexte) return window.KairosTexte.sansAccents(s);
+    return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  }
+
+  // Chaque mot doit figurer, dans n'importe quel ordre (« cherif sami »
+  // trouve « Sami Chérif »), comme le sélecteur d'intervenant.
+  function contientMots(libelle, q) {
+    return q.split(/\s+/).every(function (mot) { return libelle.indexOf(mot) !== -1; });
   }
 
   function buildChipSelect(select) {
@@ -143,12 +152,12 @@
       chips.forEach(function (chip) {
         var visible;
         if (!modeRecent) {
-          visible = q.length === 0 || chip.dataset.label.indexOf(q) !== -1;
+          visible = q.length === 0 || contientMots(chip.dataset.label, q);
         } else if (q.length === 0) {
           visible = chip._opt.selected || chip._opt.dataset.recent === '1';
         } else {
           visible = chip._opt.selected ||
-            (chip.dataset.label.indexOf(q) !== -1 && montres < MAX_RESULTATS);
+            (contientMots(chip.dataset.label, q) && montres < MAX_RESULTATS);
           if (visible && !chip._opt.selected) montres++;
         }
         chip.classList.toggle('chip-hidden', !visible);

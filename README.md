@@ -164,8 +164,12 @@ Les URL des fichiers de `/static` portent l'empreinte du fichier
 (`app.css?v=1f1263732efa`) et sont servies avec
 `Cache-Control: public, max-age=31536000, immutable` : le navigateur ne
 les redemande plus, et un fichier modifié change d'URL au déploiement
-suivant. Les pages restent sans cache. Si le proxy réécrit `Cache-Control`
-sur `/static`, retirer cette règle.
+suivant. Les pages, API, exports et pièces jointes d'un utilisateur
+connecté sont en `Cache-Control: no-store` ; seules les photos de profil,
+dont l'URL porte l'empreinte de la photo (`/fichiers/avatars/12?v=…`),
+restent une heure dans le cache privé du navigateur (`private,
+max-age=3600`), et une nouvelle photo change d'URL. Si le proxy réécrit
+`Cache-Control` sur `/static`, retirer cette règle.
 
 ### E-mails en mode test
 

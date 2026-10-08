@@ -15,10 +15,13 @@ def list_actifs() -> list[dict]:
 
     Sert aussi aux personnes à taguer (@) : un Client y figure donc (on
     peut le taguer), mais `role` permet de l'écarter des choix de chef de
-    projet / d'intervenant — voir list_affectables (migration 0011)."""
+    projet / d'intervenant — voir list_affectables (migration 0011).
+    `avatar_chemin` (lot 11) : photos du sélecteur d'intervenant de la
+    fiche projet ; jamais envoyé tel quel au navigateur (le JSON des
+    personnes à taguer passe par le filtre personne_mentionnable)."""
     return db.query_all(
         """
-        SELECT id, prenom, nom, poste, role, equipe_code
+        SELECT id, prenom, nom, poste, role, equipe_code, avatar_chemin
         FROM utilisateur
         WHERE actif = true AND role != 'rh'
         ORDER BY nom, prenom

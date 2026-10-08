@@ -30,8 +30,11 @@
  *     après coup.
  */
 (function () {
+  // Mêmes règles que fn_recherche côté serveur (texte-recherche.js,
+  // chargé avant par base.html) ; repli minimal si le fichier manque.
   function sansAccents(s) {
-    return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    if (window.KairosTexte) return window.KairosTexte.sansAccents(s);
+    return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   }
 
   function avatarDe(o) {

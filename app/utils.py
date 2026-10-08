@@ -152,6 +152,22 @@ def initials(prenom: str, nom: str) -> str:
     return f"{p[:1]}{n[:1]}".upper() or "?"
 
 
+def avatar_version(avatar_chemin: str | None) -> str:
+    """Empreinte courte du fichier de photo (lot 11) : mise dans l'URL de
+    l'avatar (« ?v=… »), elle change à chaque nouvelle photo (nouveau
+    chemin) — la réponse peut alors rester une heure dans le cache PRIVÉ du
+    navigateur (voir fichiers.avatar) sans jamais montrer l'ancienne."""
+    import hashlib
+
+    return hashlib.sha256((avatar_chemin or "").encode("utf-8")).hexdigest()[:12]
+
+
+def avatar_url(user_id: int, avatar_chemin: str | None) -> str:
+    from flask import url_for
+
+    return url_for("fichiers.avatar", user_id=user_id, v=avatar_version(avatar_chemin))
+
+
 def avatar_color(user_id: int) -> str:
     if not user_id:
         return _AVATAR_PALETTE[0]
@@ -405,6 +421,7 @@ def register(app):
     app.jinja_env.globals.update(
         initials=initials,
         avatar_color=avatar_color,
+        avatar_url=avatar_url,
         tache_etat_style=tache_etat_style,
         projet_etat_style=projet_etat_style,
         post_type_style=post_type_style,

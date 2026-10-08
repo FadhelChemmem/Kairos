@@ -932,6 +932,9 @@ def rejoindre_tache(projet_id: int, tache_id: int):
 
     try:
         ok = taches.add_intervenant(tache_id, projet_id, g.user["id"], g.user["id"])
+    except taches.TacheClose:
+        flash("Cette tâche est close : on ne peut plus la rejoindre.", "error")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
     except Exception as exc:
         flash(_message_erreur_intervenant(exc, "de rejoindre cette tâche"), "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))

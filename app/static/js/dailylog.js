@@ -81,10 +81,13 @@
     return COULEURS[s % COULEURS.length];
   }
 
-  /** Recherche sans accents ni casse (comme fn_sans_accents côté serveur). */
+  /** Recherche sans accents ni casse, comme fn_recherche côté serveur
+   *  (lot 11 : unaccent, « œ » → « oe ») — règles de texte-recherche.js. */
   function norm(texte) {
-    return String(texte || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/œ/g, 'o').replace(/æ/g, 'a').replace(/Œ/g, 'o').replace(/Æ/g, 'a').toLowerCase();
+    var kt = (typeof module === 'object' && module.exports && typeof require === 'function')
+      ? require('./texte-recherche.js') : (typeof self !== 'undefined' ? self.KairosTexte : null);
+    if (kt) return kt.sansAccents(texte);
+    return String(texte || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   }
 
   // Dates ISO « AAAA-MM-JJ », calculées en UTC (aucun effet d'heure d'été).
