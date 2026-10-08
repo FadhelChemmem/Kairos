@@ -1,17 +1,20 @@
 #!/bin/bash
-# Scénario Playwright du Daily log v9 (lot 10), sur une base jetable.
+# Scénarios Playwright sur une base jetable : Daily log v9 (lot 10, par
+# défaut) ou fiche projet (lot 11 : KAIROS_E2E_SCENARIO=projet).
 # Prérequis : PostgreSQL 16 (PGHOST/PGUSER/PGPASSWORD), Node + Playwright
 # (PLAYWRIGHT_MODULE = chemin du module si non installé localement,
 # PLAYWRIGHT_BROWSERS_PATH pour Chromium), psycopg2 (ou un équivalent sur
-# PYTHONPATH). Usage : bash tests_e2e/lancer.sh [dossier_captures]
+# PYTHONPATH). Usage : [KAIROS_E2E_SCENARIO=dailylog|projet] bash tests_e2e/lancer.sh [dossier_captures]
 set -euo pipefail
 racine=$(cd "$(dirname "$0")/.." && pwd)
 export PGHOST=${PGHOST:-127.0.0.1} PGUSER=${PGUSER:-kairos} PGPASSWORD=${PGPASSWORD:-kairos}
-base=${KAIROS_E2E_BASE_PG:-kairos_e2e_dailylog}
+scenario=${KAIROS_E2E_SCENARIO:-dailylog}
+case "$scenario" in dailylog|projet) ;; *) echo "Scénario inconnu : $scenario (dailylog ou projet)" >&2; exit 1 ;; esac
+base=${KAIROS_E2E_BASE_PG:-kairos_e2e_$scenario}
 port=${KAIROS_E2E_PORT:-8798}
 psql -X -q -d postgres -c "DROP DATABASE IF EXISTS $base" -c "CREATE DATABASE $base"
 psql -X -q -v ON_ERROR_STOP=1 -d "$base" -f "$racine/schema.sql" >/dev/null 2>&1
-python3 "$racine/tests_e2e/seed_dailylog.py" "$base"
+python3 "$racine/tests_e2e/seed_$scenario.py" "$base"
 export DATABASE_URL="postgresql://$PGUSER:$PGPASSWORD@$PGHOST:5432/$base"
 export SECRET_KEY=${SECRET_KEY:-e2e-0123456789abcdef0123456789abcdef0123456789}
 export UPLOAD_DIR=$(mktemp -d) APP_BASE_URL="http://127.0.0.1:$port"
@@ -25,4 +28,4 @@ trap 'kill $serveur 2>/dev/null || true' EXIT
 for _ in $(seq 40); do curl -fs -o /dev/null "http://127.0.0.1:$port/connexion" && break; sleep 0.25; done
 kill -0 "$serveur" 2>/dev/null || { echo "Serveur Flask arrêté : voir /tmp/kairos-e2e-serveur.log" >&2; exit 1; }
 KAIROS_E2E_URL="http://127.0.0.1:$port" KAIROS_E2E_DB="$base" KAIROS_E2E_CAPTURES="${1:-}" \
-  node "$racine/tests_e2e/dailylog.e2e.js"
+  node "$racine/tests_e2e/$scenario.e2e.js"

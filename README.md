@@ -426,7 +426,7 @@ flask run
 | Intégration (vrai SQL, vrai psycopg2) | `KAIROS_TEST_DATABASE_URL=postgresql://kairos:kairos@127.0.0.1:5432/kairos_it python3 -m unittest discover -s tests_integration -t .` | oui : base chargée avec `schema.sql` + `migrations/` |
 | SQL | `psql -d <base> -v ON_ERROR_STOP=1 -f tests/sql/<fichier>.sql` | oui |
 | JavaScript | `node --test tests_js/*.test.mjs` | non |
-| Scénario navigateur (Playwright) | `bash tests_e2e/lancer.sh` | oui (base jetable) ; non lancé par la CI |
+| Scénarios navigateur (Playwright) | `bash tests_e2e/lancer.sh` (Daily log), `KAIROS_E2E_SCENARIO=projet bash tests_e2e/lancer.sh` (fiche projet) | oui (base jetable) ; non lancés par la CI |
 
 Ne jamais lancer `tests_integration/` dans le même processus que `tests/`
 (qui installe un faux psycopg2). Sous Windows, les 8 tests de
