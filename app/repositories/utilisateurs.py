@@ -2,7 +2,7 @@
 import json
 
 from .. import db
-from ._like import motif_contient
+from ._like import motif_recherche
 
 
 def list_actifs() -> list[dict]:
@@ -81,17 +81,22 @@ def search(q: str, limit: int = 6) -> list[dict]:
     Ouverte à toute l'entreprise (pas filtrée par équipe, contrairement
     aux projets) : seul le nom/poste est exposé ici, jamais l'email/le
     téléphone — c'est le PROFIL (utilisateurs.profil_personne) qui décide
-    ensuite de ce qu'il montre, avec ses propres filtres de visibilité."""
-    like = motif_contient(q)
+    ensuite de ce qu'il montre, avec ses propres filtres de visibilité.
+
+    Lot 11 : sans accents ni casse, sur le prénom, le nom, « prénom nom » et
+    « nom prénom » (« Fadhel Chem » trouvait 0 résultat) ; les comptes
+    désactivés sont trouvés aussi (chef d'un projet encore ouvert…),
+    après les actifs, avec `actif` pour les signaler."""
     return db.query_all(
         """
-        SELECT id, prenom, nom, poste
+        SELECT id, prenom, nom, poste, actif
         FROM utilisateur
-        WHERE actif = true AND (lower(prenom) LIKE %s OR lower(nom) LIKE %s)
-        ORDER BY nom, prenom
-        LIMIT %s
+        WHERE fn_recherche(prenom || ' ' || nom) LIKE fn_recherche(%(q)s)
+           OR fn_recherche(nom || ' ' || prenom) LIKE fn_recherche(%(q)s)
+        ORDER BY actif DESC, nom, prenom
+        LIMIT %(limit)s
         """,
-        (like, like, limit),
+        {"q": motif_recherche(q), "limit": limit},
     )
 
 
@@ -105,10 +110,13 @@ def list_tous(q: str | None = None, equipe_code: str | None = None,
     params: list = []
 
     if q:
-        like = motif_contient(q)
+        # Sans accents ni casse, « prénom nom » compris (lot 11).
+        like = motif_recherche(q)
         conditions.append(
-            "(lower(prenom) LIKE %s OR lower(nom) LIKE %s OR lower(email) LIKE %s "
-            "OR lower(coalesce(poste, '')) LIKE %s)"
+            "(fn_recherche(prenom || ' ' || nom) LIKE fn_recherche(%s) "
+            "OR fn_recherche(nom || ' ' || prenom) LIKE fn_recherche(%s) "
+            "OR fn_recherche(email) LIKE fn_recherche(%s) "
+            "OR fn_recherche(coalesce(poste, '')) LIKE fn_recherche(%s))"
         )
         params.extend([like, like, like, like])
     if equipe_code:

@@ -18,6 +18,7 @@ import datetime
 from zoneinfo import ZoneInfo
 
 from .. import db
+from ._like import motif_recherche
 
 PAS_MINUTES = 30
 MAX_MINUTES_JOUR = 600
@@ -446,7 +447,8 @@ def list_lignes_suggerees(user_id: int, gere_par: int | None = None) -> dict:
 
 def rechercher_projets(q: str, user_id: int, date, gere_par: int | None = None, limit: int = 20) -> list[dict]:
     """Recherche serveur du catalogue (≥ 2 caractères) : code ou nom, sans
-    accents ni casse (« ete » trouve « Résidence Été »), jokers LIKE
+    accents ni casse (« ete » trouve « Résidence Été » ; fn_recherche des
+    deux côtés depuis le lot 11, comme la recherche globale), jokers LIKE
     littéraux. Projets visibles par la personne dont c'est le Daily log,
     en cours ou bloqués — ou clos au plus tôt à `date` (une saisie
     antidatée sur un projet terminé depuis reste possible)."""
@@ -465,13 +467,13 @@ def rechercher_projets(q: str, user_id: int, date, gere_par: int | None = None, 
         WHERE (p.etat IN ('en_cours', 'bloque')
                OR (p.etat IN ('termine', 'abandonne') AND p.date_cloture >= %(date)s))
           AND (p.date_debut IS NULL OR p.date_debut <= %(date)s)
-          AND fn_sans_accents(p.code || ' ' || p.nom) LIKE %(motif)s
+          AND fn_recherche(p.code || ' ' || p.nom) LIKE fn_recherche(%(motif)s)
           AND EXISTS (SELECT 1 FROM v_projet_visibilite v WHERE v.projet_id = p.id AND v.utilisateur_id = %(uid)s)
           {filtre_gere}
         ORDER BY p.nom, p.code
         LIMIT %(limit)s
         """,
-        {"date": date, "motif": motif_sans_accents(q), "uid": user_id, "gere": gere_par, "limit": limit},
+        {"date": date, "motif": motif_recherche(q), "uid": user_id, "gere": gere_par, "limit": limit},
     )
     return [_ligne_catalogue(r) for r in rows]
 

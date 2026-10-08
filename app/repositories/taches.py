@@ -8,6 +8,7 @@ transaction que l'INSERT/UPDATE sur `tache`. L'ancienne heuristique
 elle cassait dès que la tâche était modifiée après sa clôture.
 """
 from .. import db
+from ._like import motif_recherche
 
 # États qu'une tâche ne peut prendre OU quitter que par le chef de projet
 # titulaire, un co-chef ou l'Admin (décision du gérant, lot 10) — les
@@ -229,6 +230,26 @@ def list_deadlines(user_id: int, limit: int = 20) -> list[dict]:
     with db.get_cursor() as cur:
         cur.execute(sql, {"uid": user_id, "limit": limit})
         return [dict(r) for r in cur.fetchall()]
+
+
+def search(user_id: int, q: str, limit: int = 6) -> list[dict]:
+    """Recherche globale de la topbar (lot 11) : tâches dont le titre
+    contient `q`, sans accents ni casse, sur les seuls projets visibles par
+    `user_id` (v_projet_visibilite) — avec leur projet, pour le lien. Les
+    tâches ouvertes d'abord, puis les plus récemment modifiées."""
+    return db.query_all(
+        """
+        SELECT t.id, t.titre, t.etat, p.id AS projet_id, p.code AS projet_code, p.nom AS projet_nom
+        FROM tache t
+        JOIN projet p ON p.id = t.projet_id
+        WHERE fn_recherche(t.titre) LIKE fn_recherche(%(q)s)
+          AND EXISTS (SELECT 1 FROM v_projet_visibilite vv
+                      WHERE vv.projet_id = p.id AND vv.utilisateur_id = %(uid)s)
+        ORDER BY (t.etat IN ('en_cours', 'bloque')) DESC, t.updated_at DESC, t.id DESC
+        LIMIT %(limit)s
+        """,
+        {"q": motif_recherche(q), "uid": user_id, "limit": limit},
+    )
 
 
 def _verrouiller_projet(cur, projet_id: int) -> None:

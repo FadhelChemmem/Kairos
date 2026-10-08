@@ -127,3 +127,71 @@ class TestCodePropose(BaseIntegration):
         self.login(chef)
         self.assertEqual(self.client.get("/projets/code-propose?phase=DOE").get_json()["code"],
                          f"{datetime.date.today().year % 100:02d}001E" if datetime.date.today().year != 2026 else "26089E")
+
+
+class TestRechercheSansAccents(BaseIntegration):
+    def setUp(self):
+        super().setUp()
+        self.chef = self.user("chef_de_projet")
+        self.sql("UPDATE utilisateur SET prenom = 'Fadhel', nom = 'Chemmem' WHERE id = %s", (self.chef,))
+        self.inactif = self.user("chef_de_projet", actif=False)
+        self.sql("UPDATE utilisateur SET prenom = 'Omrane', nom = 'Ben Salah' WHERE id = %s", (self.inactif,))
+        self.residence = self.projet(self.chef, code="26001X", debut=datetime.date(2026, 1, 5))
+        self.sql("UPDATE projet SET nom = 'Résidence Été' WHERE id = %s", (self.residence,))
+        self.coffrage = self.tache(self.residence, self.chef)
+        self.sql("UPDATE tache SET titre = 'Plans de coffrage — Bâtiment B' WHERE id = %s", (self.coffrage,))
+        # Projet d'une autre équipe : ni lui ni ses tâches ne sortent.
+        urbs = self.user("chef_de_projet", "URBS")
+        cache = self.projet(urbs, equipe="URBS", code="26002X")
+        self.sql("UPDATE projet SET nom = 'Résidence cachée' WHERE id = %s", (cache,))
+        t = self.tache(cache, urbs)
+        self.sql("UPDATE tache SET titre = 'Coffrage caché' WHERE id = %s", (t,))
+
+    def api(self, q):
+        self.login(self.chef)
+        return self.client.get("/recherche/api", query_string={"q": q}).get_json()["resultats"]
+
+    def test_projets_sans_accents(self):
+        from app.repositories import projets
+        for q in ("residence", "RÉSIDENCE", "ete", "26001x_res"):
+            with self.subTest(q=q):
+                self.assertEqual([p["id"] for p in projets.search(self.chef, q)], [self.residence])
+        labels = [r["label"] for r in self.api("residence")]
+        self.assertEqual(labels, ["26001X_Résidence Été"])
+        self.assertEqual(projets.compter_projets(user_id=self.chef, q="résidénce"), 1)
+
+    def test_personnes_nom_complet_et_inactifs(self):
+        from app.repositories import utilisateurs
+        for q in ("fadhel chem", "Chemmem Fadhel", "chémmem", "  fadhel   chemmem "):
+            with self.subTest(q=q):
+                self.assertEqual([u["id"] for u in utilisateurs.search(q)], [self.chef])
+        trouves = self.api("omrane")
+        self.assertEqual(len(trouves), 1)
+        self.assertEqual(trouves[0]["label"], "Omrane Ben Salah (inactif)")
+        self.assertIn("compte désactivé", trouves[0]["sous_titre"])
+        self.assertEqual([u["id"] for u in utilisateurs.list_tous(q="ben salah omrane")], [self.inactif])
+
+    def test_taches_avec_lien_vers_le_projet(self):
+        trouves = self.api("batiment b")
+        self.assertEqual(len(trouves), 1)
+        self.assertEqual(trouves[0]["label"], "Plans de coffrage — Bâtiment B")
+        self.assertEqual(trouves[0]["url"], f"/projets/{self.residence}")
+        self.assertIn("26001X_Résidence Été", trouves[0]["sous_titre"])
+        self.assertEqual([r["label"] for r in self.api("coffrage")], ["Plans de coffrage — Bâtiment B"])
+
+    def test_jokers_litteraux(self):
+        self.assertEqual(self.api("%_"), [])
+
+    def test_liste_des_projets_et_daily_log(self):
+        from app.repositories import dailylog
+        self.login(self.chef)
+        body = self.client.get("/projets?filtres_actifs=1&q=residence",
+                               headers={"X-Requested-With": "XMLHttpRequest"}).get_data(as_text=True)
+        self.assertIn("26001X_Résidence Été", body)
+        self.assertNotIn("cachée", body)
+        trouves = dailylog.rechercher_projets("RESIDENCE ete", self.chef, datetime.date(2026, 10, 1))
+        self.assertEqual([p["projet_id"] for p in trouves], [self.residence])
+        self.assertEqual(dailylog.rechercher_projets("oeuvre", self.chef, datetime.date(2026, 10, 1)), [])
+        self.sql("UPDATE projet SET nom = 'Gros Œuvre' WHERE id = %s", (self.residence,))
+        trouves = dailylog.rechercher_projets("oeuvre", self.chef, datetime.date(2026, 10, 1))
+        self.assertEqual([p["projet_id"] for p in trouves], [self.residence])

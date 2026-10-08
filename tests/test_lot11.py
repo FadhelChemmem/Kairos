@@ -209,5 +209,38 @@ class TestCodePropose(unittest.TestCase):
         self.assertTrue(code_valide("26924X", "EXE"))
 
 
+class TestRechercheGlobale(_Base):
+    def test_projets_taches_et_personnes_inactives_signalees(self):
+        resp = self._avec(lambda: self.client.get("/recherche/api?q=resid"), **{
+            "app.repositories.projets.search": [{"id": 4, "code": "26001X", "nom": "Résidence Été", "etat": "bloque"}],
+            "app.repositories.taches.search": [{"id": 9, "titre": "Coffrage", "etat": "en_cours", "projet_id": 4,
+                                                "projet_code": "26001X", "projet_nom": "Résidence Été"}],
+            "app.repositories.utilisateurs.search": [
+                {"id": 3, "prenom": "Fadhel", "nom": "Chemmem", "poste": "Gérant", "actif": True},
+                {"id": 8, "prenom": "Omrane", "nom": "B", "poste": None, "actif": False}],
+        })
+        r = resp.get_json()["resultats"]
+        self.assertEqual([x["label"] for x in r],
+                         ["26001X_Résidence Été", "Coffrage", "Fadhel Chemmem", "Omrane B (inactif)"])
+        self.assertEqual(r[0]["sous_titre"], "Projet · Bloqué")
+        self.assertEqual((r[1]["sous_titre"], r[1]["url"]), ("Tâche en cours · 26001X_Résidence Été", "/projets/4"))
+        self.assertEqual(r[2]["sous_titre"], "Gérant")
+        self.assertEqual((r[3]["sous_titre"], r[3]["url"]), ("compte désactivé", "/utilisateurs/8/profil"))
+
+    def test_sql_sans_accents_partout(self):
+        import inspect
+        from app.repositories import dailylog, projets, taches, utilisateurs
+        for fn in (projets.search, taches.search, utilisateurs.search, utilisateurs.list_tous,
+                   dailylog.rechercher_projets):
+            with self.subTest(fn=fn.__qualname__):
+                self.assertIn("fn_recherche(", inspect.getsource(fn))
+        self.assertIn("fn_recherche(p.code || '_' || p.nom) LIKE fn_recherche(%(q)s)", projets._FILTRES_LISTE)
+
+    def test_motif_litteral_et_espaces(self):
+        from app.repositories._like import motif_recherche
+        self.assertEqual(motif_recherche("  Fadhel   Chem "), "%fadhel chem%")
+        self.assertEqual(motif_recherche("50%_a\\b"), "%50\\%\\_a\\\\b%")
+
+
 if __name__ == "__main__":
     unittest.main()

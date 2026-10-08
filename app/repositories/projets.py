@@ -5,7 +5,7 @@ la plupart n'ont pas besoin de user_id (pas de trace à écrire). Seule
 create_projet passe user_id pour alimenter created_by/updated_by + audit_log.
 """
 from .. import db
-from ._like import motif_contient
+from ._like import motif_recherche
 
 
 def list_mes_projets(user_id: int) -> list[dict]:
@@ -123,7 +123,8 @@ _FILTRES_LISTE = """
                          )
                    )
               )
-          AND (%(q)s IS NULL OR lower(p.code || '_' || p.nom) LIKE %(q)s)
+          -- Recherche sans accents ni casse (lot 11, fn_recherche : migration 0016).
+          AND (%(q)s IS NULL OR fn_recherche(p.code || '_' || p.nom) LIKE fn_recherche(%(q)s))
           AND EXISTS (
                 SELECT 1 FROM v_projet_visibilite vv
                 WHERE vv.projet_id = p.id AND vv.utilisateur_id = %(user_id)s
@@ -136,7 +137,7 @@ def _params_liste(user_id, etats, phases, chef_ids, lots_contient, lots_egal, q)
         "etats": etats or None, "phases": phases or None,
         "chef_ids": chef_ids or None,
         "lots_contient": lots_contient or None, "lots_egal": lots_egal or None,
-        "q": motif_contient(q) if q else None,
+        "q": motif_recherche(q) if q else None,
         "user_id": user_id,
     }
 
@@ -288,11 +289,12 @@ def list_chefs_de_projet(user_id: int | None = None) -> list[dict]:
 def search(user_id: int, q: str, limit: int = 8) -> list[dict]:
     """Recherche libre sur "Code_nom", limitée aux projets visibles par
     `user_id` — pour la barre de recherche de la topbar (demandé par
-    Fadhel, 2026-09-19)."""
+    Fadhel, 2026-09-19). Sans accents ni casse (lot 11 : « residence »
+    trouve « Résidence »)."""
     sql = """
-        SELECT p.id, p.code, p.nom
+        SELECT p.id, p.code, p.nom, p.etat
         FROM projet p
-        WHERE lower(p.code || '_' || p.nom) LIKE %(q)s
+        WHERE fn_recherche(p.code || '_' || p.nom) LIKE fn_recherche(%(q)s)
           AND EXISTS (
                 SELECT 1 FROM v_projet_visibilite vv
                 WHERE vv.projet_id = p.id AND vv.utilisateur_id = %(user_id)s
@@ -300,7 +302,7 @@ def search(user_id: int, q: str, limit: int = 8) -> list[dict]:
         ORDER BY p.updated_at DESC
         LIMIT %(limit)s
     """
-    return db.query_all(sql, {"q": motif_contient(q), "user_id": user_id, "limit": limit})
+    return db.query_all(sql, {"q": motif_recherche(q), "user_id": user_id, "limit": limit})
 
 
 def get_projet(projet_id: int) -> dict | None:

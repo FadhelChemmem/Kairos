@@ -425,6 +425,7 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.utilisateurs.get_mot_de_passe_hash": MOT_DE_PASSE_HASH_PAR_DEFAUT,
             "app.repositories.utilisateurs.search": [],
             "app.repositories.projets.search": [],
+            "app.repositories.taches.search": [],
             "app.repositories.projets.list_ids_visibles": {1},
             "app.repositories.taches.list_en_cours_pour_profil": TACHES_EN_COURS_PROFIL,
             "app.repositories.posts.list_feed_auteur": [],

@@ -111,18 +111,35 @@ def recherche_api():
     """Petite API JSON interne pour la recherche de la topbar (voir
     base.html) — projets ET personnes (Lot 5, retour Fadhel, 2026-09-28 :
     la recherche de personnes était différée jusqu'ici faute de page de
-    profil, voir utilisateurs.profil_personne, qui vient de la combler)."""
+    profil, voir utilisateurs.profil_personne, qui vient de la combler).
+
+    Lot 11 : sans accents ni casse (« residence », « Fadhel Chem »), tâches
+    comprises (titre, lien vers leur projet), comptes désactivés trouvés et
+    signalés comme tels ; sous-titre pour distinguer projets, tâches et
+    personnes homonymes."""
+    from ..utils import projet_etat_style, tache_etat_style
+
     q = (request.args.get("q") or "").strip()
     if len(q) < 2:
         return {"resultats": []}
     projets_trouves = projets.search(g.user["id"], q, limit=6)
     personnes_trouvees = utilisateurs.search(q, limit=6)
+    # Le RH ne voit aucun projet, donc aucune tâche (v_projet_visibilite).
+    taches_trouvees = taches.search(g.user["id"], q, limit=6)
     resultats = [
-        {"label": f"{p['code']}_{p['nom']}", "sous_titre": None,
+        {"label": f"{p['code']}_{p['nom']}",
+         "sous_titre": f"Projet · {projet_etat_style(p.get('etat'))['label']}" if p.get("etat") else "Projet",
          "url": url_for("projets.detail", projet_id=p["id"])}
         for p in projets_trouves
     ] + [
-        {"label": f"{u['prenom']} {u['nom']}", "sous_titre": u["poste"],
+        {"label": t["titre"],
+         "sous_titre": f"Tâche {tache_etat_style(t['etat'])['libelle'].lower()} · {t['projet_code']}_{t['projet_nom']}",
+         "url": url_for("projets.detail", projet_id=t["projet_id"])}
+        for t in taches_trouvees
+    ] + [
+        {"label": f"{u['prenom']} {u['nom']}" + ("" if u.get("actif", True) else " (inactif)"),
+         "sous_titre": " · ".join(x for x in (u.get("poste"), None if u.get("actif", True) else "compte désactivé") if x)
+                       or None,
          "url": url_for("utilisateurs.profil_personne", user_id=u["id"])}
         for u in personnes_trouvees
     ]
