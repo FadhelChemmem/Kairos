@@ -37,7 +37,15 @@ Notifications et fil de posts (étape 1, complète). Flask + PostgreSQL
   la maquette (`/deadlines`) — barres colorées par urgence (rouge
   en retard/imminent, orange cette semaine, vert plus tard).
 - "Tous les projets" avec filtres par état et par phase, visibilité par
-  équipe.
+  équipe ; pages de 50 projets avec le vrai total, recherche sans accents
+  sur tous les projets visibles (lot 11). Un projet sans équipe reçoit
+  celle de son chef, à défaut MIDGARD (migration 0016, reprise et
+  rechargement Chronos).
+- **Recherche globale** (barre du haut) : projets, tâches et personnes
+  (comptes désactivés signalés), insensible aux accents et à la casse
+  (extension PostgreSQL `unaccent`, créée par la migration 0016 : elle est
+  fournie par l'image `postgres:16` et peut être créée par le propriétaire
+  de la base).
 - **Utilisateurs** (`/utilisateurs`, admin/RH, et en lecture seule pour
   les chefs de projet — voir plus bas) : liste avec filtres, bascule
   actif/inactif (admin/RH), création de compte (`/utilisateurs/nouveau`)
@@ -327,6 +335,14 @@ git**, voir `.gitignore`) :
 - `rapport.md` — le détail des choix faits automatiquement (emails
   anonymisés en `nom_prenom@kairos.tn`, rôles, dates, etc.) et des
   lignes qui n'ont pas pu être migrées, avec la raison.
+
+Les deux scripts (reprise complète et `scripts/recharger_projets_chronos.py`,
+rechargement des projets et tâches sans toucher aux comptes) appliquent la
+même cohérence des états (lot 11) : une tâche En cours ou Bloquée d'un
+projet Terminé devient Terminée (Abandonnée si le projet est Abandonné), un
+projet ouvert est Bloqué si et seulement si une de ses tâches l'est. Le
+rechargement exige une base à jour (migration 0016) et signale les projets
+ouverts sans tâche ouverte et ceux dont le chef est désactivé.
 
 Volontairement laissé hors périmètre (pas encore modélisé en étape 1) :
 Congés/Télétravail, notifications historiques, jours fériés, sessions,
