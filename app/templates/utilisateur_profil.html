@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% import "partials/avatar.html" as avatarm %}
 {% block title %}Mes informations — Kairos{% endblock %}
+{# Pas de fil sur cette page (lot 11, audit front M8). #}
+{% block scripts_fil %}{% endblock %}
 {% block body %}
 
 <div class="subbar">
@@ -37,15 +39,15 @@
         </div>
         <div class="form-row">
           <label for="telephone">Téléphone</label>
-          <input type="tel" id="telephone" name="telephone" maxlength="30" autocomplete="off" value="{{ utilisateur.telephone or '' }}" placeholder="55 555 555">
+          <input type="tel" id="telephone" name="telephone" maxlength="30" autocomplete="tel" value="{{ utilisateur.telephone or '' }}" placeholder="55 555 555">
         </div>
         <div class="form-row">
           <label for="poste">Poste</label>
-          <input type="text" id="poste" name="poste" maxlength="150" autocomplete="off" value="{{ utilisateur.poste or '' }}" placeholder="Ingénieur, Technicien…">
+          <input type="text" id="poste" name="poste" maxlength="150" autocomplete="organization-title" value="{{ utilisateur.poste or '' }}" placeholder="Ingénieur, Technicien…">
         </div>
         <div class="form-row" style="margin-bottom:16px;">
           <label for="adresse">Adresse</label>
-          <input type="text" id="adresse" name="adresse" autocomplete="off" value="{{ utilisateur.adresse or '' }}" placeholder="Rue, ville…">
+          <input type="text" id="adresse" name="adresse" autocomplete="street-address" value="{{ utilisateur.adresse or '' }}" placeholder="Rue, ville…">
         </div>
         <button type="submit" class="btn-primary btn-accent">Enregistrer</button>
       </form>

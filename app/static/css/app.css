@@ -244,7 +244,7 @@ main:focus { outline: none; }
 }
 .recherche-resultat:hover, .recherche-resultat:focus-visible { background: var(--hover-bg); color: inherit; }
 .recherche-resultat:focus-visible { outline-offset: -2px; }
-.recherche-resultat-sous { font-size: 11.5px; color: var(--text-muted); }
+.recherche-resultat-sous { font-size: 12px; color: var(--text-muted); }
 
 /* Icône du projet actif dans la topbar (retour Fadhel, 2026-09-27) — voir
    le bloc topbar_projet de base.html, rempli par projet_detail.html. */
@@ -343,6 +343,12 @@ main:focus { outline: none; }
 .tache-dialog-erreur p { margin: 0 0 12px; color: var(--text-secondary); }
 .tache-dialog-erreur .btn-secondary { width: auto; padding: 8px 14px; }
 .taskrow-etat { display: grid; }
+.ucell-pill { display: grid; }
+/* Lien sans soulignement au repos (téléphone, e-mail des listes). */
+.lien-discret { color: inherit; text-decoration: none; }
+.lien-discret:hover { text-decoration: underline; }
+/* Échéance dépassée (Accueil, lot 11 — audit front I8). */
+.texte-retard { color: var(--error-text); font-weight: 600; }
 .taskrow-cellule-titre { min-width: 0; }
 .taskrow-date { font-size: 12px; color: var(--text-secondary); }
 .taskrow-heures { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
@@ -382,8 +388,8 @@ main:focus { outline: none; }
 }
 #posts-projet:focus { outline: none; }
 .thead {
-  padding: 0 4px 8px; font-size: 11px; font-weight: 700; color: var(--text-faint);
-  text-transform: uppercase; letter-spacing: 0.03em;
+  padding: 0 4px 8px; font-size: 12px; font-weight: 700; color: var(--text-faint);
+  text-transform: uppercase; letter-spacing: 0.02em;
 }
 
 /* "Rejoindre cette tâche" (retour Fadhel, 2026-09-28) : icône discrète,
@@ -576,7 +582,7 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
   grid-template-columns: minmax(180px, 1.5fr) 90px 130px 110px minmax(160px, 1.2fr) 80px 56px;
   align-items: center; gap: 12px;
 }
-.uhead { padding: 0 4px 8px; font-size: 11px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.03em; }
+.uhead { padding: 0 4px 8px; font-size: 12px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.02em; }
 .urow { padding: 13px 4px; border-bottom: 1px solid var(--border-soft); }
 .urow:last-child { border-bottom: none; }
 .urow.inactif { background: var(--bg-subtle-1); }
@@ -596,7 +602,7 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
 
 /* --- Formulaire "Nouvel utilisateur", voir Utilisateur-creer.dc.html --- */
 .section-title {
-  font-size: 11px; font-weight: 700; color: var(--text-faint); text-transform: uppercase;
+  font-size: 12px; font-weight: 700; color: var(--text-faint); text-transform: uppercase;
   letter-spacing: 0.03em; margin: 22px 0 12px; padding-top: 14px; border-top: 1px solid var(--border-soft);
 }
 .section-title:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
@@ -609,7 +615,7 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
 .radio-opt.disabled { cursor: not-allowed; color: var(--text-disabled); }
 .radio-opt.disabled .radio-opt-title { color: var(--text-disabled); }
 .radio-opt-title { font-size: 13px; font-weight: 600; }
-.radio-opt-note { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+.radio-opt-note { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 .cf-row { display: grid; grid-template-columns: 1fr 1fr 32px; gap: 8px; margin-bottom: 8px; align-items: center; }
 
 /* Bascule "Compte actif" en CSS pur (case à cocher cachée + label stylé),
@@ -766,7 +772,7 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
 .mini-gantt-label { line-height: 1.3; padding-top: 3px; padding-bottom: 3px; min-width: 0; }
 .mini-gantt-titre, .mini-gantt-projet { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mini-gantt-titre { font-weight: 600; color: var(--text); }
-.mini-gantt-projet { font-size: 11px; color: var(--text-muted); }
+.mini-gantt-projet { font-size: 12px; color: var(--text-muted); }
 .mini-gantt-projet:hover { color: var(--brand-text-strong); text-decoration: underline; }
 .mini-gantt-bar.mini-gantt-bar-retard { width: max-content; justify-self: start; overflow: visible; padding: 0 8px; position: relative; z-index: 1; }
 .mini-gantt-weekend { background: var(--bg-subtle-1); border-radius: 4px 4px 0 0; color: var(--text-muted) !important; }
@@ -922,7 +928,7 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
 }
 .post-comment-attachment-file {
   display: flex; align-items: center; gap: 6px; margin-top: 6px;
-  font-size: 11.5px; color: var(--text-muted);
+  font-size: 12px; color: var(--text-muted);
 }
 /* Réponses imbriquées : simple filet vertical, pas d'avatar plus petit —
    un seul niveau de profondeur, donc pas besoin d'indentation récursive. */
@@ -965,14 +971,14 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
 }
 .bouton-copier:hover { background: var(--hover-bg); }
 .post-comments-plus > summary {
-  cursor: pointer; list-style: none; font-size: 11.5px; font-weight: 700; color: var(--text-muted);
+  cursor: pointer; list-style: none; font-size: 12px; font-weight: 700; color: var(--text-muted);
 }
 .post-comments-plus > summary::-webkit-details-marker { display: none; }
 .post-comment-texte { white-space: pre-wrap; word-break: break-word; }
-.post-comment-meta { display: flex; align-items: center; gap: 10px; margin: 3px 0 0 11px; font-size: 11px; color: var(--text-faint); flex-wrap: wrap; }
+.post-comment-meta { display: flex; align-items: center; gap: 10px; margin: 3px 0 0 11px; font-size: 12px; color: var(--text-faint); flex-wrap: wrap; }
 /* Cible tactile agrandie sans déplacer le texte (audit front M11). */
 .post-comment-action {
-  background: none; border: none; padding: 6px 4px; margin: -6px -4px; border-radius: 6px; width: auto; font: inherit; font-size: 11px;
+  background: none; border: none; padding: 6px 4px; margin: -6px -4px; border-radius: 6px; width: auto; font: inherit; font-size: 12px;
   font-weight: 700; color: var(--text-muted); cursor: pointer; list-style: none;
 }
 .post-comment-action:hover { color: var(--text-secondary); }
@@ -1006,7 +1012,7 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
   background: #4a7c59; color: #fff; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
 }
 .comment-send[disabled] { opacity: 0.6; cursor: default; }
-.comment-file { flex-basis: 100%; display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-secondary); padding-left: 12px; }
+.comment-file { flex-basis: 100%; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); padding-left: 12px; }
 .comment-file[hidden] { display: none; }
 .comment-file img { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; }
 .comment-file-retirer { background: none; border: none; width: auto; padding: 0 4px; font-size: 16px; line-height: 1; color: var(--text-muted); cursor: pointer; }
@@ -1027,7 +1033,7 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
 .lightbox img { display: block; max-width: 94vw; max-height: 92vh; border-radius: 8px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4); }
 .lightbox-fermer { position: fixed; top: 14px; right: 18px; width: 38px; height: 38px; border-radius: 999px; border: none;
   background: rgba(255, 255, 255, 0.14); color: #fff; font-size: 24px; line-height: 1; cursor: pointer; }
-.dropzone-sm { padding: 7px 10px; font-size: 11px; gap: 6px; }
+.dropzone-sm { padding: 7px 10px; font-size: 12px; gap: 6px; }
 .dropzone-preview { max-width: 56px; max-height: 56px; border-radius: 6px; object-fit: cover; }
 
 /* Tableaux à colonnes fixes (tâches du projet, utilisateurs, "Tous les
@@ -1154,7 +1160,7 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
 }
 .bouton-texte:hover { text-decoration: underline; }
 /* Variante avec une cible tactile ≥ 24 px (WCAG 2.5.8). */
-.bouton-texte-cible { min-height: 28px; padding: 4px 6px; margin: -4px -6px; border-radius: 6px; font-size: 11.5px; }
+.bouton-texte-cible { min-height: 28px; padding: 4px 6px; margin: -4px -6px; border-radius: 6px; font-size: 12px; }
 
 /* Bouton principal vert (lot 10, audit front M10) : remplace le
    style="background:#4a7c59; color:#fff" répété dans les gabarits.
@@ -1177,7 +1183,7 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
 
 /* Titres des groupes de filtres de « Tous les projets » (lot 10 : avec un
    id, ils nomment leur groupe de puces via aria-labelledby). */
-.filtre-titre { font-size: 11px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.03em; }
+.filtre-titre { font-size: 12px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.03em; }
 
 /* Journal d'audit (lot 10, audit front I13) : filtres à leur taille, et non
    empilés en pleine largeur ; actions en pastilles contrastées dans les
@@ -1194,7 +1200,7 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
   font-size: 11px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere;
 }
 /* Aide sous un champ (règle de mot de passe…), reliée par aria-describedby. */
-.aide-champ { margin: 4px 0 0; font-size: 11.5px; color: var(--text-muted); }
+.aide-champ { margin: 4px 0 0; font-size: 12px; color: var(--text-muted); }
 
 /* Impression (audit front M2) : sans barres ni champs de saisie. */
 @media print {

@@ -268,5 +268,55 @@ class TestSelecteurIntervenant(_Base):
                 self.assertNotIn('id="ajout-intervenant-choix"', html)
 
 
+class TestConstatsMineurs(_Base):
+    """Audit front du 2026-10-08 : M3 à M10, M13 et I8 (Accueil)."""
+
+    def test_utilisateurs_compteur_filtre_liens_et_tableau(self):
+        html = self._requete("/utilisateurs").data.decode()
+        self.assertIn("2 comptes · 1 actif", html)
+        self.assertIn('role="table" aria-label="Utilisateurs"', html)
+        self.assertIn('href="tel:+21620000000"', html)
+        self.assertIn('href="mailto:fadhel@midgard.tn"', html)
+        self.assertIn('title="Ingénieur"', html)
+        html = self._requete("/utilisateurs?q=zzz", **{"app.repositories.utilisateurs.list_tous": []}).data.decode()
+        self.assertIn("0 résultat sur 2 comptes", html)
+        self.assertNotIn('role="columnheader"', html)
+
+    def test_profil_autocomplete(self):
+        html = self._requete("/utilisateurs/moi").data.decode()
+        for valeur in ("tel", "organization-title", "street-address"):
+            self.assertIn(f'autocomplete="{valeur}"', html)
+
+    def test_accueil_tache_en_retard(self):
+        # Intégration lot 11 : le back ne signale le retard que des tâches
+        # en cours (une tâche bloquée attend un tiers).
+        mes_taches = [{**smoke.MES_TACHES[0], "etat": "en_cours"}]
+        html = self._requete("/accueil", **{"app.repositories.taches.list_mes_taches": mes_taches}).data.decode()
+        # Intégration lot 11 : texte du back (« en retard de N j »), classe du front.
+        self.assertRegex(html, r'<span class="texte-retard">en retard de \d+ j</span>')
+
+    def test_scripts_du_fil_seulement_sur_les_pages_a_fil(self):
+        for url in ("/utilisateurs", "/notifications", "/deadlines", "/dailylog"):
+            with self.subTest(url=url):
+                html = self._requete(url).data.decode()
+                self.assertNotIn("js/lightbox.js", html)
+                self.assertNotIn("js/comment-composer.js", html)
+        for url in ("/accueil", "/projets/1"):
+            with self.subTest(url=url):
+                html = self._requete(url).data.decode()
+                self.assertIn("js/lightbox.js", html)
+                self.assertIn("js/dropzone.js", html)
+
+    def test_logos_reduits_et_lien_projets_courant(self):
+        html = self._requete("/projets/1").data.decode()
+        self.assertIn("img/kairos-logo-topbar.png", html)
+        self.assertNotIn("img/kairos-logo.png", html)
+        self.assertRegex(html, r'aria-label="Tous les projets" aria-current="true"')
+        import pathlib
+        racine = pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / "img"
+        for nom in ("kairos-logo-topbar.png", "kairos-logo-dark-topbar.png"):
+            self.assertLess((racine / nom).stat().st_size, 5000)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,13 +1,15 @@
 {% extends "base.html" %}
 {% import "partials/avatar.html" as avatarm %}
 {% block title %}{{ utilisateur.prenom }} {{ utilisateur.nom }} — Kairos{% endblock %}
+{# Pas de fil sur cette page (lot 11, audit front M8). #}
+{% block scripts_fil %}{% endblock %}
 {% block body %}
 
 <div class="subbar">
   <div class="subbar-inner" style="max-width:900px;">
     <a href="{{ url_for('utilisateurs.liste') }}" class="lien-retour" style="font-size:12.5px; color:var(--text-muted); font-weight:600;"><span aria-hidden="true">←</span> Utilisateurs</a>
     <h1 class="page-titre">{{ utilisateur.prenom }} {{ utilisateur.nom }}</h1>
-    <span class="pill" style="background:var(--hover-bg); color:var(--text-muted); margin-left:auto;">Lecture seule</span>
+    <span class="pill" style="background:var(--hover-bg); color:var(--text-muted); margin-left:auto;">{{ 'Vue restreinte' if peut_corriger else 'Lecture seule' }}</span>
   </div>
 </div>
 
@@ -28,7 +30,7 @@
       <div style="display:flex; flex-direction:column; gap:10px; font-size:12.5px;">
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Téléphone</span><span style="font-weight:600;">{{ utilisateur.telephone or '—' }}</span></div>
       </div>
-      <div style="font-size:11px; color:var(--text-muted); margin-top:14px;">Vue en lecture seule (chef de projet) : nom, téléphone et Daily log de la semaine dernière uniquement.</div>
+      <div style="font-size:12px; color:var(--text-muted); margin-top:14px;">{% if peut_corriger %}Vue restreinte (chef de projet) : nom, téléphone et Daily log de la semaine dernière ; vous pouvez corriger son Daily log.{% else %}Vue en lecture seule (chef de projet) : nom, téléphone et Daily log de la semaine dernière uniquement.{% endif %}</div>
     </div>
   </div>
 
@@ -40,7 +42,7 @@
           <div style="border:1px solid var(--border-soft); border-radius:10px; padding:10px 14px;">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:{{ '8px' if jour.entrees else '0' }};">
               <span style="font-size:12.5px; font-weight:700; ">{{ date_fr(jour.date) }}</span>
-              <span style="font-size:12px; color:var(--text-muted);">{% if jour.absent %}Absent{% else %}{{ jour.total_heures|heures }}{% endif %}{% if peut_corriger %} · <a href="{{ url_for('dailylog.formulaire', date=jour.date.isoformat(), utilisateur=utilisateur.id) }}" aria-label="Corriger le Daily log du {{ date_fr(jour.date) }}">Corriger</a>{% endif %}</span>
+              <span style="font-size:12px; color:var(--text-muted);">{% if jour.absent %}Absent{% else %}{{ jour.total_heures|heures }}{% endif %}{% if peut_corriger %} · <a href="{{ url_for('dailylog.formulaire', date=jour.date.isoformat(), utilisateur=utilisateur.id) }}" aria-label="Corriger le Daily log du {{ date_fr(jour.date)|lower }}">Corriger</a>{% endif %}</span>
             </div>
             {% for e in jour.entrees %}
               <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-secondary); padding:2px 0;">

@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% import "partials/avatar.html" as avatarm %}
 {% block title %}Utilisateurs — Kairos{% endblock %}
+{# Pas de fil sur cette page (lot 11, audit front M8). #}
+{% block scripts_fil %}{% endblock %}
 {% block body %}
 
 {% set peut_gerer = g.user.role in ('admin', 'rh') %}
@@ -8,7 +10,9 @@
 <div class="subbar">
   <div class="subbar-inner">
     <h1 class="page-titre">Utilisateurs</h1>
-    <span style="font-size:12.5px; color:var(--text-muted);">{{ compte.total }} compte{{ 's' if compte.total > 1 else '' }} · {{ compte.actifs }} actif{{ 's' if compte.actifs > 1 else '' }}</span>
+    {# Lot 11 (audit front M6) : avec un filtre, le nombre de résultats. #}
+    {% set filtre_actif = q or equipe_code or role or actif_param %}
+    <span style="font-size:12.5px; color:var(--text-muted);" role="status">{% if filtre_actif %}{{ utilisateurs|length }} résultat{{ 's' if utilisateurs|length > 1 }} sur {{ compte.total }} compte{{ 's' if compte.total > 1 }}{% else %}{{ compte.total }} compte{{ 's' if compte.total > 1 else '' }} · {{ compte.actifs }} actif{{ 's' if compte.actifs > 1 else '' }}{% endif %}</span>
     <span class="pill" style="background:var(--hover-bg); color:var(--text-muted); margin-left:auto;">Visible par&nbsp;: administrateur, RH, chef de projet</span>
   </div>
 </div>
@@ -62,35 +66,42 @@
     {% endif %}
   </form>
 
-  <div class="card table-scroll" style="padding:16px 18px 6px;">
-    <div class="uhead">
-      <span>Utilisateur</span>
-      <span>Équipe</span>
-      <span>Rôle</span>
-      <span>Téléphone</span>
-      <span>E-mail</span>
-      <span>Embauché(e) le</span>
-      <span>Actif</span>
+  {# Lot 11 (audit front M1) : vrai tableau pour les lecteurs d'écran ; le
+     lien de la fiche ne porte que le nom. #}
+  <div class="card table-scroll" style="padding:16px 18px 6px;" role="table" aria-label="Utilisateurs">
+    {% if utilisateurs %}
+    <div class="uhead" role="row">
+      <span role="columnheader">Utilisateur</span>
+      <span role="columnheader">Équipe</span>
+      <span role="columnheader">Rôle</span>
+      <span role="columnheader">Téléphone</span>
+      <span role="columnheader">E-mail</span>
+      <span role="columnheader">Embauché(e) le</span>
+      <span role="columnheader">Actif</span>
     </div>
+    {% endif %}
 
     {% for u in utilisateurs %}
       {% set rs = role_style(u.role) %}
-      <div class="urow {{ 'inactif' if not u.actif }}">
+      <div class="urow {{ 'inactif' if not u.actif }}" role="row">
         {# Lot 10 (audit front §3.6) : compte inactif repéré par un fond et
            une pastille « Inactif », plus par une opacité qui rendait les
            textes illisibles (1,3 à 2,4:1). #}
+        <div role="cell" style="min-width:0;">
         <a href="{{ url_for('utilisateurs.fiche', user_id=u.id) }}" style="display:flex; align-items:center; gap:10px; min-width:0; text-decoration:none; color:inherit;">
           {{ avatarm.avatar(u.id, u.prenom, u.nom, u.avatar_chemin, css_class='avatar avatar-md', couleur=(none if u.actif else '#6c766f')) }}
           <div style="min-width:0;">
             <div style="font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; {{ 'color:var(--text-muted);' if not u.actif }}">{{ u.prenom }} {{ u.nom }}</div>
-            <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px; min-width:0;"><span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ u.poste or '—' }}</span>{% if not u.actif %}<span class="pill pill-sm" style="background:var(--hover-bg-strong); color:var(--text-secondary); font-weight:700; flex-shrink:0;">Inactif</span>{% endif %}</div>
+            <div style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; min-width:0;"><span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"{% if u.poste %} title="{{ u.poste }}"{% endif %}>{{ u.poste or '—' }}</span>{% if not u.actif %}<span class="pill pill-sm" style="background:var(--hover-bg-strong); color:var(--text-secondary); font-weight:700; flex-shrink:0;">Inactif</span>{% endif %}</div>
           </div>
         </a>
-        <span style="font-size:12.5px; color:{{ 'var(--text-muted)' if not u.actif else 'var(--text-secondary)' }};">{{ equipe_libelle(u.equipe_code) }}</span>
-        <span class="pill pill-sm" style="background:{{ rs.bg }}; color:{{ rs.fg }};">{{ rs.label }}</span>
-        <span style="font-size:12px; color:var(--text-secondary);">{{ u.telephone or '—' }}</span>
-        <div style="display:flex; align-items:center; gap:6px; min-width:0;">
-          <span style="font-size:12.5px; color:{{ 'var(--text-muted)' if not u.actif else 'var(--text-secondary)' }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="{{ u.email }}">{{ u.email }}</span>
+        </div>
+        <span role="cell" style="font-size:12.5px; color:{{ 'var(--text-muted)' if not u.actif else 'var(--text-secondary)' }};">{{ equipe_libelle(u.equipe_code) }}</span>
+        <span role="cell" class="ucell-pill"><span class="pill pill-sm" style="background:{{ rs.bg }}; color:{{ rs.fg }};">{{ rs.label }}</span></span>
+        {# Lot 11 (audit front M6) : téléphone et e-mail cliquables. #}
+        <span role="cell" style="font-size:12px; color:var(--text-secondary);">{% if u.telephone %}<a href="tel:{{ u.telephone|replace(' ', '') }}" class="lien-discret">{{ u.telephone }}</a>{% else %}—{% endif %}</span>
+        <div role="cell" style="display:flex; align-items:center; gap:6px; min-width:0;">
+          <a href="mailto:{{ u.email }}" class="lien-discret" style="font-size:12.5px; color:{{ 'var(--text-muted)' if not u.actif else 'var(--text-secondary)' }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="{{ u.email }}">{{ u.email }}</a>
           {% if u.actif %}
             {% if u.verifie %}
               <svg role="img" aria-label="Adresse vérifiée" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1f7a55" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><title>Adresse vérifiée</title><path d="M20 6 9 17l-5-5"/></svg>
@@ -99,9 +110,9 @@
             {% endif %}
           {% endif %}
         </div>
-        <span style="font-size:12px; color:var(--text-secondary);">{{ u.date_embauche|date_courte(true) if u.date_embauche else '—' }}</span>
+        <span role="cell" style="font-size:12px; color:var(--text-secondary);">{{ u.date_embauche|date_courte(true) if u.date_embauche else '—' }}</span>
         {% if peut_gerer %}
-          <form method="post" action="{{ url_for('utilisateurs.toggle_actif', user_id=u.id) }}">
+          <form method="post" action="{{ url_for('utilisateurs.toggle_actif', user_id=u.id) }}" role="cell">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="q" value="{{ q }}">
             <input type="hidden" name="equipe_code" value="{{ equipe_code or '' }}">
@@ -118,15 +129,15 @@
             </button>
           </form>
         {% else %}
-          <span class="pill pill-sm" style="background:{{ 'var(--brand-bg-soft)' if u.actif else 'var(--hover-bg)' }}; color:{{ 'var(--brand-text-strong)' if u.actif else 'var(--text-muted)' }};">{{ 'Actif' if u.actif else 'Inactif' }}</span>
+          <span role="cell" class="ucell-pill"><span class="pill pill-sm" style="background:{{ 'var(--brand-bg-soft)' if u.actif else 'var(--hover-bg)' }}; color:{{ 'var(--brand-text-strong)' if u.actif else 'var(--text-muted)' }};">{{ 'Actif' if u.actif else 'Inactif' }}</span></span>
         {% endif %}
       </div>
     {% else %}
-      <div style="padding:20px 4px; font-size:13px; color:var(--text-muted);">Aucun utilisateur ne correspond à ces filtres.</div>
+      <div role="row"><div role="cell" style="padding:20px 4px; font-size:13px; color:var(--text-muted);">Aucun utilisateur ne correspond à ces filtres.</div></div>
     {% endfor %}
   </div>
 
-  <div style="font-size:11px; color:var(--text-muted); margin-top:10px;">Désactiver un compte le retire des listes d'affectation sans rien supprimer — tout l'historique (projets, tâches, posts) reste intact.</div>
+  <div style="font-size:12px; color:var(--text-muted); margin-top:10px;">Désactiver un compte le retire des listes d'affectation sans rien supprimer — tout l'historique (projets, tâches, posts) reste intact.</div>
 
 </div>
 {% endblock %}

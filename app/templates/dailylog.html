@@ -9,6 +9,8 @@
    échappe <, >, & et ') ; le rendu se fait en textContent dans
    static/js/dailylog.js. #}
 {% block title %}Daily log — Kairos{% endblock %}
+{# Pas de fil sur cette page (lot 11, audit front M8). #}
+{% block scripts_fil %}{% endblock %}
 {% block head %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/dailylog.css') }}">
   <script src="{{ url_for('static', filename='js/dailylog.js') }}" defer></script>

@@ -15,9 +15,12 @@
 {% endif %}
 
 <div class="card table-scroll" style="padding:8px 18px;">
-  <div class="ptable-head" style="padding:10px 4px; font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em; border-bottom:1px solid var(--border-soft);">
+  {# Lot 11 (audit front M7/M13) : pas de ligne d'en-têtes au-dessus de l'état vide. #}
+  {% if projets %}
+  <div class="ptable-head" style="padding:10px 4px; font-size:12px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em; border-bottom:1px solid var(--border-soft);">
     <span>Projet</span><span>Phase</span><span>Lots</span><span>Chef de projet</span><span title="Heures intervenants / heures chef de projet">Heures interv./chef</span><span title="Prochain rendu client (tri de la liste)">Prochain rendu</span><span>État</span>
   </div>
+  {% endif %}
   {% for p in projets %}
     {% set st = projet_etat_style(p.etat) %}
     <a href="{{ url_for('projets.detail', projet_id=p.id) }}" class="ptable-row" style="padding:12px 4px; border-bottom:1px solid var(--border-soft); color:inherit;">

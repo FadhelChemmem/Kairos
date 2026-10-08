@@ -1005,7 +1005,9 @@
     }
     function renderEntete() {
       dateLabel.textContent = dateCourte(sel);
-      titreEl.textContent = tr(T.titre_jour, dateLongue(sel));
+      // Lot 11 (audit front M10) : même libellé que le h1 rendu par le
+      // serveur (« Journée du jeudi 8 octobre 2026 »), année comprise.
+      titreEl.textContent = tr(T.titre_jour, dateLongue(sel) + ' ' + N.versDate(sel).getUTCFullYear());
       var suivant = N.jourOuvre(sel, 1);
       suivBtn.disabled = suivant > TODAY;
       if (quiDate) quiDate.value = sel;

@@ -3210,7 +3210,9 @@ class SmokeTestCase(SmokeBase):
                 p.stop()
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         self.assertIn(b"Wael", resp.data)
-        self.assertIn("Lecture seule".encode(), resp.data)
+        # Lot 11 (audit front M4) : il peut corriger le Daily log, la vue
+        # est donc « restreinte » et non plus « en lecture seule ».
+        self.assertIn("Vue restreinte".encode(), resp.data)
         # Seul formulaire autorisé : la déconnexion de la barre du haut
         # (base.html, en POST depuis PROMPT_CORRECTIONS.md P2 #25) — la
         # fiche elle-même ne doit en contenir aucun.
