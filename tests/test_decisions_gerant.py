@@ -78,7 +78,13 @@ class TestDecision2ClientVoitHeuresHonorairesPiecesJointes(_Base):
         self.assertIn("Heures intervenants", page)
         self.assertIn("Heures chef de projet", page)
         self.assertIn("302", page)  # heures intervenants du projet
-        self.assertIn('href="/fichiers/taches/1"', page)  # pièce jointe d'une tâche
+        # Pièce jointe d'une tâche : dans sa fenêtre, chargée à la demande (lot 11).
+        resp, _ = self._requete("get", "/projets/1/taches/5/fenetre", **{
+            "app.auth.get_user_by_id": CLIENT,
+            "app.repositories.projets.user_can_manage": False,
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('href="/fichiers/taches/1"', resp.data.decode())
 
     def test_telechargement_piece_jointe_tache_et_post(self):
         for chemin_fichier, url in ((smoke.PIECE_JOINTE_TACHE["chemin"], "/fichiers/taches/1"),
@@ -258,16 +264,16 @@ class TestDecision3EtatsReserves(_Base):
 
     # --- interface : seuls les états autorisés sont proposés ---
     def _page(self, utilisateur, gere, etat_tache):
+        # Lot 11 : le contenu de la fenêtre de tâche est un fragment chargé
+        # à la demande (taches_fenetre.fenetre).
         tache = {**smoke.TACHES_PROJET[0], "etat": etat_tache}
-        resp, _ = self._requete("get", "/projets/1", **{
+        resp, _ = self._requete("get", "/projets/1/taches/5/fenetre", **{
             "app.auth.get_user_by_id": utilisateur,
             "app.repositories.projets.user_can_manage": gere,
             "app.repositories.taches.list_taches_projet": [tache],
         })
         self.assertEqual(resp.status_code, 200)
-        page = resp.data.decode()
-        debut = page.index('id="dialog-tache-5"')
-        return page[debut:page.index("</dialog>", debut)]
+        return resp.data.decode()
 
     def test_intervenant_ne_voit_que_en_cours_et_bloquee(self):
         dialogue = self._page(INTERVENANT, False, "bloque")

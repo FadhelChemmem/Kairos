@@ -1,0 +1,113 @@
+{# Contenu de la fenêtre d'une tâche (lot 11, audit front I2) : rendu à la
+   demande par taches_fenetre.fenetre (GET /projets/<id>/taches/<tid>/fenetre)
+   et inséré par tache-dialog.js dans l'unique <dialog id="dialog-tache"> de
+   projet_detail.html — avant, une fenêtre complète était pré-rendue pour
+   chaque tâche (67 % du HTML d'une fiche de 76 tâches).
+   Contexte : t (ligne de taches.list_taches_projet), projet, peut_gerer,
+   projet_clos, etats_reserves, next_url (retour après un envoi de fichier). #}
+{% set tst = tache_etat_style(t.etat) %}
+{% set ids_intervenants = t.intervenants|map(attribute='id')|list %}
+{% set peut_agir_tache = not projet_clos and (peut_gerer or (g.user.role not in ('client', 'rh') and g.user.id in ids_intervenants)) %}
+<div class="tache-fenetre" data-tache-fenetre="{{ t.id }}" data-titre="{{ t.titre }}">
+  <div class="tache-fenetre-entete">
+    <span class="pill" style="background:{{ tst.bg }}; color:{{ tst.fg }};">{{ tst.libelle }}</span>
+  </div>
+  {% if peut_agir_tache %}
+  {# Titre modifiable ; le changement apparaît dans le fil. #}
+  <form method="post" action="{{ url_for('projets.modifier_titre_tache', projet_id=projet.id, tache_id=t.id) }}" class="form-row" style="display:flex; gap:8px; align-items:flex-end;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div style="flex:1; min-width:0;">
+      <label for="tache-titre-{{ t.id }}">Titre de la tâche</label>
+      <input type="text" id="tache-titre-{{ t.id }}" name="titre" value="{{ t.titre }}" maxlength="255" required>
+    </div>
+    <button type="submit" class="btn-secondary" style="width:auto; padding:9px 14px;">Renommer</button>
+  </form>
+  {% else %}
+  <h2 class="tache-fenetre-titre">{{ t.titre }}</h2>
+  {% endif %}
+  <div style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
+    {% if t.date_echeance %}Échéance {{ t.date_echeance|date_courte }}{% if t.type_deadline == 'interne' %} · interne{% endif %} · {% endif %}{{ t.intervenants|map(attribute='prenom')|join(', ') or 'Aucun intervenant' }}
+  </div>
+  {# « Rejoindre cette tâche » au clavier (lot 11, audit front I9) : dans la
+     ligne du tableau, le bouton n'est plus un arrêt de tabulation (une seule
+     tabulation par tâche) ; on le retrouve ici. Jamais sur une tâche close. #}
+  {% if g.user.role not in ('rh', 'client') and not projet_clos and g.user.id not in ids_intervenants and t.etat not in etats_taches_closes %}
+  <form method="post" action="{{ url_for('projets.rejoindre_tache', projet_id=projet.id, tache_id=t.id) }}" style="margin-bottom:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-secondary" style="width:auto; padding:7px 12px;">+ Rejoindre cette tâche</button>
+  </form>
+  {% endif %}
+  {# États réservés (décision du gérant, lot 10) : Vérifiée, Arrêtée et
+     Abandonnée ne sont proposées qu'au chef de projet, aux co-chefs et à
+     l'Admin (peut_gerer) ; une tâche dans l'un de ces états ne peut
+     être rouverte ou clôturée que par eux. Contrôle serveur :
+     projets.changer_etat_tache / cloturer_tache, migration 0015. #}
+  {% set etat_reserve_verrouille = t.etat in etats_reserves and not peut_gerer %}
+  <div class="tache-dialog-actions">
+    {% if t.etat not in ('termine', 'verifie') and peut_agir_tache and etat_reserve_verrouille %}
+    <span style="font-size:12px; color:var(--text-muted);">Tâche {{ tst.libelle|lower }}&nbsp;: seuls le chef de projet, un co-chef ou un Admin peuvent changer son état.</span>
+    {% elif t.etat not in ('termine', 'verifie') and peut_agir_tache %}
+    <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" style="display:flex; gap:6px; margin-bottom:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <select name="etat" aria-label="Nouvel état" style="flex:1;">
+        <option value="en_cours" {{ 'selected' if t.etat == 'en_cours' }}>En cours</option>
+        <option value="bloque" {{ 'selected' if t.etat == 'bloque' }}>Bloquée</option>
+        {% if peut_gerer %}
+        <option value="verifie" {{ 'selected' if t.etat == 'verifie' }}>Vérifiée</option>
+        <option value="arret" {{ 'selected' if t.etat == 'arret' }}>Arrêtée</option>
+        <option value="abandonne" {{ 'selected' if t.etat == 'abandonne' }}>Abandonnée</option>
+        {% endif %}
+      </select>
+      <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">Appliquer</button>
+    </form>
+    <form method="post" action="{{ url_for('projets.cloturer_tache', projet_id=projet.id, tache_id=t.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="cloture-tag-{{ t.id }}">Clôturer avec le type</label>
+      <select name="type_code" id="cloture-tag-{{ t.id }}" style="margin-bottom:6px;">
+        <option value="envoi">Envoi</option>
+        <option value="reponse">Réponse</option>
+        <option value="question">Question</option>
+        <option value="requete">Requête</option>
+      </select>
+      <button type="submit" class="btn-primary btn-accent">Marquer comme terminée</button>
+    </form>
+    {% elif t.etat in ('termine', 'verifie') %}
+      <span style="font-size:12px; color:var(--text-muted);">Tâche {{ 'vérifiée' if t.etat == 'verifie' else 'terminée' }}{% if t.date_fin %} — clôturée le {{ t.date_fin|date_courte(true) }}{% endif %}</span>
+      {% if peut_agir_tache and etat_reserve_verrouille %}
+      <div style="font-size:12px; color:var(--text-muted); margin-top:8px;">Seuls le chef de projet, un co-chef ou un Admin peuvent rouvrir une tâche vérifiée.</div>
+      {% elif peut_agir_tache %}
+      <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" style="display:flex; gap:6px; margin-top:8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <select name="etat" aria-label="Nouvel état" style="flex:1;">
+          {% if t.etat == 'termine' and peut_gerer %}<option value="verifie">Vérifiée</option>{% endif %}
+          <option value="en_cours">Rouvrir (en cours)</option>
+        </select>
+        <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">Appliquer</button>
+      </form>
+      {% endif %}
+    {% elif projet_clos %}
+      <span style="font-size:12px; color:var(--text-muted);">{% if peut_gerer %}Projet clos&nbsp;: rouvrez-le (panneau Informations) pour agir sur ses tâches.{% else %}Projet clos&nbsp;: seul son chef de projet ou un co-chef peut le rouvrir (panneau Informations).{% endif %}</span>
+    {% else %}
+      <span style="font-size:12px; color:var(--text-muted);">Seuls le chef de projet, un co-chef ou un intervenant de la tâche peuvent changer son état.</span>
+    {% endif %}
+
+    <div class="divider" style="margin-left:0;"></div>
+    <h3 class="tache-fenetre-sous-titre">Pièces jointes</h3>
+    {% for pj in t.pieces_jointes %}
+      <a href="{{ url_for('fichiers.download_tache', piece_id=pj.id) }}" style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:6px;">
+        <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+        {{ pj.nom_fichier }}
+      </a>
+    {% else %}
+      <div style="font-size:12px; color:var(--text-faint); margin-bottom:6px;">Aucune pièce jointe.</div>
+    {% endfor %}
+    {% if peut_agir_tache %}
+    <form method="post" action="{{ url_for('fichiers.upload_tache', tache_id=t.id) }}" enctype="multipart/form-data" style="display:flex; gap:6px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <input type="file" name="fichier" aria-label="Fichier à joindre à la tâche" style="flex:1; min-width:0; font-size:12px;">
+      <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;" aria-label="Joindre le fichier">+</button>
+    </form>
+    {% endif %}
+  </div>
+</div>

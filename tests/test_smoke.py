@@ -3465,10 +3465,15 @@ class TestControlesDAccesStricts(unittest.TestCase):
     def test_page_projet_bouton_rejoindre_tache_selon_intervenants(self):
         """TACHES_PROJET : la tâche 5 a déjà l'utilisateur connecté (id=1)
         comme intervenant, la tâche 6 n'a aucun intervenant — le bouton ne
-        doit apparaître QUE pour la tâche 6 (une seule occurrence)."""
+        doit apparaître QUE pour la tâche 6 (une seule occurrence). Lot 11 :
+        la tâche 6 est rouverte ici (une tâche close n'en a plus), et le
+        bouton vise le formulaire commun via formaction."""
+        taches = [TACHES_PROJET[0], {**TACHES_PROJET[1], "etat": "en_cours"}]
+        body = self._get("/projets/1", **{"app.repositories.taches.list_taches_projet": taches}).data.decode()
+        self.assertEqual(body.count('formaction="/projets/1/taches/5/rejoindre"'), 0)
+        self.assertEqual(body.count('formaction="/projets/1/taches/6/rejoindre"'), 1)
         body = self._get("/projets/1").data.decode()
-        self.assertEqual(body.count('action="/projets/1/taches/5/rejoindre"'), 0)
-        self.assertEqual(body.count('action="/projets/1/taches/6/rejoindre"'), 1)
+        self.assertEqual(body.count('/projets/1/taches/6/rejoindre'), 0)
 
     def test_page_projet_entree_points_nouveau_post_consolides(self):
         """Retour Fadhel, 2026-09-28 (captures annotées) : la carte verte
@@ -4734,10 +4739,13 @@ class TestPostsAutomatiquesEtProjet(SmokeBase):
     def test_ligne_de_tache_ouvre_sa_fenetre_avec_titre_modifiable(self):
         body = self._get("/projets/1").data.decode()
         self.assertIn('data-open-tache="5"', body)
-        self.assertIn('id="dialog-tache-5"', body)
-        self.assertIn("/projets/1/taches/5/titre", body)
+        # Lot 11 : une seule fenêtre, remplie à la demande par le fragment.
+        self.assertIn('id="dialog-tache"', body)
+        self.assertIn('data-url="/projets/1/taches/0/fenetre"', body)
         self.assertNotIn("Actions sur la tâche", body)
         self.assertIn("js/tache-dialog.js", body)
+        fragment = self._get("/projets/1/taches/5/fenetre").data.decode()
+        self.assertIn("/projets/1/taches/5/titre", fragment)
 
     def test_renommer_une_tache_route(self):
         with patch("app.repositories.taches.set_titre", return_value=True) as mock_titre:
@@ -5113,7 +5121,7 @@ class TestAuditV3(SmokeBase):
         """Écrans tactiles : le bouton "rejoindre la tâche" ne dépend plus du survol."""
         import pathlib
         css = (pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / "css" / "app.css").read_text(encoding="utf-8")
-        self.assertRegex(css, r"@media \(hover: none\) \{ \.task-join-form \{ opacity: 1; \} \}")
+        self.assertRegex(css, r"@media \(hover: none\) \{ \.task-join-btn \{ opacity: 1; \} \}")
 
     def test_page_projet_n_agrege_plus_tout_le_dailylog(self):
         """Les heures de l'en-tête projet et des tâches sont calculées pour ce

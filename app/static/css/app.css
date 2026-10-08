@@ -304,6 +304,12 @@ main:focus { outline: none; }
 .taskrow-cliquable:hover { background: var(--hover-bg); }
 .taskrow-cliquable:focus-visible { outline: 2px solid #4a7c59; outline-offset: -2px; }
 .taskrow-ouvrir { display: flex; justify-content: center; }
+/* Chevron dessiné en CSS (lot 11 : une image SVG de moins par ligne). */
+.taskrow-ouvrir::before {
+  content: ""; width: 14px; height: 14px; background: var(--text-faint);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+}
 /* Titre de tâche = bouton d'ouverture de la fenêtre (lot 10, audit I8). */
 .taskrow-titre {
   display: block; width: 100%; min-width: 0; padding: 5px 0; margin: -5px 0; border: 0; background: none;
@@ -316,9 +322,65 @@ main:focus { outline: none; }
 .carte-cliquable:focus-visible { outline: 2px solid #4a7c59; outline-offset: 2px; }
 .tache-dialog { max-width: 480px; }
 .tache-dialog-actions select { width: 100%; }
-/* Chaque ligne est suivie de sa <dialog> : :last-child ne s'appliquait
-   jamais (audit front M1). */
-.taskrow:has(+ dialog:last-child) { border-bottom: none; }
+/* Lot 11 (audit front I2) : une seule fenêtre de tâche, remplie à la
+   demande (tache-dialog.js) — bouton Fermer posé dans le coin, au-dessus
+   du contenu chargé ; état de chargement et d'erreur. */
+.tache-dialog-fermer { position: absolute; top: 14px; right: 14px; margin: 0; }
+.tache-dialog-corps { min-height: 120px; }
+.tache-fenetre-entete { display: flex; align-items: center; min-height: 28px; padding-right: 40px; margin-bottom: 14px; }
+.tache-fenetre-titre { font-size: 15px; font-weight: 800; margin: 0 0 12px; overflow-wrap: anywhere; }
+.tache-fenetre-titre:focus { outline: none; }
+.tache-fenetre-sous-titre { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; margin: 0 0 6px; }
+.tache-dialog-chargement { display: flex; align-items: center; gap: 10px; margin: 40px 0 0; font-size: 13px; color: var(--text-muted); padding-right: 40px; }
+.roue-chargement {
+  width: 16px; height: 16px; border-radius: 999px; flex-shrink: 0;
+  border: 2px solid var(--border); border-top-color: var(--accent-fill);
+  animation: roue-chargement 0.8s linear infinite;
+}
+@keyframes roue-chargement { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .roue-chargement { animation-duration: 2.4s; } }
+.tache-dialog-erreur { margin-top: 32px; padding-right: 40px; font-size: 13px; }
+.tache-dialog-erreur p { margin: 0 0 12px; color: var(--text-secondary); }
+.tache-dialog-erreur .btn-secondary { width: auto; padding: 8px 14px; }
+.taskrow-etat { display: grid; }
+.taskrow-cellule-titre { min-width: 0; }
+.taskrow-date { font-size: 12px; color: var(--text-secondary); }
+.taskrow-heures { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.taskrow-interne, .taskrow-date.taskrow-close, .taskrow-titre.taskrow-close { color: var(--text-faint); }
+.taskrow-intervenants .avatar-stack { display: flex; }
+/* « + » de « Rejoindre cette tâche » dessiné en CSS (lot 11). */
+.task-join-btn::before {
+  content: ""; width: 12px; height: 12px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M12 5v14M5 12h14'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M12 5v14M5 12h14'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+/* Tâches closes repliées par défaut (lot 11, audit front I2/I9). */
+.taches-closes { margin: 4px 0 6px; }
+.taches-closes-bascule {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer; list-style: none;
+  margin: 8px 0 4px; padding: 6px 10px; border-radius: 8px;
+  font-size: 12.5px; font-weight: 600; color: var(--text-muted);
+}
+.taches-closes-bascule::-webkit-details-marker { display: none; }
+.taches-closes-bascule::before { content: "▸"; font-size: 11px; transition: transform 0.12s; }
+.taches-closes[open] > .taches-closes-bascule::before { transform: rotate(90deg); }
+.taches-closes-bascule:hover { background: var(--hover-bg); color: var(--text-strong); }
+.taches-closes-bascule:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 0; }
+.taches-closes .si-ouvert, .taches-closes[open] .si-ferme { display: none; }
+.taches-closes[open] .si-ouvert { display: inline; }
+.taches-table > .taskrow:last-child { border-bottom: none; }
+.taches-vide { padding: 12px 4px; font-size: 12.5px; color: var(--text-muted); }
+/* Lien d'évitement interne : « Aller aux posts du projet », visible au
+   focus seulement (audit front I9). */
+.lien-evitement-interne {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+.lien-evitement-interne:focus {
+  position: static; width: auto; height: auto; clip: auto; display: inline-block; margin: 0 0 8px;
+  padding: 6px 10px; border-radius: 8px; border: 2px solid var(--focus-ring);
+  font-size: 12.5px; font-weight: 700; color: var(--brand-text-strong); background: var(--surface);
+}
+#posts-projet:focus { outline: none; }
 .thead {
   padding: 0 4px 8px; font-size: 11px; font-weight: 700; color: var(--text-faint);
   text-transform: uppercase; letter-spacing: 0.03em;
@@ -327,11 +389,11 @@ main:focus { outline: none; }
 /* "Rejoindre cette tâche" (retour Fadhel, 2026-09-28) : icône discrète,
    révélée seulement au survol de la ligne — voir projet_detail.html. */
 .taskrow-intervenants { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.task-join-form { opacity: 0; transition: opacity 0.12s; flex-shrink: 0; }
-.taskrow:hover .task-join-form, .task-join-form:focus-within { opacity: 1; }
+.task-join-btn { opacity: 0; transition: opacity 0.12s; }
+.taskrow:hover .task-join-btn, .task-join-btn:focus { opacity: 1; }
 /* Écrans tactiles : pas de survol, le bouton "rejoindre" reste visible
    (audit, lot 7 — sinon introuvable sur téléphone/tablette). */
-@media (hover: none) { .task-join-form { opacity: 1; } }
+@media (hover: none) { .task-join-btn { opacity: 1; } }
 .task-join-btn {
   width: 28px; height: 28px; border-radius: 999px; padding: 0; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; cursor: pointer;
