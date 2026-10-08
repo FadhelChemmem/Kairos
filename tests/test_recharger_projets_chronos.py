@@ -6,7 +6,11 @@ vrai PostgreSQL :
   essais du gérant (comptes modifiés, projet, posts, Daily log…) ->
   rechargement -> utilisateurs identiques, données métier = dump ->
   rechargement rejoué -> échecs propres (utilisateur renommé ou supprimé,
-  base pas au lot 10).
+  base sans la migration 0016).
+
+Lot 11 : équipe des projets (celle du chef, à défaut MIDGARD) et cohérence
+des états (tâches ouvertes d'un projet clos fermées, projet ouvert Bloqué si
+et seulement si une tâche l'est).
 
 Export Chronos utilisé : tests/fixtures_chronos/mini_dump.sql (synthétique),
 ou KAIROS_RECHARGE_DUMP pour rejouer le même scénario sur un vrai export
@@ -114,6 +118,74 @@ class TestPreparation(unittest.TestCase):
         self.assertTrue(all(c[4] is None for c in identifiants))
 
 
+class TestCoherenceDesEtats(unittest.TestCase):
+    """Lot 11 : passe de cohérence commune à la reprise complète et au
+    rechargement (migrate_from_chronos.appliquer_coherence)."""
+
+    def setUp(self):
+        data = _donnees_fictives()
+        base = data["projects"][0]
+        data["projects"] += [
+            dict(base, id=12, customId="99012X_clos", name="Clos", manager=2, state="done",
+                 dueDate="2025-06-30 00:00:00"),
+            dict(base, id=13, customId="99013X_abandon", name="Abandon", manager=2, state="abandoned"),
+            dict(base, id=14, customId="99014X_bloque", name="Bloqué sans tâche bloquée", manager=3, state="blocked"),
+        ]
+        tache = data["tasks"][0]
+        data["tasks"] += [
+            dict(tache, id=101, state="blocked", meta='{"projectID":12}'),
+            dict(tache, id=102, state="doing", meta='{"projectID":12}', doneDate="2025-05-01 00:00:00"),
+            dict(tache, id=103, state="done", meta='{"projectID":12}'),
+            dict(tache, id=104, state="doing", meta='{"projectID":13}'),
+            dict(tache, id=105, state="blocked", meta='{"projectID":11}'),
+            dict(tache, id=106, state="done", meta='{"projectID":14}'),
+        ]
+        self.prep = rch.preparer(data)
+        self.taches = {t["id"]: t for t in self.prep["taches"]}
+        self.projets = {p["id"]: p for p in self.prep["projets"]}
+
+    def test_taches_ouvertes_d_un_projet_clos_fermees(self):
+        self.assertEqual(self.taches[101]["etat"], "termine")
+        self.assertEqual(self.taches[101]["etat_chronos"], "bloque")
+        self.assertEqual(self.taches[101]["date_fin"], "2025-06-30")  # date de clôture du projet
+        self.assertEqual(self.taches[102]["etat"], "termine")
+        self.assertEqual(self.taches[102]["date_fin"], "2025-05-01")  # date de fin Chronos gardée
+        self.assertEqual(self.taches[103]["etat"], "termine")
+        self.assertEqual(self.taches[104]["etat"], "abandonne")
+        self.assertEqual(self.taches[100]["etat"], "en_cours")  # projet ouvert : inchangée
+        self.assertEqual(sorted(x[0] for x in self.prep["report"]["taches_fermees_projet_clos"]), [101, 102, 104])
+
+    def test_etat_des_projets_ouverts_recalcule(self):
+        self.assertEqual(self.projets[11]["etat"], "bloque")       # tâche 105 bloquée
+        self.assertEqual(self.projets[11]["etat_chronos"], "en_cours")
+        self.assertEqual(self.projets[14]["etat"], "en_cours")     # aucune tâche bloquée
+        self.assertEqual(self.projets[10]["etat"], "en_cours")
+        self.assertEqual(self.projets[12]["etat"], "termine")      # projet clos : jamais rouvert
+        self.assertEqual(sorted(x[1] for x in self.prep["report"]["projets_etat_recalcule"]), ["99011X", "99014X"])
+
+    def test_a_traiter(self):
+        self.assertEqual(self.prep["sans_tache_ouverte"], ["99014X"])
+        self.assertEqual(self.prep["chef_inactif_prevus"], [])
+
+    def test_sql_compte_les_corrections_et_signale(self):
+        sql = rch.generer_sql(self.prep, "fictif.sql")
+        self.assertIn("(101, 12, 'Note d''hypothèses', 'termine', 'bloque',", sql)
+        for rubrique in ("Cohérence : tâches ouvertes de projets terminés, passées Terminée",
+                         "Cohérence : projets En cours passés Bloqué (une tâche bloquée)",
+                         "À traiter : projets ouverts sans tâche ouverte",
+                         "À traiter : projets ouverts dont le chef est désactivé",
+                         "Équipe MIDGARD par défaut (chef sans équipe dans Kairos)"):
+            self.assertIn(rubrique, sql)
+        self.assertIn("COALESCE(u.equipe_code, 'MIDGARD')", sql)
+
+    def test_rapport(self):
+        rapport = rch.generer_rapport(self.prep, "fictif.sql", "r.sql")
+        self.assertIn("| Tâches ouvertes d'un projet Terminé → Terminée | 2 | 101 (99012X, Bloquée), "
+                      "102 (99012X, En cours) |", rapport)
+        self.assertIn("| Projets En cours → Bloqué (au moins une tâche bloquée) | 1 | 99011X |", rapport)
+        self.assertIn("**Projets ouverts sans tâche ouverte** (à clore ou à planifier) : 1 — 99014X.", rapport)
+
+
 class TestSqlGenere(unittest.TestCase):
     def setUp(self):
         self.sql = rch.generer_sql(rch.preparer(_donnees_fictives()), "fictif.sql")
@@ -131,7 +203,8 @@ class TestSqlGenere(unittest.TestCase):
         controle = self.sql.index(f"version = '{rch.MIGRATION_ATTENDUE}'")
         self.assertLess(controle, self.sql.index("TRUNCATE TABLE "))
         self.assertLess(self.sql.index("absent de Kairos"), self.sql.index("TRUNCATE TABLE "))
-        self.assertIn("RAISE EXCEPTION 'Rechargement annulé : la base n''est pas au lot 10", self.sql)
+        self.assertIn("RAISE EXCEPTION 'Rechargement annulé : la base n''est pas à jour (migration "
+                      "0016_equipe_projets_et_recherche absente)", self.sql)
 
     def test_truncate_exactement_les_tables_metier(self):
         (ligne,) = [l for l in self.sql.splitlines() if l.startswith("TRUNCATE")]
@@ -160,7 +233,8 @@ class TestSqlGenere(unittest.TestCase):
     def test_donnees_echappees_et_id_chronos(self):
         self.assertIn("(10, '99010X', 'L''atelier', 'EXE'", self.sql)
         self.assertIn("'Note d''hypothèses'", self.sql)
-        self.assertIn("(11, '99011X', 'Suite', 'EXE', '2025-01-01', NULL, NULL, 'en_cours', 3, 10, 1,", self.sql)
+        self.assertIn("(11, '99011X', 'Suite', 'EXE', '2025-01-01', NULL, NULL, 'en_cours', 'en_cours', 3, 10, 1,",
+                      self.sql)
         self.assertIn("(1, 'Admin', 'Un', 'créateur de projet')", self.sql)
 
     def test_sequences_reajustees(self):
@@ -232,8 +306,11 @@ def _env_pg():
 @unittest.skipUnless(os.environ.get("KAIROS_TEST_DATABASE_URL") and shutil.which("psql"),
                      "KAIROS_TEST_DATABASE_URL et psql requis")
 class TestRechargementSurPostgres(unittest.TestCase):
+    # equipe_code comparée à part : elle suit l'équipe ACTUELLE du chef.
     TABLES_COMPAREES = {
-        "projet": "SELECT * FROM projet ORDER BY id",
+        "projet": "SELECT id, code, nom, phase, date_debut, date_fin, date_cloture, etat, chef_projet_id, "
+                  "phase_liee_id, honoraires, client, created_by, updated_by, created_at, updated_at "
+                  "FROM projet ORDER BY id",
         "projet_lot": "SELECT * FROM projet_lot ORDER BY 1, 2",
         "tache": "SELECT * FROM tache ORDER BY id",
     }
@@ -322,6 +399,10 @@ class TestRechargementSurPostgres(unittest.TestCase):
             SELECT max(u.id) FROM utilisateur u WHERE u.role = 'intervenant' AND u.id <> {promu}
             AND EXISTS (SELECT 1 FROM projet_intervenant pi WHERE pi.utilisateur_id = u.id)"""))
         chef = int(self.valeur(base, "SELECT chef_projet_id FROM projet ORDER BY id LIMIT 1"))
+        # Lot 11 : un autre chef d'un projet ouvert change d'équipe puis est désactivé.
+        autre_chef = int(self.valeur(base, f"""
+            SELECT chef_projet_id FROM projet WHERE etat IN ('en_cours', 'bloque') AND chef_projet_id <> {chef}
+            AND chef_projet_id IN (SELECT id FROM utilisateur WHERE role <> 'admin') ORDER BY id LIMIT 1"""))
         self.psql_ok(base, entree=f"""
             BEGIN;
             SET LOCAL app.current_user_id = '{admin}';
@@ -333,6 +414,7 @@ class TestRechargementSurPostgres(unittest.TestCase):
             UPDATE utilisateur SET role = 'client' WHERE id = {client};
             INSERT INTO utilisateur (email, mot_de_passe_hash, nom, prenom, role)
               VALUES ('nouveau.compte@midgard.tn', 'pbkdf2:x', 'Compte', 'Nouveau', 'intervenant');
+            UPDATE utilisateur SET equipe_code = 'URBS', actif = false WHERE id = {autre_chef};
             INSERT INTO utilisateur_session (utilisateur_id, generation) VALUES ({chef}, 3);
             INSERT INTO dailylog_preference (utilisateur_id, objectif_minutes) VALUES ({chef}, 420);
             COMMIT;
@@ -352,6 +434,7 @@ class TestRechargementSurPostgres(unittest.TestCase):
               SELECT {chef}, (now() AT TIME ZONE 'America/Cayenne')::date, max(id), 2 FROM projet;
             INSERT INTO dailylog_jour (utilisateur_id, date) VALUES ({chef}, (now() AT TIME ZONE 'America/Cayenne')::date - 1);
             COMMIT;""")
+        self.autre_chef = autre_chef
         return promu, client
 
     # --- scénarios --------------------------------------------------------
@@ -395,6 +478,23 @@ class TestRechargementSurPostgres(unittest.TestCase):
                          self.co_chefs_selon_la_regle(base))
         self.assertNotEqual(self.contenu(base, "SELECT projet_id, utilisateur_id FROM projet_co_chef ORDER BY 1, 2"),
                             self.contenu(reference, "SELECT projet_id, utilisateur_id FROM projet_co_chef ORDER BY 1, 2"))
+        # Lot 11 : équipe = celle du chef dans Kairos, à défaut MIDGARD ;
+        # cohérence des états ; projets à traiter signalés.
+        self.assertEqual(self.valeur(base, """SELECT count(*) FROM projet p JOIN utilisateur u ON u.id = p.chef_projet_id
+                                              WHERE p.equipe_code IS DISTINCT FROM COALESCE(u.equipe_code, 'MIDGARD')"""), "0")
+        self.assertEqual(self.valeur(base, f"SELECT DISTINCT equipe_code FROM projet WHERE chef_projet_id = {self.autre_chef}"),
+                         "URBS")
+        self.assertEqual(self.valeur(reference, "SELECT string_agg(DISTINCT equipe_code, ',') FROM projet"), "MIDGARD")
+        self.assertEqual(self.valeur(base, """SELECT count(*) FROM tache t JOIN projet p ON p.id = t.projet_id
+                                              WHERE p.etat IN ('termine', 'abandonne') AND t.etat IN ('en_cours', 'bloque')"""), "0")
+        self.assertEqual(self.valeur(base, """SELECT count(*) FROM projet p WHERE p.etat IN ('en_cours', 'bloque')
+                                              AND (p.etat = 'bloque') <> EXISTS (SELECT 1 FROM tache t
+                                                   WHERE t.projet_id = p.id AND t.etat = 'bloque')"""), "0")
+        self.assertRegex(r.stdout, r"Cohérence : tâches ouvertes de projets terminés, passées Terminée\s*\|\s*[1-9]")
+        self.assertRegex(r.stdout, r"Cohérence : projets En cours passés Bloqué \(une tâche bloquée\)\s*\|\s*[1-9]")
+        self.assertRegex(r.stdout, r"À traiter : projets ouverts dont le chef est désactivé\s*\|\s*[1-9]")
+        self.assertIn("Projets ouverts dont le chef est désactivé (à réaffecter) : ", r.stderr)
+        self.assertIn("À traiter : projets ouverts sans tâche ouverte (à clore ou planifier)", r.stdout)
         for vide in ("post", "post_commentaire", "post_reaction", "post_piece_jointe", "tache_piece_jointe",
                      "notification", "dailylog_entree", "dailylog_jour"):
             self.assertEqual(self.valeur(base, f"SELECT count(*) FROM {vide}"), "0", vide)
@@ -457,7 +557,7 @@ class TestRechargementSurPostgres(unittest.TestCase):
     def test_echec_propre_si_la_base_n_est_pas_au_lot_10(self):
         base = self.nouvelle_base("lot9", self.modele)
         self.psql_ok(base, "-c", f"DELETE FROM schema_migrations WHERE version = '{rch.MIGRATION_ATTENDUE}'")
-        self._echec_sans_rien_modifier(base, "pas au lot 10")
+        self._echec_sans_rien_modifier(base, "n'est pas à jour (migration 0016_equipe_projets_et_recherche absente)")
 
     def test_echec_propre_si_une_table_inconnue_apparait(self):
         base = self.nouvelle_base("inconnue", self.modele)

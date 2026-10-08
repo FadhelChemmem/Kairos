@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Rechargement des projets et tâches Chronos dans une base Kairos DÉJÀ en
-service (lot 10), sans toucher aux comptes.
+service (lot 11 : migrations jusqu'à 0016), sans toucher aux comptes.
 
 Cas d'usage : la base a été chargée une première fois par
 scripts/migrate_from_chronos.py (reprise COMPLÈTE, id Chronos conservés),
@@ -10,8 +10,9 @@ devenus (rôles, e-mails, mots de passe, fuseaux, équipes, sessions).
 
 Le script lit un dump mysqldump et écrit UN fichier SQL, une seule
 transaction (BEGIN … COMMIT, ON_ERROR_STOP), qui :
-  1. vérifie que la base est au lot 10 (dernière migration :
-     0015_etats_taches_reserves) et que toutes ses tables sont connues ;
+  1. vérifie que la base est à jour (dernière migration :
+     0016_equipe_projets_et_recherche) et que toutes ses tables sont
+     connues ;
   2. vérifie que chaque utilisateur Chronos référencé (chef, créateur,
      intervenant) existe dans Kairos avec le même id et les mêmes
      nom/prénom — sinon RAISE EXCEPTION listant les écarts, rien n'est
@@ -23,7 +24,8 @@ transaction (BEGIN … COMMIT, ON_ERROR_STOP), qui :
      co-chefs sont créés par les triggers du lot 10 (chef de projet ajouté
      comme intervenant) ; un intervenant RH/Client dans Kairos est écarté
      et compté, un projet dont le chef est RH/Client aussi (avec ses
-     tâches), comme dans la reprise complète ;
+     tâches), comme dans la reprise complète ; chaque projet reçoit
+     l'équipe de son chef dans Kairos, à défaut MIDGARD (lot 11) ;
   5. réajuste les séquences, écrit UNE ligne de synthèse dans audit_log
      (les triggers d'audit des tables rechargées sont coupés le temps de la
      transaction : pas de dizaines de milliers de lignes), affiche un
@@ -31,8 +33,12 @@ transaction (BEGIN … COMMIT, ON_ERROR_STOP), qui :
 Pas de reprise des heures (interventionHours) ni des requêtes (requests).
 
 La transformation (codes projet, états, dates incohérentes, lots, phase
-liée, rattachement tâche -> projet) est CELLE de migrate_from_chronos.py,
-importée telle quelle : les deux scripts produisent les mêmes projets.
+liée, rattachement tâche -> projet, cohérence des états du lot 11 : tâches
+ouvertes d'un projet clos fermées, projet ouvert Bloqué si et seulement si
+une de ses tâches l'est) est CELLE de migrate_from_chronos.py, importée
+telle quelle : les deux scripts produisent les mêmes projets. Le SQL
+compte ces corrections et signale, au moment de l'application, les projets
+ouverts sans tâche ouverte et ceux dont le chef est désactivé dans Kairos.
 
 Usage :
     python3 scripts/recharger_projets_chronos.py chronos_XXXX.sql \\
@@ -52,11 +58,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from migrate_from_chronos import (  # noqa: E402
-    build_intervenants, build_projets, build_taches, build_utilisateurs, sql_val,
+    EQUIPE_PAR_DEFAUT, appliquer_coherence, build_intervenants, build_projets, build_taches,
+    build_utilisateurs, projets_ouverts_sans_tache_ouverte, sql_val,
 )
 from mysqldump_parser import load_dump  # noqa: E402
 
-MIGRATION_ATTENDUE = "0015_etats_taches_reserves"
+MIGRATION_ATTENDUE = "0016_equipe_projets_et_recherche"
 
 # Données métier effacées puis rechargées (ou laissées vides) — ordre
 # indifférent pour TRUNCATE. Toute table de la base doit figurer ici ou
@@ -111,6 +118,7 @@ def preparer(data: dict) -> dict:
     # de l'application (rh_ids vide ici) — le gérant a pu les changer.
     projets, projet_lots, liens_phase, valid_projet_ids = build_projets(data, valid_user_ids, report)
     taches, valid_tache_ids = build_taches(data, valid_projet_ids, report)
+    appliquer_coherence(projets, taches, report)
     projet_intervenant, tache_intervenant = build_intervenants(
         data, valid_user_ids, valid_projet_ids, valid_tache_ids, report)
     projet_lots = sorted(set(projet_lots))
@@ -163,6 +171,9 @@ def preparer(data: dict) -> dict:
     exclus_prevus = sorted({uid for _, uid in projet_intervenant + tache_intervenant
                             if role.get(uid) in ("rh", "client")})
     projets_exclus_prevus = sorted(p["id"] for p in projets if role.get(p["chef_projet_id"]) in ("rh", "client"))
+    actif = {u["id"]: u["actif"] for u in utilisateurs}
+    chef_inactif_prevus = sorted(p["code"] for p in projets
+                                 if p["etat"] in ("en_cours", "bloque") and not actif.get(p["chef_projet_id"]))
 
     return dict(
         projets=projets, lien=lien, projet_lots=projet_lots, taches=taches,
@@ -170,6 +181,8 @@ def preparer(data: dict) -> dict:
         references=references, report=report, stats_intervenants=stats,
         co_chefs_prevus=len(co_chefs), intervenants_rh_client_prevus=exclus_prevus,
         projets_chef_rh_client_prevus=projets_exclus_prevus,
+        sans_tache_ouverte=projets_ouverts_sans_tache_ouverte(projets, taches),
+        chef_inactif_prevus=chef_inactif_prevus,
         volumes_dump={k: len(data.get(k, [])) for k in (
             "users", "projects", "tasks", "intervenants", "projectLots", "lots", "phases",
             "interventionHours", "requests")},
@@ -199,7 +212,7 @@ def generer_sql(prep: dict, nom_dump: str) -> str:
     normalise = "regexp_replace(btrim(fn_sans_accents({0})), '\\s+', ' ', 'g')"
 
     w("-- =====================================================================")
-    w("-- Rechargement des projets et tâches Chronos dans une base Kairos du lot 10")
+    w("-- Rechargement des projets et tâches Chronos dans une base Kairos à jour (lot 11)")
     w(f"-- Source : {nom_dump} ; généré le {datetime.now().isoformat(timespec='seconds')}")
     w("-- par scripts/recharger_projets_chronos.py. CONTIENT DES DONNÉES RÉELLES.")
     w("-- Conserve utilisateurs, sessions, préférences, tables de référence et")
@@ -220,7 +233,7 @@ def generer_sql(prep: dict, nom_dump: str) -> str:
     w("SET LOCAL kairos.reprise_historique = 'on';")
     w("")
 
-    w("-- --- 1. Base au lot 10, tables connues, aucune cascade hors périmètre ---")
+    w(f"-- --- 1. Base à jour ({MIGRATION_ATTENDUE}), tables connues, aucune cascade hors périmètre ---")
     w(f"""DO $$
 DECLARE
   v_inconnues TEXT;
@@ -228,10 +241,10 @@ DECLARE
 BEGIN
   IF to_regclass('public.schema_migrations') IS NULL
      OR NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '{MIGRATION_ATTENDUE}') THEN
-    RAISE EXCEPTION 'Rechargement annulé : la base n''est pas au lot 10 (migration {MIGRATION_ATTENDUE} absente). Déployer le lot 10 (flask migrer) avant de recharger.';
+    RAISE EXCEPTION 'Rechargement annulé : la base n''est pas à jour (migration {MIGRATION_ATTENDUE} absente). Déployer le lot 11 (flask migrer) avant de recharger.';
   END IF;
   IF EXISTS (SELECT 1 FROM schema_migrations WHERE version > '{MIGRATION_ATTENDUE}') THEN
-    RAISE EXCEPTION 'Rechargement annulé : la base contient des migrations postérieures au lot 10 (%). Ce fichier a été préparé pour le lot 10 : régénérer avec un script à jour.',
+    RAISE EXCEPTION 'Rechargement annulé : la base contient des migrations postérieures à {MIGRATION_ATTENDUE} (%). Ce fichier a été préparé pour le lot 11 : régénérer avec un script à jour.',
       (SELECT string_agg(version, ', ' ORDER BY version) FROM schema_migrations WHERE version > '{MIGRATION_ATTENDUE}');
   END IF;
   SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO v_inconnues
@@ -263,11 +276,11 @@ END $$;""")
     w("-- --- 2. Données du dump (tables temporaires, supprimées au COMMIT) ---")
     w("CREATE TEMP TABLE rch_utilisateur (id BIGINT PRIMARY KEY, nom TEXT, prenom TEXT, usages TEXT) ON COMMIT DROP;")
     w("CREATE TEMP TABLE rch_projet (id BIGINT PRIMARY KEY, code TEXT, nom TEXT, phase TEXT, date_debut DATE, "
-      "date_fin DATE, date_cloture DATE, etat TEXT, chef_projet_id BIGINT, phase_liee_id BIGINT, created_by BIGINT, "
-      "created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ) ON COMMIT DROP;")
+      "date_fin DATE, date_cloture DATE, etat TEXT, etat_chronos TEXT, chef_projet_id BIGINT, phase_liee_id BIGINT, "
+      "created_by BIGINT, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ) ON COMMIT DROP;")
     w("CREATE TEMP TABLE rch_projet_lot (projet_id BIGINT, lot_code TEXT) ON COMMIT DROP;")
-    w("CREATE TEMP TABLE rch_tache (id BIGINT PRIMARY KEY, projet_id BIGINT, titre TEXT, etat TEXT, date_debut DATE, "
-      "date_echeance DATE, date_fin DATE, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ) ON COMMIT DROP;")
+    w("CREATE TEMP TABLE rch_tache (id BIGINT PRIMARY KEY, projet_id BIGINT, titre TEXT, etat TEXT, etat_chronos TEXT, "
+      "date_debut DATE, date_echeance DATE, date_fin DATE, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ) ON COMMIT DROP;")
     w("CREATE TEMP TABLE rch_projet_intervenant (projet_id BIGINT, utilisateur_id BIGINT) ON COMMIT DROP;")
     w("CREATE TEMP TABLE rch_tache_intervenant (tache_id BIGINT, utilisateur_id BIGINT) ON COMMIT DROP;")
     w("CREATE TEMP TABLE rch_recap (ordre INT, rubrique TEXT, nombre BIGINT) ON COMMIT DROP;")
@@ -275,15 +288,16 @@ END $$;""")
     _valeurs(w, "rch_utilisateur", ("id", "nom", "prenom", "usages"),
              [(u["id"], u["nom"], u["prenom"], u["usages"]) for u in prep["references"]])
     _valeurs(w, "rch_projet", ("id", "code", "nom", "phase", "date_debut", "date_fin", "date_cloture", "etat",
-                               "chef_projet_id", "phase_liee_id", "created_by", "created_at", "updated_at"),
+                               "etat_chronos", "chef_projet_id", "phase_liee_id", "created_by", "created_at",
+                               "updated_at"),
              [(p["id"], p["code"], p["nom"], p["phase"], p["date_debut"], p["date_fin"], p.get("date_cloture"),
-               p["etat"], p["chef_projet_id"], prep["lien"].get(p["id"]), p["created_by"],
-               p["created_at"], p["updated_at"]) for p in prep["projets"]])
+               p["etat"], p.get("etat_chronos", p["etat"]), p["chef_projet_id"], prep["lien"].get(p["id"]),
+               p["created_by"], p["created_at"], p["updated_at"]) for p in prep["projets"]])
     _valeurs(w, "rch_projet_lot", ("projet_id", "lot_code"), prep["projet_lots"])
-    _valeurs(w, "rch_tache", ("id", "projet_id", "titre", "etat", "date_debut", "date_echeance", "date_fin",
-                              "created_at", "updated_at"),
-             [(t["id"], t["projet_id"], t["titre"], t["etat"], t["date_debut"], t["date_echeance"],
-               t["date_fin"], t["created_at"], t["updated_at"]) for t in prep["taches"]])
+    _valeurs(w, "rch_tache", ("id", "projet_id", "titre", "etat", "etat_chronos", "date_debut", "date_echeance",
+                              "date_fin", "created_at", "updated_at"),
+             [(t["id"], t["projet_id"], t["titre"], t["etat"], t.get("etat_chronos", t["etat"]), t["date_debut"],
+               t["date_echeance"], t["date_fin"], t["created_at"], t["updated_at"]) for t in prep["taches"]])
     _valeurs(w, "rch_projet_intervenant", ("projet_id", "utilisateur_id"), prep["projet_intervenant"])
     _valeurs(w, "rch_tache_intervenant", ("tache_id", "utilisateur_id"), prep["tache_intervenant"])
     w("")
@@ -384,11 +398,14 @@ END $$;""")
     w("")
 
     w("-- --- 6. Rechargement (id Chronos ; co-chefs posés par les triggers du lot 10) ---")
-    w("""INSERT INTO projet (id, code, nom, phase, date_debut, date_fin, date_cloture, etat,
-                    chef_projet_id, phase_liee_id, created_by, created_at, updated_at)
+    w("-- Équipe du projet (lot 11, migration 0016) : celle de son chef dans Kairos,")
+    w(f"-- à défaut {EQUIPE_PAR_DEFAUT} — sinon seuls les rattachés voient le projet.")
+    w(f"""INSERT INTO projet (id, code, nom, phase, date_debut, date_fin, date_cloture, etat,
+                    chef_projet_id, phase_liee_id, equipe_code, created_by, created_at, updated_at)
 SELECT r.id, r.code, r.nom, r.phase::phase_enum, r.date_debut, r.date_fin, r.date_cloture,
-       r.etat::projet_etat_enum, r.chef_projet_id, r.phase_liee_id, r.created_by, r.created_at, r.updated_at
-FROM rch_projet r ORDER BY r.id;""")
+       r.etat::projet_etat_enum, r.chef_projet_id, r.phase_liee_id, COALESCE(u.equipe_code, {sql_val(EQUIPE_PAR_DEFAUT)}),
+       r.created_by, r.created_at, r.updated_at
+FROM rch_projet r JOIN utilisateur u ON u.id = r.chef_projet_id ORDER BY r.id;""")
     w("""INSERT INTO projet_lot (projet_id, lot_code)
 SELECT projet_id, lot_code FROM rch_projet_lot ORDER BY 1, 2;""")
     w("-- created_by de la tâche : chef du projet, comme la reprise complète.")
@@ -458,7 +475,40 @@ END $$;""")
        (SELECT count(DISTINCT (a.table_cible, a.ligne_id)) FROM audit_log a
         WHERE a.action = 'INSERT' AND a.utilisateur_id IS NOT NULL
           AND ((a.table_cible = 'projet' AND a.ligne_id IN (SELECT id FROM projet))
-            OR (a.table_cible = 'tache' AND a.ligne_id IN (SELECT id FROM tache)))));""")
+            OR (a.table_cible = 'tache' AND a.ligne_id IN (SELECT id FROM tache))))),
+  (15, 'Cohérence : tâches ouvertes de projets terminés, passées Terminée',
+       (SELECT count(*) FROM rch_tache WHERE etat = 'termine' AND etat_chronos IN ('en_cours', 'bloque'))),
+  (16, 'Cohérence : tâches ouvertes de projets abandonnés, passées Abandonnée',
+       (SELECT count(*) FROM rch_tache WHERE etat = 'abandonne' AND etat_chronos IN ('en_cours', 'bloque'))),
+  (17, 'Cohérence : projets En cours passés Bloqué (une tâche bloquée)',
+       (SELECT count(*) FROM rch_projet WHERE etat = 'bloque' AND etat_chronos = 'en_cours')),
+  (18, 'Cohérence : projets Bloqué passés En cours (aucune tâche bloquée)',
+       (SELECT count(*) FROM rch_projet WHERE etat = 'en_cours' AND etat_chronos = 'bloque')),
+  (19, 'Équipe {EQUIPE_PAR_DEFAUT} par défaut (chef sans équipe dans Kairos)',
+       (SELECT count(*) FROM projet p JOIN utilisateur u ON u.id = p.chef_projet_id WHERE u.equipe_code IS NULL)),
+  (28, 'À traiter : projets ouverts sans tâche ouverte (à clore ou planifier)',
+       (SELECT count(*) FROM projet p WHERE p.etat IN ('en_cours', 'bloque')
+          AND NOT EXISTS (SELECT 1 FROM tache t WHERE t.projet_id = p.id AND t.etat IN ('en_cours', 'bloque')))),
+  (29, 'À traiter : projets ouverts dont le chef est désactivé',
+       (SELECT count(*) FROM projet p JOIN utilisateur u ON u.id = p.chef_projet_id
+        WHERE p.etat IN ('en_cours', 'bloque') AND NOT u.actif));""".replace("{EQUIPE_PAR_DEFAUT}", EQUIPE_PAR_DEFAUT))
+    w("""DO $$
+DECLARE
+  v_liste TEXT;
+BEGIN
+  SELECT string_agg(p.code, ', ' ORDER BY p.code) INTO v_liste
+  FROM projet p WHERE p.etat IN ('en_cours', 'bloque')
+    AND NOT EXISTS (SELECT 1 FROM tache t WHERE t.projet_id = p.id AND t.etat IN ('en_cours', 'bloque'));
+  IF v_liste IS NOT NULL THEN
+    RAISE NOTICE 'Projets ouverts sans tâche ouverte (à clore ou à planifier) : %', v_liste;
+  END IF;
+  SELECT string_agg(format('%s (%s %s)', p.code, u.prenom, u.nom), ', ' ORDER BY p.code) INTO v_liste
+  FROM projet p JOIN utilisateur u ON u.id = p.chef_projet_id
+  WHERE p.etat IN ('en_cours', 'bloque') AND NOT u.actif;
+  IF v_liste IS NOT NULL THEN
+    RAISE NOTICE 'Projets ouverts dont le chef est désactivé (à réaffecter) : %', v_liste;
+  END IF;
+END $$;""")
     w(f"""INSERT INTO audit_log (table_cible, ligne_id, action, utilisateur_id, donnees_apres)
 SELECT 'recharge_chronos', NULL, 'INSERT', NULL,
        jsonb_build_object('script', 'scripts/recharger_projets_chronos.py', 'dump', {sql_val(nom_dump)},
@@ -485,7 +535,7 @@ def generer_rapport(prep: dict, nom_dump: str, nom_sql: str) -> str:
     v = prep["volumes_dump"]
     lignes = []
     a = lignes.append
-    a("# Rechargement des projets Chronos dans Kairos (base du lot 10)\n")
+    a("# Rechargement des projets Chronos dans Kairos (base du lot 11)\n")
     a(f"Généré le {datetime.now().isoformat(timespec='seconds')} à partir de `{nom_dump}` "
       f"par `scripts/recharger_projets_chronos.py` → `{nom_sql}`. **Contient des données réelles : "
       "hors dépôt git.**\n")
@@ -529,8 +579,34 @@ def generer_rapport(prep: dict, nom_dump: str, nom_sql: str) -> str:
     a(f"| Lignes `intervenants` en double | {s['doublons']} | fusionnées |")
     a("")
 
+    fermees = [(tid, code, {"en_cours": "En cours", "bloque": "Bloquée"}.get(avant, avant), apres)
+               for tid, code, avant, apres in r["taches_fermees_projet_clos"]]
+    recalcules = r["projets_etat_recalcule"]
+    a("## Cohérence des états (lot 11, décision du gérant)\n")
+    a("| Correction | Nombre | Détail |")
+    a("|---|---|---|")
+    a(f"| Tâches ouvertes d'un projet Terminé → Terminée | {sum(1 for x in fermees if x[3] == 'termine')} | "
+      + (", ".join(f"{x[0]} ({x[1]}, {x[2]})" for x in fermees if x[3] == "termine") or "—") + " |")
+    a(f"| Tâches ouvertes d'un projet Abandonné → Abandonnée | {sum(1 for x in fermees if x[3] == 'abandonne')} | "
+      + (", ".join(f"{x[0]} ({x[1]}, {x[2]})" for x in fermees if x[3] == "abandonne") or "—") + " |")
+    a(f"| Projets En cours → Bloqué (au moins une tâche bloquée) | {sum(1 for x in recalcules if x[3] == 'bloque')} | "
+      + (", ".join(x[1] for x in recalcules if x[3] == "bloque") or "—") + " |")
+    a(f"| Projets Bloqué → En cours (aucune tâche bloquée) | {sum(1 for x in recalcules if x[3] == 'en_cours')} | "
+      + (", ".join(x[1] for x in recalcules if x[3] == "en_cours") or "—") + " |")
+    a("")
+    a("Une tâche fermée ainsi garde sa date de fin Chronos, ou prend la date de clôture du projet. "
+      "Les mêmes corrections sont appliquées par la reprise complète (`migrate_from_chronos.py`).\n")
+
+    a("## À traiter par les chefs de projet\n")
+    a(f"- **Projets ouverts sans tâche ouverte** (à clore ou à planifier) : {len(prep['sans_tache_ouverte'])} — "
+      + (", ".join(prep["sans_tache_ouverte"]) or "aucun") + ".")
+    a(f"- **Projets ouverts dont le chef est désactivé** (selon Chronos ; la liste réelle, selon les comptes "
+      f"Kairos, est affichée à l'application et dans Admin > Utilisateurs) : {len(prep['chef_inactif_prevus'])} — "
+      + (", ".join(prep["chef_inactif_prevus"]) or "aucun") + ".")
+    a("")
+
     a("## Contrôles faits par le SQL au moment de l'application\n")
-    a("- Base au lot 10 (`" + MIGRATION_ATTENDUE + "` appliquée, aucune migration plus récente), "
+    a("- Base à jour (`" + MIGRATION_ATTENDUE + "` appliquée, aucune migration plus récente), "
       "toutes les tables classées (effacée / conservée), aucune cascade de `TRUNCATE` vers une "
       "table conservée.")
     a(f"- Les {len(prep['references'])} utilisateurs Chronos référencés (chef, créateur, intervenant) "
@@ -564,8 +640,8 @@ def generer_rapport(prep: dict, nom_dump: str, nom_sql: str) -> str:
     a("- **Journal d'audit** : les anciennes lignes restent ; celles d'un projet ou d'une tâche créé "
       "pendant les tests peuvent porter un id désormais repris par un projet Chronos plus récent "
       "(compteur « Journal : … » du récapitulatif).")
-    a("- **Équipe des projets** vide (Chronos n'en a pas) : chefs et intervenants ne voient que leurs "
-      "projets, l'Admin voit tout — comme après la reprise du 21/09.")
+    a(f"- **Équipe des projets** : celle du chef de projet dans Kairos, à défaut **{EQUIPE_PAR_DEFAUT}** "
+      "(Chronos n'en a pas ; lot 11, migration 0016) — toute l'équipe voit ses projets.")
     a("- `tache.created_by` = chef du projet ; `type_deadline` = `rendu_client` ; client = `IPCO` "
       "(valeurs par défaut, comme la reprise complète).")
     a("- Heures et requêtes Chronos non reprises : Daily log et fils d'activité repartent vides.")

@@ -219,7 +219,7 @@ CREATE TABLE projet (
   etat             projet_etat_enum NOT NULL DEFAULT 'en_cours',
   chef_projet_id   BIGINT NOT NULL REFERENCES utilisateur(id),
   phase_liee_id    BIGINT REFERENCES projet(id), -- ex. le 24091X (EXE) pointe vers le 24091D (DCE)
-  equipe_code      VARCHAR(20) REFERENCES equipe(code), -- équipe "propriétaire" du projet, pour la visibilité (2026-09-16, voir plus bas) ; proposée automatiquement (équipe du chef de projet) à la création, modifiable
+  equipe_code      VARCHAR(20) REFERENCES equipe(code), -- équipe "propriétaire" du projet, pour la visibilité (2026-09-16, voir plus bas) ; proposée automatiquement (équipe du chef de projet) à la création, modifiable ; projets repris de Chronos : équipe du chef, à défaut MIDGARD (migration 0016)
   honoraires       NUMERIC(12,2),           -- montant des honoraires, saisi par le chef de projet (migration 0010)
   client           VARCHAR(150) NOT NULL DEFAULT 'IPCO', -- migration 0010 (retour Fadhel : « IPCO » par défaut)
   created_by       BIGINT REFERENCES utilisateur(id),
@@ -1309,6 +1309,22 @@ CREATE TRIGGER trg_garde_etat_tache
 
 
 -- ---------------------------------------------------------------------
+-- Migration 0016 (lot 11) : recherche insensible aux accents et à la
+-- casse — mêmes définitions que migrations/0016_equipe_projets_et_recherche.sql
+-- (extension unaccent, « trusted » depuis PostgreSQL 13 ; fn_recherche est
+-- utilisée des deux côtés du LIKE : projets, personnes, tâches, catalogue
+-- du Daily log). fn_sans_accents (0014) reste pour la comparaison des noms
+-- du rechargement Chronos.
+-- ---------------------------------------------------------------------
+CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA public;
+
+CREATE OR REPLACE FUNCTION fn_recherche(t TEXT)
+RETURNS TEXT AS $$
+  SELECT lower(public.unaccent('public.unaccent'::regdictionary, t));
+$$ LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT;
+
+
+-- ---------------------------------------------------------------------
 -- Migrations déjà intégrées à ce fichier : une base créée depuis
 -- schema.sql les marque comme appliquées, pour que le premier
 -- `flask migrer` ne les rejoue pas (voir app/__init__.py). À compléter à
@@ -1336,5 +1352,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0012_controle_des_dates'),
   ('0013_rattrapage_et_integrite'),
   ('0014_dailylog_v9'),
-  ('0015_etats_taches_reserves')
+  ('0015_etats_taches_reserves'),
+  ('0016_equipe_projets_et_recherche')
 ON CONFLICT (version) DO NOTHING;

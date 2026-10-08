@@ -102,6 +102,9 @@ TACHE_ETAT_MAP = {
 
 PHASES_VALIDES = {"APS", "APD", "DCE", "EXE", "DOE"}
 
+# Équipe d'un projet dont le chef n'a pas d'équipe (lot 11, migration 0016).
+EQUIPE_PAR_DEFAUT = "MIDGARD"
+
 # Table de référence `lot` (schema.sql) : code court (clé de projet_lot.lot_code,
 # contrainte FK) associé à son libellé complet. À tenir synchronisé avec les
 # `INSERT INTO lot` de schema.sql si de nouveaux lots y sont ajoutés.
@@ -498,6 +501,48 @@ def build_taches(data, valid_projet_ids, report):
     return taches, valid_tache_ids
 
 
+def appliquer_coherence(projets, taches, report):
+    """Cohérence des états (lot 11, décision du gérant), sur les données
+    déjà transformées — même règle pour la reprise complète et le
+    rechargement (scripts/recharger_projets_chronos.py) :
+      1. une tâche encore ouverte (En cours, Bloquée) d'un projet clos ne
+         pourrait plus jamais être fermée (projet clos = plus aucune
+         intervention) : Terminée si le projet est Terminé, Abandonnée s'il
+         est Abandonné ; sa date de fin, si elle manque, est la date de
+         clôture du projet ;
+      2. un projet ouvert est Bloqué s'il a au moins une tâche bloquée,
+         En cours sinon (règle de l'appli, repositories/taches.py).
+    L'état Chronos d'origine est gardé dans `etat_chronos` (compté par le
+    SQL de rechargement) ; les changements vont dans `report`."""
+    projet_par_id = {p["id"]: p for p in projets}
+    for t in taches:
+        t.setdefault("etat_chronos", t["etat"])
+        p = projet_par_id.get(t["projet_id"])
+        if p is None or p["etat"] not in ("termine", "abandonne") or t["etat"] not in ("en_cours", "bloque"):
+            continue
+        nouvel = "termine" if p["etat"] == "termine" else "abandonne"
+        report["taches_fermees_projet_clos"].append((t["id"], p["code"], t["etat"], nouvel))
+        t["etat"] = nouvel
+        if t.get("date_fin") is None:
+            t["date_fin"] = p.get("date_cloture")
+    bloques = {t["projet_id"] for t in taches if t["etat"] == "bloque"}
+    for p in projets:
+        p.setdefault("etat_chronos", p["etat"])
+        if p["etat"] not in ("en_cours", "bloque"):
+            continue
+        voulu = "bloque" if p["id"] in bloques else "en_cours"
+        if voulu != p["etat"]:
+            report["projets_etat_recalcule"].append((p["id"], p["code"], p["etat"], voulu))
+            p["etat"] = voulu
+
+
+def projets_ouverts_sans_tache_ouverte(projets, taches):
+    """Codes des projets En cours ou Bloqués sans aucune tâche En cours ou
+    Bloquée (à clore ou à planifier), après appliquer_coherence."""
+    ouverts = {t["projet_id"] for t in taches if t["etat"] in ("en_cours", "bloque")}
+    return sorted(p["code"] for p in projets if p["etat"] in ("en_cours", "bloque") and p["id"] not in ouverts)
+
+
 # =====================================================================
 # Étape 4 : intervenants (projet_intervenant / tache_intervenant)
 # =====================================================================
@@ -685,14 +730,18 @@ def emit_sql(path, utilisateurs, projets, projet_lots, liens_phase, taches,
             cycle.append((p["id"], lie))
             lie = None
         inseres.add(p["id"])
+        # Équipe du projet (lot 11, migration 0016) : celle du chef de projet
+        # titulaire, à défaut MIDGARD — sans équipe, le projet n'est visible
+        # que des personnes qui y sont rattachées (v_projet_visibilite).
         w(
             "INSERT INTO projet (id, code, nom, phase, date_debut, date_fin, date_cloture, etat, "
-            "chef_projet_id, phase_liee_id, created_by, created_at, updated_at) VALUES ("
+            "chef_projet_id, phase_liee_id, equipe_code, created_by, created_at, updated_at) VALUES ("
             f"{p['id']}, {sql_val(p['code'])}, {sql_val(p['nom'])}, {sql_val(p['phase'])}::phase_enum, "
             f"{sql_val(p['date_debut'])}, {sql_val(p['date_fin'])}, {sql_val(p.get('date_cloture'))}, "
             f"{sql_val(p['etat'])}::projet_etat_enum, "
-            f"{p['chef_projet_id']}, {sql_val(lie)}, {sql_val(p['created_by'])}, "
-            f"{sql_val(p['created_at'])}, {sql_val(p['updated_at'])});"
+            f"{p['chef_projet_id']}, {sql_val(lie)}, "
+            f"COALESCE((SELECT equipe_code FROM utilisateur WHERE id = {p['chef_projet_id']}), {sql_val(EQUIPE_PAR_DEFAUT)}), "
+            f"{sql_val(p['created_by'])}, {sql_val(p['created_at'])}, {sql_val(p['updated_at'])});"
         )
     for projet_id, prev_id in cycle:
         w(f"UPDATE projet SET phase_liee_id = {prev_id} WHERE id = {projet_id};")
@@ -789,12 +838,12 @@ def emit_rapport(path, report, counts, args):
       "`client`→`client`, `ressource_humaine`→`rh`, `superuser`/`isSuperUser`→`admin`.")
     a("- **Compte(s) banni(s)** dans l'ancien Kairos : forcés `actif=false` dans le nouveau, "
       "quel que soit l'ancien statut `active`.")
-    a("- **Équipe (`equipe_code`)** : l'ancien Kairos n'a pas cette notion — laissée "
-      "**vide** pour tout le monde (utilisateurs ET projets). À assigner à la main "
-      "(page Utilisateurs / fiche projet) après import : tant que ce n'est pas fait, "
-      "un chef de projet ou un intervenant ne voit QUE les projets auxquels il est "
-      "rattaché (chef, co-chef, intervenant du projet ou d'une tâche), un **Client ne "
-      "voit aucun projet** ; seul l'Admin voit tout (vue v_projet_visibilite).")
+    a("- **Équipe (`equipe_code`)** : l'ancien Kairos n'a pas cette notion. Utilisateurs : "
+      "laissée **vide**, à assigner à la main (page Utilisateurs) après import — tant que "
+      "ce n'est pas fait, un chef de projet ou un intervenant ne voit que les projets "
+      "auxquels il est rattaché, un **Client ne voit aucun projet**. Projets : équipe du "
+      f"chef de projet, à défaut **{EQUIPE_PAR_DEFAUT}** (lot 11, migration 0016) — toute "
+      f"personne de l'équipe {EQUIPE_PAR_DEFAUT} les voit (vue v_projet_visibilite).")
     a("- **Chef de projet ajouté comme intervenant** : devient co-chef du projet "
       "(décision 3, migration 0013) — ses heures comptent côté « chef ».")
     a("- **Rôles RH et Client** : jamais chef, co-chef ni intervenant — ces "
@@ -854,6 +903,14 @@ def emit_rapport(path, report, counts, args):
         a(f"- {len(report['lots_non_reconnus'])} rattachement(s) projet/lot non reconnu(s) "
           f"(libellé absent de LOTS_CIBLE dans le script) — ignoré(s), à assigner à la main "
           f"si besoin : {report['lots_non_reconnus']}")
+    if report["taches_fermees_projet_clos"]:
+        a(f"- {len(report['taches_fermees_projet_clos'])} tâche(s) encore ouverte(s) sur un projet clos — "
+          "passée(s) Terminée (projet Terminé) ou Abandonnée (projet Abandonné), sinon plus personne ne "
+          f"pourrait les fermer : {report['taches_fermees_projet_clos']}")
+    if report["projets_etat_recalcule"]:
+        a(f"- {len(report['projets_etat_recalcule'])} projet(s) ouvert(s) dont l'état a été recalculé "
+          "(Bloqué s'il a une tâche bloquée, En cours sinon) : "
+          f"{report['projets_etat_recalcule']}")
     if report["codes_projet_renommes"]:
         a(f"- {len(report['codes_projet_renommes'])} code(s) projet renommé(s) pour éviter un "
           f"doublon : {report['codes_projet_renommes']}")
@@ -951,6 +1008,7 @@ def main():
 
     print("Transformation des tâches ...")
     taches, valid_tache_ids = build_taches(data, valid_projet_ids, report)
+    appliquer_coherence(projets, taches, report)
 
     print("Transformation des intervenants ...")
     projet_intervenant, tache_intervenant = build_intervenants(

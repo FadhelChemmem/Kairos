@@ -293,9 +293,18 @@ class TestRepriseChargeeDansPostgres(unittest.TestCase):
         self.assertEqual(valeur("SELECT count(*) FROM projet_intervenant pi JOIN utilisateur u ON u.id = pi.utilisateur_id "
                                 "WHERE u.role IN ('client', 'rh')"), "0")
         self.assertEqual(valeur("SELECT sum(heures) FROM dailylog_entree"), "8.00")
+        # Lot 11 : équipe du chef, à défaut MIDGARD (aucun compte repris n'a
+        # d'équipe) ; tâche bloquée d'un projet Terminé fermée à sa date de
+        # clôture ; projet En cours avec une tâche bloquée passé Bloqué.
+        self.assertEqual(valeur("SELECT string_agg(DISTINCT coalesce(equipe_code, 'NULL'), ',') FROM projet"), "MIDGARD")
+        self.assertEqual(valeur("SELECT etat || ' ' || date_fin FROM tache WHERE id = 3"), "termine 2025-05-10")
+        self.assertEqual(valeur("SELECT etat FROM projet WHERE id = 3"), "bloque")
+        self.assertEqual(valeur("SELECT etat FROM tache WHERE id = 4"), "bloque")
         rapport = (sortie / "rapport.md").read_text(encoding="utf-8")
         self.assertIn("**5.5 h** au total", rapport)
         self.assertIn("fin effacée", rapport)
+        self.assertIn("1 tâche(s) encore ouverte(s) sur un projet clos", rapport)
+        self.assertIn("1 projet(s) ouvert(s) dont l'état a été recalculé", rapport)
 
     def test_historique_hors_regles_du_daily_log_v9_charge_tel_quel(self):
         """Migration 0014 : 30 min, 10 h par jour, date au fuseau… ne
