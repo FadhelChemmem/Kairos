@@ -214,3 +214,18 @@ class TestEnTetesEtPagesErreur(BaseIntegration):
         r = self.client.get("/dailylog/api/jour/2026-13-40")
         self.assertEqual(r.status_code, 400)
         self.assertEqual(r.get_json()["erreur"], "date_invalide")
+
+
+class TestAdminChefDesactive(BaseIntegration):
+    def test_projets_ouverts_dont_le_chef_est_desactive(self):
+        from app.repositories import projets
+        admin, parti, present = self.user("admin"), self.user("chef_de_projet"), self.user("chef_de_projet")
+        ouvert = self.projet(parti, code="21114X", etat="bloque")
+        self.projet(parti, code="21115X", etat="termine")
+        self.projet(present, code="21116X")
+        self.sql("UPDATE utilisateur SET actif = false WHERE id = %s", (parti,))
+        self.assertEqual([p["id"] for p in projets.list_ouverts_chef_inactif()], [ouvert])
+        self.login(admin)
+        body = self.client.get("/utilisateurs").get_data(as_text=True)
+        self.assertIn("Projets ouverts dont le chef est désactivé (1)", body)
+        self.assertIn(f'href="/projets/{ouvert}"', body)

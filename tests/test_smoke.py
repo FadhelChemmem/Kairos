@@ -377,6 +377,7 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.projets.list_mes_projets_recents": MES_PROJETS,
             "app.repositories.projets.list_projets": [],
             "app.repositories.projets.compter_projets": 0,
+            "app.repositories.projets.list_ouverts_chef_inactif": [],
             "app.repositories.projets.list_chefs_de_projet": CHEFS_DE_PROJET,
             "app.repositories.projets.get_projet": PROJET,
             "app.repositories.projets.list_lots": LOTS,

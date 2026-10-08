@@ -326,5 +326,26 @@ class TestPagesErreur(_Base):
         self.assertEqual(resp.get_json()["erreur"], "introuvable")
 
 
+class TestAdminChefDesactive(_Base):
+    LIGNES = [{"id": 7, "code": "21114X", "nom": "Siemens", "etat": "bloque", "chef_id": 9,
+               "chef_prenom": "Omrane", "chef_nom": "B"}]
+
+    def test_encart_pour_l_admin(self):
+        resp = self._avec(lambda: self.client.get("/utilisateurs"),
+                          **{"app.repositories.projets.list_ouverts_chef_inactif": self.LIGNES})
+        body = resp.get_data(as_text=True)
+        self.assertIn("Projets ouverts dont le chef est désactivé (1)", body)
+        self.assertIn('href="/projets/7"', body)
+        self.assertIn("21114X_Siemens", body)
+        self.assertIn("Omrane B (désactivé)", body)
+
+    def test_rien_pour_un_chef_de_projet(self):
+        chef = dict(smoke.USER, role="chef_de_projet")
+        resp = self._avec(lambda: self.client.get("/utilisateurs"), **{
+            "app.auth.get_user_by_id": chef, "app.repositories.projets.list_ouverts_chef_inactif": self.LIGNES})
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn("dont le chef est désactivé", resp.get_data(as_text=True))
+
+
 if __name__ == "__main__":
     unittest.main()

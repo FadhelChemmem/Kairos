@@ -15,6 +15,20 @@
 
 <div class="page-wrap" style="padding-top:20px; padding-bottom:60px;">
 
+  {# Lot 11 (vue Admin) : projets ouverts dont le chef est désactivé. Le
+     chef ne se change pas depuis la fenêtre Informations : liste et liens. #}
+  {% if projets_chef_inactif %}
+  <section class="card" aria-labelledby="titre-chef-inactif" style="padding:14px 18px; margin-bottom:16px; border-left:3px solid var(--danger-fill);">
+    <h2 id="titre-chef-inactif" class="carte-titre" style="margin:0 0 4px;">Projets ouverts dont le chef est désactivé ({{ projets_chef_inactif|length }})</h2>
+    <p style="margin:0 0 10px; font-size:12.5px; color:var(--text-muted);">Plus personne ne pilote ces projets : à clore, ou à confier à un autre chef (le chef ne se change pas encore depuis la fenêtre Informations).</p>
+    <ul style="margin:0; padding-left:18px; font-size:13px; line-height:1.7;">
+      {% for p in projets_chef_inactif %}
+        <li><a href="{{ url_for('projets.detail', projet_id=p.id) }}" style="font-weight:600;">{{ p.code }}_{{ p.nom }}</a> <span style="color:var(--text-muted);">· {{ projet_etat_style(p.etat).label }} · chef : {{ p.chef_prenom }} {{ p.chef_nom }} (désactivé)</span></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
   <form method="get" class="filtres-utilisateurs" style="display:flex; align-items:center; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
     <div class="search-mini" style="flex:1 1 220px;">
       <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>

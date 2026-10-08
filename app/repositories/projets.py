@@ -305,6 +305,21 @@ def search(user_id: int, q: str, limit: int = 8) -> list[dict]:
     return db.query_all(sql, {"q": motif_recherche(q), "user_id": user_id, "limit": limit})
 
 
+def list_ouverts_chef_inactif() -> list[dict]:
+    """Projets En cours ou Bloqués dont le chef de projet titulaire est un
+    compte désactivé (lot 11 : encart de la liste Utilisateurs, vue Admin) —
+    plus personne ne les pilote."""
+    return db.query_all(
+        """
+        SELECT p.id, p.code, p.nom, p.etat, u.id AS chef_id, u.prenom AS chef_prenom, u.nom AS chef_nom
+        FROM projet p
+        JOIN utilisateur u ON u.id = p.chef_projet_id
+        WHERE p.etat IN ('en_cours', 'bloque') AND NOT u.actif
+        ORDER BY u.nom, u.prenom, p.code
+        """
+    )
+
+
 def get_projet(projet_id: int) -> dict | None:
     """Détail d'un projet (en-tête de la page projet)."""
     sql = """

@@ -337,10 +337,14 @@ def liste():
 
     tous = utilisateurs_repo.list_tous(q=q, equipe_code=equipe_code, role=role, actif=actif)
     compte = utilisateurs_repo.compter()
+    # Lot 11 (vue Admin) : projets ouverts dont le chef est désactivé, à
+    # réaffecter — la fenêtre Informations ne change pas le chef : liste
+    # avec un lien vers chaque projet.
+    projets_chef_inactif = projets_repo.list_ouverts_chef_inactif() if g.user["role"] == "admin" else []
 
     return render_template(
         "utilisateurs_liste.html",
-        utilisateurs=tous, compte=compte,
+        utilisateurs=tous, compte=compte, projets_chef_inactif=projets_chef_inactif,
         q=q or "", equipe_code=equipe_code, role=role, actif_param=actif_param or "",
         equipe_choices=EQUIPE_CHOICES,
     )
