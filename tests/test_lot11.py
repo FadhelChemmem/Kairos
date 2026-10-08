@@ -105,5 +105,70 @@ class TestListeDesProjets(_Base):
         self.assertIsNone(liste.call_args.kwargs["limit"])
 
 
+class TestDatesEtHeures(_Base):
+    def test_annee_ecrite_hors_de_l_annee_en_cours(self):
+        import datetime
+        from app.utils import date_courte
+        cette_annee = datetime.date.today().year
+        self.assertEqual(date_courte(datetime.date(2022, 11, 17)), "17 nov. 2022")
+        self.assertEqual(date_courte(datetime.date(cette_annee, 6, 1)), "1er juin")
+        self.assertEqual(date_courte(datetime.date(cette_annee, 6, 1), True), f"1er juin {cette_annee}")
+        self.assertEqual(date_courte(datetime.date(2022, 6, 1), False), "1er juin")
+        self.assertEqual(date_courte(None), "")
+
+    def test_retard_en_jours(self):
+        import datetime
+        from app.utils import build_gantt, en_retard_de
+        auj = datetime.date(2026, 10, 8)
+        self.assertEqual(en_retard_de(datetime.date(2026, 10, 1), auj), "en retard de 7 j")
+        self.assertEqual(en_retard_de(auj, auj), "")
+        self.assertEqual(en_retard_de(None, auj), "")
+        g = build_gantt([{"date_echeance": datetime.date(2026, 9, 1)},
+                         {"date_echeance": datetime.date(2026, 10, 20)}], auj)
+        self.assertEqual(g["rows"][0]["label_barre"], "◀ en retard de 37 j")
+        self.assertEqual(g["rows"][0]["retard"], "en retard de 37 j")
+        self.assertEqual(g["rows"][1]["label_barre"], "20 oct.")  # plus « 20/10 »
+
+    def test_heures_en_heures_et_minutes(self):
+        from decimal import Decimal
+        from app.utils import heures, heures_interv_chef
+        nb = "\u00a0"
+        self.assertEqual(heures(1.75), f"1{nb}h{nb}45")
+        self.assertEqual(heures(Decimal("8.00")), f"8{nb}h")
+        self.assertEqual(heures(0.5), f"0{nb}h{nb}30")
+        self.assertEqual(heures(None), f"0{nb}h")
+        self.assertEqual(heures(2.67), f"2{nb}h{nb}40")
+        self.assertEqual(heures(0.25), f"0{nb}h{nb}15")
+        self.assertEqual(heures_interv_chef(8, 5.5), f"8{nb}h / 5{nb}h{nb}30")
+
+    def test_plus_aucune_heure_decimale_dans_les_gabarits(self):
+        import pathlib
+        racine = pathlib.Path(__file__).resolve().parent.parent / "app" / "templates"
+        for gabarit in racine.rglob("*.html"):
+            with self.subTest(gabarit=gabarit.name):
+                self.assertNotIn("heures_courtes", gabarit.read_text(encoding="utf-8"))
+
+    def test_deadlines_au_fuseau_de_la_personne(self):
+        import datetime
+        taches = [dict(smoke.DEADLINES[0], date_echeance=datetime.date(2026, 10, 6))]
+        with patch("app.repositories.dailylog.aujourdhui_pour", return_value=datetime.date(2026, 10, 8)) as fuseau:
+            resp = self._avec(lambda: self.client.get("/deadlines"),
+                              **{"app.repositories.taches.list_deadlines": taches})
+        self.assertTrue(fuseau.called)
+        self.assertIn("◀ en retard de 2 j", resp.get_data(as_text=True))
+
+    def test_accueil_retard_dans_mes_taches_et_le_bandeau(self):
+        import datetime
+        tache = dict(smoke.MES_TACHES[0], etat="en_cours", date_echeance=datetime.date(2026, 10, 3))
+        echeance = [dict(smoke.DEADLINES[0], date_echeance=datetime.date(2026, 10, 5))]
+        with patch("app.repositories.dailylog.aujourdhui_pour", return_value=datetime.date(2026, 10, 8)):
+            resp = self._avec(lambda: self.client.get("/accueil"), **{
+                "app.repositories.taches.list_mes_taches": [tache],
+                "app.repositories.taches.list_deadlines": echeance})
+        body = resp.get_data(as_text=True)
+        self.assertIn("en retard de 5 j", body)   # Mes tâches
+        self.assertIn("· en retard de 3 j", body)  # bandeau des échéances
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -32,7 +32,7 @@
         {{ p.chef_prenom }} {{ p.chef_nom }}
       </span>
       {# "8/5 h" = heures intervenants / heures chef de projet (PR4). #}
-      <span style="font-size:12.5px; color:var(--text-muted); white-space:nowrap;" title="{{ heures_courtes(p.heures_intervenant) }} h intervenants / {{ heures_courtes(p.heures_chef) }} h chef de projet">{{ heures_interv_chef(p.heures_intervenant, p.heures_chef) }}</span>
+      <span style="font-size:12.5px; color:var(--text-muted); white-space:nowrap;" title="{{ p.heures_intervenant|heures }} intervenants / {{ p.heures_chef|heures }} chef de projet">{{ heures_interv_chef(p.heures_intervenant, p.heures_chef) }}</span>
       {# Prochain rendu client (sinon prochaine échéance interne, en gris) ;
          le nom de la tâche en infobulle (retour Fadhel, 2026-09-29). La
          liste est triée par cette date (projets.list_projets). #}

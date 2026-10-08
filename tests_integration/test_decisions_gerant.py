@@ -124,7 +124,7 @@ class TestClientVoitHeuresHonorairesPiecesJointes(BaseIntegration):
         self.login(client)
         page = self.client.get(f"/projets/{p}").data.decode()
         self.assertIn("Honoraires", page)
-        self.assertIn("3,5 h", page)
+        self.assertIn("3\u00a0h\u00a030", page)  # lot 11 : heures et minutes
         self.assertIn(f'href="/fichiers/taches/{pj}"', page)
         r = self.client.get(f"/fichiers/taches/{pj}")
         self.assertEqual((r.status_code, r.data), (200, b"%PDF client"))
@@ -135,7 +135,7 @@ class TestClientVoitHeuresHonorairesPiecesJointes(BaseIntegration):
         self.assertEqual(lignes[1][lignes[0].index("Heures intervenants")], 3.5)
         profil = self.client.get(f"/utilisateurs/{inter}/profil").data.decode()
         self.assertIn('id="dailylog"', profil)
-        self.assertIn("3,5 h", profil)
+        self.assertIn("3\u00a0h\u00a030", profil)
 
         # L'intervenant, lui, ne lit toujours pas le Daily log d'un collègue.
         collegue = self.user("intervenant")

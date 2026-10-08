@@ -1,5 +1,4 @@
 """Page d'accueil — porte Main.dc.html en template Jinja2 réel."""
-import datetime
 
 from flask import Blueprint, g, render_template, request, url_for
 
@@ -21,10 +20,13 @@ def accueil():
     if role == "rh":
         return _accueil_rh(user_id)
     deadlines = [] if role == "client" else taches.list_deadlines(user_id, limit=6)
+    # « Aujourd'hui » au fuseau de la personne (lot 10 pour le Daily log,
+    # lot 11 pour les échéances : Guyane / Tunis).
+    aujourdhui_local = dailylog_repo.aujourdhui_pour(g.user)
     # Bannière d'accueil (retour Fadhel, 2026-09-19) : mini-Gantt simplifié
     # (jours + barres, sans les filtres/légende de la page Deadlines) sur une
     # fenêtre courte pour ne jamais déborder de la largeur des 3 colonnes.
-    deadlines_gantt = build_gantt(deadlines, datetime.date.today(), window_days=14)
+    deadlines_gantt = build_gantt(deadlines, aujourdhui_local, window_days=14)
     # Limité à 5 (retour Fadhel, 2026-09-28) : pour ne pas encombrer la colonne.
     mes_taches = [] if role == "client" else taches.list_mes_taches(user_id, limit=5)
     fil = posts.list_feed_mes_projets(user_id, limit=20)
@@ -33,7 +35,6 @@ def accueil():
     if role == "client":
         dailylog_jours_manques, dailylog_aujourdhui = [], None
     else:
-        aujourdhui_local = dailylog_repo.aujourdhui_pour(g.user)
         dailylog_jours_manques = dailylog_repo.jours_manques_recents(g.user, aujourdhui=aujourdhui_local)
         dailylog_aujourdhui = dailylog_repo.jour_renseigne(user_id, aujourdhui_local)
 
@@ -84,6 +85,7 @@ def accueil():
         fil=fil,
         dailylog_jours_manques=dailylog_jours_manques,
         dailylog_aujourdhui=dailylog_aujourdhui,
+        aujourdhui=aujourdhui_local,
     )
 
 

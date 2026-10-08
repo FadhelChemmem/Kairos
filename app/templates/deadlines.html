@@ -46,7 +46,7 @@
             <div style="font-size:11px; color:var(--text-muted);">{{ t.projet_code }}_{{ t.projet_nom }}{% if t.type_deadline == 'interne' %} · interne{% endif %}</div>
           </div>
           <div class="g-row-track">
-            <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" class="g-bar{% if t.en_retard %} g-bar-retard{% endif %}" style="grid-column: 1 / span {{ t.span }}; background:{{ t.couleur }}; justify-content:flex-start;" aria-label="{{ t.titre }} ({{ t.projet_code }}) : {{ 'en retard, ' if t.en_retard }}échéance le {{ t.date_echeance|date_courte }} — ouvrir le projet">{{ t.label_barre }}</a>
+            <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" class="g-bar{% if t.en_retard %} g-bar-retard{% endif %}" style="grid-column: 1 / span {{ t.span }}; background:{{ t.couleur }}; justify-content:flex-start;" aria-label="{{ t.titre }} ({{ t.projet_code }}) : {{ t.retard ~ ', ' if t.en_retard }}échéance le {{ t.date_echeance|date_courte }} — ouvrir le projet">{{ t.label_barre }}</a>
           </div>
         </div>
       {% else %}

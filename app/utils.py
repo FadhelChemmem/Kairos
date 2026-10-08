@@ -230,17 +230,32 @@ def date_fr(d) -> str:
     return f"{_JOURS_COMPLETS[d.weekday()]} {jour} {_MOIS_COMPLETS[d.month - 1]} {d.year}"
 
 
-def date_courte(d, avec_annee: bool = False) -> str:
+def date_courte(d, avec_annee: bool | None = None) -> str:
     """Date courte en français ("20 sept.", "20 sept. 2026") — remplace
     strftime('%d %b'), qui donnait des mois en anglais ("20 Sep") sur un
-    serveur sans locale française (audit n°2)."""
+    serveur sans locale française (audit n°2).
+
+    Lot 11 : par défaut (`avec_annee=None`), l'année est écrite dès qu'elle
+    n'est pas l'année en cours — « 17 nov. » pour 2022 faisait croire à une
+    échéance à venir (liste des projets, Mes tâches, Deadlines, fiche
+    projet). True / False forcent l'un ou l'autre."""
     if d is None:
         return ""
+    if avec_annee is None:
+        avec_annee = d.year != datetime.date.today().year
     # « 5 oct. », « 1er juin » : jour sans zéro initial, « 1er » pour le
     # premier du mois (lot 10, audit front §7 — c'était « 05 oct. »).
     jour = "1er" if d.day == 1 else str(d.day)
     texte = f"{jour} {_MOIS_ABBR[d.month - 1]}"
     return f"{texte} {d.year}" if avec_annee else texte
+
+
+def en_retard_de(echeance, aujourdhui) -> str:
+    """« en retard de 3 j » (lot 11 : « ◀ en retard » seul ne disait ni
+    l'échéance ni l'ampleur du retard) ; "" si l'échéance n'est pas passée."""
+    if echeance is None or aujourdhui is None or echeance >= aujourdhui:
+        return ""
+    return f"en retard de {(aujourdhui - echeance).days} j"
 
 
 def build_gantt(taches: list[dict], today, window_days: int = 21) -> dict:
@@ -275,7 +290,7 @@ def build_gantt(taches: list[dict], today, window_days: int = 21) -> dict:
         # Teintes assombries (lot 10, audit front §3.6) : texte blanc sur la
         # barre à 5,19:1 et 4,94:1 (contre 3,83 et 3,15 avant).
         if offset < 0:
-            span, couleur, label_barre = 1, "#c2401f", "◀ en retard"
+            span, couleur, label_barre = 1, "#c2401f", f"◀ {en_retard_de(echeance, today)}"
         else:
             span = min(offset + 1, window_days)
             if offset <= 1:
@@ -284,9 +299,10 @@ def build_gantt(taches: list[dict], today, window_days: int = 21) -> dict:
                 couleur = "#b8520f"
             else:
                 couleur = "#4a7c59"
-            label_barre = echeance.strftime("%d/%m")
+            # « 7 oct. » comme partout ailleurs (c'était « 07/10 »).
+            label_barre = date_courte(echeance)
         rows.append({**t, "span": span, "couleur": couleur, "label_barre": label_barre,
-                     "en_retard": offset < 0})
+                     "en_retard": offset < 0, "retard": en_retard_de(echeance, today)})
 
     return {"days": days, "rows": rows, "window_days": window_days}
 
@@ -364,17 +380,24 @@ def montant_fr(valeur) -> str:
     return texte[:-3] if texte.endswith(",00") else texte
 
 
-def heures_courtes(valeur) -> str:
-    """7.5 → "7,5" ; 8.0 → "8" (heures affichées "8/5 h")."""
-    v = round(float(valeur or 0), 1)
-    return (f"{v:.0f}" if v == int(v) else f"{v:.1f}".replace(".", ","))
+def heures(valeur) -> str:
+    """Durée en heures et minutes, unité comprise (lot 11) : 1.75 → « 1 h 45 »,
+    8 → « 8 h », 0.5 → « 0 h 30 », None → « 0 h ». Remplace l'affichage
+    décimal arrondi au dixième (« 1,8 h » pour 1 h 45 : les totaux ne
+    tombaient plus juste). Arrondi à la minute. Filtre unique : `|heures`
+    dans les gabarits."""
+    minutes = int(round(float(valeur or 0) * 60))
+    signe = "-" if minutes < 0 else ""
+    h, m = divmod(abs(minutes), 60)
+    return f"{signe}{h}\u00a0h" + (f"\u00a0{m:02d}" if m else "")
 
 
 def heures_interv_chef(interv, chef) -> str:
-    """"8/5 h" = 8 h intervenants / 5 h chef de projet (retour Fadhel,
-    J.docx : « 8/5 h pour 8 heure intervenant et 5 heure chef de projet »)
-    — projets, tâches et panneau Informations."""
-    return f"{heures_courtes(interv)}/{heures_courtes(chef)} h"
+    """« 8 h / 5 h 30 » = heures intervenants / heures chef de projet
+    (retour Fadhel, J.docx : « 8/5 h pour 8 heure intervenant et 5 heure
+    chef de projet ») — projets, tâches et panneau Informations ; en heures
+    et minutes depuis le lot 11."""
+    return f"{heures(interv)} / {heures(chef)}"
 
 
 def register(app):
@@ -390,13 +413,13 @@ def register(app):
         equipe_libelle=equipe_libelle,
         equipe_choices=EQUIPE_CHOICES,
         date_fr=date_fr,
+        en_retard_de=en_retard_de,
         notif_categorie_style=notif_categorie_style,
         is_lien_valide=is_lien_valide,
         is_image_filename=is_image_filename,
         personnes_recentes_d_abord=personnes_recentes_d_abord,
         texte_avec_mentions=texte_avec_mentions,
         heures_interv_chef=heures_interv_chef,
-        heures_courtes=heures_courtes,
         montant_fr=montant_fr,
         zip=zip,
         # Date du jour côté serveur (retour Fadhel, 2026-09-28) — appelée
@@ -408,3 +431,4 @@ def register(app):
     app.jinja_env.filters["personne_mentionnable"] = lambda u: {"id": u["id"], "prenom": u["prenom"], "nom": u["nom"]}
     app.jinja_env.filters["il_y_a"] = il_y_a
     app.jinja_env.filters["date_courte"] = date_courte
+    app.jinja_env.filters["heures"] = heures

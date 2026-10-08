@@ -38,9 +38,9 @@
           <span class="mini-gantt-titre" title="{{ t.titre }}">{{ t.titre }}</span>
           <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" class="mini-gantt-projet" title="{{ t.projet_code }}_{{ t.projet_nom }}">{{ t.projet_code }}_{{ t.projet_nom }}</a>
         </div>
-        <a href="{{ url_for('deadlines.liste') }}" class="mini-gantt-track" style="grid-column: 2 / span {{ deadlines_gantt.window_days }};" aria-label="{{ t.titre }} ({{ t.projet_code }}) : {{ 'en retard, échéance le ' if t.en_retard else 'échéance le ' }}{{ t.date_echeance|date_courte }}">
+        <a href="{{ url_for('deadlines.liste') }}" class="mini-gantt-track" style="grid-column: 2 / span {{ deadlines_gantt.window_days }};" aria-label="{{ t.titre }} ({{ t.projet_code }}) : {{ t.retard ~ ', échéance le ' if t.en_retard else 'échéance le ' }}{{ t.date_echeance|date_courte }}">
           <span class="mini-gantt-bar{{ ' mini-gantt-bar-retard' if t.en_retard }}" style="grid-column: 1 / span {{ t.span }}; background:{{ t.couleur }};">{{ t.label_barre }}</span>
-          <span class="mini-gantt-date">{{ t.date_echeance|date_courte }}{% if t.en_retard %} · en retard{% endif %}</span>
+          <span class="mini-gantt-date">{{ t.date_echeance|date_courte }}{% if t.en_retard %} · {{ t.retard }}{% endif %}</span>
         </a>
       {% endfor %}
     </div>
@@ -162,7 +162,7 @@
             <span class="pill pill-sm" style="background:{{ st.bg }}; color:{{ st.fg }}; flex-shrink:0; margin-top:1px;">{{ st.libelle }}</span>
             <div style="min-width:0;">
               <div style="font-size:12.5px; font-weight:600; line-height:1.3;">{{ t.titre }}</div>
-              <div style="font-size:11px; color:var(--text-muted);">{{ t.projet_nom }}{% if t.date_echeance %} · échéance le {{ t.date_echeance|date_courte }}{% endif %}</div>
+              <div style="font-size:11px; color:var(--text-muted);">{{ t.projet_nom }}{% if t.date_echeance %} · échéance le {{ t.date_echeance|date_courte }}{% set retard = en_retard_de(t.date_echeance, aujourdhui) if t.etat == 'en_cours' else '' %}{% if retard %} · <span style="color:var(--error-text); font-weight:600;">{{ retard }}</span>{% endif %}{% endif %}</div>
             </div>
           </a>
         {% else %}

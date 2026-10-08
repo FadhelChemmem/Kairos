@@ -531,7 +531,7 @@ class SmokeTestCase(SmokeBase):
         )
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         self.assertIn("Projet de test".encode(), resp.data)
-        self.assertIn("0 h".encode(), resp.data)
+        self.assertIn("0\u00a0h".encode(), resp.data)
 
     def test_projets_liste_renders_for_projet_without_hours(self):
         """Même régression que ci-dessus, côté page "Tous les projets"."""
@@ -540,7 +540,7 @@ class SmokeTestCase(SmokeBase):
             **{"app.repositories.projets.list_projets": [PROJET_LISTE_SANS_HEURES]},
         )
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
-        self.assertIn("0 h".encode(), resp.data)
+        self.assertIn("0\u00a0h".encode(), resp.data)
 
     def test_deadlines_renders_gantt(self):
         resp = self._get("/deadlines")
@@ -2305,10 +2305,10 @@ class SmokeTestCase(SmokeBase):
         resp = self._get("/projets/1")
         self.assertEqual(resp.status_code, 200)
         body = resp.data.decode()
-        self.assertIn("302/180 h", body)             # en-tête
+        self.assertIn("302\u00a0h / 180\u00a0h", body)  # en-tête (lot 11 : h et min)
         self.assertIn("Heures intervenants", body)  # panneau Informations
         self.assertIn("Heures chef de projet", body)
-        self.assertIn(">8/4 h<", body)              # tâche 5 : 8 h interv., 4 h chef
+        self.assertIn(">8\u00a0h / 4\u00a0h<", body)  # tâche 5 : 8 h interv., 4 h chef
 
     def test_repartition_heures_affichee_sur_la_liste_projets(self):
         resp = self._get("/projets", **{
@@ -2321,7 +2321,7 @@ class SmokeTestCase(SmokeBase):
             }],
         })
         self.assertEqual(resp.status_code, 200)
-        self.assertIn(">15/13 h<", resp.data.decode())
+        self.assertIn(">15\u00a0h / 13\u00a0h<", resp.data.decode())
 
     def test_repartition_heures_aucune_ligne_ne_plante_pas(self):
         """Même précaution que PROJET_SANS_HEURES/TACHE_SANS_HEURES pour
@@ -4869,8 +4869,8 @@ class TestProjetClientHonoraires(SmokeBase):
                 parser_montant(mauvais)
         self.assertEqual(montant_fr(Decimal("12500.00")), "12\u202f500")
         self.assertEqual(montant_fr(None), "")
-        self.assertEqual(heures_interv_chef(8, 5), "8/5 h")
-        self.assertEqual(heures_interv_chef(7.25, None), "7,2/0 h")
+        self.assertEqual(heures_interv_chef(8, 5), "8\u00a0h / 5\u00a0h")
+        self.assertEqual(heures_interv_chef(7.25, None), "7\u00a0h\u00a015 / 0\u00a0h")
 
 
 
