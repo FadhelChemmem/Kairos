@@ -6,7 +6,7 @@ vrai PostgreSQL :
   essais du gérant (comptes modifiés, projet, posts, Daily log…) ->
   rechargement -> utilisateurs identiques, données métier = dump ->
   rechargement rejoué -> échecs propres (utilisateur renommé ou supprimé,
-  base sans la migration 0016).
+  base sans la dernière migration, 0017).
 
 Lot 11 : équipe des projets (celle du chef, à défaut MIDGARD) et cohérence
 des états (tâches ouvertes d'un projet clos fermées, projet ouvert Bloqué si
@@ -204,7 +204,7 @@ class TestSqlGenere(unittest.TestCase):
         self.assertLess(controle, self.sql.index("TRUNCATE TABLE "))
         self.assertLess(self.sql.index("absent de Kairos"), self.sql.index("TRUNCATE TABLE "))
         self.assertIn("RAISE EXCEPTION 'Rechargement annulé : la base n''est pas à jour (migration "
-                      "0016_equipe_projets_et_recherche absente)", self.sql)
+                      "0017_chef_projet_et_rappels_dailylog absente)", self.sql)
 
     def test_truncate_exactement_les_tables_metier(self):
         (ligne,) = [l for l in self.sql.splitlines() if l.startswith("TRUNCATE")]
@@ -557,7 +557,7 @@ class TestRechargementSurPostgres(unittest.TestCase):
     def test_echec_propre_si_la_base_n_est_pas_au_lot_10(self):
         base = self.nouvelle_base("lot9", self.modele)
         self.psql_ok(base, "-c", f"DELETE FROM schema_migrations WHERE version = '{rch.MIGRATION_ATTENDUE}'")
-        self._echec_sans_rien_modifier(base, "n'est pas à jour (migration 0016_equipe_projets_et_recherche absente)")
+        self._echec_sans_rien_modifier(base, "n'est pas à jour (migration 0017_chef_projet_et_rappels_dailylog absente)")
 
     def test_echec_propre_si_une_table_inconnue_apparait(self):
         base = self.nouvelle_base("inconnue", self.modele)

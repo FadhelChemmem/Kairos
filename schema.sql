@@ -486,10 +486,11 @@ CREATE TABLE post (
   -- (le post reposté) — même colonne que "rebondir", évènement différent.
   -- Migration 0009 (retour Fadhel, 2026-09-29, P1) : posts automatiques de
   -- création de projet, changement d'état de tâche/projet et modification
-  -- du titre d'une tâche.
+  -- du titre d'une tâche. Migration 0017 (lot 11 b) : 'chef_projet', le
+  -- changement de chef depuis la fenêtre Informations.
   evenement      VARCHAR(20) CONSTRAINT post_evenement_check CHECK (evenement IS NULL OR evenement IN (
                    'creation_tache', 'cloture_tache', 'repost',
-                   'creation_projet', 'etat_tache', 'etat_projet', 'titre_tache')),
+                   'creation_projet', 'etat_tache', 'etat_projet', 'titre_tache', 'chef_projet')),
   updated_by     BIGINT REFERENCES utilisateur(id), -- si le post est modifié après publication
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -605,10 +606,15 @@ CREATE TABLE notification (
   tache_id       BIGINT REFERENCES tache(id),
   message        TEXT NOT NULL,
   lu             BOOLEAN NOT NULL DEFAULT false,
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Rappel Daily log (migration 0017) : les jours oubliés qu'il cite —
+  -- clé du dédoublonnage et du marquage « lu » (plus de LIKE sur le texte).
+  rappel_jours   DATE[] CONSTRAINT notification_rappel_jours_check
+                   CHECK (rappel_jours IS NULL OR cardinality(rappel_jours) BETWEEN 1 AND 31)
 );
 CREATE INDEX idx_notification_user_lu ON notification(utilisateur_id, lu);
 CREATE INDEX idx_notification_user_date ON notification(utilisateur_id, created_at DESC); -- migration 0005
+CREATE INDEX idx_notification_rappel_jours ON notification (utilisateur_id) WHERE rappel_jours IS NOT NULL; -- migration 0017
 
 
 -- =====================================================================
@@ -1325,6 +1331,61 @@ $$ LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT;
 
 
 -- ---------------------------------------------------------------------
+-- Migration 0017 (lot 11 b) : changement du chef de projet depuis la
+-- fenêtre Informations — mêmes définitions que
+-- migrations/0017_chef_projet_et_rappels_dailylog.sql. Dernier rempart
+-- quand chef_projet_id CHANGE : nouveau chef actif, Chef de projet ou
+-- Admin ; acteur Admin, chef titulaire ou co-chef ; projet clos : Admin
+-- seulement. Sans app.current_user_id ou pendant la reprise Chronos :
+-- aucune restriction (comme trg_garde_etat_tache).
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_garde_chef_projet()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_acteur BIGINT := fn_app_user_id();
+BEGIN
+  IF NEW.chef_projet_id IS NOT DISTINCT FROM OLD.chef_projet_id
+     OR v_acteur IS NULL
+     OR current_setting('kairos.reprise_historique', true) = 'on' THEN
+    RETURN NEW;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM utilisateur u
+    WHERE u.id = NEW.chef_projet_id AND u.actif AND u.role IN ('chef_de_projet', 'admin')
+  ) THEN
+    RAISE EXCEPTION 'Projet % : le nouveau chef de projet (utilisateur %) doit avoir un compte actif et le rôle Chef de projet ou Admin.',
+      NEW.id, NEW.chef_projet_id
+      USING ERRCODE = 'check_violation', CONSTRAINT = 'projet_chef_valide';
+  END IF;
+  IF EXISTS (SELECT 1 FROM utilisateur u WHERE u.id = v_acteur AND u.actif AND u.role = 'admin') THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.etat IN ('termine', 'abandonne') THEN
+    RAISE EXCEPTION 'Projet % clos : rouvrez-le avant de changer de chef de projet (un Admin peut toujours le réaffecter).',
+      NEW.id
+      USING ERRCODE = 'insufficient_privilege', CONSTRAINT = 'projet_chef_change';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM utilisateur u
+    WHERE u.id = v_acteur AND u.actif AND u.role NOT IN ('client', 'rh')
+      AND (OLD.chef_projet_id = u.id
+           OR EXISTS (SELECT 1 FROM projet_co_chef cc
+                      WHERE cc.projet_id = OLD.id AND cc.utilisateur_id = u.id))
+  ) THEN
+    RAISE EXCEPTION 'Projet % : seuls le chef de projet, un co-chef ou un Admin peuvent changer de chef de projet.',
+      NEW.id
+      USING ERRCODE = 'insufficient_privilege', CONSTRAINT = 'projet_chef_change';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trg_garde_chef_projet ON projet;
+CREATE TRIGGER trg_garde_chef_projet
+  BEFORE UPDATE OF chef_projet_id ON projet
+  FOR EACH ROW EXECUTE FUNCTION fn_garde_chef_projet();
+
+
+-- ---------------------------------------------------------------------
 -- Migrations déjà intégrées à ce fichier : une base créée depuis
 -- schema.sql les marque comme appliquées, pour que le premier
 -- `flask migrer` ne les rejoue pas (voir app/__init__.py). À compléter à
@@ -1353,5 +1414,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0013_rattrapage_et_integrite'),
   ('0014_dailylog_v9'),
   ('0015_etats_taches_reserves'),
-  ('0016_equipe_projets_et_recherche')
+  ('0016_equipe_projets_et_recherche'),
+  ('0017_chef_projet_et_rappels_dailylog')
 ON CONFLICT (version) DO NOTHING;
