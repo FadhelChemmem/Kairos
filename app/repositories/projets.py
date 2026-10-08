@@ -83,18 +83,78 @@ def list_mes_projets_recents(user_id: int, limit: int = 5) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+# Filtres de "Tous les projets" : partagés par la liste (paginée), son
+# compteur et l'export Excel (lot 11 : la liste était tronquée à 200 lignes
+# sans le dire, alors que le compteur affichait « 200 projets »).
+_FILTRES_LISTE = """
+        WHERE (%(etats)s IS NULL OR p.etat::text = ANY(%(etats)s))
+          AND (%(phases)s IS NULL OR p.phase::text = ANY(%(phases)s))
+          AND (%(chef_ids)s IS NULL OR p.chef_projet_id = ANY(%(chef_ids)s))
+          -- Filtre lots à TROIS états par lot (retour Fadhel, 2026-10-01),
+          -- deux listes indépendantes :
+          --   lot_contient : le projet DOIT avoir chacun de ces lots (parmi
+          --                  d'autres éventuels) — "contient GO".
+          --   lot_egal     : l'ENSEMBLE des lots du projet est exactement
+          --                  cette liste — "= GO" (uniquement ce lot).
+          -- Les deux peuvent être combinés (ET) ; une combinaison
+          -- contradictoire (= GO + contient CM) ne renvoie rien, ce qui est
+          -- le comportement attendu.
+          --
+          -- `::text[]` sur un paramètre NULL lève l'ambiguïté de type AVANT
+          -- toute subscription/array_length (l'erreur serait levée à
+          -- l'analyse de la requête, pas à l'exécution).
+          AND (
+                %(lots_contient)s::text[] IS NULL
+                OR (SELECT count(DISTINCT pl.lot_code) FROM projet_lot pl
+                     WHERE pl.projet_id = p.id
+                       AND pl.lot_code = ANY(%(lots_contient)s::text[]))
+                    = array_length(%(lots_contient)s::text[], 1)
+              )
+          AND (
+                %(lots_egal)s::text[] IS NULL
+                OR (
+                     (SELECT count(DISTINCT pl.lot_code) FROM projet_lot pl
+                        WHERE pl.projet_id = p.id)
+                       = array_length(%(lots_egal)s::text[], 1)
+                     AND NOT EXISTS (
+                           SELECT 1 FROM projet_lot pl
+                           WHERE pl.projet_id = p.id
+                             AND pl.lot_code <> ALL(%(lots_egal)s::text[])
+                         )
+                   )
+              )
+          AND (%(q)s IS NULL OR lower(p.code || '_' || p.nom) LIKE %(q)s)
+          AND EXISTS (
+                SELECT 1 FROM v_projet_visibilite vv
+                WHERE vv.projet_id = p.id AND vv.utilisateur_id = %(user_id)s
+              )
+"""
+
+
+def _params_liste(user_id, etats, phases, chef_ids, lots_contient, lots_egal, q) -> dict:
+    return {
+        "etats": etats or None, "phases": phases or None,
+        "chef_ids": chef_ids or None,
+        "lots_contient": lots_contient or None, "lots_egal": lots_egal or None,
+        "q": motif_contient(q) if q else None,
+        "user_id": user_id,
+    }
+
+
 def list_projets(
-    user_id: int, limit: int = 200,
+    user_id: int, limit: int | None = 200,
     etats: list[str] | None = None, phases: list[str] | None = None,
     chef_ids: list[int] | None = None,
     lots_contient: list[str] | None = None, lots_egal: list[str] | None = None,
-    q: str | None = None,
+    q: str | None = None, offset: int = 0,
 ) -> list[dict]:
-    """Liste complète des projets visibles par `user_id` (vue "Tous les
-    projets") avec le nom du chef de projet, les lots concaténés et la
-    prochaine échéance — filtrable par états/phases/chefs de
-    projet/lots (multi-sélection, sélecteur à puces — voir
-    projets_liste.html) et par recherche libre sur "Code_nom".
+    """Projets visibles par `user_id` (vue "Tous les projets") avec le nom
+    du chef de projet, les lots concaténés et la prochaine échéance —
+    filtrable par états/phases/chefs de projet/lots (multi-sélection,
+    sélecteur à puces — voir projets_liste.html) et par recherche libre sur
+    "Code_nom". Une page de `limit` lignes à partir de `offset` (lot 11 :
+    pagination, total donné par compter_projets) ; `limit=None` : tout
+    (export Excel).
 
     Visibilité par équipe (2026-09-16, voir schema.sql / v_projet_visibilite) :
     un utilisateur ne voit que les projets de sa propre équipe, sauf s'il y
@@ -135,12 +195,14 @@ def list_projets(
                                    WHERE pc.projet_id = p.id AND pc.utilisateur_id = de.utilisateur_id))
                ) AS heures_intervenant,
                (SELECT min(t.date_echeance) FROM tache t
-                 WHERE t.projet_id = p.id AND t.etat NOT IN ('termine', 'verifie', 'arret', 'abandonne')
+                 WHERE t.projet_id = p.id AND t.etat = 'en_cours'
                    AND t.date_echeance IS NOT NULL) AS prochaine_echeance,
                -- Prochain rendu client et prochaine échéance, avec le nom
                -- de la tâche (infobulle de la colonne Deadlines, retour
-               -- Fadhel, 2026-09-29) — tâches encore ouvertes seulement
-               -- (ni Vérifiée ni Arrêt : décision 5, lot 10).
+               -- Fadhel, 2026-09-29) — tâches En cours seulement, même
+               -- règle que Deadlines (taches.list_deadlines) : ni Bloquée
+               -- (lot 11 : des tâches bloquées depuis 2022 passaient en tête
+               -- de liste), ni Vérifiée, Arrêtée, Terminée ou Abandonnée.
                pr.date_echeance AS prochain_rendu, pr.titre AS prochain_rendu_titre,
                pe.date_echeance AS prochaine_deadline, pe.titre AS prochaine_deadline_titre,
                pe.type_deadline AS prochaine_deadline_type
@@ -148,77 +210,48 @@ def list_projets(
         JOIN utilisateur u ON u.id = p.chef_projet_id
         LEFT JOIN LATERAL (
             SELECT t.date_echeance, t.titre FROM tache t
-            WHERE t.projet_id = p.id AND t.etat NOT IN ('termine', 'verifie', 'arret', 'abandonne')
+            WHERE t.projet_id = p.id AND t.etat = 'en_cours'
               AND t.date_echeance IS NOT NULL AND t.type_deadline = 'rendu_client'
             ORDER BY t.date_echeance, t.id LIMIT 1
         ) pr ON true
         LEFT JOIN LATERAL (
             SELECT t.date_echeance, t.titre, t.type_deadline FROM tache t
-            WHERE t.projet_id = p.id AND t.etat NOT IN ('termine', 'verifie', 'arret', 'abandonne')
+            WHERE t.projet_id = p.id AND t.etat = 'en_cours'
               AND t.date_echeance IS NOT NULL
             ORDER BY t.date_echeance, (t.type_deadline <> 'rendu_client'), t.id LIMIT 1
         ) pe ON true
-        WHERE (%(etats)s IS NULL OR p.etat::text = ANY(%(etats)s))
-          AND (%(phases)s IS NULL OR p.phase::text = ANY(%(phases)s))
-          AND (%(chef_ids)s IS NULL OR p.chef_projet_id = ANY(%(chef_ids)s))
-          -- Filtre lots à TROIS états par lot (retour Fadhel, 2026-10-01),
-          -- deux listes indépendantes :
-          --   lot_contient : le projet DOIT avoir chacun de ces lots (parmi
-          --                  d'autres éventuels) — "contient GO".
-          --   lot_egal     : l'ENSEMBLE des lots du projet est exactement
-          --                  cette liste — "= GO" (uniquement ce lot).
-          -- Les deux peuvent être combinés (ET) ; une combinaison
-          -- contradictoire (= GO + contient CM) ne renvoie rien, ce qui est
-          -- le comportement attendu. Remplace l'ancien couplage implicite
-          -- "1 lot coché = exclusif, plusieurs = contient l'un d'eux".
-          --
-          -- `::text[]` sur un paramètre NULL lève l'ambiguïté de type AVANT
-          -- toute subscription/array_length (même raison qu'avant : l'erreur
-          -- serait levée à l'analyse de la requête, pas à l'exécution).
-          AND (
-                %(lots_contient)s::text[] IS NULL
-                OR (SELECT count(DISTINCT pl.lot_code) FROM projet_lot pl
-                     WHERE pl.projet_id = p.id
-                       AND pl.lot_code = ANY(%(lots_contient)s::text[]))
-                    = array_length(%(lots_contient)s::text[], 1)
-              )
-          AND (
-                %(lots_egal)s::text[] IS NULL
-                OR (
-                     (SELECT count(DISTINCT pl.lot_code) FROM projet_lot pl
-                        WHERE pl.projet_id = p.id)
-                       = array_length(%(lots_egal)s::text[], 1)
-                     AND NOT EXISTS (
-                           SELECT 1 FROM projet_lot pl
-                           WHERE pl.projet_id = p.id
-                             AND pl.lot_code <> ALL(%(lots_egal)s::text[])
-                         )
-                   )
-              )
-          AND (%(q)s IS NULL OR lower(p.code || '_' || p.nom) LIKE %(q)s)
-          AND EXISTS (
-                SELECT 1 FROM v_projet_visibilite vv
-                WHERE vv.projet_id = p.id AND vv.utilisateur_id = %(user_id)s
-              )
+    """ + _FILTRES_LISTE + """
         -- Tri (retour Fadhel, 2026-09-29) : d'abord les projets qui ont un
         -- rendu client, du plus proche au plus lointain (en retard en
         -- tête), puis ceux qui n'ont qu'une échéance interne, puis les
-        -- autres (les plus récemment modifiés d'abord).
+        -- autres (les plus récemment modifiés d'abord) ; l'id départage
+        -- (pagination stable).
         ORDER BY (pr.date_echeance IS NULL), pr.date_echeance,
                  (pe.date_echeance IS NULL), pe.date_echeance,
-                 p.updated_at DESC
-        LIMIT %(limit)s
+                 p.updated_at DESC, p.id DESC
+        LIMIT %(limit)s OFFSET %(offset)s
     """
-    params = {
-        "etats": etats or None, "phases": phases or None,
-        "chef_ids": chef_ids or None,
-        "lots_contient": lots_contient or None, "lots_egal": lots_egal or None,
-        "q": motif_contient(q) if q else None,
-        "limit": limit, "user_id": user_id,
-    }
+    params = _params_liste(user_id, etats, phases, chef_ids, lots_contient, lots_egal, q)
+    params.update(limit=limit, offset=max(0, offset or 0))
     with db.get_cursor() as cur:
         cur.execute(sql, params)
         return [dict(r) for r in cur.fetchall()]
+
+
+def compter_projets(
+    user_id: int,
+    etats: list[str] | None = None, phases: list[str] | None = None,
+    chef_ids: list[int] | None = None,
+    lots_contient: list[str] | None = None, lots_egal: list[str] | None = None,
+    q: str | None = None,
+) -> int:
+    """Nombre total de projets de la liste, mêmes filtres que list_projets
+    (compteur « 653 projets » et pagination, lot 11)."""
+    row = db.query_one(
+        "SELECT count(*) AS n FROM projet p" + _FILTRES_LISTE,
+        _params_liste(user_id, etats, phases, chef_ids, lots_contient, lots_egal, q),
+    )
+    return int(row["n"]) if row else 0
 
 
 def list_chefs_de_projet(user_id: int | None = None) -> list[dict]:

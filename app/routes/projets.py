@@ -105,7 +105,12 @@ def _parser_date_tache(date_str: str | None):
     return datetime.date.fromisoformat(date_str)
 
 
-def _filtres_liste():
+# Taille d'une page de "Tous les projets" (lot 11 : pagination au lieu de
+# la troncature silencieuse à 200 lignes).
+PROJETS_PAR_PAGE = 50
+
+
+def _filtres_liste() -> dict:
     """Filtres de "Tous les projets" (liste, rafraîchissement AJAX et
     export Excel utilisent exactement les mêmes)."""
     # Filtres à puces (voir projets_liste.html) : tant que le formulaire n'a
@@ -138,8 +143,19 @@ def _filtres_liste():
         chef_ids = [g.user["id"]] if est_chef else None
         lots_contient = None
         lots_egal = None
-    q = request.args.get("q") or None
-    return etats, phases, chef_ids, lots_contient, lots_egal, q, chefs_de_projet
+    q = (request.args.get("q") or "").strip() or None
+    # Recherche texte (lot 11) : elle porte sur tous les projets visibles —
+    # le filtre par défaut « Chef de projet = moi » est ignoré (et signalé
+    # à l'écran) ; « Villa Louison » d'un autre chef restait introuvable.
+    chef_ignore = bool(q) and chef_ids == [g.user["id"]]
+    if chef_ignore:
+        chef_ids = None
+    return dict(etats=etats, phases=phases, chef_ids=chef_ids, lots_contient=lots_contient,
+                lots_egal=lots_egal, q=q, chefs_de_projet=chefs_de_projet, chef_ignore=chef_ignore)
+
+
+def _criteres(f: dict) -> dict:
+    return {k: f[k] for k in ("etats", "phases", "chef_ids", "lots_contient", "lots_egal", "q")}
 
 
 @bp.route("")
@@ -148,17 +164,33 @@ def liste():
     refus = _refus_rh()
     if refus:
         return refus
-    etats, phases, chef_ids, lots_contient, lots_egal, q, chefs_de_projet = _filtres_liste()
-    tous = projets.list_projets(
-        user_id=g.user["id"], etats=etats, phases=phases, chef_ids=chef_ids,
-        lots_contient=lots_contient, lots_egal=lots_egal, q=q,
-    )
+    f = _filtres_liste()
+    total = projets.compter_projets(user_id=g.user["id"], **_criteres(f))
+    nb_pages = max(1, -(-total // PROJETS_PAR_PAGE))
+    page = min(max(1, request.args.get("page", 1, type=int) or 1), nb_pages)
+    tous = projets.list_projets(user_id=g.user["id"], limit=PROJETS_PAR_PAGE,
+                                offset=(page - 1) * PROJETS_PAR_PAGE, **_criteres(f))
+
+    def url_page(n):
+        args = request.args.to_dict(flat=False)
+        args["page"] = [str(n)]
+        return url_for("projets.liste", **args)
+
     contexte = dict(
-        projets=tous, q=q or "",
-        etats=etats or [], phases=phases or [], chef_ids=chef_ids or [],
-        lots_contient=lots_contient or [], lots_egal=lots_egal or [],
-        phases_choices=PHASES, utilisateurs_actifs=chefs_de_projet,
+        projets=tous, q=f["q"] or "", total=total, page=page, nb_pages=nb_pages,
+        premier=(page - 1) * PROJETS_PAR_PAGE + 1 if tous else 0,
+        dernier=(page - 1) * PROJETS_PAR_PAGE + len(tous),
+        url_precedente=url_page(page - 1) if page > 1 else None,
+        url_suivante=url_page(page + 1) if page < nb_pages else None,
+        chef_ignore=f["chef_ignore"],
+        etats=f["etats"] or [], phases=f["phases"] or [], chef_ids=f["chef_ids"] or [],
+        lots_contient=f["lots_contient"] or [], lots_egal=f["lots_egal"] or [],
+        phases_choices=PHASES, utilisateurs_actifs=f["chefs_de_projet"],
     )
+    # Recherche ignorant « Chef = moi » : les puces du filtre gardent le
+    # choix de la personne (il revient dès que la recherche est vidée).
+    if f["chef_ignore"]:
+        contexte["chef_ids"] = [g.user["id"]]
     # Rafraîchissement AJAX (retour Fadhel, 2026-09-27) : la recherche/les
     # filtres ne doivent recharger que le tableau, pas toute la page — voir
     # le script de projets_liste.html, qui appelle cette même route avec cet
@@ -201,11 +233,9 @@ def export_excel():
     refus = _refus_rh()
     if refus:
         return refus
-    etats, phases, chef_ids, lots_contient, lots_egal, q, _ = _filtres_liste()
-    lignes = projets.list_projets(
-        user_id=g.user["id"], etats=etats, phases=phases, chef_ids=chef_ids,
-        lots_contient=lots_contient, lots_egal=lots_egal, q=q, limit=5000,
-    )
+    # Toutes les lignes (lot 11 : plus de plafond), mêmes filtres et même
+    # ordre que la liste affichée.
+    lignes = projets.list_projets(user_id=g.user["id"], limit=None, **_criteres(_filtres_liste()))
     classeur = Workbook()
     feuille = classeur.active
     feuille.title = "Projets"

@@ -376,6 +376,7 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.projets.list_mes_projets": MES_PROJETS,
             "app.repositories.projets.list_mes_projets_recents": MES_PROJETS,
             "app.repositories.projets.list_projets": [],
+            "app.repositories.projets.compter_projets": 0,
             "app.repositories.projets.list_chefs_de_projet": CHEFS_DE_PROJET,
             "app.repositories.projets.get_projet": PROJET,
             "app.repositories.projets.list_lots": LOTS,
@@ -2006,7 +2007,8 @@ class SmokeTestCase(SmokeBase):
         # page — voir la branche X-Requested-With de routes/projets.liste
         # et partials/projets_tableau.html.
         self._login()
-        patchers = self._patched(**{"app.repositories.projets.list_projets": [PROJET_LISTE_SANS_HEURES]})
+        patchers = self._patched(**{"app.repositories.projets.list_projets": [PROJET_LISTE_SANS_HEURES],
+                                    "app.repositories.projets.compter_projets": 1})
         for p in patchers:
             p.start()
         try:
@@ -2246,7 +2248,8 @@ class SmokeTestCase(SmokeBase):
 
         from app.repositories import projets as projets_repo
 
-        source = inspect.getsource(projets_repo.list_projets)
+        # Filtres partagés par la liste, son compteur et l'export (lot 11).
+        source = inspect.getsource(projets_repo.list_projets) + projets_repo._FILTRES_LISTE
         self.assertIn("p.etat::text = ANY(%(etats)s)", source)
         self.assertIn("p.phase::text = ANY(%(phases)s)", source)
 
@@ -2266,7 +2269,7 @@ class SmokeTestCase(SmokeBase):
 
         from app.repositories import projets as projets_repo
 
-        source = inspect.getsource(projets_repo.list_projets)
+        source = inspect.getsource(projets_repo.list_projets) + projets_repo._FILTRES_LISTE
         # "contient" : le projet a tous les lots demandés (parmi d'autres).
         self.assertIn("%(lots_contient)s::text[] IS NULL", source)
         self.assertIn("array_length(%(lots_contient)s::text[], 1)", source)

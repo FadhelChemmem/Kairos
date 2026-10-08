@@ -56,6 +56,7 @@ class TestEquipeDesProjets(BaseIntegration):
         self.migrer()
         for uid in (chef_a, inter):
             self.assertEqual(projets.list_ids_visibles(uid), set(repris))
+            self.assertEqual(projets.compter_projets(user_id=uid), 3)
         self.assertEqual(projets.list_ids_visibles(urbs), set())
 
     def test_creation_garde_l_equipe_du_chef(self):
@@ -64,3 +65,49 @@ class TestEquipeDesProjets(BaseIntegration):
         self.client.post("/projets/nouveau", data={"nom": "Neuf", "code": "26001X", "phase": "EXE",
                                                     "chef_projet_id": chef, "date_debut": "2026-10-01"})
         self.assertEqual(self.sql("SELECT equipe_code FROM projet WHERE code = '26001X'")[0]["equipe_code"], "URBS")
+
+
+class TestListeDesProjets(BaseIntegration):
+    def test_pagination_et_vrai_total(self):
+        from app.repositories import projets
+        chef = self.user("chef_de_projet")
+        for i in range(120):
+            self.projet(chef, code=f"26{i:03d}X")
+        self.assertEqual(projets.compter_projets(user_id=chef), 120)
+        pages = [projets.list_projets(user_id=chef, limit=50, offset=o) for o in (0, 50, 100)]
+        self.assertEqual([len(p) for p in pages], [50, 50, 20])
+        ids = [p["id"] for page in pages for p in page]
+        self.assertEqual(len(set(ids)), 120)  # ordre stable, aucune ligne en double ni perdue
+        self.assertEqual(len(projets.list_projets(user_id=chef, limit=None)), 120)
+        self.login(chef)
+        body = self.client.get("/projets?page=3").get_data(as_text=True)
+        self.assertIn("120 projets · 101–120 affichés", body)
+        self.assertIn("Page 3 sur 3", body)
+
+    def test_prochain_rendu_sur_les_seules_taches_en_cours(self):
+        from app.repositories import projets
+        chef = self.user("chef_de_projet")
+        p_bloque = self.projet(chef, code="26001X", etat="bloque")
+        p_ok = self.projet(chef, code="26002X")
+        self.tache(p_bloque, chef, etat="bloque", echeance=datetime.date(2022, 11, 17))
+        self.tache(p_bloque, chef, etat="verifie", echeance=datetime.date(2023, 1, 5))
+        self.tache(p_ok, chef, echeance=datetime.date(2026, 11, 2))
+        lignes = projets.list_projets(user_id=chef)
+        self.assertEqual([l["code"] for l in lignes], ["26002X", "26001X"])
+        self.assertEqual(lignes[0]["prochain_rendu"], datetime.date(2026, 11, 2))
+        self.assertIsNone(lignes[1]["prochain_rendu"])
+        self.assertIsNone(lignes[1]["prochaine_echeance"])
+
+    def test_recherche_dans_tous_les_projets_visibles(self):
+        moi, autre = self.user("chef_de_projet"), self.user("chef_de_projet")
+        self.projet(moi, code="26010X")
+        louison = self.projet(autre, code="24102X")
+        self.sql("UPDATE projet SET nom = 'Villa Louison' WHERE id = %s", (louison,))
+        self.login(moi)
+        ajax = {"X-Requested-With": "XMLHttpRequest"}  # le tableau seul
+        body = self.client.get("/projets", headers=ajax).get_data(as_text=True)
+        self.assertNotIn("Villa Louison", body)  # défaut : mes projets
+        body = self.client.get("/projets?filtres_actifs=1&etat=en_cours&etat=bloque"
+                               f"&chef_id={moi}&q=louison", headers=ajax).get_data(as_text=True)
+        self.assertIn("24102X_Villa Louison", body)
+        self.assertIn("est ignoré", body)

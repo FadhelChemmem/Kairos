@@ -300,7 +300,10 @@ class TestDecision5TachesClosesMasquees(unittest.TestCase):
         for fn in (taches.list_mes_taches, taches.list_deadlines, taches.list_en_cours_pour_profil):
             with self.subTest(fn=fn.__name__):
                 self.assertIn("WHERE t.etat = 'en_cours'", inspect.getsource(fn))
-        self.assertEqual(inspect.getsource(projets.list_projets).count("'verifie', 'arret'"), 3)
+        # Lot 11 : « Prochain rendu » et tri de la liste, même règle (ni Bloquée).
+        source = inspect.getsource(projets.list_projets)
+        self.assertEqual(source.count("t.etat = 'en_cours'"), 3)
+        self.assertNotIn("'verifie', 'arret'", source)
 
 
 
