@@ -7,7 +7,7 @@ from flask.logging import default_handler as flask_default_handler
 from flask_wtf.csrf import CSRFError, CSRFProtect
 from werkzeug.exceptions import HTTPException
 
-from . import db, proxy, utils
+from . import db, perf, proxy, utils
 from .config import Config
 
 # Valeurs d'exemple connues ("copié-collé du .env.example sans y toucher")
@@ -116,6 +116,8 @@ def create_app(config_class=Config) -> Flask:
 
     db.init_pool(app.config["DATABASE_URL"])
     utils.register(app)
+    # Lot 11 (audit front I1) : gzip et statiques versionnés en cache long.
+    perf.installer(app)
 
     @app.after_request
     def _entetes_securite(response):

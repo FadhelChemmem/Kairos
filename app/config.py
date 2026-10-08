@@ -106,6 +106,12 @@ class Config:
     # Docker Compose, ce chemin est un volume monté (voir docker-compose.yml).
     UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/app/uploads")
 
+    # Compression gzip des pages, JSON, CSS et JS de plus de 1 Ko (lot 11,
+    # audit front I1) — voir app/perf.py. À passer à false si le reverse
+    # proxy compresse déjà (gzip on; dans Nginx Proxy Manager) : inutile de
+    # compresser deux fois.
+    COMPRESSION_GZIP = os.environ.get("COMPRESSION_GZIP", "true").lower() != "false"
+
     # Taille de fichier max acceptée pour un upload (défaut 25 Mo).
     MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH") or 25 * 1024 * 1024)
 

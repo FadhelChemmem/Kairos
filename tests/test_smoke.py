@@ -470,8 +470,9 @@ class SmokeTestCase(SmokeBase):
             with self.subTest(url=url):
                 resp = self._get(url) if url != "/connexion" else self.client.get(url)
                 self.assertEqual(resp.status_code, 200)
-                self.assertIn(b'rel="icon" type="image/svg+xml" href="/static/img/favicon.svg"', resp.data)
-                self.assertIn(b'href="/static/img/favicon.ico"', resp.data)
+                # Lot 11 : URL versionnée par l'empreinte du fichier (?v=…).
+                self.assertRegex(resp.data, rb'rel="icon" type="image/svg\+xml" href="/static/img/favicon\.svg\?v=[0-9a-f]{12}"')
+                self.assertRegex(resp.data, rb'href="/static/img/favicon\.ico\?v=[0-9a-f]{12}"')
                 self.assertIn(b'rel="apple-touch-icon"', resp.data)
         for fichier, debut in (("favicon.svg", b"<svg"), ("favicon.ico", b"\x00\x00\x01\x00"),
                                ("apple-touch-icon.png", b"\x89PNG")):

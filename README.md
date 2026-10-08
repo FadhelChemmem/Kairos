@@ -153,6 +153,20 @@ SESSION_COOKIE_SECURE=true
 WEB_BIND=0.0.0.0
 ```
 
+### Compression et cache des fichiers statiques
+
+L'appli compresse elle-même en gzip les pages, le JSON, les CSS et les JS
+de plus de 1 Ko (`app/perf.py`). Si le proxy compresse déjà (`gzip on;`
+dans la configuration avancée de Nginx Proxy Manager), mettre
+`COMPRESSION_GZIP=false` dans `.env` pour ne pas compresser deux fois.
+
+Les URL des fichiers de `/static` portent l'empreinte du fichier
+(`app.css?v=1f1263732efa`) et sont servies avec
+`Cache-Control: public, max-age=31536000, immutable` : le navigateur ne
+les redemande plus, et un fichier modifié change d'URL au déploiement
+suivant. Les pages restent sans cache. Si le proxy réécrit `Cache-Control`
+sur `/static`, retirer cette règle.
+
 ### E-mails en mode test
 
 Tant que Kairos est en test, `MAIL_DESTINATAIRES_AUTORISES` limite les

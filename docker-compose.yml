@@ -113,6 +113,8 @@ services:
       # vide et le port publié sur le LAN, elle prévient au démarrage.
       WEB_BIND: ${WEB_BIND:-0.0.0.0}
       SESSION_DUREE_ABSOLUE_JOURS: ${SESSION_DUREE_ABSOLUE_JOURS:-30}
+      # Compression gzip par l'appli ; false si le proxy compresse déjà.
+      COMPRESSION_GZIP: ${COMPRESSION_GZIP:-true}
       # Fuseau horaire (PROMPT_CORRECTIONS.md P2 #16) : sans ça, le
       # conteneur (Debian slim) tourne en UTC — `datetime.date.today()`
       # (utilisé partout : DailyLog, deadlines, verrouillage du jour...)
