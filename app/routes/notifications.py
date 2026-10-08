@@ -8,6 +8,7 @@ import re
 from flask import Blueprint, abort, redirect, g, render_template, url_for
 
 from ..auth import login_required
+from ..repositories import dailylog as dailylog_repo
 from ..repositories import notifications as notifications_repo
 
 bp = Blueprint("notifications", __name__, url_prefix="/notifications")
@@ -32,10 +33,22 @@ def ouvrir(notification_id: int):
     notifications_repo.marquer_lu(notification_id, g.user["id"])
 
     # Rappel ou correction du Daily log (lot 10) : directement le jour cité.
-    jour = _jour_daily_log(notif.get("message"))
+    # Lot 11 b : un rappel porte ses jours (rappel_jours, ancien et nouveau
+    # format) — le premier encore à remplir, à défaut le premier cité.
+    jour = None
+    rappel_jours = sorted(notif.get("rappel_jours") or [])
+    if rappel_jours:
+        remplis = dailylog_repo.jours_renseignes(g.user["id"], rappel_jours)
+        jour = next((j for j in rappel_jours if j not in remplis), rappel_jours[0])
+    else:
+        jour = _jour_daily_log(notif.get("message"))
     if jour is not None and g.user["role"] in ("admin", "chef_de_projet", "intervenant"):
         return redirect(url_for("dailylog.formulaire", date=jour.isoformat()))
 
+    # Notification d'une tâche (affectation…) : la fiche du projet ouvre la
+    # fenêtre de cette tâche (lot 11 b, ?tache=<id>).
+    if notif.get("tache_id") and notif["tache_projet_id"] and not notif["post_projet_id"]:
+        return redirect(url_for("projets.detail", projet_id=notif["tache_projet_id"], tache=notif["tache_id"]))
     projet_id = notif["post_projet_id"] or notif["tache_projet_id"]
     if projet_id:
         return redirect(url_for("projets.detail", projet_id=projet_id))
@@ -57,8 +70,9 @@ _RE_JOUR_DAILY_LOG = re.compile(r"^(?:Rappel DailyLog|Daily log du)\b.*?([0-9]{2
 
 
 def _jour_daily_log(message: str | None):
-    """Date citée par une notification de rappel ou de correction du Daily
-    log (« … votre journée du 03/10/2026. »), None sinon."""
+    """Date citée par une notification de correction du Daily log (« Daily
+    log du 03/10/2026 corrigé par … ») ou un ancien rappel sans
+    rappel_jours (« … votre journée du 03/10/2026. »), None sinon."""
     m = _RE_JOUR_DAILY_LOG.match(message or "")
     if not m:
         return None

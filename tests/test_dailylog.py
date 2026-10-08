@@ -683,30 +683,73 @@ class TestJoursManquesEtRappel(unittest.TestCase):
         self.assertTrue(all(j >= datetime.date(2026, 10, 1) for j in rens.call_args.args[1]))
 
     def test_rappel_lundi_pour_le_vendredi(self):
+        """Lot 11 b : texte clair, jours oubliés de la fenêtre (week-end et
+        aujourd'hui exclus), via creer_rappel_dailylog (dédoublonnage par
+        rappel_jours, testé sur vraie base)."""
         from app.auth import _verifier_rappel_dailylog
         user = {"id": 1, "fuseau": "Africa/Tunis", "debut_daily_log": datetime.date(2025, 1, 1)}
-        with patch("app.repositories.dailylog.jour_renseigne", return_value=False) as rens, \
-             patch("app.repositories.notifications.a_deja_un_rappel_dailylog", return_value=False), \
+        lundi = datetime.date(2026, 10, 5)
+        remplis = {lundi - datetime.timedelta(days=i) for i in range(4, 15)}  # tout sauf le vendredi 2
+        with patch("app.repositories.dailylog.jours_renseignes", return_value=remplis), \
+             patch("app.repositories.notifications.creer_rappel_dailylog", return_value=[]) as rappel, \
              patch("app.repositories.notifications.creer") as creer:
-            _verifier_rappel_dailylog(user, aujourdhui=datetime.date(2026, 10, 5))  # lundi
-        self.assertEqual(rens.call_args.args[1], datetime.date(2026, 10, 2))  # vendredi
-        self.assertIn("02/10/2026", creer.call_args.args[2])
-        self.assertTrue(creer.call_args.args[2].startswith("Rappel DailyLog"))
+            _verifier_rappel_dailylog(user, aujourdhui=lundi)
+        creer.assert_not_called()
+        uid, jours, texte = rappel.call_args.args
+        self.assertEqual((uid, jours), (1, [datetime.date(2026, 10, 2)]))
+        self.assertEqual(texte(jours), "Daily log du vendredi 2 octobre non rempli")
+        self.assertNotIn("Rappel DailyLog", texte(jours))
 
-    def test_pas_de_rappel_le_week_end_ni_avant_l_arrivee_ni_en_double(self):
+    def test_plusieurs_jours_une_seule_notification(self):
         from app.auth import _verifier_rappel_dailylog
+        user = {"id": 1, "fuseau": "Africa/Tunis", "debut_daily_log": datetime.date(2026, 9, 29)}
+        jeudi = datetime.date(2026, 10, 1)
+        with patch("app.repositories.dailylog.jours_renseignes", return_value=set()), \
+             patch("app.repositories.notifications.creer_rappel_dailylog", return_value=[]) as rappel:
+            _verifier_rappel_dailylog(user, aujourdhui=jeudi)
+        rappel.assert_called_once()
+        _, jours, texte = rappel.call_args.args
+        self.assertEqual(jours, [datetime.date(2026, 9, 29), datetime.date(2026, 9, 30)])
+        self.assertEqual(texte(jours), "2 jours de Daily log non remplis : mardi 29 et mercredi 30 septembre")
+
+    def test_texte_du_rappel(self):
+        from app.utils import texte_rappel_daily_log as t
+        d = datetime.date
+        auj = d(2026, 10, 8)
+        self.assertEqual(t([d(2026, 10, 7)], auj), "Daily log du mercredi 7 octobre non rempli")
+        self.assertEqual(t([d(2026, 10, 1)], auj), "Daily log du jeudi 1er octobre non rempli")
+        self.assertEqual(t([d(2026, 10, 7), d(2026, 10, 5), d(2026, 10, 6)], auj),
+                         "3 jours de Daily log non remplis : lundi 5, mardi 6 et mercredi 7 octobre")
+        self.assertEqual(t([d(2026, 9, 30), d(2026, 10, 1), d(2026, 10, 2)], auj),
+                         "3 jours de Daily log non remplis : mercredi 30 septembre, jeudi 1er et vendredi 2 octobre")
+        self.assertEqual(t([d(2026, 12, 31), d(2027, 1, 4)], d(2027, 1, 5)),
+                         "2 jours de Daily log non remplis : jeudi 31 décembre 2026 et lundi 4 janvier")
+        cinq = [d(2026, 10, j) for j in (1, 2, 5, 6, 7)]
+        self.assertEqual(t(cinq, auj), "5 jours de Daily log non remplis : jeudi 1er, vendredi 2, lundi 5, "
+                                       "mardi 6 et mercredi 7 octobre")
+        dix = [d(2026, 9, j) for j in (24, 25, 28, 29, 30)] + cinq
+        self.assertEqual(t(dix, auj), "10 jours de Daily log non remplis, du jeudi 24 septembre au mercredi 7 octobre")
+        self.assertEqual(t(dix, d(2027, 1, 4)),
+                         "10 jours de Daily log non remplis, du jeudi 24 septembre 2026 au mercredi 7 octobre 2026")
+
+    def test_pas_de_rappel_le_week_end_ni_avant_l_arrivee_ni_jour_rempli(self):
+        from app.auth import _verifier_rappel_dailylog
+        lundi = datetime.date(2026, 10, 5)
+        fenetre = {lundi - datetime.timedelta(days=i) for i in range(1, 15)}
         cas = [
-            ({"id": 1, "debut_daily_log": datetime.date(2026, 10, 5)}, datetime.date(2026, 10, 5), False, False),
-            ({"id": 1, "debut_daily_log": None}, datetime.date(2026, 10, 7), True, False),
-            ({"id": 1, "debut_daily_log": None}, datetime.date(2026, 10, 7), False, True),
+            # arrivée le jour même : rien avant
+            ({"id": 1, "debut_daily_log": lundi}, set()),
+            # tout rempli (ou absent) : rien
+            ({"id": 1, "debut_daily_log": None}, fenetre),
+            # seul le week-end est vide : jamais un oubli
+            ({"id": 1, "debut_daily_log": None}, {j for j in fenetre if j.weekday() < 5}),
         ]
-        for user, jour, renseigne, deja in cas:
-            with self.subTest(user=user, jour=jour):
-                with patch("app.repositories.dailylog.jour_renseigne", return_value=renseigne), \
-                     patch("app.repositories.notifications.a_deja_un_rappel_dailylog", return_value=deja), \
-                     patch("app.repositories.notifications.creer") as creer:
-                    _verifier_rappel_dailylog(user, aujourdhui=jour)
-                creer.assert_not_called()
+        for user, remplis in cas:
+            with self.subTest(user=user, remplis=len(remplis)):
+                with patch("app.repositories.dailylog.jours_renseignes", return_value=remplis), \
+                     patch("app.repositories.notifications.creer_rappel_dailylog") as rappel:
+                    _verifier_rappel_dailylog(user, aujourdhui=lundi)
+                rappel.assert_not_called()
         # samedi et dimanche : le jour visé reste le vendredi
         self.assertEqual(dl.jour_ouvre_precedent(datetime.date(2026, 10, 4)), datetime.date(2026, 10, 2))
         self.assertEqual(dl.jour_ouvre_precedent(datetime.date(2026, 10, 3)), datetime.date(2026, 10, 2))
@@ -727,6 +770,22 @@ class TestAutresPages(_BaseDailyLog):
         resp = self.appel("post", "/notifications/9/ouvrir",
                           **{"app.repositories.notifications.get_notification": {**notif, "message": "Daily log du 31/02/2026 corrigé par X."}})
         self.assertTrue(resp.headers["Location"].endswith("/notifications"))
+
+    def test_rappel_nouveau_format_ouvre_le_premier_jour_a_remplir(self):
+        """Lot 11 b : le lien suit rappel_jours (pas le texte) — premier jour
+        encore vide, à défaut le premier cité."""
+        d = datetime.date
+        notif = {"id": 9, "message": "3 jours de Daily log non remplis : lundi 5, mardi 6 et mercredi 7 octobre",
+                 "rappel_jours": [d(2026, 10, 7), d(2026, 10, 5), d(2026, 10, 6)],
+                 "post_projet_id": None, "tache_projet_id": None, "post_id": None, "tache_id": None}
+        for remplis, attendu in ((set(), "2026-10-05"), ({d(2026, 10, 5)}, "2026-10-06"),
+                                 ({d(2026, 10, 5), d(2026, 10, 6), d(2026, 10, 7)}, "2026-10-05")):
+            with self.subTest(remplis=remplis):
+                resp = self.appel("post", "/notifications/9/ouvrir",
+                                  **{"app.repositories.notifications.get_notification": notif,
+                                     "app.repositories.dailylog.jours_renseignes": remplis})
+                self.assertEqual(resp.status_code, 302)
+                self.assertTrue(resp.headers["Location"].endswith(f"/dailylog?date={attendu}"), resp.headers["Location"])
 
     def test_carte_accueil_sait_si_aujourdhui_est_rempli(self):
         html = self.appel("get", "/accueil", **{"app.repositories.dailylog.jour_renseigne": True}).data.decode()

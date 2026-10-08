@@ -354,6 +354,96 @@ def get_projet(projet_id: int) -> dict | None:
     return db.query_one(sql, (projet_id,))
 
 
+# Changement du chef de projet (lot 11 b, demande du gérant) : rôles
+# admis pour le nouveau chef — même règle que le trigger
+# trg_garde_chef_projet (migration 0017).
+ROLES_CHEF_POSSIBLES = ("chef_de_projet", "admin")
+
+MESSAGE_CHEF_PROJET_CLOS = (
+    "Ce projet est clos : rouvrez-le d'abord (état En cours ou Bloqué), puis changez de chef de projet."
+)
+MESSAGE_CHEF_INVALIDE = (
+    "Nouveau chef de projet invalide : il faut un compte actif, chef de projet ou administrateur."
+)
+
+
+class ChangementChefRefuse(Exception):
+    """Changement de chef refusé (projet clos, nouveau chef invalide) —
+    contrôlé sous le verrou du projet, avant toute écriture : la
+    transaction entière est annulée, le message est montré tel quel."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
+def est_refus_changement_chef(exc: Exception) -> bool:
+    """Vrai si `exc` est un refus du changement de chef : celui de l'appli
+    (ChangementChefRefuse) ou, en dernier rempart, celui du trigger
+    trg_garde_chef_projet (migration 0017)."""
+    if isinstance(exc, ChangementChefRefuse):
+        return True
+    diag = getattr(exc, "diag", None)
+    if getattr(diag, "constraint_name", None) in ("projet_chef_valide", "projet_chef_change"):
+        return True
+    # Sans diag (pilote minimal) : code SQLSTATE et texte du trigger.
+    code, texte = getattr(exc, "pgcode", None), str(exc)
+    return ((code == "42501" and "changer de chef de projet" in texte)
+            or (code == "23514" and "le nouveau chef de projet" in texte))
+
+
+def _nom(u: dict) -> str:
+    return f"{u['prenom']} {u['nom']}".strip()
+
+
+def _changer_chef(cur, projet_id: int, avant: dict, nouveau_id: int, acteur_id: int | None,
+                  acteur_admin: bool) -> dict:
+    """Confie le projet à `nouveau_id`, dans la transaction de update_projet
+    (projet déjà verrouillé FOR UPDATE, `avant` = sa ligne avant
+    modification) :
+    - projet clos : seulement un Admin (les autres le rouvrent d'abord) ;
+    - nouveau chef : compte actif, chef de projet ou Admin (verrouillé FOR
+      SHARE : il ne peut pas être désactivé pendant ce temps) ;
+    - l'ancien titulaire devient co-chef (il garde l'accès), le nouveau
+      n'est plus ni co-chef ni intervenant du projet (pas de doublon) ;
+      l'équipe du projet ne change pas ;
+    - post automatique « X a confié le projet à Y » (evenement
+      'chef_projet') ; la ligne d'audit est écrite par trg_audit_projet.
+    Renvoie {post_id, ancien, nouveau, acteur} pour la notification et le
+    message affiché."""
+    if avant["etat"] in ETATS_CLOS and not acteur_admin:
+        raise ChangementChefRefuse(MESSAGE_CHEF_PROJET_CLOS)
+    cur.execute("SELECT id, prenom, nom, actif, role FROM utilisateur WHERE id = %s FOR SHARE", (nouveau_id,))
+    nouveau = cur.fetchone()
+    if nouveau is None or not nouveau["actif"] or nouveau["role"] not in ROLES_CHEF_POSSIBLES:
+        raise ChangementChefRefuse(MESSAGE_CHEF_INVALIDE)
+    ancien_id = avant["chef_projet_id"]
+    cur.execute("SELECT id, prenom, nom FROM utilisateur WHERE id = ANY(%s)",
+                ([ancien_id] + ([acteur_id] if acteur_id else []),))
+    gens = {r["id"]: r for r in cur.fetchall()}
+    ancien = gens.get(ancien_id) or {"prenom": "", "nom": f"#{ancien_id}"}
+    acteur = gens.get(acteur_id) or nouveau
+
+    cur.execute("UPDATE projet SET chef_projet_id = %s WHERE id = %s", (nouveau_id, projet_id))
+    cur.execute("DELETE FROM projet_co_chef WHERE projet_id = %s AND utilisateur_id = %s", (projet_id, nouveau_id))
+    cur.execute("DELETE FROM projet_intervenant WHERE projet_id = %s AND utilisateur_id = %s", (projet_id, nouveau_id))
+    cur.execute(
+        "INSERT INTO projet_co_chef (projet_id, utilisateur_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+        (projet_id, ancien_id),
+    )
+    contenu = f"{_nom(acteur)} a confié le projet à {_nom(nouveau)}. {_nom(ancien)}, chef précédent, devient co-chef."
+    cur.execute(
+        """
+        INSERT INTO post (projet_id, auteur_id, type_code, contenu, evenement)
+        VALUES (%s, %s, 'information', %s, 'chef_projet')
+        RETURNING id
+        """,
+        (projet_id, acteur_id or nouveau_id, contenu),
+    )
+    return {"post_id": cur.fetchone()["id"], "ancien": dict(ancien), "nouveau": dict(nouveau),
+            "acteur": dict(acteur)}
+
+
 def update_projet(
     projet_id: int,
     nom: str,
@@ -365,12 +455,20 @@ def update_projet(
     current_user_id: int | None = None,
     honoraires=None,
     client: str = "IPCO",
-) -> None:
+    chef_projet_id: int | None = None,
+    acteur_admin: bool = False,
+) -> dict | None:
     """Édition des informations du projet — fenêtre flottante
     "Informations" (retour Fadhel, 2026-09-28), réservée au chef de
     projet/co-chef (voir user_can_manage). `updated_by`/`updated_at`
     sont posés automatiquement par trg_projet_updated_at (schema.sql),
     pas ici.
+
+    `chef_projet_id` (lot 11 b) : nouveau chef de projet, None ou le chef
+    actuel = pas de changement — voir _changer_chef. Contrôlé AVANT toute
+    autre écriture, sur l'état d'avant (un projet clos se rouvre d'abord) ;
+    un refus lève ChangementChefRefuse et rien n'est enregistré. Renvoie le
+    détail du changement de chef, None s'il n'y en a pas.
 
     Volontairement PAS éditables ici : `code` (identifiant stable, utilisé
     dans les URLs/exports) et `phase` — la table "Draft entities" de la
@@ -380,9 +478,14 @@ def update_projet(
     éditant la phase d'un projet existant."""
     from ..utils import projet_etat_style
 
+    changement = None
     with db.get_cursor(user_id=current_user_id) as cur:
-        cur.execute("SELECT etat FROM projet WHERE id = %s FOR UPDATE", (projet_id,))
+        # Verrou du projet pendant toute la modification (comme les autres
+        # changements d'état) : chef, état et co-chefs lus et écrits ensemble.
+        cur.execute("SELECT etat, chef_projet_id FROM projet WHERE id = %s FOR UPDATE", (projet_id,))
         avant = cur.fetchone()
+        if avant is not None and chef_projet_id is not None and chef_projet_id != avant["chef_projet_id"]:
+            changement = _changer_chef(cur, projet_id, avant, chef_projet_id, current_user_id, acteur_admin)
         cur.execute(
             """
             UPDATE projet
@@ -417,6 +520,7 @@ def update_projet(
                 "INSERT INTO projet_lot (projet_id, lot_code) VALUES (%s, %s)",
                 (projet_id, lot_code),
             )
+    return changement
 
 
 def list_lots(projet_id: int) -> list[dict]:

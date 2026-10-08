@@ -61,7 +61,7 @@ def get_notification(notification_id: int, user_id: int) -> dict | None:
     """Restreint à `user_id` : on ne peut ouvrir que sa propre notification."""
     sql = """
         SELECT n.id, n.categorie, n.message, n.lu, n.created_at,
-               n.post_id, n.tache_id,
+               n.post_id, n.tache_id, n.rappel_jours,
                p.projet_id AS post_projet_id,
                t.projet_id AS tache_projet_id
         FROM notification n
@@ -97,46 +97,64 @@ def marquer_toutes_lues(user_id: int) -> None:
     )
 
 
-def a_deja_un_rappel_dailylog(user_id: int, jour) -> bool:
-    """Évite de recréer le même rappel "DailyLog de la veille non rempli" à
-    chaque connexion du même jour (voir spec : déclenché "à la connexion
-    du lendemain", donc une fois par jour suffit)."""
-    row = db.query_one(
-        """
-        SELECT 1 FROM notification
-        WHERE utilisateur_id = %s
-          AND categorie = 'rh_info'
-          AND message LIKE 'Rappel DailyLog%%'
-          AND created_at::date = %s
-        """,
-        (user_id, jour),
-    )
-    return row is not None
+def creer_rappel_dailylog(user_id: int, jours: list, texte) -> list:
+    """Rappel « Daily log non rempli » (lot 11 b) : UNE notification pour
+    les jours oubliés de `jours` qui n'ont encore jamais été rappelés —
+    `texte(jours_retenus)` en fait le message. La clé est la colonne
+    notification.rappel_jours (migration 0017, qui l'a aussi posée sur les
+    rappels de l'ancien format) : plus de LIKE sur le texte. Verrou
+    consultatif par personne : deux sessions ouvertes en même temps (deux
+    appareils) n'envoient pas deux fois le même rappel. Renvoie les jours
+    rappelés (liste vide : rien de nouveau)."""
+    jours = sorted(set(jours))
+    if not jours:
+        return []
+    with db.get_cursor() as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(hashtext('kairos.rappel_dailylog'), %s::int)", (user_id,))
+        cur.execute(
+            """
+            SELECT DISTINCT j.jour
+            FROM notification n, unnest(n.rappel_jours) AS j(jour)
+            WHERE n.utilisateur_id = %s AND n.rappel_jours IS NOT NULL
+              AND n.rappel_jours && %s::date[]
+            """,
+            (user_id, jours),
+        )
+        deja = {r["jour"] for r in cur.fetchall()}
+        nouveaux = [j for j in jours if j not in deja]
+        if nouveaux:
+            cur.execute(
+                """
+                INSERT INTO notification (utilisateur_id, categorie, message, rappel_jours)
+                VALUES (%s, 'rh_info', %s, %s::date[])
+                """,
+                (user_id, texte(nouveaux), nouveaux),
+            )
+        return nouveaux
 
 
-# Rappels Daily log dont le jour cité (« … votre journée du 28/09/2026. »)
-# est depuis rempli (au moins une ligne d'heures) ou marqué absent.
+# Rappels Daily log (rappel_jours, ancien et nouveau format) dont TOUS les
+# jours cités sont depuis remplis (au moins une ligne d'heures) ou marqués
+# absents.
 _SQL_RAPPELS_DEVENUS_INUTILES = """
     UPDATE notification n SET lu = true
-    FROM (
-        SELECT id, to_date(substring(message from '([0-9]{2}/[0-9]{2}/[0-9]{4})'), 'DD/MM/YYYY') AS jour
-        FROM notification
-        WHERE utilisateur_id = %(uid)s AND NOT lu AND categorie = 'rh_info'
-          AND message LIKE 'Rappel DailyLog%%'
-          AND message ~ '[0-9]{2}/[0-9]{2}/[0-9]{4}'
-    ) r
-    WHERE n.id = r.id
-      AND (EXISTS (SELECT 1 FROM dailylog_entree e WHERE e.utilisateur_id = %(uid)s AND e.date = r.jour)
-           OR EXISTS (SELECT 1 FROM dailylog_jour j WHERE j.utilisateur_id = %(uid)s AND j.date = r.jour AND j.absent))
+    WHERE n.utilisateur_id = %(uid)s AND NOT n.lu AND n.rappel_jours IS NOT NULL
+      AND NOT EXISTS (
+            SELECT 1 FROM unnest(n.rappel_jours) AS r(jour)
+            WHERE NOT EXISTS (SELECT 1 FROM dailylog_entree e WHERE e.utilisateur_id = %(uid)s AND e.date = r.jour)
+              AND NOT EXISTS (SELECT 1 FROM dailylog_jour j
+                              WHERE j.utilisateur_id = %(uid)s AND j.date = r.jour AND j.absent)
+          )
 """
 
 
 def marquer_rappels_dailylog_lus(user_id: int, cur=None) -> None:
-    """Lot 11 : un rappel « journée du … non remplie » est marqué lu dès que
-    ce jour est rempli ou marqué absent — par la personne ou par un chef qui
-    corrige (appelé dans la transaction d'enregistrement du Daily log,
-    `cur`), et une fois par jour au rappel quotidien (rappels d'avant ce
-    correctif, jours remplis autrement)."""
+    """Lot 11 : un rappel « Daily log … non rempli » est marqué lu dès que
+    ses jours sont remplis ou marqués absents — par la personne ou par un
+    chef qui corrige (appelé dans la transaction d'enregistrement du Daily
+    log, `cur`), et une fois par jour au rappel quotidien (jours remplis
+    autrement). Lot 11 b : reconnu par rappel_jours (un rappel regroupant
+    plusieurs jours reste non lu tant qu'il en manque un)."""
     if cur is not None:
         cur.execute(_SQL_RAPPELS_DEVENUS_INUTILES, {"uid": user_id})
     else:

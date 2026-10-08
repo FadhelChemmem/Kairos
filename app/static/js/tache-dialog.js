@@ -158,6 +158,38 @@
     ouvrir(ligne);
   });
 
+  // Lot 11 b : tâche demandée dans l'adresse — ?tache=<id> (résultat
+  // « tâche » de la recherche globale, notification d'affectation : le
+  // serveur l'a vérifiée et l'indique dans data-ouvrir-au-chargement) ou
+  // #tache-<id>. Ligne repliée parmi les tâches closes : dépliée. Fenêtre
+  // ouverte comme par un clic sur le titre (focus dans la fenêtre, rendu au
+  // titre de la ligne à la fermeture). À la fermeture, l'adresse redevient
+  // celle de la fiche : un rechargement ne rouvre pas la tâche.
+  function nettoyerAdresse() {
+    try {
+      var u = new URL(window.location.href);
+      u.searchParams.delete('tache');
+      if (/^#tache-\d+$/.test(u.hash)) u.hash = '';
+      window.history.replaceState(window.history.state, '', u.pathname + u.search + u.hash);
+    } catch (e) { /* adresse laissée telle quelle */ }
+  }
+  function ouvrirDemandee(id) {
+    var ligne = id && document.querySelector('[data-open-tache="' + id + '"]');
+    if (!ligne || dialog.open) return;
+    var repli = ligne.closest('details');
+    if (repli && !repli.open) repli.open = true;
+    if (ligne.scrollIntoView) ligne.scrollIntoView({ block: 'center' });
+    dialog.addEventListener('close', nettoyerAdresse, { once: true });
+    ouvrir(ligne);
+  }
+  function idAncre() {
+    var m = /^#tache-(\d+)$/.exec(window.location.hash);
+    return m ? m[1] : null;
+  }
+  ouvrirDemandee(dialog.getAttribute('data-ouvrir-au-chargement') || idAncre());
+  // Lien #tache-<id> suivi dans la page même (pas de rechargement).
+  window.addEventListener('hashchange', function () { ouvrirDemandee(idAncre()); });
+
   // Préchargement au survol (souris seulement, après 120 ms).
   var minuteur = null;
   document.addEventListener('pointerover', function (e) {

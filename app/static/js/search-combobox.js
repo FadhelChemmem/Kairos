@@ -79,6 +79,8 @@
     } else {
       input.setAttribute('aria-label', input.placeholder);
     }
+    // Aide sous le champ (lot 11 b : « L'ancien chef devient co-chef »).
+    if (select.hasAttribute('aria-describedby')) input.setAttribute('aria-describedby', select.getAttribute('aria-describedby'));
     input.autocomplete = 'off';
     wrap.appendChild(input);
 

@@ -116,7 +116,8 @@ def recherche_api():
     Lot 11 : sans accents ni casse (« residence », « Fadhel Chem »), tâches
     comprises (titre, lien vers leur projet), comptes désactivés trouvés et
     signalés comme tels ; sous-titre pour distinguer projets, tâches et
-    personnes homonymes."""
+    personnes homonymes. Lot 11 b : le lien d'une tâche ouvre sa fenêtre
+    sur la fiche projet (?tache=<id>)."""
     from ..utils import projet_etat_style, tache_etat_style
 
     q = (request.args.get("q") or "").strip()
@@ -135,7 +136,8 @@ def recherche_api():
     ] + [
         {"label": t["titre"],
          "sous_titre": f"Tâche {tache_etat_style(t['etat'])['libelle'].lower()} · {t['projet_code']}_{t['projet_nom']}",
-         "url": url_for("projets.detail", projet_id=t["projet_id"])}
+         # Lot 11 b : la fiche ouvre la fenêtre de la tâche (tache-dialog.js).
+         "url": url_for("projets.detail", projet_id=t["projet_id"], tache=t["id"])}
         for t in taches_trouvees
     ] + [
         {"label": f"{u['prenom']} {u['nom']}" + ("" if u.get("actif", True) else " (inactif)"),

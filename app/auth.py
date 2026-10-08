@@ -17,7 +17,7 @@ from .repositories import dailylog as dailylog_repo
 from .repositories import notifications as notifications_repo
 from .repositories import securite as securite_repo
 from .repositories import utilisateurs as utilisateurs_repo
-from .utils import is_safe_next
+from .utils import is_safe_next, texte_rappel_daily_log
 
 logger = logging.getLogger(__name__)
 
@@ -204,25 +204,24 @@ def login_required(view):
 
 
 def _verifier_rappel_dailylog(user: dict, aujourdhui: "datetime.date | None" = None) -> None:
-    """Notification automatique si le dernier jour ouvré (le lundi : le
-    vendredi) n'a ni heures ni absence — au plus une par jour. Lot 10 :
-    « aujourd'hui » au fuseau de la personne, et pas de rappel pour un jour
-    antérieur à son arrivée (date d'embauche, à défaut création du compte).
-    `aujourdhui` est injectable pour les tests."""
+    """Notification automatique pour les jours ouvrés passés sans heures ni
+    absence. Lot 10 : « aujourd'hui » au fuseau de la personne, et pas de
+    rappel pour un jour antérieur à son arrivée (date d'embauche, à défaut
+    création du compte). `aujourdhui` est injectable pour les tests.
+
+    Lot 11 b (demande du gérant) : texte clair (« Daily log du mardi 7
+    octobre non rempli »), et les jours oubliés de la fenêtre où la personne
+    peut encore saisir (FENETRE_LIBRE_JOURS, week-ends exclus, aujourd'hui
+    exclu) qui n'ont jamais été rappelés sont regroupés en UNE notification
+    (« 3 jours de Daily log non remplis : … ») — un jour déjà rappelé, même
+    par l'ancien format, ne l'est plus (notification.rappel_jours)."""
     aujourdhui = aujourdhui or dailylog_repo.aujourdhui_pour(user)
-    jour = dailylog_repo.jour_ouvre_precedent(aujourdhui)
-    debut = dailylog_repo.debut_daily_log(user)
-    if debut is not None and jour < debut:
-        return
     # Heures saisies OU journée marquée absente : pas d'oubli.
-    if dailylog_repo.jour_renseigne(user["id"], jour):
+    manques = [j for j in dailylog_repo.jours_manques_recents(user, aujourdhui=aujourdhui) if j < aujourdhui]
+    if not manques:
         return
-    if notifications_repo.a_deja_un_rappel_dailylog(user["id"], aujourdhui):
-        return
-    notifications_repo.creer(
-        user["id"], "rh_info",
-        f"Rappel DailyLog : vous n'avez pas rempli votre journée du {jour.strftime('%d/%m/%Y')}.",
-    )
+    notifications_repo.creer_rappel_dailylog(
+        user["id"], manques, lambda jours: texte_rappel_daily_log(jours, aujourdhui))
 
 
 def generer_lien_reset(user_id: int, current_user_id: int | None = None) -> str:

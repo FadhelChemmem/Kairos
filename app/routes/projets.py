@@ -2,6 +2,7 @@
 et les actions sur les tâches d'un projet (création, clôture, changement
 d'état)."""
 import datetime
+import re
 
 from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, url_for
 
@@ -478,6 +479,30 @@ def detail(projet_id: int):
         contexte["projets_phase_liee"] = [
             p for p in projets.search(g.user["id"], "", limit=200) if p["id"] != projet_id
         ]
+        # Changement de chef (lot 11 b) : comptes actifs chef de projet ou
+        # Admin ; le chef actuel reste le choix affiché même s'il n'en fait
+        # plus partie (compte désactivé) — sinon le formulaire enverrait un
+        # autre chef sans qu'on l'ait choisi. Projet clos : Admin seulement.
+        chefs = [u for u in utilisateurs_actifs if u.get("role") in projets.ROLES_CHEF_POSSIBLES]
+        if not any(u["id"] == projet["chef_projet_id"] for u in chefs):
+            chef_actuel = utilisateurs.get_utilisateur(projet["chef_projet_id"]) or {}
+            chefs.insert(0, {"id": projet["chef_projet_id"], "prenom": projet["chef_prenom"],
+                             "nom": projet["chef_nom"], "role": chef_actuel.get("role"),
+                             "poste": chef_actuel.get("poste"), "avatar_chemin": projet.get("chef_avatar_chemin"),
+                             "inactif": not chef_actuel.get("actif", False)})
+        contexte["chefs_possibles"] = chefs
+        contexte["chef_modifiable"] = not projet_clos or g.user["role"] == "admin"
+        # Encart Admin « Projets ouverts dont le chef est désactivé » (liste
+        # Utilisateurs) : fenêtre Informations ouverte, champ chef prêt.
+        contexte["ouvrir_informations"] = request.args.get("informations") == "chef" and contexte["chef_modifiable"]
+
+    # Recherche globale et notifications d'une tâche (lot 11 b) :
+    # ?tache=<id> ouvre la fenêtre de cette tâche (chargée à la demande) ;
+    # une tâche close est dépliée. Une tâche d'un autre projet est ignorée.
+    tache_demandee = request.args.get("tache", type=int)
+    t_ouvrir = next((t for t in liste_taches if t["id"] == tache_demandee), None) if tache_demandee else None
+    contexte["tache_a_ouvrir"] = t_ouvrir["id"] if t_ouvrir else None
+    contexte["deplier_taches_closes"] = bool(t_ouvrir) and t_ouvrir["etat"] in taches.ETATS_CLOS
 
     return render_template("projet_detail.html", **contexte)
 
@@ -487,12 +512,39 @@ def detail(projet_id: int):
 def editer_informations(projet_id: int):
     """Fenêtre flottante "Informations" (retour Fadhel, 2026-09-28, Lot 5) :
     édite nom/état/lots/dates/phase liée. Réservée au chef de projet/co-chef
-    — même autorisation que creer_tache/ajouter_intervenant (user_can_manage)."""
+    — même autorisation que creer_tache/ajouter_intervenant (user_can_manage).
+
+    Lot 11 b (demande du gérant) : aussi le chef de projet (champ
+    `chef_projet_id`, absent = inchangé). Mêmes droits que le reste de la
+    fenêtre ; projet clos : Admin seulement (les autres le rouvrent
+    d'abord) ; nouveau chef actif, chef de projet ou Admin. Revérifié sous
+    verrou par projets.update_projet et en base (migration 0017)."""
     if not projets.user_can_view(projet_id, g.user["id"]):
         abort(404)
     if not projets.user_can_manage(projet_id, g.user["id"]):
         flash("Seul le chef de projet ou un co-chef peut modifier les informations du projet.", "error")
         return redirect(url_for("projets.detail", projet_id=projet_id))
+
+    actuel = projets.get_projet(projet_id) or {}
+    acteur_admin = g.user["role"] == "admin"
+    chef_brut = (request.form.get("chef_projet_id") or "").strip()
+    nouveau_chef_id = None
+    if chef_brut:
+        # Chiffres ASCII seulement, taille d'un BIGINT (« ² » passe isdigit()).
+        if not re.fullmatch(r"[0-9]{1,18}", chef_brut):
+            flash(projets.MESSAGE_CHEF_INVALIDE, "error")
+            return redirect(url_for("projets.detail", projet_id=projet_id))
+        nouveau_chef_id = int(chef_brut)
+    if nouveau_chef_id is not None and nouveau_chef_id != actuel.get("chef_projet_id"):
+        if actuel.get("etat") in projets.ETATS_CLOS and not acteur_admin:
+            flash(projets.MESSAGE_CHEF_PROJET_CLOS, "error")
+            return redirect(url_for("projets.detail", projet_id=projet_id))
+        candidat = utilisateurs.get_utilisateur(nouveau_chef_id)
+        if candidat is None or not candidat.get("actif") or candidat.get("role") not in projets.ROLES_CHEF_POSSIBLES:
+            flash(projets.MESSAGE_CHEF_INVALIDE, "error")
+            return redirect(url_for("projets.detail", projet_id=projet_id))
+    else:
+        nouveau_chef_id = None
 
     nom = request.form.get("nom", "").strip()
     etat = request.form.get("etat", "")
@@ -531,7 +583,6 @@ def editer_informations(projet_id: int):
     # heures déjà datées du projet. Contrôlé seulement si les dates CHANGENT :
     # un projet ancien aux dates incohérentes (ex. repris de Chronos) reste
     # modifiable pour tout le reste — le renommer, le clore, le rouvrir.
-    actuel = projets.get_projet(projet_id) or {}
     dates_changees = (date_debut_valide != actuel.get("date_debut")
                       or date_fin_valide != actuel.get("date_fin"))
     erreur = None
@@ -561,17 +612,42 @@ def editer_informations(projet_id: int):
         return redirect(url_for("projets.detail", projet_id=projet_id))
 
     try:
-        projets.update_projet(
+        changement = projets.update_projet(
             projet_id, nom=nom, etat=etat, lots=lots,
             date_debut=date_debut_valide, date_fin=date_fin_valide,
             phase_liee_id=phase_liee_id, current_user_id=g.user["id"],
             honoraires=honoraires, client=client,
+            chef_projet_id=nouveau_chef_id, acteur_admin=acteur_admin,
         )
-    except Exception:
-        current_app.logger.exception("Échec inattendu de modification des informations (projet %s)", projet_id)
-        flash("Impossible d'enregistrer les informations (erreur inattendue, réessayez).", "error")
+    except Exception as exc:
+        if isinstance(exc, projets.ChangementChefRefuse):
+            flash(exc.message, "error")
+        elif projets.est_refus_changement_chef(exc):
+            # Dernier rempart en base (trg_garde_chef_projet) : l'état a
+            # changé entre le contrôle et l'enregistrement.
+            flash("Changement de chef refusé : rechargez la page et vérifiez l'état du projet.", "error")
+        else:
+            current_app.logger.exception("Échec inattendu de modification des informations (projet %s)", projet_id)
+            flash("Impossible d'enregistrer les informations (erreur inattendue, réessayez).", "error")
     else:
-        flash("Informations du projet mises à jour.", "success")
+        if isinstance(changement, dict):
+            nouveau, ancien = changement["nouveau"], changement["ancien"]
+            if nouveau["id"] != g.user["id"]:
+                # Après coup, comme les autres notifications : un échec ici
+                # ne défait pas le changement (déjà enregistré).
+                try:
+                    notifications_repo.creer(
+                        nouveau["id"], "projet",
+                        f"{g.user['prenom']} {g.user['nom']} vous a confié le projet "
+                        f"« {actuel.get('code', '')}_{nom} » : vous en êtes le chef de projet.",
+                        post_id=changement["post_id"],
+                    )
+                except Exception:
+                    current_app.logger.exception("Notification du nouveau chef impossible (projet %s)", projet_id)
+            flash(f"Informations du projet mises à jour : projet confié à {nouveau['prenom']} {nouveau['nom']} "
+                  f"({ancien['prenom']} {ancien['nom']} devient co-chef).", "success")
+        else:
+            flash("Informations du projet mises à jour.", "success")
 
     return redirect(url_for("projets.detail", projet_id=projet_id))
 

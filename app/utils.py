@@ -266,6 +266,45 @@ def date_courte(d, avec_annee: bool | None = None) -> str:
     return f"{texte} {d.year}" if avec_annee else texte
 
 
+RAPPEL_JOURS_DETAILLES = 5
+
+
+def texte_rappel_daily_log(jours, aujourdhui) -> str:
+    """Message du rappel Daily log (lot 11 b, demande du gérant : « Rappel
+    DailyLog : vous n'avez pas rempli votre journée du 07/10/2026. » n'était
+    pas clair) :
+      « Daily log du mardi 7 octobre non rempli »
+      « 3 jours de Daily log non remplis : lundi 5, mardi 6 et mercredi 7 octobre »
+      « 10 jours de Daily log non remplis, du jeudi 24 septembre au mercredi 7 octobre »
+    Le mois n'est écrit qu'à la fin de chaque série du même mois ; l'année
+    seulement si ce n'est pas celle d'`aujourdhui` (fuseau de la personne).
+    Au-delà de RAPPEL_JOURS_DETAILLES jours, seulement le premier et le
+    dernier (après un rechargement Chronos, qui vide le Daily log, tout le
+    monde a deux semaines à remplir)."""
+    jours = sorted(set(jours))
+    if len(jours) > RAPPEL_JOURS_DETAILLES:
+        def complet(d):
+            texte = f"{_JOURS_COMPLETS[d.weekday()].lower()} {'1er' if d.day == 1 else d.day} {_MOIS_COMPLETS[d.month - 1]}"
+            return texte + (f" {d.year}" if d.year != aujourdhui.year else "")
+        return f"{len(jours)} jours de Daily log non remplis, du {complet(jours[0])} au {complet(jours[-1])}"
+
+    def libelle(i):
+        d = jours[i]
+        texte = f"{_JOURS_COMPLETS[d.weekday()].lower()} {'1er' if d.day == 1 else d.day}"
+        suivant = jours[i + 1] if i + 1 < len(jours) else None
+        if suivant is None or (suivant.year, suivant.month) != (d.year, d.month):
+            texte += f" {_MOIS_COMPLETS[d.month - 1]}"
+            if d.year != aujourdhui.year:
+                texte += f" {d.year}"
+        return texte
+
+    morceaux = [libelle(i) for i in range(len(jours))]
+    if len(morceaux) == 1:
+        return f"Daily log du {morceaux[0]} non rempli"
+    liste = ", ".join(morceaux[:-1]) + " et " + morceaux[-1]
+    return f"{len(morceaux)} jours de Daily log non remplis : {liste}"
+
+
 def en_retard_de(echeance, aujourdhui) -> str:
     """« en retard de 3 j » (lot 11 : « ◀ en retard » seul ne disait ni
     l'échéance ni l'ampleur du retard) ; "" si l'échéance n'est pas passée."""

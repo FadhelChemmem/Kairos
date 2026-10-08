@@ -19,15 +19,16 @@
 
 <div class="page-wrap" style="padding-top:20px; padding-bottom:60px;">
 
-  {# Lot 11 (vue Admin) : projets ouverts dont le chef est désactivé. Le
-     chef ne se change pas depuis la fenêtre Informations : liste et liens. #}
+  {# Lot 11 (vue Admin) : projets ouverts dont le chef est désactivé. Lot
+     11 b : « Changer le chef » ouvre la fiche avec la fenêtre Informations
+     ouverte et le champ « Chef de projet » prêt (?informations=chef). #}
   {% if projets_chef_inactif %}
   <section class="card" aria-labelledby="titre-chef-inactif" style="padding:14px 18px; margin-bottom:16px; border-left:3px solid var(--danger-fill);">
     <h2 id="titre-chef-inactif" class="carte-titre" style="margin:0 0 4px;">Projets ouverts dont le chef est désactivé ({{ projets_chef_inactif|length }})</h2>
-    <p style="margin:0 0 10px; font-size:12.5px; color:var(--text-muted);">Plus personne ne pilote ces projets : à clore, ou à confier à un autre chef (le chef ne se change pas encore depuis la fenêtre Informations).</p>
+    <p style="margin:0 0 10px; font-size:12.5px; color:var(--text-muted);">Plus personne ne pilote ces projets : à clore, ou à confier à un autre chef depuis la fenêtre Informations du projet.</p>
     <ul style="margin:0; padding-left:18px; font-size:13px; line-height:1.7;">
       {% for p in projets_chef_inactif %}
-        <li><a href="{{ url_for('projets.detail', projet_id=p.id) }}" style="font-weight:600;">{{ p.code }}_{{ p.nom }}</a> <span style="color:var(--text-muted);">· {{ projet_etat_style(p.etat).label }} · chef : {{ p.chef_prenom }} {{ p.chef_nom }} (désactivé)</span></li>
+        <li><a href="{{ url_for('projets.detail', projet_id=p.id) }}" style="font-weight:600;">{{ p.code }}_{{ p.nom }}</a> <span style="color:var(--text-muted);">· {{ projet_etat_style(p.etat).label }} · chef : {{ p.chef_prenom }} {{ p.chef_nom }} (désactivé)</span> · <a href="{{ url_for('projets.detail', projet_id=p.id, informations='chef') }}" class="lien-changer-chef" aria-label="Changer le chef du projet {{ p.code }}_{{ p.nom }}">Changer le chef</a></li>
       {% endfor %}
     </ul>
   </section>

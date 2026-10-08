@@ -7,6 +7,7 @@ from tests_integration.base import BaseIntegration
 
 RACINE = Path(__file__).resolve().parent.parent
 MIGRATION_0016 = RACINE / "migrations" / "0016_equipe_projets_et_recherche.sql"
+MIGRATION_0017 = RACINE / "migrations" / "0017_chef_projet_et_rappels_dailylog.sql"
 
 
 class TestEquipeDesProjets(BaseIntegration):
@@ -175,7 +176,9 @@ class TestRechercheSansAccents(BaseIntegration):
         trouves = self.api("batiment b")
         self.assertEqual(len(trouves), 1)
         self.assertEqual(trouves[0]["label"], "Plans de coffrage — Bâtiment B")
-        self.assertEqual(trouves[0]["url"], f"/projets/{self.residence}")
+        # Lot 11 b : le lien ouvre la fenêtre de la tâche sur la fiche.
+        (tid,) = [r["id"] for r in self.sql("SELECT id FROM tache WHERE titre LIKE 'Plans de coffrage%%'")]
+        self.assertEqual(trouves[0]["url"], f"/projets/{self.residence}?tache={tid}")
         self.assertIn("26001X_Résidence Été", trouves[0]["sous_titre"])
         self.assertEqual([r["label"] for r in self.api("coffrage")], ["Plans de coffrage — Bâtiment B"])
 
@@ -248,14 +251,21 @@ class TestRappelDailyLogMarqueLu(BaseIntegration):
         self.j2 = self.auj - datetime.timedelta(days=2)
         for j in (self.j1, self.j2):
             self.rappel(j)
+        # Rappels de l'ancien format envoyés AVANT le lot 11 b : la migration
+        # 0017 (rejouée ici) leur donne leur jour (rappel_jours).
+        with self.db.get_cursor() as cur:
+            cur.execute(MIGRATION_0017.read_text(encoding="utf-8"))
 
     def rappel(self, jour):
         self.sql("INSERT INTO notification (utilisateur_id, categorie, message) VALUES (%s, 'rh_info', %s)",
                  (self.moi, f"Rappel DailyLog : vous n'avez pas rempli votre journée du {jour.strftime('%d/%m/%Y')}."))
 
     def lus(self):
+        # Les rappels de l'ancien format seulement (la première page du jour
+        # peut en envoyer un nouveau, pour les autres jours oubliés).
         return {r["message"][-11:-1]: r["lu"] for r in self.sql(
-            "SELECT message, lu FROM notification WHERE utilisateur_id = %s", (self.moi,))}
+            "SELECT message, lu FROM notification WHERE utilisateur_id = %s AND message LIKE 'Rappel%%'",
+            (self.moi,))}
 
     def test_jour_rempli_puis_jour_absent(self):
         self.login(self.moi)

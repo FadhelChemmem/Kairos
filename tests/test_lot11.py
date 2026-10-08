@@ -223,7 +223,7 @@ class TestRechercheGlobale(_Base):
         self.assertEqual([x["label"] for x in r],
                          ["26001X_Résidence Été", "Coffrage", "Fadhel Chemmem", "Omrane B (inactif)"])
         self.assertEqual(r[0]["sous_titre"], "Projet · Bloqué")
-        self.assertEqual((r[1]["sous_titre"], r[1]["url"]), ("Tâche en cours · 26001X_Résidence Été", "/projets/4"))
+        self.assertEqual((r[1]["sous_titre"], r[1]["url"]), ("Tâche en cours · 26001X_Résidence Été", "/projets/4?tache=9"))
         self.assertEqual(r[2]["sous_titre"], "Gérant")
         self.assertEqual((r[3]["sous_titre"], r[3]["url"]), ("compte désactivé", "/utilisateurs/8/profil"))
 

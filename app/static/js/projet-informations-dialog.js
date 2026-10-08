@@ -42,4 +42,20 @@
   });
 
   window.KairosFloatingWindow.attacherFermetureAuFond(dialog);
+
+  // Lot 11 b : lien « Changer le chef » de l'encart Admin (liste
+  // Utilisateurs, ?informations=chef) — fenêtre ouverte, focus dans le
+  // champ « Chef de projet » (sa liste s'ouvre au focus), nom du chef
+  // actuel sélectionné : la frappe le remplace. Le paramètre est retiré de
+  // l'adresse : un rechargement ne rouvre pas la fenêtre.
+  if (dialog.getAttribute('data-ouvrir-au-chargement') === 'chef') {
+    ouvrir();
+    var champ = dialog.querySelector('#dialog-info-chef ~ .search-combobox-wrap .search-combobox-input');
+    if (champ) { champ.focus(); champ.select(); }
+    try {
+      var u = new URL(window.location.href);
+      u.searchParams.delete('informations');
+      window.history.replaceState(window.history.state, '', u.pathname + u.search + u.hash);
+    } catch (e) { /* adresse laissée telle quelle */ }
+  }
 })();

@@ -141,10 +141,12 @@
         <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a créé une tâche</div>
       {% elif post.est_cloture_tache %}
         <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a terminé une tâche</div>
-      {% elif post.evenement|default(none) in ('creation_projet', 'etat_projet', 'etat_tache', 'titre_tache') %}
-        {# Posts automatiques (retour Fadhel, 2026-09-29, P1). #}
+      {% elif post.evenement|default(none) in ('creation_projet', 'etat_projet', 'etat_tache', 'titre_tache', 'chef_projet') %}
+        {# Posts automatiques (retour Fadhel, 2026-09-29, P1 ; changement de
+           chef : lot 11 b). #}
         {% set phrase = {'creation_projet': 'a créé le projet', 'etat_projet': "a changé l'état du projet",
-                         'etat_tache': "a changé l'état d'une tâche", 'titre_tache': 'a renommé une tâche'}[post.evenement] %}
+                         'etat_tache': "a changé l'état d'une tâche", 'titre_tache': 'a renommé une tâche',
+                         'chef_projet': 'a changé le chef de projet'}[post.evenement] %}
         <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> {{ phrase }}</div>
       {% elif post.est_repost or post.parent_post_id %}
         {# "Reposter" (Lot 5, retour Fadhel, 2026-09-28) : distinct du rebond
@@ -163,7 +165,7 @@
     </div>
     {% if post.est_creation_tache or post.evenement|default(none) in ('etat_tache', 'titre_tache') %}
       <span class="pill" style="background:{{ post_tache_pill.bg }}; color:{{ post_tache_pill.fg }};">{{ post_tache_pill.label }}</span>
-    {% elif post.evenement|default(none) in ('creation_projet', 'etat_projet') %}
+    {% elif post.evenement|default(none) in ('creation_projet', 'etat_projet', 'chef_projet') %}
       <span class="pill" style="background:var(--hover-bg); color:var(--text-secondary);">Projet</span>
     {% elif post.est_cloture_tache %}
       {# Bug corrigé (2026-09-27, retour Fadhel) : affichait toujours
@@ -184,7 +186,7 @@
       {% if post.evenement == 'etat_tache' %}<div style="font-weight:600;">{{ post.tache_titre }}</div>{% endif %}
       <div class="post-texte" style="color:var(--text-secondary);">{{ post.contenu }}</div>
     </div>
-  {% elif post.evenement|default(none) == 'etat_projet' %}
+  {% elif post.evenement|default(none) in ('etat_projet', 'chef_projet') %}
     <div class="post-texte" style="font-size:13.5px; line-height:1.55; margin:12px 0 10px 46px; color:var(--text-secondary);">{{ post.contenu }}</div>
   {% elif post.est_creation_tache or post.est_cloture_tache or post.evenement|default(none) == 'creation_projet' %}
     <div class="post-texte" style="font-size:13.5px; line-height:1.55; margin:12px 0 10px 46px; font-weight:600;">{{ post.contenu or post.tache_titre }}</div>

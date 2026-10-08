@@ -14,9 +14,16 @@
    générique (search-combobox.js) sur la liste des projets visibles.
 
    Attend dans le contexte : projet, lots, projets_phase_liee (liste de
-   projets {id, code, nom} candidats, projet courant exclu).
+   projets {id, code, nom} candidats, projet courant exclu), chefs_possibles,
+   chef_modifiable, ouvrir_informations.
+
+   Lot 11 b (demande du gérant) : « Chef de projet » se change ici, avec le
+   même champ de recherche que le sélecteur d'intervenant (sans accents,
+   avatars). L'ancien chef devient co-chef. Projet clos : seul l'Admin peut
+   le réaffecter (les autres le rouvrent d'abord). ?informations=chef (encart
+   Admin de la liste Utilisateurs) ouvre la fenêtre, le champ prêt.
 #}
-<dialog id="dialog-informations-projet" class="post-dialog" aria-labelledby="dialog-informations-projet-titre">
+<dialog id="dialog-informations-projet" class="post-dialog" aria-labelledby="dialog-informations-projet-titre"{% if ouvrir_informations %} data-ouvrir-au-chargement="chef"{% endif %}>
   <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
     <span id="dialog-informations-projet-titre" style="font-size:15px; font-weight:800;">Informations du projet</span>
     <button type="button" data-close-informations-dialog aria-label="Fermer" class="dialog-fermer">
@@ -49,6 +56,22 @@
         <label for="dialog-info-honoraires">Honoraires</label>
         <input type="text" id="dialog-info-honoraires" name="honoraires" inputmode="decimal" placeholder="12 500,00" value="{{ montant_fr(projet.honoraires) }}">
       </div>
+    </div>
+    <div class="form-row">
+      {% if chef_modifiable %}
+      <label for="dialog-info-chef">Chef de projet</label>
+      <select id="dialog-info-chef" name="chef_projet_id" data-search-combobox data-search-riche data-search-placeholder="Rechercher un chef de projet…" data-search-vide="Aucun chef de projet trouvé" aria-describedby="dialog-info-chef-aide">
+        {% for u in chefs_possibles %}
+          {% set rs = role_style(u.role) if u.role else none %}
+          <option value="{{ u.id }}" {{ 'selected' if u.id == projet.chef_projet_id }} data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}" data-couleur="{{ avatar_color(u.id) }}"{% if u.avatar_chemin %} data-photo="{{ avatar_url(u.id, u.avatar_chemin) }}"{% endif %} data-sous-titre="{% if u.inactif %}Compte désactivé · chef actuel{% elif u.id == projet.chef_projet_id %}Chef actuel{% if rs %} · {{ rs.label }}{% endif %}{% else %}{{ rs.label if rs }}{% if u.poste and (not rs or u.poste|lower != rs.label|lower) %} · {{ u.poste }}{% endif %}{% endif %}">{{ u.prenom }} {{ u.nom }}{{ ' (désactivé)' if u.inactif }}</option>
+        {% endfor %}
+      </select>
+      <p id="dialog-info-chef-aide" class="aide-champ">Chef de projet ou administrateur, compte actif. L'ancien chef devient co-chef.</p>
+      {% else %}
+      <span class="label">Chef de projet</span>
+      <div style="font-size:13px; font-weight:600; padding:8px 0 2px;">{{ projet.chef_prenom }} {{ projet.chef_nom }}</div>
+      <p class="aide-champ">Projet clos : rouvrez-le d'abord pour changer de chef.</p>
+      {% endif %}
     </div>
     <div class="form-row">
       <label for="dialog-info-etat">État</label>

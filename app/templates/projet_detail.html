@@ -150,7 +150,8 @@
         {% endfor %}
       </div>
       {% if taches_closes %}
-      <details class="taches-closes" id="taches-closes">
+      {# Lot 11 b : ?tache=<id> d'une tâche close (recherche, notification) — dépliées. #}
+      <details class="taches-closes" id="taches-closes"{% if deplier_taches_closes %} open{% endif %}>
         <summary class="taches-closes-bascule">
           {% if taches_closes|length > 1 %}
           <span class="si-ferme">Afficher les {{ taches_closes|length }} tâches closes</span>
@@ -304,8 +305,10 @@
 <form id="form-rejoindre-tache" method="post" hidden><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
 {# Lot 11 (audit front I2) : UNE fenêtre de tâche, remplie à l'ouverture
    par le fragment taches_fenetre.fenetre (data-url, « 0 » remplacé par l'id
-   de la tâche) — voir tache-dialog.js. #}
-<dialog class="post-dialog tache-dialog" id="dialog-tache" aria-label="Tâche" data-url="{{ url_for('taches_fenetre.fenetre', projet_id=projet.id, tache_id=0) }}">
+   de la tâche) — voir tache-dialog.js. Lot 11 b : data-ouvrir-au-chargement,
+   la tâche demandée par ?tache=<id> (résultat « tâche » de la recherche
+   globale, notification d'affectation), ouverte dès l'arrivée. #}
+<dialog class="post-dialog tache-dialog" id="dialog-tache" aria-label="Tâche" data-url="{{ url_for('taches_fenetre.fenetre', projet_id=projet.id, tache_id=0) }}"{% if tache_a_ouvrir %} data-ouvrir-au-chargement="{{ tache_a_ouvrir }}"{% endif %}>
   <button type="button" data-close-tache aria-label="Fermer" class="dialog-fermer tache-dialog-fermer">
     <svg aria-hidden="true" focusable="false" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
   </button>
