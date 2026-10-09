@@ -1255,7 +1255,7 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
 .bandeau-admin-test .bandeau-admin-bouton { background: var(--surface); color: var(--text-strong); border: 1px solid var(--control-border); }
 .bandeau-admin :focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .bandeau-admin-voir :focus-visible, .bandeau-admin-agir :focus-visible, .bandeau-admin-date :focus-visible { outline-color: #fff; }
-.bandeau-admin-date label, .bandeau-admin-form label { display: inline; margin: 0; font-size: 12.5px; font-weight: 600; color: inherit; }
+.bandeau-admin-form label { display: inline; margin: 0; font-size: 12.5px; font-weight: 600; color: inherit; }
 .bandeau-admin-form input[type=date] {
   width: auto; min-height: 28px; padding: 3px 8px; border-radius: 8px; font: inherit; font-size: 13px;
   background: #fff; color: #23281f; border: 1px solid #8a958d; color-scheme: light;
@@ -1268,6 +1268,7 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
 /* La barre du haut (collante) garde un liseré de la couleur du mode. */
 .topbar-mode-voir { border-bottom: 3px solid #a3480d; }
 .topbar-mode-agir { border-bottom: 3px solid #b93a1a; }
+@media (max-width: 480px) { .bandeau-admin-sep { display: none; } }
 @media (max-width: 860px) {
   .bandeau-admin-inner { padding: 7px 16px; }
   .bandeau-admin-form input[type=date] { font-size: 16px; }

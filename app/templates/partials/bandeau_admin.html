@@ -16,7 +16,7 @@
     <div class="bandeau-admin-ligne">
       <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
       <span>{{ 'Vous voyez Kairos comme' if b.mode == 'voir' else 'Vous agissez comme' }} <strong>{{ b.cible.prenom }} {{ b.cible.nom }}</strong> ({{ b.role_cible }}){{ ' (mode test)' if b.mode == 'agir' }}</span>
-      <span aria-hidden="true">—</span>
+      <span class="bandeau-admin-sep" aria-hidden="true">—</span>
       <form method="post" action="{{ url_for('modes_admin.revenir') }}" class="bandeau-admin-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% if b.retour %}<input type="hidden" name="next" value="{{ b.retour }}">{% endif %}
@@ -29,7 +29,7 @@
       {% if b.date_simulee %}
         <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>
         <span>Date simulée&nbsp;: <strong>{{ b.date_simulee|date_longue }}</strong></span>
-        <span aria-hidden="true">—</span>
+        <span class="bandeau-admin-sep" aria-hidden="true">—</span>
         <form method="post" action="{{ url_for('mode_test.date_simulee_effacer') }}" class="bandeau-admin-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           {% if b.retour %}<input type="hidden" name="next" value="{{ b.retour }}">{% endif %}
@@ -38,7 +38,7 @@
       {% elif not b.mode %}
         <span class="bandeau-admin-etiquette">Mode test</span>
       {% endif %}
-      <form method="post" action="{{ url_for('mode_test.date_simulee') }}" class="bandeau-admin-form bandeau-admin-date">
+      <form method="post" action="{{ url_for('mode_test.date_simulee') }}" class="bandeau-admin-form bandeau-admin-choix-date">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% if b.retour %}<input type="hidden" name="next" value="{{ b.retour }}">{% endif %}
         <label for="bandeau-date-simulee">{{ 'Autre date' if b.date_simulee else 'Date simulée' }}</label>
