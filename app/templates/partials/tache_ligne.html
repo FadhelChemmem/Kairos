@@ -1,22 +1,19 @@
-{# Ligne du tableau des tâches de la fiche projet (lot 11 : extraite pour
-   servir aux tâches ouvertes et aux tâches closes repliées). Contexte : t,
-   projet, projet_clos, g.user. Clic sur la ligne (retour Fadhel,
-   2026-09-29) : ouvre la fenêtre de la tâche, chargée à la demande (voir
-   tache-dialog.js et partials/tache_fenetre.html). #}
+{# Ligne du tableau des tâches de la fiche projet (lot 11). Contexte : t,
+   projet, projet_clos, g.user ; facultatifs : oob (lot 13 : remplacée
+   hors cible après une action dans la fenêtre de la tâche), surligner (id
+   de la tâche à mettre en évidence). Clic sur la ligne : ouvre le panneau
+   de la tâche (tache-dialog.js). #}
+{% import "partials/avatar.html" as avatarm %}
 {%- set tst = tache_etat_style(t.etat) %}
 {% set tache_close = t.etat in etats_taches_closes %}
 {% set deja_intervenant_tache = g.user.id in (t.intervenants|map(attribute='id')|list) %}
-{# Lot 10 (audit front I8) : le titre est le vrai bouton d'ouverture, la
-   ligne reste cliquable à la souris. Titre complet au survol (tronqué). #}
-<div class="taskrow taskrow-cliquable" role="row" data-open-tache="{{ t.id }}">
+{# Audit UX I7 : échéance dépassée signalée dans la ligne (comme à l'accueil). #}
+{% set retard = en_retard_de(t.date_echeance, today()) if t.date_echeance and not tache_close else '' %}
+<div class="taskrow taskrow-cliquable{{ ' k-surligne' if surligner == t.id }}" role="row" id="tache-ligne-{{ t.id }}" data-open-tache="{{ t.id }}"{% if oob %} data-partiel-oob{% endif %}>
   <div role="cell" class="taskrow-cellule-titre">
-    <button type="button" class="taskrow-titre{{ ' taskrow-close' if tache_close }}" data-ouvrir-tache aria-haspopup="dialog" title="{{ t.titre }}">{{ t.titre }}</button>
+    {# Lot 10 (audit front I8) : le titre est le vrai bouton d'ouverture. #}
+    <button type="button" class="taskrow-titre{{ ' taskrow-close' if tache_close }}" data-ouvrir-tache data-partiel-titre aria-haspopup="dialog" title="{{ t.titre }}">{{ t.titre }}</button>
   </div>
-  {# "Rejoindre cette tâche" (retour Fadhel, 2026-09-28) : ajout immédiat
-     comme intervenant de la tâche, révélé au survol de la ligne. Lot 11
-     (audit front I9) : jamais sur une tâche close, et plus un arrêt de
-     tabulation (tabindex=-1, une seule tabulation par ligne) — au clavier,
-     le même bouton est dans la fenêtre de la tâche. #}
   <div class="taskrow-intervenants" role="cell">
     <div class="avatar-stack" role="img" aria-label="{{ ('Intervenants : ' ~ (t.intervenants|map(attribute='prenom')|join(', '))) if t.intervenants else 'Aucun intervenant' }}">
       {%- for iv in t.intervenants %}
@@ -24,16 +21,19 @@
       {%- endfor %}
     </div>
     {%- if g.user.role not in ('rh', 'client') and not projet_clos and not deja_intervenant_tache and not tache_close %}
-    {# Un seul formulaire (jeton CSRF) pour toute la page : #form-rejoindre-tache. #}
-    <button type="submit" form="form-rejoindre-tache" formaction="{{ url_for('projets.rejoindre_tache', projet_id=projet.id, tache_id=t.id) }}" class="task-join-btn" tabindex="-1" title="Rejoindre cette tâche" aria-label="Rejoindre cette tâche"></button>
+    {# « Rejoindre cette tâche » (retour Fadhel, 2026-09-28) : un seul
+       formulaire (jeton CSRF) pour toute la page, #form-rejoindre-tache ;
+       lot 13 : en partiel (la ligne seule est remplacée), visible au focus
+       de la ligne ; au clavier, le même bouton est dans le panneau. #}
+    <button type="submit" form="form-rejoindre-tache" formaction="{{ url_for('projets.rejoindre_tache', projet_id=projet.id, tache_id=t.id) }}" data-partiel="#tache-ligne-{{ t.id }}" data-optimiste="rejoindre" class="task-join-btn" tabindex="-1" title="Rejoindre cette tâche" aria-label="Rejoindre la tâche « {{ t.titre }} »"></button>
     {%- endif %}
   </div>
-  <div role="cell" class="taskrow-etat"><span class="pill" style="background:{{ tst.bg }}; color:{{ tst.fg }};">{{ tst.libelle }}</span></div>
-  <div role="cell" class="taskrow-date{{ ' taskrow-close' if tache_close }}">
+  <div role="cell" class="taskrow-etat"><span class="pill {{ tst.classe }}" data-tache-pastille>{{ tst.libelle }}</span></div>
+  <div role="cell" class="taskrow-date{{ ' taskrow-close' if tache_close }}{{ ' taskrow-retard' if retard }}">
     {% if t.date_echeance %}{{ t.date_echeance|date_courte }}{% endif %}{% if t.type_deadline == 'interne' %} <span class="taskrow-interne">(interne)</span>{% endif %}
+    {% if retard %}<span class="texte-retard taskrow-retard-jours" title="{{ retard|capitalize }}"><span aria-hidden="true">+{{ retard.split(' ')[-2] }} j</span><span class="sr-only">, {{ retard }}</span></span>{% endif %}
   </div>
-  {# "8/5 h" en clair = heures intervenants / heures chef de projet
-     (retour Fadhel, J.docx, PR4) — voir v_tache_heures_par_role. #}
+  {# « 8/5 h » = heures intervenants / heures chef de projet (PR4). #}
   <div role="cell" class="taskrow-heures" title="{{ t.heures_intervenant|heures }} intervenants / {{ t.heures_chef|heures }} chef de projet">{{ heures_interv_chef(t.heures_intervenant, t.heures_chef) }}</div>
   <span class="taskrow-ouvrir" aria-hidden="true"></span>
 </div>

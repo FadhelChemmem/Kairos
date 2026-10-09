@@ -1,0 +1,13 @@
+{# Erreurs de saisie reliées aux champs (lot 13, audit a11y I5) — pages
+   complètes (repli sans JavaScript) ; en partiel, le même balisage est posé
+   par kairos-partiel.js (Kairos.marquerErreurs).
+   attrs(erreurs, nom, decrit) : aria-invalid, aria-describedby (message +
+   aide existante), autofocus sur le champ en erreur.
+   message(erreurs, nom) : le message, sous le champ. #}
+{% macro attrs(erreurs, nom, decrit=none) -%}
+{%- if erreurs and erreurs.get(nom) %} aria-invalid="true" data-k-invalide="err-{{ nom }}" aria-describedby="err-{{ nom }}{{ ' ' ~ decrit if decrit }}" autofocus
+{%- elif decrit %} aria-describedby="{{ decrit }}"{% endif -%}
+{%- endmacro %}
+{% macro message(erreurs, nom) -%}
+{%- if erreurs and erreurs.get(nom) %}<p class="champ-erreur" id="err-{{ nom }}" data-k-erreur>{{ erreurs[nom] }}</p>{% endif -%}
+{%- endmacro %}

@@ -1,116 +1,220 @@
-{# Contenu de la fenêtre d'une tâche (lot 11, audit front I2) : rendu à la
-   demande par taches_fenetre.fenetre (GET /projets/<id>/taches/<tid>/fenetre)
-   et inséré par tache-dialog.js dans l'unique <dialog id="dialog-tache"> de
-   projet_detail.html — avant, une fenêtre complète était pré-rendue pour
-   chaque tâche (67 % du HTML d'une fiche de 76 tâches).
-   Contexte : t (ligne de taches.list_taches_projet), projet, peut_gerer,
-   projet_clos, etats_reserves, next_url (retour après un envoi de fichier). #}
+{# Panneau d'une tâche (lot 11 : chargé à la demande par
+   taches_fenetre.fenetre et inséré par tache-dialog.js dans l'unique
+   <dialog id="dialog-tache"> de la fiche ; lot 13 : panneau latéral sur
+   ordinateur, feuille en bas sur téléphone). Contexte : t, projet,
+   peut_gerer, projet_clos, etats_reserves, candidats ; facultatifs : oob,
+   enregistre ('titre' : coche « Enregistré »), next_url.
+
+   Lot 13 (audit UX §4.7 P0) : chaque action est un formulaire POST
+   classique (repli sans JavaScript : retour à la fiche, fenêtre rouverte)
+   envoyé en partiel (data-partiel) : le panneau est remplacé, la ligne du
+   tableau, les compteurs, l'état du projet et le fil suivent hors cible.
+   Ids stables sur tous les contrôles (le focus y revient). #}
 {% set tst = tache_etat_style(t.etat) %}
 {% set ids_intervenants = t.intervenants|map(attribute='id')|list %}
+{% set tache_close = t.etat in etats_taches_closes %}
 {% set peut_agir_tache = not projet_clos and (peut_gerer or (g.user.role not in ('client', 'rh') and g.user.id in ids_intervenants)) %}
-<div class="tache-fenetre" data-tache-fenetre="{{ t.id }}" data-titre="{{ t.titre }}">
+{% set gestion_tache = peut_gerer and not projet_clos and not tache_close %}
+{# États réservés (décision du gérant, lot 10) : Vérifiée, Arrêtée et
+   Abandonnée seulement pour le chef de projet, un co-chef ou l'Admin ;
+   une tâche dans l'un de ces états n'est rouverte que par eux. Contrôle
+   serveur : projets.changer_etat_tache / cloturer_tache, migration 0015. #}
+{% set etat_reserve_verrouille = t.etat in etats_reserves and not peut_gerer %}
+{% set cible = '#tache-fenetre-' ~ t.id %}
+{% set retard = en_retard_de(t.date_echeance, today()) if t.date_echeance and not tache_close else '' %}
+{% if t.etat in ('termine', 'verifie') %}
+  {% set suivants = (['verifie'] if t.etat == 'termine' and peut_gerer else []) + ['en_cours'] %}
+{% else %}
+  {% set suivants = ['en_cours', 'bloque'] + (['verifie', 'arret', 'abandonne'] if peut_gerer else []) %}
+{% endif %}
+{% set ordre = ['en_cours', 'bloque', 'termine', 'verifie', 'arret', 'abandonne'] %}
+<div class="tache-fenetre" id="tache-fenetre-{{ t.id }}" data-tache-fenetre="{{ t.id }}" data-titre="{{ t.titre }}"{% if oob %} data-partiel-oob{% endif %}>
   <div class="tache-fenetre-entete">
-    <span class="pill" style="background:{{ tst.bg }}; color:{{ tst.fg }};">{{ tst.libelle }}</span>
+    <span class="pill {{ tst.classe }}" data-tache-pastille>{{ tst.libelle }}</span>
+    <span class="tache-fenetre-projet" title="{{ projet.code }}_{{ projet.nom }}" data-url-fiche="{{ url_for('projets.detail', projet_id=projet.id, tache=t.id) }}">{{ projet.code }}</span>
+    <span class="tache-panneau-nav k-js-seul">
+      <button type="button" class="tache-panneau-fleche" data-tache-voisine="-1" aria-keyshortcuts="ArrowUp" title="Tâche précédente (↑)" aria-label="Tâche précédente">
+        <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+      </button>
+      <button type="button" class="tache-panneau-fleche" data-tache-voisine="1" aria-keyshortcuts="ArrowDown" title="Tâche suivante (↓)" aria-label="Tâche suivante">
+        <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+    </span>
   </div>
+
   {% if peut_agir_tache %}
-  {# Titre modifiable ; le changement apparaît dans le fil. #}
-  <form method="post" action="{{ url_for('projets.modifier_titre_tache', projet_id=projet.id, tache_id=t.id) }}" class="form-row" style="display:flex; gap:8px; align-items:flex-end;">
+  {# Titre modifiable en place : Entrée ou sortie du champ enregistrent,
+     Échap annule (tache-dialog.js) ; le changement apparaît dans le fil. #}
+  <form method="post" action="{{ url_for('projets.modifier_titre_tache', projet_id=projet.id, tache_id=t.id) }}" class="tache-titre-form" data-partiel="{{ cible }}" data-tache-titre-form>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div style="flex:1; min-width:0;">
-      <label for="tache-titre-{{ t.id }}">Titre de la tâche</label>
-      <input type="text" id="tache-titre-{{ t.id }}" name="titre" value="{{ t.titre }}" maxlength="255" required>
-    </div>
-    <button type="submit" class="btn-secondary" style="width:auto; padding:9px 14px;">Renommer</button>
+    <label for="tache-titre-{{ t.id }}" class="sr-only">Titre de la tâche</label>
+    <input type="text" id="tache-titre-{{ t.id }}" name="titre" value="{{ t.titre }}" maxlength="255" required autocomplete="off" class="tache-titre-champ" data-valeur-initiale="{{ t.titre }}" data-partiel-titre>
+    <button type="submit" class="btn btn-petit k-sans-js">Renommer</button>
+    {% if enregistre == 'titre' %}<span class="tache-enregistre" aria-hidden="true">Enregistré</span>{% endif %}
   </form>
   {% else %}
-  <h2 class="tache-fenetre-titre">{{ t.titre }}</h2>
+  <h2 class="tache-fenetre-titre" data-partiel-titre tabindex="-1">{{ t.titre }}</h2>
   {% endif %}
-  <div style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
-    {% if t.date_echeance %}Échéance {{ t.date_echeance|date_courte }}{% if t.type_deadline == 'interne' %} · interne{% endif %} · {% endif %}{{ t.intervenants|map(attribute='prenom')|join(', ') or 'Aucun intervenant' }}
-    {#- Heures en h min (filtre |heures) ; l'échéance porte l'année dès
-        qu'elle n'est pas celle en cours (date_courte, lot 11). #}
-    {%- if t.heures_cumulees %} · <span class="tache-fenetre-heures">{{ t.heures_intervenant|heures }} intervenants / {{ t.heures_chef|heures }} chef de projet</span>{% endif %}
-  </div>
-  {# « Rejoindre cette tâche » au clavier (lot 11, audit front I9) : dans la
-     ligne du tableau, le bouton n'est plus un arrêt de tabulation (une seule
-     tabulation par tâche) ; on le retrouve ici. Jamais sur une tâche close. #}
-  {% if g.user.role not in ('rh', 'client') and not projet_clos and g.user.id not in ids_intervenants and t.etat not in etats_taches_closes %}
-  <form method="post" action="{{ url_for('projets.rejoindre_tache', projet_id=projet.id, tache_id=t.id) }}" style="margin-bottom:12px;">
+
+  <dl class="tache-proprietes">
+    <div class="tache-prop">
+      <dt id="tache-{{ t.id }}-etat-libelle">État</dt>
+      <dd>
+      {% if projet_clos %}
+        <span class="tache-prop-texte">{{ tst.libelle }} — {% if peut_gerer %}projet clos&nbsp;: rouvrez-le (panneau Informations) pour agir sur ses tâches.{% else %}projet clos&nbsp;: seul son chef de projet ou un co-chef peut le rouvrir.{% endif %}</span>
+      {% elif not peut_agir_tache %}
+        <span class="tache-prop-texte">{{ tst.libelle }} — seuls le chef de projet, un co-chef ou un intervenant de la tâche peuvent changer son état.</span>
+      {% elif etat_reserve_verrouille %}
+        <span class="tache-prop-texte">Tâche {{ tst.libelle|lower }}&nbsp;: seuls le chef de projet, un co-chef ou un Admin peuvent changer son état.</span>
+      {% else %}
+        {# Liste de choix sans « Appliquer » (audit UX §2.4) : un clic change
+           l'état, tout de suite à l'écran (optimiste), « Annuler » dans le toast. #}
+        <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" class="tache-etats" data-partiel="{{ cible }}" data-optimiste="etat-tache" role="group" aria-labelledby="tache-{{ t.id }}-etat-libelle">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% for code in ordre if code == t.etat or code in suivants %}
+            {% set st = tache_etat_style(code) %}
+            <button type="submit" name="etat" value="{{ code }}" id="tache-{{ t.id }}-etat-{{ code }}" class="tache-etat-choix tache-etat-{{ code }}" aria-pressed="{{ 'true' if code == t.etat else 'false' }}" data-classe="{{ st.classe }}" data-libelle="{{ st.libelle }}">{{ 'Rouvrir' if code == 'en_cours' and t.etat in ('termine', 'verifie') else st.libelle }}</button>
+          {% endfor %}
+        </form>
+        {% if t.etat in ('termine', 'verifie') and t.date_fin %}<p class="tache-prop-aide">Clôturée le {{ t.date_fin|date_courte(true) }}</p>{% endif %}
+      {% endif %}
+      </dd>
+    </div>
+
+    <div class="tache-prop">
+      <dt>Échéance</dt>
+      <dd id="tache-{{ t.id }}-echeance">
+      {% if gestion_tache %}
+        <form method="post" action="{{ url_for('projets.modifier_echeance_tache', projet_id=projet.id, tache_id=t.id) }}" class="tache-echeance-form" id="tache-{{ t.id }}-echeance-form" data-partiel="{{ cible }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="form-row">
+            <label for="tache-{{ t.id }}-date-echeance" class="sr-only">Date d'échéance</label>
+            <input type="date" id="tache-{{ t.id }}-date-echeance" name="date_echeance" value="{{ t.date_echeance.isoformat() if t.date_echeance else '' }}"{% if t.date_debut or projet.date_debut %} min="{{ ([t.date_debut, projet.date_debut]|select|max).isoformat() }}"{% endif %} aria-describedby="tache-{{ t.id }}-echeance-aide">
+          </div>
+          <div class="form-row">
+            <label for="tache-{{ t.id }}-type-echeance" class="sr-only">Type d'échéance</label>
+            <select id="tache-{{ t.id }}-type-echeance" name="type_deadline">
+              <option value="rendu_client" {{ 'selected' if t.type_deadline == 'rendu_client' }}>Rendu client</option>
+              <option value="interne" {{ 'selected' if t.type_deadline == 'interne' }}>Interne</option>
+            </select>
+          </div>
+          <button type="submit" id="tache-{{ t.id }}-echeance-enregistrer" class="btn btn-petit">Enregistrer</button>
+          <p id="tache-{{ t.id }}-echeance-aide" class="aide-champ tache-prop-aide">{% if retard %}<span class="texte-retard">{{ retard|capitalize }}.</span> {% endif %}Date vide : tâche sans échéance.</p>
+        </form>
+      {% else %}
+        <span class="tache-prop-texte">{% if t.date_echeance %}{{ t.date_echeance|date_courte }}{% if t.type_deadline == 'interne' %} · interne{% endif %}{% if retard %} · <span class="texte-retard">{{ retard }}</span>{% endif %}{% else %}Sans échéance{% endif %}</span>
+      {% endif %}
+      </dd>
+    </div>
+
+    <div class="tache-prop">
+      <dt>Intervenants</dt>
+      <dd id="tache-{{ t.id }}-intervenants">
+        {% if t.intervenants %}
+        <ul class="tache-intervenants">
+          {% for iv in t.intervenants %}
+          <li id="tache-{{ t.id }}-intervenant-{{ iv.id }}" class="tache-intervenant">
+            <span>{{ iv.prenom }} {{ iv.nom }}</span>
+            {% if gestion_tache %}
+            <form method="post" action="{{ url_for('projets.retirer_intervenant_tache', projet_id=projet.id, tache_id=t.id, utilisateur_id=iv.id) }}" data-partiel="{{ cible }}" data-focus-apres="#tache-{{ t.id }}-ajout-intervenant ~ .search-combobox-wrap .search-combobox-input">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" id="tache-{{ t.id }}-retirer-{{ iv.id }}" class="tache-intervenant-retirer" aria-label="Retirer {{ iv.prenom }} {{ iv.nom }} de la tâche" title="Retirer de la tâche">
+                <svg aria-hidden="true" focusable="false" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </form>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <span class="tache-prop-texte tache-prop-vide">Aucun intervenant</span>
+        {% endif %}
+        {% if gestion_tache %}
+          {% if candidats %}
+          {# Le choix d'une personne l'affecte aussitôt (tache-dialog.js) ;
+             sans JavaScript, bouton « Affecter ». #}
+          <form method="post" action="{{ url_for('projets.ajouter_intervenants_tache', projet_id=projet.id, tache_id=t.id) }}" class="tache-ajout-intervenant" data-partiel="{{ cible }}" data-soumettre-au-choix data-focus-apres="#tache-{{ t.id }}-ajout-intervenant ~ .search-combobox-wrap .search-combobox-input">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label for="tache-{{ t.id }}-ajout-intervenant" class="sr-only">Affecter quelqu'un à la tâche</label>
+            <select id="tache-{{ t.id }}-ajout-intervenant" name="utilisateur_id" required data-search-combobox data-search-riche data-search-action data-search-placeholder="+ Affecter quelqu'un…" data-search-vide="Aucune personne trouvée">
+              <option value="" disabled selected>Choisir…</option>
+              {% for u in candidats %}
+                {% set rs = role_style(u.role) %}
+                <option value="{{ u.id }}" data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}" data-couleur="{{ avatar_color(u.id) }}"{% if u.avatar_chemin %} data-photo="{{ avatar_url(u.id, u.avatar_chemin) }}"{% endif %} data-sous-titre="{{ rs.label }}{% if u.poste and u.poste|lower != rs.label|lower %} · {{ u.poste }}{% endif %}">{{ u.prenom }} {{ u.nom }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-petit k-sans-js">Affecter</button>
+          </form>
+          {% else %}
+          <p class="aide-champ tache-prop-aide">Toutes les personnes qui voient ce projet sont déjà affectées.</p>
+          {% endif %}
+        {% endif %}
+      </dd>
+    </div>
+
+    {% if t.heures_cumulees %}
+    <div class="tache-prop">
+      <dt>Heures</dt>
+      <dd><span class="tache-prop-texte tache-fenetre-heures">{{ t.heures_intervenant|heures }} intervenants / {{ t.heures_chef|heures }} chef de projet</span></dd>
+    </div>
+    {% endif %}
+  </dl>
+
+  {# « Rejoindre cette tâche » (lot 11, audit front I9) : jamais sur une
+     tâche close ni pour un RH ou un client. #}
+  {% if g.user.role not in ('rh', 'client') and not projet_clos and g.user.id not in ids_intervenants and not tache_close %}
+  <form method="post" action="{{ url_for('projets.rejoindre_tache', projet_id=projet.id, tache_id=t.id) }}" class="tache-rejoindre" data-partiel="{{ cible }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="btn-secondary" style="width:auto; padding:7px 12px;">+ Rejoindre cette tâche</button>
+    <button type="submit" id="tache-{{ t.id }}-rejoindre" class="btn">+ Rejoindre cette tâche</button>
   </form>
   {% endif %}
-  {# États réservés (décision du gérant, lot 10) : Vérifiée, Arrêtée et
-     Abandonnée ne sont proposées qu'au chef de projet, aux co-chefs et à
-     l'Admin (peut_gerer) ; une tâche dans l'un de ces états ne peut
-     être rouverte ou clôturée que par eux. Contrôle serveur :
-     projets.changer_etat_tache / cloturer_tache, migration 0015. #}
-  {% set etat_reserve_verrouille = t.etat in etats_reserves and not peut_gerer %}
-  <div class="tache-dialog-actions">
-    {% if t.etat not in ('termine', 'verifie') and peut_agir_tache and etat_reserve_verrouille %}
-    <span style="font-size:12px; color:var(--text-muted);">Tâche {{ tst.libelle|lower }}&nbsp;: seuls le chef de projet, un co-chef ou un Admin peuvent changer son état.</span>
-    {% elif t.etat not in ('termine', 'verifie') and peut_agir_tache %}
-    <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" style="display:flex; gap:6px; margin-bottom:8px;">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <select name="etat" aria-label="Nouvel état" style="flex:1;">
-        <option value="en_cours" {{ 'selected' if t.etat == 'en_cours' }}>En cours</option>
-        <option value="bloque" {{ 'selected' if t.etat == 'bloque' }}>Bloquée</option>
-        {% if peut_gerer %}
-        <option value="verifie" {{ 'selected' if t.etat == 'verifie' }}>Vérifiée</option>
-        <option value="arret" {{ 'selected' if t.etat == 'arret' }}>Arrêtée</option>
-        <option value="abandonne" {{ 'selected' if t.etat == 'abandonne' }}>Abandonnée</option>
-        {% endif %}
-      </select>
-      <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">Appliquer</button>
-    </form>
-    <form method="post" action="{{ url_for('projets.cloturer_tache', projet_id=projet.id, tache_id=t.id) }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label for="cloture-tag-{{ t.id }}">Clôturer avec le type</label>
-      <select name="type_code" id="cloture-tag-{{ t.id }}" style="margin-bottom:6px;">
+
+  {% if peut_agir_tache and not etat_reserve_verrouille and t.etat not in ('termine', 'verifie') %}
+  <form method="post" action="{{ url_for('projets.cloturer_tache', projet_id=projet.id, tache_id=t.id) }}" class="tache-cloture" data-partiel="{{ cible }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="tache-cloture-type">
+      <label for="cloture-tag-{{ t.id }}">Post de clôture</label>
+      <select name="type_code" id="cloture-tag-{{ t.id }}">
         <option value="envoi">Envoi</option>
         <option value="reponse">Réponse</option>
         <option value="question">Question</option>
         <option value="requete">Requête</option>
       </select>
-      <button type="submit" class="btn-primary btn-accent">Marquer comme terminée</button>
-    </form>
-    {% elif t.etat in ('termine', 'verifie') %}
-      <span style="font-size:12px; color:var(--text-muted);">Tâche {{ 'vérifiée' if t.etat == 'verifie' else 'terminée' }}{% if t.date_fin %} — clôturée le {{ t.date_fin|date_courte(true) }}{% endif %}</span>
-      {% if peut_agir_tache and etat_reserve_verrouille %}
-      <div style="font-size:12px; color:var(--text-muted); margin-top:8px;">Seuls le chef de projet, un co-chef ou un Admin peuvent rouvrir une tâche vérifiée.</div>
-      {% elif peut_agir_tache %}
-      <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" style="display:flex; gap:6px; margin-top:8px;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <select name="etat" aria-label="Nouvel état" style="flex:1;">
-          {% if t.etat == 'termine' and peut_gerer %}<option value="verifie">Vérifiée</option>{% endif %}
-          <option value="en_cours">Rouvrir (en cours)</option>
-        </select>
-        <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;">Appliquer</button>
-      </form>
-      {% endif %}
-    {% elif projet_clos %}
-      <span style="font-size:12px; color:var(--text-muted);">{% if peut_gerer %}Projet clos&nbsp;: rouvrez-le (panneau Informations) pour agir sur ses tâches.{% else %}Projet clos&nbsp;: seul son chef de projet ou un co-chef peut le rouvrir (panneau Informations).{% endif %}</span>
-    {% else %}
-      <span style="font-size:12px; color:var(--text-muted);">Seuls le chef de projet, un co-chef ou un intervenant de la tâche peuvent changer son état.</span>
-    {% endif %}
+    </div>
+    <button type="submit" id="tache-{{ t.id }}-cloturer" class="btn-primaire">Marquer comme terminée</button>
+  </form>
+  {% endif %}
 
-    <div class="divider" style="margin-left:0;"></div>
-    <h3 class="tache-fenetre-sous-titre">Pièces jointes</h3>
-    {% for pj in t.pieces_jointes %}
-      <a href="{{ url_for('fichiers.download_tache', piece_id=pj.id) }}" style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:6px;">
-        <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
-        {{ pj.nom_fichier }}
-      </a>
+  <section class="tache-pj" aria-labelledby="tache-{{ t.id }}-pj-titre">
+    <h3 class="tache-fenetre-sous-titre" id="tache-{{ t.id }}-pj-titre">Pièces jointes</h3>
+    {% if t.pieces_jointes %}
+    <ul class="tache-pj-liste">
+      {% for pj in t.pieces_jointes %}
+      <li><a href="{{ url_for('fichiers.download_tache', piece_id=pj.id) }}" class="tache-pj-lien">
+        <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+        {{ pj.nom_fichier }}</a></li>
+      {% endfor %}
+    </ul>
     {% else %}
-      <div style="font-size:12px; color:var(--text-faint); margin-bottom:6px;">Aucune pièce jointe.</div>
-    {% endfor %}
+    <p class="tache-prop-vide">Aucune pièce jointe.</p>
+    {% endif %}
     {% if peut_agir_tache %}
-    <form method="post" action="{{ url_for('fichiers.upload_tache', tache_id=t.id) }}" enctype="multipart/form-data" style="display:flex; gap:6px;">
+    {# Envoi dès le choix du fichier, avec progression (tache-dialog.js,
+       XMLHttpRequest) ; sans JavaScript, bouton « Joindre ». #}
+    <form method="post" action="{{ url_for('fichiers.upload_tache', tache_id=t.id) }}" enctype="multipart/form-data" class="tache-pj-form" data-televersement data-partiel="{{ cible }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="next" value="{{ next_url }}">
-      <input type="file" name="fichier" aria-label="Fichier à joindre à la tâche" style="flex:1; min-width:0; font-size:12px;">
-      <button type="submit" class="btn-secondary" style="width:auto; padding:6px 10px;" aria-label="Joindre le fichier">+</button>
+      <input type="hidden" name="next" value="{{ url_for('projets.detail', projet_id=projet.id, tache=t.id) }}">
+      <div class="dropzone tache-pj-depot" data-dropzone>
+        <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+        <span class="dropzone-label" data-dropzone-label>Glissez un fichier ici ou cliquez pour joindre</span>
+        <input type="file" name="fichier" id="tache-{{ t.id }}-fichier" class="dropzone-input" aria-label="Joindre un fichier à la tâche">
+      </div>
+      <div class="tache-pj-progression" data-progression hidden>
+        <progress max="100" value="0" aria-label="Envoi du fichier"></progress>
+        <span class="tache-pj-pourcent" aria-hidden="true">0 %</span>
+      </div>
+      <button type="submit" class="btn btn-petit k-sans-js">Joindre</button>
     </form>
     {% endif %}
-  </div>
+  </section>
 </div>

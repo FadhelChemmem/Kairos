@@ -67,14 +67,30 @@ window.KairosFloatingWindow = (function () {
       // clic réellement hors du cadre (sur le fond).
       var r = dialogEl.getBoundingClientRect();
       if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) return;
-      if (aEteModifiee(dialogEl)) return;
+      if (aEteModifiee(dialogEl)) { demanderFermeture(dialogEl); return; }
       dialogEl.close();
     });
     // Échap : même règle que le clic sur le fond — une saisie en cours
-    // n'est pas jetée sans confirmation.
+    // n'est pas jetée sans confirmation. Lot 13 (audit UX M11) : question
+    // posée DANS la fenêtre (Abandonner / Continuer), plus de confirm().
     dialogEl.addEventListener('cancel', function (e) {
-      if (aEteModifiee(dialogEl) && !window.confirm('Fermer sans enregistrer ? La saisie sera perdue.')) e.preventDefault();
+      if (!aEteModifiee(dialogEl)) return;
+      e.preventDefault();
+      demanderFermeture(dialogEl);
     });
+  }
+
+  function demanderFermeture(dialogEl) {
+    var K = window.Kairos;
+    if (!K || !K.confirmer) {
+      if (window.confirm('Fermer sans enregistrer ? La saisie sera perdue.')) dialogEl.close();
+      return;
+    }
+    if (dialogEl.querySelector('.k-confirmation')) return;
+    var ancre = document.activeElement && dialogEl.contains(document.activeElement) ? document.activeElement : dialogEl;
+    K.confirmer(ancre, 'Abandonner les modifications ? La saisie sera perdue.', {
+      libelleOk: 'Abandonner', libelleAnnuler: 'Continuer la saisie', danger: true
+    }).then(function (oui) { if (oui) dialogEl.close(); });
   }
 
   // Focus initial d'une fenêtre : le premier champ de saisie visible (et
@@ -88,5 +104,5 @@ window.KairosFloatingWindow = (function () {
     return false;
   }
 
-  return { memoriser: memoriser, aEteModifiee: aEteModifiee, attacherFermetureAuFond: attacherFermetureAuFond, focusPremierChamp: focusPremierChamp };
+  return { memoriser: memoriser, aEteModifiee: aEteModifiee, attacherFermetureAuFond: attacherFermetureAuFond, focusPremierChamp: focusPremierChamp, demanderFermeture: demanderFermeture };
 })();

@@ -1,0 +1,60 @@
+{# Carte « Tâches » de la fiche projet. Lot 11 (audit front I2/I9/M1) :
+   tableau nommé (rôles ARIA), tâches closes repliées par défaut, une seule
+   fenêtre de tâche chargée à la demande. Lot 13 : fragment remplacé hors
+   cible quand une tâche passe d'ouverte à close (ou l'inverse), ou qu'une
+   tâche est créée (`surligner` : ligne mise en évidence). #}
+{% set taches_ouvertes = taches|rejectattr('etat', 'in', etats_taches_closes)|list %}
+{% set taches_closes = taches|selectattr('etat', 'in', etats_taches_closes)|list %}
+<div class="card table-scroll carte-taches" id="carte-taches"{% if oob %} data-partiel-oob{% endif %}>
+  <div class="carte-taches-entete">
+    <div class="carte-taches-titre">
+      <h2 class="carte-titre">Tâches</h2>
+      {% with oob=false %}{% include "partials/taches_compteur.html" %}{% endwith %}
+    </div>
+    {% if peut_gerer and not projet_clos %}
+    {# « + Tâche » : raccourci juste au-dessus du tableau qu'il alimente
+       (retour Fadhel, 2026-09-28). #}
+    <button type="button" id="nouvelle-tache" data-open-post-dialog data-intent="tache" data-gere="1" class="quickadd quickadd-primary" title="Créer une tâche sur ce projet">
+      <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      Tâche
+    </button>
+    {% endif %}
+  </div>
+  {% if taches %}
+  <a href="#posts-projet" class="lien-evitement-interne">Aller aux posts du projet</a>
+  <div role="table" aria-label="Tâches du projet" class="taches-table" id="taches-ouvertes">
+    <div class="thead" role="row">
+      <span role="columnheader">Tâche</span><span role="columnheader">Intervenants</span><span role="columnheader">État</span><span role="columnheader">Échéance</span><span role="columnheader">Heures</span><span aria-hidden="true"></span>
+    </div>
+    {% for t in taches_ouvertes %}
+      {% with oob=false %}{% include "partials/tache_ligne.html" %}{% endwith %}
+    {% else %}
+      <div role="row"><div role="cell" class="taches-vide">Aucune tâche en cours.</div></div>
+    {% endfor %}
+  </div>
+  {% if taches_closes %}
+  {# Lot 11 b : ?tache=<id> d'une tâche close (recherche, notification) — dépliées. #}
+  <details class="taches-closes" id="taches-closes"{% if deplier_taches_closes %} open{% endif %}>
+    <summary class="taches-closes-bascule">
+      {% if taches_closes|length > 1 %}
+      <span class="si-ferme">Afficher les {{ taches_closes|length }} tâches closes</span>
+      <span class="si-ouvert">Masquer les tâches closes</span>
+      {% else %}
+      <span class="si-ferme">Afficher la tâche close</span>
+      <span class="si-ouvert">Masquer la tâche close</span>
+      {% endif %}
+    </summary>
+    <div role="table" aria-label="Tâches closes du projet" class="taches-table">
+      {% for t in taches_closes %}
+        {% with oob=false %}{% include "partials/tache_ligne.html" %}{% endwith %}
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+  {% else %}
+    <div class="k-vide k-vide-compact">
+      <p class="k-vide-titre">Aucune tâche pour l'instant</p>
+      {% if peut_gerer and not projet_clos %}<p class="k-vide-texte">Créez la première avec « + Tâche ».</p>{% endif %}
+    </div>
+  {% endif %}
+</div>

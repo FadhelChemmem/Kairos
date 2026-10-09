@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% import "partials/post_filtre.html" as filtrem %}
 {% block title %}Accueil — Kairos{% endblock %}
 {% block body %}
 
@@ -16,13 +15,15 @@
    toute la bannière dans un unique lien. #}
 {# Ni RH ni Client : pas d'échéances (lot 7). #}
 {% if not sans_projets and g.user.role != 'client' %}
-<div class="deadline-banner">
-  <a href="{{ url_for('deadlines.liste') }}" class="deadline-banner-head" style="color:inherit; text-decoration:none;">
+<section class="deadline-banner" aria-labelledby="accueil-deadlines-titre">
+  {# Lot 13 (audit a11y M8) : bloc titré, barres vers la tâche elle-même. #}
+  <h2 class="sr-only" id="accueil-deadlines-titre">Deadlines</h2>
+  <a href="{{ url_for('deadlines.liste') }}" class="deadline-banner-head lien-discret-bloc">
     <span class="deadline-banner-title">
       <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>
       Deadlines
     </span>
-    <span style="font-size:11.5px; color:var(--text-muted);">Tout voir <span aria-hidden="true">→</span></span>
+    <span class="deadline-banner-tout">Tout voir<span class="sr-only"> les deadlines</span> <span aria-hidden="true">→</span></span>
   </a>
   {% if deadlines_gantt.rows %}
     <div class="mini-gantt" style="--mg-days:{{ deadlines_gantt.window_days }};">
@@ -38,16 +39,16 @@
           <span class="mini-gantt-titre" title="{{ t.titre }}">{{ t.titre }}</span>
           <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" class="mini-gantt-projet" title="{{ t.projet_code }}_{{ t.projet_nom }}">{{ t.projet_code }}_{{ t.projet_nom }}</a>
         </div>
-        <a href="{{ url_for('deadlines.liste') }}" class="mini-gantt-track" style="grid-column: 2 / span {{ deadlines_gantt.window_days }};" aria-label="{{ t.titre }} ({{ t.projet_code }}) : {{ t.retard ~ ', échéance le ' if t.en_retard else 'échéance le ' }}{{ t.date_echeance|date_courte }}">
+        <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) if t.id is defined and t.id else url_for('deadlines.liste') }}" class="mini-gantt-track" style="grid-column: 2 / span {{ deadlines_gantt.window_days }};" aria-label="{{ t.titre }} ({{ t.projet_code }}) : {{ t.retard ~ ', échéance le ' if t.en_retard else 'échéance le ' }}{{ t.date_echeance|date_courte }}">
           <span class="mini-gantt-bar{{ ' mini-gantt-bar-retard' if t.en_retard }}" style="grid-column: 1 / span {{ t.span }}; background:{{ t.couleur }};">{{ t.label_barre }}</span>
           <span class="mini-gantt-date">{{ t.date_echeance|date_courte }}{% if t.en_retard %} · {{ t.retard }}{% endif %}</span>
         </a>
       {% endfor %}
     </div>
   {% else %}
-    <a href="{{ url_for('deadlines.liste') }}" class="deadline-banner-empty" style="color:inherit; text-decoration:none;">Aucune échéance à venir.</a>
+    <a href="{{ url_for('deadlines.liste') }}" class="deadline-banner-empty lien-discret-bloc">Aucune échéance à venir.</a>
   {% endif %}
-</div>
+</section>
 {% endif %}
 
 <h1 class="sr-only">Accueil</h1>
@@ -59,23 +60,23 @@
     {% if not sans_projets %}
 
     <div class="card">
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+      <div class="carte-entete carte-entete-souple">
         <h2 class="carte-titre">Mes projets</h2>
-        <a href="{{ url_for('projets.liste') }}" class="lien-carte" style="font-size:12px; font-weight:600;">Tout voir</a>
+        <a href="{{ url_for('projets.liste') }}" class="lien-carte lien-carte-petit">Tout voir<span class="sr-only"> mes projets</span></a>
       </div>
-      <div style="display:flex; flex-direction:column; gap:10px;">
+      <div class="accueil-liste">
         {% for p in mes_projets %}
           {% set st = projet_etat_style(p.etat) %}
           {% set role_label = {'chef_de_projet': 'Chef de projet', 'co_chef': 'Co-chef', 'intervenant': 'Intervenant'}.get(p.mon_role, '') %}
-          <a href="{{ url_for('projets.detail', projet_id=p.id) }}" style="display:flex; align-items:center; gap:9px; color:inherit;">
-            <span aria-hidden="true" style="width:8px; height:8px; border-radius:999px; background:{{ st.dot }}; flex-shrink:0;"></span>
-            <div style="min-width:0;">
-              <div style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="{{ p.code }}_{{ p.nom }}">{{ p.code }}_{{ p.nom }}</div>
-              <div style="font-size:11.5px; color:var(--text-muted);">{{ p.phase }}{% if role_label %} · {{ role_label }}{% endif %}</div>
+          <a href="{{ url_for('projets.detail', projet_id=p.id) }}" class="accueil-projet">
+            <span aria-hidden="true" class="point-etat point-etat-{{ p.etat }}"></span>
+            <div class="accueil-texte">
+              <div class="accueil-projet-nom" title="{{ p.code }}_{{ p.nom }}">{{ p.code }}_{{ p.nom }}</div>
+              <div class="accueil-sous">{{ p.phase }}{% if role_label %} · {{ role_label }}{% endif %}</div>
             </div>
           </a>
         {% else %}
-          <div style="font-size:12.5px; color:var(--text-muted);">Aucun projet pour l'instant.</div>
+          <div class="accueil-vide">Aucun projet pour l'instant.</div>
         {% endfor %}
       </div>
     </div>
@@ -90,6 +91,12 @@
        sombres sur fond blanc en alerte, plutôt que blancs sur fond coloré. #}
     {# Pas de Daily log pour un Client (lot 7). #}
     {% if g.user.role != 'client' %}
+    {# Lot 13 (verif-temps N5) : sous une date simulée après la vraie date
+       du compte, la journée se consulte seulement — ni « Remplir », ni jours
+       à venir comptés comme manquants. #}
+    {% set dl_reel = bandeau_admin.aujourdhui_reel if bandeau_admin else none %}
+    {% set dl_futur = bandeau_admin and bandeau_admin.date_simulee and bandeau_admin.aujourdhui_compte > dl_reel %}
+    {% if dl_futur %}{% set dailylog_jours_manques = dailylog_jours_manques|select('le', dl_reel)|list %}{% endif %}
     <div class="card {{ 'card-cta-alert' if dailylog_jours_manques else 'card-cta' }}">
       {# var(--text-strong), pas un gris fixe : sinon illisible en thème
          sombre (bug trouvé à la vérification Playwright, 2026-09-28). #}
@@ -107,9 +114,9 @@
         {# Lot 10 : la route dit si la journée du jour est déjà renseignée
            (heures ou absence), au fuseau de la personne. Blanc : 4,86:1 sur
            le vert (#d6efe8 : 4,02). #}
-        <div style="font-size:12px; color:#fff; margin-bottom:12px; line-height:1.4;">{% if dailylog_aujourdhui %}Journée du jour renseignée. Vous pouvez encore l’ajuster.{% else %}Répartissez vos heures de la journée par projet.{% endif %}</div>
+        <div style="font-size:12px; color:#fff; margin-bottom:12px; line-height:1.4;">{% if dl_futur %}Date simulée future : la journée se consulte, sans saisie.{% elif dailylog_aujourdhui %}Journée du jour renseignée. Vous pouvez encore l’ajuster.{% else %}Répartissez vos heures de la journée par projet.{% endif %}</div>
       {% endif %}
-      <a href="{{ url_for('dailylog.formulaire') }}" class="btn-primary{{ ' btn-danger' if dailylog_jours_manques }}" style="display:block; text-align:center; text-decoration:none;">{{ 'Voir mon Daily log' if dailylog_aujourdhui and not dailylog_jours_manques else 'Remplir mon Daily log' }}</a>
+      <a href="{{ url_for('dailylog.formulaire') }}" class="btn-primary{{ ' btn-danger' if dailylog_jours_manques }}" style="display:block; text-align:center; text-decoration:none;">{{ 'Voir mon Daily log' if (dl_futur or dailylog_aujourdhui) and not dailylog_jours_manques else 'Remplir mon Daily log' }}</a>
     </div>
     {% endif %}
     {% endif %}
@@ -119,30 +126,27 @@
   <!-- Fil d'activité -->
   <div class="col-center">
     <h2 class="sr-only">Fil d'activité</h2>
-    <div style="display:flex; align-items:center; gap:10px;">
-      <div class="search-mini" style="flex:1;">
+    <div class="fil-outils">
+      <div class="search-mini fil-filtre">
         <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="search" id="filtre-fil" autocomplete="off" aria-label="Filtrer le fil d'actualité" placeholder="Filtrer le fil d'actualité…" style="flex:1; min-width:0; border:none; outline:none; background:none; padding:0; font-size:13.5px; font-family:inherit;">
+        <input type="search" id="filtre-fil" data-filtre-fil data-filtre-liste="#fil-liste" data-filtre-vide="#fil-vide" data-filtre-message="Aucun résultat pour ce filtre." autocomplete="off" aria-label="Filtrer le fil d'actualité" placeholder="Filtrer le fil d'actualité…" class="fil-filtre-champ">
       </div>
       {% if peut_publier %}
-      <button type="button" data-open-post-dialog data-intent="{{ intent_par_defaut }}" class="btn-secondary" style="width:auto; padding:10px 16px; flex-shrink:0;">+ Nouveau post</button>
+      <button type="button" id="nouveau-post" data-open-post-dialog data-raccourci-n aria-keyshortcuts="N" data-intent="{{ intent_par_defaut }}" class="btn">+ Nouveau post</button>
       {% endif %}
     </div>
 
-    <div id="fil-liste">
+    {# Lot 13 : un post publié depuis « + Nouveau post » arrive en tête de
+       cette liste, sans recharger la page (posts.reponse_publication). #}
+    <div id="fil-liste" class="fil-liste">
       {% for post in fil %}
-        {# projet_code ajouté au texte filtrable (retour Fadhel, 2026-09-28) :
-           on peut désormais taper un code de projet ("24102X") dans le
-           filtre, pas seulement son nom. #}
-        <div class="fil-item" data-filtre="{{ filtrem.texte_filtre(post) }}">
-          {% with post=post, show_projet=true, next_url=url_for('main.accueil') %}
-            {% include "partials/post_card.html" %}
-          {% endwith %}
-        </div>
+        {% with post=post, show_projet=true, next_url=url_for('main.accueil') %}
+          {% include "partials/fil_item.html" %}
+        {% endwith %}
       {% else %}
-        <div class="card" style="text-align:center; color:var(--text-muted); font-size:13px;">Aucune activité sur vos projets pour l'instant.</div>
+        <div class="card fil-vide-carte" data-partiel-vide>Aucune activité sur vos projets pour l'instant.</div>
       {% endfor %}
-      <div id="fil-vide" role="status" style="text-align:center; color:var(--text-muted); font-size:13px;"></div>
+      <div id="fil-vide" class="fil-filtre-vide" role="status"></div>
     </div>
   </div>
 
@@ -151,23 +155,23 @@
     {# Ni RH ni Client : pas de tâches (lot 7). #}
     {% if not sans_projets and g.user.role != 'client' %}
     <div class="card">
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+      <div class="carte-entete carte-entete-souple">
         <h2 class="carte-titre">Mes tâches</h2>
-        <a href="{{ url_for('deadlines.liste') }}" class="lien-carte" style="font-size:12px; font-weight:600;">Toutes les échéances</a>
+        <a href="{{ url_for('deadlines.liste') }}" class="lien-carte lien-carte-petit">Toutes les échéances</a>
       </div>
-      <div style="display:flex; flex-direction:column; gap:12px;">
+      <div class="accueil-liste accueil-liste-large">
         {% for t in mes_taches %}
           {% set st = tache_etat_style(t.etat) %}
           {# Lot 12 : ouvre la fenêtre de la tâche sur la fiche projet. #}
-          <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) }}" style="display:flex; align-items:flex-start; gap:9px; color:inherit;">
-            <span class="pill pill-sm" style="background:{{ st.bg }}; color:{{ st.fg }}; flex-shrink:0; margin-top:1px;">{{ st.libelle }}</span>
-            <div style="min-width:0;">
-              <div style="font-size:12.5px; font-weight:600; line-height:1.3;">{{ t.titre }}</div>
-              <div style="font-size:12px; color:var(--text-muted);">{{ t.projet_nom }}{% if t.date_echeance %} · échéance le {{ t.date_echeance|date_courte }}{% set retard = en_retard_de(t.date_echeance, aujourdhui) if t.etat == 'en_cours' else '' %}{% if retard %} · <span class="texte-retard">{{ retard }}</span>{% endif %}{% endif %}</div>
+          <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) }}" class="accueil-tache">
+            <span class="pill pill-sm {{ st.classe }} accueil-tache-etat">{{ st.libelle }}</span>
+            <div class="accueil-texte">
+              <div class="accueil-tache-titre">{{ t.titre }}</div>
+              <div class="accueil-sous">{{ t.projet_nom }}{% if t.date_echeance %} · échéance le {{ t.date_echeance|date_courte }}{% set retard = en_retard_de(t.date_echeance, aujourdhui) if t.etat == 'en_cours' else '' %}{% if retard %} · <span class="texte-retard">{{ retard }}</span>{% endif %}{% endif %}</div>
             </div>
           </a>
         {% else %}
-          <div style="font-size:12.5px; color:var(--text-muted);">Aucune tâche en cours.</div>
+          <div class="accueil-vide">Aucune tâche en cours.</div>
         {% endfor %}
       </div>
     </div>
@@ -175,36 +179,9 @@
   </div>
 
 </div>
-<script>
-// Filtre du fil d'actualité (accueil) — recherche simple sur auteur, projet
-// et contenu, entièrement côté client (le fil est déjà rendu), demandé par
-// Fadhel le 2026-09-19.
-(function () {
-  var input = document.getElementById('filtre-fil');
-  if (!input) return;
-  // Lot 10 (audit front I11) : texte filtrable rendu côté serveur
-  // (data-filtre : auteur, projet, équipes, contenu, commentaires), sans
-  // accents ni casse ; résultat vide annoncé (role=status).
-  function norm(s) { return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
-  var items = Array.prototype.slice.call(document.querySelectorAll('#fil-liste .fil-item'));
-  items.forEach(function (it) { it._filtre = norm(it.getAttribute('data-filtre')); });
-  var vide = document.getElementById('fil-vide');
-  input.addEventListener('input', function () {
-    var q = norm(input.value.trim());
-    var visibles = 0;
-    items.forEach(function (item) {
-      var match = !q || item._filtre.indexOf(q) !== -1;
-      item.style.display = match ? '' : 'none';
-      if (match) visibles++;
-    });
-    var aucun = items.length && visibles === 0;
-    vide.textContent = aucun ? 'Aucun résultat pour ce filtre.' : '';
-    vide.style.padding = aucun ? '14px' : '0';
-  });
-})();
-</script>
+<script src="{{ url_for('static', filename='js/filtre-fil.js') }}" defer></script>
 
-{% with projet_id=None, projets_choix=projets_postables, next_url=url_for('main.accueil') %}
+{% with projet_id=None, projets_choix=projets_postables, next_url=url_for('main.accueil'), fil_cible='#fil-liste' %}
   {% include "partials/post_dialog.html" %}
 {% endwith %}
 {% endblock %}

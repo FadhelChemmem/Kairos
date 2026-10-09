@@ -1,0 +1,28 @@
+{# « Changer mon mot de passe » (lot 13 : rendu aussi seul — champs vidés
+   et toast après le changement ; 422 avec l'erreur sous son champ, qui
+   reçoit le focus, audit a11y I5). Contexte : erreurs_mdp. #}
+{% import "partials/champs.html" as ch %}
+<div class="card" id="mot-de-passe">
+  <h2 class="carte-titre carte-titre-form">Changer mon mot de passe</h2>
+  <form method="post" action="{{ url_for('utilisateurs.mon_mot_de_passe') }}" id="mot-de-passe-form"
+        data-partiel="#mot-de-passe" data-focus-apres="#mot-de-passe-envoyer" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row">
+      <label for="mot_de_passe_actuel">Mot de passe actuel</label>
+      <input type="password" id="mot_de_passe_actuel" name="mot_de_passe_actuel" autocomplete="current-password" required{{ ch.attrs(erreurs_mdp, 'mot_de_passe_actuel') }}>
+      {{ ch.message(erreurs_mdp, 'mot_de_passe_actuel') }}
+    </div>
+    <div class="form-row">
+      <label for="nouveau_mot_de_passe">Nouveau mot de passe</label>
+      <input type="password" id="nouveau_mot_de_passe" name="nouveau_mot_de_passe" minlength="8" autocomplete="new-password" required{{ ch.attrs(erreurs_mdp, 'nouveau_mot_de_passe', aide='aide-mdp') }}>
+      <p id="aide-mdp" class="aide-champ">8 caractères minimum.</p>
+      {{ ch.message(erreurs_mdp, 'nouveau_mot_de_passe') }}
+    </div>
+    <div class="form-row form-row-fin">
+      <label for="confirmation">Confirmer le nouveau mot de passe</label>
+      <input type="password" id="confirmation" name="confirmation" minlength="8" autocomplete="new-password" required{{ ch.attrs(erreurs_mdp, 'confirmation') }}>
+      {{ ch.message(erreurs_mdp, 'confirmation') }}
+    </div>
+    <button type="submit" class="btn-primaire" id="mot-de-passe-envoyer">Changer le mot de passe</button>
+  </form>
+</div>

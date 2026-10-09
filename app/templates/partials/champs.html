@@ -1,0 +1,16 @@
+{# Erreurs de formulaire reliées aux champs (lot 13, audit a11y I5) :
+   erreurs = {champ: message}, dans l'ordre du formulaire.
+     <input id="email" … {{ ch.attrs(erreurs, 'email', aide='aide-email') }}>
+     {{ ch.message(erreurs, 'email') }}
+   -> aria-invalid, aria-describedby (aide + erreur), autofocus sur le
+   premier champ en erreur (rendu complet ; en mise à jour partielle, la
+   brique place le focus sur le premier [aria-invalid=true]). #}
+{% macro attrs(erreurs, champ, aide=None, autofocus=False) -%}
+{%- set err = erreurs.get(champ) if erreurs else None -%}
+{%- if err %} aria-invalid="true"{% endif -%}
+{%- if err or aide %} aria-describedby="{{ ([aide] if aide else [])|join(' ') }}{{ ' ' if err and aide }}{{ ('err-' ~ champ) if err }}"{% endif -%}
+{%- if (err and (erreurs|first) == champ) or (autofocus and not erreurs) %} autofocus{% endif -%}
+{%- endmacro %}
+{% macro message(erreurs, champ) -%}
+{%- if erreurs and erreurs.get(champ) %}<p class="champ-erreur" id="err-{{ champ }}"><svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>{{ erreurs[champ] }}</p>{% endif -%}
+{%- endmacro %}

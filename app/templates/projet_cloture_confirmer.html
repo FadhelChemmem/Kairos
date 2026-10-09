@@ -1,0 +1,10 @@
+{# Lot 13 (décision 2) : confirmation de clôture d'un projet qui a des
+   tâches ouvertes — page complète, fonctionne sans JavaScript. Le contenu
+   est partials/projet_cloture_confirmation.html. #}
+{% extends "base.html" %}
+{% block title %}Clore le projet {{ projet.code }} — Kairos{% endblock %}
+{% block body %}
+<div style="max-width:640px; margin:0 auto; padding:24px 32px 60px;">
+  {% include "partials/projet_cloture_confirmation.html" %}
+</div>
+{% endblock %}

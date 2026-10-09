@@ -8,9 +8,22 @@ from .. import db
 from ._like import motif_recherche
 
 
+# Rattachement à un projet (lot 13, audit rôles I1) : chef, co-chef,
+# intervenant du projet OU d'une de ses tâches — comme le fil de l'accueil
+# (posts.list_feed_accueil) ; Chronos rattache presque tout par les tâches.
+_RATTACHE = """(
+                p.chef_projet_id = %(user_id)s
+                OR cc.utilisateur_id IS NOT NULL
+                OR pi.utilisateur_id IS NOT NULL
+                OR EXISTS (SELECT 1 FROM tache t JOIN tache_intervenant ti ON ti.tache_id = t.id
+                           WHERE t.projet_id = p.id AND ti.utilisateur_id = %(user_id)s)
+              )"""
+
+
 def list_mes_projets(user_id: int) -> list[dict]:
     """Projets où l'utilisateur est chef de projet, co-chef ou intervenant
-    (carte "Mes projets" de l'accueil) — avec son rôle sur chacun.
+    (du projet ou d'une de ses tâches) — carte "Mes projets" de l'accueil —,
+    avec son rôle sur chacun.
     """
     sql = """
         SELECT p.id, p.code, p.nom, p.phase, p.etat,
@@ -24,9 +37,7 @@ def list_mes_projets(user_id: int) -> list[dict]:
                ON cc.projet_id = p.id AND cc.utilisateur_id = %(user_id)s
         LEFT JOIN projet_intervenant pi
                ON pi.projet_id = p.id AND pi.utilisateur_id = %(user_id)s
-        WHERE p.chef_projet_id = %(user_id)s
-           OR cc.utilisateur_id IS NOT NULL
-           OR pi.utilisateur_id IS NOT NULL
+        WHERE """ + _RATTACHE + """
         ORDER BY (p.etat = 'bloque') DESC, p.updated_at DESC
     """
     with db.get_cursor() as cur:
@@ -39,9 +50,10 @@ def list_mes_projets_recents(user_id: int, limit: int = 5) -> list[dict]:
     triés par ma dernière action dessus — pas l'activité de tout le monde,
     la MIENNE (retour Fadhel, 2026-09-28) : création du projet, création/
     modification d'une tâche par moi, poste/commentaire de moi, ou saisie
-    DailyLog de moi sur ce projet. Les projets terminés sont exclus (sinon
-    "liste à n'en pas finir" — ceux bloqués/à l'arrêt restent, eux, un
-    signal d'activité pertinent)."""
+    DailyLog de moi sur ce projet. Les projets terminés ou abandonnés sont
+    exclus (sinon "liste à n'en pas finir" — ceux bloqués restent, eux, un
+    signal d'activité pertinent ; abandonnés : lot 13, audit rôles M13).
+    Rattachement par une tâche compris (lot 13, audit rôles I1)."""
     sql = """
         SELECT p.id, p.code, p.nom, p.phase, p.etat,
                CASE
@@ -69,12 +81,8 @@ def list_mes_projets_recents(user_id: int, limit: int = 5) -> list[dict]:
                ON cc.projet_id = p.id AND cc.utilisateur_id = %(user_id)s
         LEFT JOIN projet_intervenant pi
                ON pi.projet_id = p.id AND pi.utilisateur_id = %(user_id)s
-        WHERE (
-                p.chef_projet_id = %(user_id)s
-                OR cc.utilisateur_id IS NOT NULL
-                OR pi.utilisateur_id IS NOT NULL
-              )
-          AND p.etat <> 'termine'
+        WHERE """ + _RATTACHE + """
+          AND p.etat NOT IN ('termine', 'abandonne')
         ORDER BY ma_derniere_action DESC NULLS LAST
         LIMIT %(limit)s
     """
@@ -354,6 +362,9 @@ def get_projet(projet_id: int) -> dict | None:
     return db.query_one(sql, (projet_id,))
 
 
+# Équipe d'un projet dont ni le chef ni le créateur n'a d'équipe (migration 0016).
+EQUIPE_PAR_DEFAUT = "MIDGARD"
+
 # Changement du chef de projet (lot 11 b, demande du gérant) : rôles
 # admis pour le nouveau chef — même règle que le trigger
 # trg_garde_chef_projet (migration 0017).
@@ -365,6 +376,25 @@ MESSAGE_CHEF_PROJET_CLOS = (
 MESSAGE_CHEF_INVALIDE = (
     "Nouveau chef de projet invalide : il faut un compte actif, chef de projet ou administrateur."
 )
+
+
+# Tâches encore ouvertes d'un projet (lot 13) : à clore avec lui.
+ETATS_TACHE_OUVERTS = ("en_cours", "bloque")
+# État donné aux tâches ouvertes à la clôture du projet (décision 2, lot 13).
+ETAT_TACHE_A_LA_CLOTURE = {"termine": "termine", "abandonne": "abandonne"}
+
+
+class ClotureAConfirmer(Exception):
+    """Clore (Terminé / Abandonné) un projet qui a des tâches ouvertes
+    demande une confirmation (décision 2, lot 13) : rien n'est enregistré ;
+    `taches` = les tâches ouvertes ({id, titre, etat, date_echeance}) à
+    montrer. Levée aussi si la liste confirmée n'est plus la liste actuelle
+    (`liste_changee`)."""
+
+    def __init__(self, taches: list[dict], liste_changee: bool = False):
+        super().__init__("clôture à confirmer")
+        self.taches = taches
+        self.liste_changee = liste_changee
 
 
 class ChangementChefRefuse(Exception):
@@ -457,6 +487,8 @@ def update_projet(
     client: str = "IPCO",
     chef_projet_id: int | None = None,
     acteur_admin: bool = False,
+    taches_a_clore: list[int] | None = None,
+    bilan: dict | None = None,
 ) -> dict | None:
     """Édition des informations du projet — fenêtre flottante
     "Informations" (retour Fadhel, 2026-09-28), réservée au chef de
@@ -475,15 +507,58 @@ def update_projet(
     spec liste la phase comme fixée "à la création" (elle détermine la
     lettre du code), et une transition de phase se fait en créant un
     NOUVEAU projet relié via `phase_liee_id` (champ "Phase liée"), pas en
-    éditant la phase d'un projet existant."""
+    éditant la phase d'un projet existant.
+
+    Lot 13 :
+    - état (décision 1) : on demande En cours, Terminé ou Abandonné ; un
+      projet ouvert devient Bloqué ou En cours selon ses tâches
+      (taches.recalculer_etat_projet) — « bloque » demandé vaut « en_cours » ;
+    - clôture avec des tâches ouvertes (décision 2) : ClotureAConfirmer
+      tant que `taches_a_clore` n'est pas exactement la liste des tâches
+      ouvertes (lue sous verrou) ; confirmée, elles passent Terminées (projet
+      Terminé) ou Abandonnées (projet Abandonné) dans la même transaction,
+      citées par le post automatique du changement d'état ;
+    - date de clôture : fn_date_ecriture au fuseau de l'acteur (jamais après
+      la vraie date, décision 5) ;
+    - `bilan` (dict fourni par l'appelant) : reçoit `etat_avant` et
+      `taches_closes` (nombre réellement clos), pour un message juste quand
+      la confirmation est renvoyée sur un projet déjà clos (double envoi)."""
     from ..utils import projet_etat_style
+    from .taches import recalculer_etat_projet
 
     changement = None
+    etat_ecrit = "en_cours" if etat == "bloque" else etat
     with db.get_cursor(user_id=current_user_id) as cur:
         # Verrou du projet pendant toute la modification (comme les autres
         # changements d'état) : chef, état et co-chefs lus et écrits ensemble.
         cur.execute("SELECT etat, chef_projet_id FROM projet WHERE id = %s FOR UPDATE", (projet_id,))
         avant = cur.fetchone()
+        closes = []
+        if avant is not None and etat_ecrit in ETATS_CLOS:
+            cur.execute(
+                """
+                SELECT id, titre, etat, date_echeance FROM tache
+                WHERE projet_id = %s AND etat::text = ANY(%s)
+                ORDER BY date_echeance NULLS LAST, id
+                FOR UPDATE
+                """,
+                (projet_id, list(ETATS_TACHE_OUVERTS)),
+            )
+            ouvertes = [dict(r) for r in cur.fetchall()]
+            if ouvertes:
+                if taches_a_clore is None or set(taches_a_clore) != {t["id"] for t in ouvertes}:
+                    raise ClotureAConfirmer(ouvertes, liste_changee=taches_a_clore is not None)
+                cur.execute(
+                    """
+                    UPDATE tache SET etat = %s,
+                                     date_fin = fn_date_ecriture((SELECT fuseau FROM utilisateur WHERE id = %s))
+                    WHERE id = ANY(%s)
+                    """,
+                    (ETAT_TACHE_A_LA_CLOTURE[etat_ecrit], current_user_id, [t["id"] for t in ouvertes]),
+                )
+                closes = ouvertes
+        if bilan is not None and avant is not None:
+            bilan.update(etat_avant=avant["etat"], taches_closes=len(closes))
         if avant is not None and chef_projet_id is not None and chef_projet_id != avant["chef_projet_id"]:
             changement = _changer_chef(cur, projet_id, avant, chef_projet_id, current_user_id, acteur_admin)
         cur.execute(
@@ -493,23 +568,36 @@ def update_projet(
                 honoraires = %s, client = %s,
                 -- Date de clôture (migration 0011, décision Fadhel) : posée au
                 -- passage à Terminé/Abandonné (gardée de l'un à l'autre),
-                -- effacée à la réouverture.
+                -- effacée à la réouverture ; jamais après la vraie date
+                -- (fn_date_ecriture, lot 13).
                 date_cloture = CASE WHEN %s IN ('termine', 'abandonne')
-                                    THEN COALESCE(date_cloture, fn_aujourdhui()) END
+                                    THEN COALESCE(date_cloture, fn_date_ecriture(
+                                         (SELECT fuseau FROM utilisateur WHERE id = %s))) END
             WHERE id = %s
             """,
-            (nom, etat, date_debut, date_fin, phase_liee_id, honoraires, client, etat, projet_id),
+            (nom, etat_ecrit, date_debut, date_fin, phase_liee_id, honoraires, client, etat_ecrit,
+             current_user_id, projet_id),
         )
+        recalcul = recalculer_etat_projet(cur, projet_id, None)
+        etat_final = recalcul[1] if recalcul else etat_ecrit
         # Post automatique quand l'état change (retour Fadhel, 2026-09-29,
-        # P1), dans la même transaction.
-        if avant is not None and avant["etat"] != etat:
+        # P1), dans la même transaction ; il cite les tâches closes avec le
+        # projet (lot 13).
+        if avant is not None and avant["etat"] != etat_final:
+            contenu = f"{projet_etat_style(avant['etat'])['label']} → {projet_etat_style(etat_final)['label']}"
+            if closes:
+                libelle = "terminées" if etat_final == "termine" else "abandonnées"
+                noms = ", ".join(f"« {t['titre']} »" for t in closes[:10])
+                reste = f" et {len(closes) - 10} autre(s)" if len(closes) > 10 else ""
+                contenu += (f" — {len(closes)} tâche{'s' if len(closes) > 1 else ''} ouverte"
+                            f"{'s' if len(closes) > 1 else ''} {libelle if len(closes) > 1 else libelle[:-1]}"
+                            f" avec le projet : {noms}{reste}.")
             cur.execute(
                 """
                 INSERT INTO post (projet_id, auteur_id, type_code, contenu, evenement)
                 VALUES (%s, %s, 'information', %s, 'etat_projet')
                 """,
-                (projet_id, current_user_id,
-                 f"{projet_etat_style(avant['etat'])['label']} → {projet_etat_style(etat)['label']}"),
+                (projet_id, current_user_id, contenu),
             )
         # Remplace les lots (supprime puis réinsère) — même principe que
         # dailylog.remplacer_jour : plus simple qu'un diff, et le volume
@@ -600,6 +688,25 @@ def list_ids_visibles(user_id: int) -> set[int]:
         "SELECT projet_id FROM v_projet_visibilite WHERE utilisateur_id = %s", (user_id,)
     )
     return {r["projet_id"] for r in rows}
+
+
+ROLES_GESTION_PROJET = ("chef_de_projet", "co_chef")
+
+
+def ids_voient_projets(projets: list[dict]) -> dict[int, list[int]]:
+    """{projet_id: ids des comptes qui voient le projet} pour les projets de
+    la liste que je gère (`mon_role`), seuls proposés pour une tâche dans
+    « Nouveau post » (contre-expertise rôles I7) — même règle que
+    user_can_view (v_projet_visibilite)."""
+    ids = [p["id"] for p in projets if p.get("mon_role") in ROLES_GESTION_PROJET]
+    if not ids:
+        return {}
+    rows = db.query_all(
+        "SELECT projet_id, array_agg(utilisateur_id ORDER BY utilisateur_id) AS ids "
+        "FROM v_projet_visibilite WHERE projet_id = ANY(%s) GROUP BY projet_id", (ids,))
+    voient = {i: [] for i in ids}
+    voient.update({r["projet_id"]: list(r["ids"]) for r in rows})
+    return voient
 
 
 def user_can_view(projet_id: int, user_id: int) -> bool:
@@ -695,6 +802,104 @@ def add_co_chef(projet_id: int, utilisateur_id: int, current_user_id: int) -> No
     )
 
 
+class RetraitRefuse(Exception):
+    """Retrait d'un intervenant du projet refusé (chef titulaire, personne
+    non rattachée) : message prêt à afficher."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
+def ids_utilisateurs_voyant(projet_id: int) -> set[int]:
+    """Comptes qui voient le projet (v_projet_visibilite) : les seuls qu'on
+    peut affecter à une de ses tâches (lot 13, audit rôles I7)."""
+    return {r["utilisateur_id"] for r in db.query_all(
+        "SELECT utilisateur_id FROM v_projet_visibilite WHERE projet_id = %s", (projet_id,))}
+
+
+def ids_co_chefs(projet_id: int) -> set[int]:
+    return {r["utilisateur_id"] for r in db.query_all(
+        "SELECT utilisateur_id FROM projet_co_chef WHERE projet_id = %s", (projet_id,))}
+
+
+def ids_retirables(projet_id: int) -> set[int]:
+    """Personnes qui ont un rattachement retirable du projet : co-chef,
+    intervenant du projet ou d'une tâche OUVERTE — jamais le chef titulaire
+    (lot 13, décision 4 ; bouton « Retirer » de la carte Intervenants)."""
+    rows = db.query_all(
+        """
+        SELECT utilisateur_id FROM projet_co_chef WHERE projet_id = %(p)s
+        UNION
+        SELECT utilisateur_id FROM projet_intervenant WHERE projet_id = %(p)s
+        UNION
+        SELECT ti.utilisateur_id FROM tache t JOIN tache_intervenant ti ON ti.tache_id = t.id
+        WHERE t.projet_id = %(p)s AND t.etat IN ('en_cours', 'bloque')
+        EXCEPT
+        SELECT chef_projet_id FROM projet WHERE id = %(p)s
+        """,
+        {"p": projet_id},
+    )
+    return {r["utilisateur_id"] for r in rows}
+
+
+def retirer_intervenant(projet_id: int, utilisateur_id: int, current_user_id: int) -> dict:
+    """Retire une personne du projet (lot 13, décision 4) : co-chef,
+    intervenant du projet et intervenant de ses tâches OUVERTES (une tâche
+    close garde l'historique de qui l'a faite ; ses heures restent). Jamais
+    le chef titulaire (on change de chef dans Informations). Une seule
+    transaction sous le verrou du projet, avec un post automatique
+    (evenement 'intervenant_projet') ; les lignes retirées sont tracées par
+    les triggers d'audit. Renvoie {post_id, personne, co_chef, taches}
+    (titres des tâches quittées) ; RetraitRefuse sinon."""
+    with db.get_cursor(user_id=current_user_id) as cur:
+        cur.execute("SELECT chef_projet_id FROM projet WHERE id = %s FOR NO KEY UPDATE", (projet_id,))
+        projet = cur.fetchone()
+        if projet is None:
+            raise RetraitRefuse("Projet introuvable.")
+        if projet["chef_projet_id"] == utilisateur_id:
+            raise RetraitRefuse("Le chef de projet titulaire ne se retire pas : confiez d'abord le projet à "
+                                "un autre chef (fenêtre Informations).")
+        cur.execute("SELECT id, prenom, nom FROM utilisateur WHERE id = ANY(%s)",
+                    ([utilisateur_id, current_user_id],))
+        gens = {r["id"]: dict(r) for r in cur.fetchall()}
+        personne = gens.get(utilisateur_id)
+        if personne is None:
+            raise RetraitRefuse("Utilisateur invalide.")
+        cur.execute("DELETE FROM projet_co_chef WHERE projet_id = %s AND utilisateur_id = %s",
+                    (projet_id, utilisateur_id))
+        co_chef = cur.rowcount > 0
+        cur.execute("DELETE FROM projet_intervenant WHERE projet_id = %s AND utilisateur_id = %s",
+                    (projet_id, utilisateur_id))
+        intervenant = cur.rowcount > 0
+        cur.execute(
+            """
+            DELETE FROM tache_intervenant ti USING tache t
+            WHERE t.id = ti.tache_id AND t.projet_id = %s AND ti.utilisateur_id = %s
+              AND t.etat IN ('en_cours', 'bloque')
+            RETURNING t.titre
+            """,
+            (projet_id, utilisateur_id),
+        )
+        taches = [r["titre"] for r in cur.fetchall()]
+        if not (co_chef or intervenant or taches):
+            raise RetraitRefuse("Cette personne n'est pas rattachée au projet (ou seulement à des tâches closes).")
+        acteur = gens.get(current_user_id) or {"prenom": "", "nom": ""}
+        contenu = f"{_nom(acteur)} a retiré {_nom(personne)} du projet"
+        if taches:
+            contenu += f" et de {len(taches)} tâche{'s' if len(taches) > 1 else ''} en cours : " + \
+                ", ".join(f"« {t} »" for t in taches[:10]) + (f" et {len(taches) - 10} autre(s)" if len(taches) > 10 else "")
+        cur.execute(
+            """
+            INSERT INTO post (projet_id, auteur_id, type_code, contenu, evenement)
+            VALUES (%s, %s, 'information', %s, 'intervenant_projet')
+            RETURNING id
+            """,
+            (projet_id, current_user_id, contenu + "."),
+        )
+        return {"post_id": cur.fetchone()["id"], "personne": personne, "co_chef": co_chef, "taches": taches}
+
+
 def add_intervenant(projet_id: int, utilisateur_id: int, current_user_id: int) -> bool:
     """Rattache `utilisateur_id` au projet. Un utilisateur de rôle
     « chef_de_projet » devient co-chef (décision 3, lot 10) au lieu
@@ -787,7 +992,9 @@ def propose_code(phase: str, annee: int | None = None, phase_liee_code: str | No
 
     from .. import horloge
 
-    annee = annee or horloge.aujourdhui().year
+    # Année RÉELLE (contre-expertise temps N6) : sous une date simulée
+    # future, un numéro de l'année suivante serait consommé pour de bon.
+    annee = annee or horloge.aujourdhui_reel().year
     prefixe = f"{annee % 100:02d}"
 
     rows = db.query_all("SELECT code FROM projet WHERE code LIKE %s", (f"{prefixe}%",))
@@ -815,10 +1022,18 @@ def create_projet(
     """`equipe_code` (2026-09-16) : équipe "propriétaire" du projet, utilisée
     pour la visibilité (voir v_projet_visibilite dans schema.sql). Si non
     précisé, on reprend automatiquement l'équipe du chef de projet — comme
-    décidé avec Fadhel ("proposée automatiquement, modifiable")."""
+    décidé avec Fadhel ("proposée automatiquement, modifiable") ; lot 13
+    (audit rôles I5) : à défaut celle du créateur, à défaut MIDGARD (comme
+    la migration 0016).
+
+    Lot 13 (I5) : un créateur qui confie le projet à un autre chef en
+    devient co-chef (sauf l'Admin, qui voit et gère tout) — il gardait
+    sinon « Projet créé. » suivi d'une page introuvable."""
     if equipe_code is None:
-        chef = db.query_one("SELECT equipe_code FROM utilisateur WHERE id = %s", (chef_projet_id,))
-        equipe_code = chef["equipe_code"] if chef else None
+        rows = db.query_all("SELECT id, equipe_code FROM utilisateur WHERE id = ANY(%s)",
+                            ([chef_projet_id] + ([current_user_id] if current_user_id else []),))
+        equipes = {r["id"]: r["equipe_code"] for r in rows}
+        equipe_code = equipes.get(chef_projet_id) or equipes.get(current_user_id) or EQUIPE_PAR_DEFAUT
 
     with db.get_cursor(user_id=current_user_id) as cur:
         cur.execute(
@@ -846,4 +1061,13 @@ def create_projet(
             """,
             (projet_id, current_user_id or chef_projet_id, f"{code}_{nom}"),
         )
+        if current_user_id and current_user_id != chef_projet_id:
+            cur.execute(
+                """
+                INSERT INTO projet_co_chef (projet_id, utilisateur_id)
+                SELECT %s, u.id FROM utilisateur u WHERE u.id = %s AND u.role = 'chef_de_projet'
+                ON CONFLICT DO NOTHING
+                """,
+                (projet_id, current_user_id),
+            )
         return projet_id

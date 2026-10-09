@@ -1,19 +1,21 @@
 #!/bin/bash
 # Scénarios Playwright sur une base jetable : Daily log v9 (lot 10, par
-# défaut), fiche projet (lot 11 : KAIROS_E2E_SCENARIO=projet) ou modes de
+# défaut), fiche projet (lot 11 : KAIROS_E2E_SCENARIO=projet), modes de
 # l'Admin (lot 12 : KAIROS_E2E_SCENARIO=modes, serveur lancé avec
-# KAIROS_MODE_TEST=true sauf valeur déjà posée).
+# KAIROS_MODE_TEST=true sauf valeur déjà posée) ou socle des mises à jour
+# partielles (lot 13 : KAIROS_E2E_SCENARIO=partiel, même mode test) ou pages
+# converties en phase 2 (KAIROS_E2E_SCENARIO=pages, même mode test).
 # Prérequis : PostgreSQL 16 (PGHOST/PGUSER/PGPASSWORD), Node + Playwright
 # (PLAYWRIGHT_MODULE = chemin du module si non installé localement,
 # PLAYWRIGHT_BROWSERS_PATH pour Chromium), psycopg2 (ou un équivalent sur
-# PYTHONPATH). Usage : [KAIROS_E2E_SCENARIO=dailylog|projet|modes] bash tests_e2e/lancer.sh [dossier_captures]
+# PYTHONPATH). Usage : [KAIROS_E2E_SCENARIO=dailylog|projet|modes|partiel|pages] bash tests_e2e/lancer.sh [dossier_captures]
 set -euo pipefail
 racine=$(cd "$(dirname "$0")/.." && pwd)
 export PGHOST=${PGHOST:-127.0.0.1} PGUSER=${PGUSER:-kairos} PGPASSWORD=${PGPASSWORD:-kairos}
 scenario=${KAIROS_E2E_SCENARIO:-dailylog}
-case "$scenario" in dailylog|projet|modes) ;; *) echo "Scénario inconnu : $scenario (dailylog, projet ou modes)" >&2; exit 1 ;; esac
+case "$scenario" in dailylog|projet|modes|partiel|pages) ;; *) echo "Scénario inconnu : $scenario (dailylog, projet, modes, partiel ou pages)" >&2; exit 1 ;; esac
 # « Agir comme » et date simulée n'existent qu'en mode test (lot 12).
-if [ "$scenario" = modes ]; then export KAIROS_MODE_TEST=${KAIROS_MODE_TEST:-true}; fi
+if [ "$scenario" = modes ] || [ "$scenario" = partiel ] || [ "$scenario" = pages ]; then export KAIROS_MODE_TEST=${KAIROS_MODE_TEST:-true}; fi
 base=${KAIROS_E2E_BASE_PG:-kairos_e2e_$scenario}
 port=${KAIROS_E2E_PORT:-8798}
 psql -X -q -d postgres -c "DROP DATABASE IF EXISTS $base" -c "CREATE DATABASE $base"

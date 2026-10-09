@@ -1,0 +1,11 @@
+{# Compteur de commentaires d'un post (lot 13 : remplacé hors cible après
+   un commentaire). Un <label> vers le champ de commentaire s'il existe (un
+   clic y place le curseur), un simple texte si le projet est clos (lot 10,
+   audit front I17). #}
+{% set compteur_clos = post.projet_etat in ('termine', 'abandonne') %}
+{% set compteur_commentaires %}<svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="4"/><path d="M8.5 17 6.5 20v-3"/></svg> {{ post.nb_commentaires }} commentaire{{ 's' if post.nb_commentaires > 1 else '' }}{% endset %}
+{% if compteur_clos %}
+<span class="post-action post-action-compteur" id="post-{{ post.id }}-compteur"{% if oob %} data-partiel-oob{% endif %}>{{ compteur_commentaires }}</span>
+{% else %}
+<label for="commentaire-post-{{ post.id }}" class="post-action post-action-compteur" id="post-{{ post.id }}-compteur"{% if oob %} data-partiel-oob{% endif %}>{{ compteur_commentaires }}</label>
+{% endif %}

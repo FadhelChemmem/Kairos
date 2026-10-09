@@ -13,7 +13,7 @@ from flask import (
     Blueprint, abort, current_app, flash, g, redirect, render_template, request, session, url_for,
 )
 
-from .. import horloge, mailer
+from .. import horloge, mailer, partiel
 from ..auth import (
     MOT_DE_PASSE_MIN_LEN, generer_lien_reset, hash_password, login_required,
     password_fingerprint, role_required, verify_password,
@@ -157,31 +157,69 @@ def _enregistrer_avatar_si_fourni(user_id: int, current_user_id: int) -> None:
         raise
 
 
-def _erreur_fiche(prenom, nom, email, telephone, poste, adresse, date_embauche, equipe_code,
-                  champs_perso) -> str | None:
+# Rôles qui ne voient des projets que par leur équipe (lot 13, audit rôles M4).
+ROLES_EQUIPE_OBLIGATOIRE = ("intervenant", "chef_de_projet")
+
+
+ORDRE_CHAMPS = ("prenom", "nom", "avatar", "email", "telephone", "poste", "date_embauche", "adresse",
+                "equipe_code", "role", "fuseau", "nouveau_mot_de_passe", "champs_perso",
+                "mot_de_passe_actuel", "confirmation")
+
+
+def _ordonner(erreurs: dict) -> dict:
+    """Erreurs dans l'ordre du formulaire : la première reçoit le focus."""
+    return {**{c: erreurs[c] for c in ORDRE_CHAMPS if c in erreurs},
+            **{c: m for c, m in erreurs.items() if c not in ORDRE_CHAMPS}}
+
+
+def _erreurs_fiche(prenom, nom, email, telephone, poste, adresse, date_embauche, equipe_code,
+                   champs_perso) -> dict:
     """Contrôle commun des formulaires Créer / Modifier un utilisateur
     (retour Fadhel, lot 8 : « vérifier toutes les saisies »). Avant, un
     champ trop long, une équipe inconnue ou un email mal formé finissaient
-    en « Impossible de créer ce compte » (erreur Postgres) ou passaient."""
+    en « Impossible de créer ce compte » (erreur Postgres) ou passaient.
+    Lot 13 (audit a11y I5) : une erreur par champ, {champ: message}."""
     import datetime
 
-    embauche_future = None
+    erreurs: dict = {}
+
+    def poser(champ, message):
+        if message and champ not in erreurs:
+            erreurs[champ] = message
+
+    poser("prenom", v.trop_long(prenom, v.MAX_PRENOM_NOM, "Prénom"))
+    poser("nom", v.trop_long(nom, v.MAX_PRENOM_NOM, "Nom"))
+    if email:
+        poser("email", v.email_invalide(email))
+    poser("telephone", v.telephone_invalide(telephone))
+    poser("poste", v.trop_long(poste, v.MAX_POSTE, "Poste"))
+    poser("adresse", v.trop_long(adresse, v.MAX_ADRESSE, "Adresse"))
+    poser("date_embauche", v.date_hors_bornes(date_embauche, "Date d'embauche"))
     if date_embauche and date_embauche > horloge.aujourdhui() + datetime.timedelta(days=366):
-        embauche_future = "Date d'embauche invalide : plus d'un an dans le futur."
-    return v.premiere_erreur(
-        v.trop_long(prenom, v.MAX_PRENOM_NOM, "Prénom"),
-        v.trop_long(nom, v.MAX_PRENOM_NOM, "Nom"),
-        v.email_invalide(email),
-        v.telephone_invalide(telephone),
-        v.trop_long(poste, v.MAX_POSTE, "Poste"),
-        v.trop_long(adresse, v.MAX_ADRESSE, "Adresse"),
-        v.date_hors_bornes(date_embauche, "Date d'embauche"),
-        embauche_future,
-        "Équipe invalide." if equipe_code and equipe_code not in {c for c, _ in EQUIPE_CHOICES} else None,
-        f"{v.MAX_CHAMPS_PERSO} champs personnalisés au plus." if len(champs_perso) > v.MAX_CHAMPS_PERSO else None,
-        next((f"Champ personnalisé « {n[:30]} » : nom ou valeur trop long." for n, val in champs_perso.items()
-              if len(n) > v.MAX_CHAMP_PERSO_NOM or len(val) > v.MAX_CHAMP_PERSO_VALEUR), None),
-    )
+        poser("date_embauche", "Date d'embauche invalide : plus d'un an dans le futur.")
+    if equipe_code and equipe_code not in {c for c, _ in EQUIPE_CHOICES}:
+        poser("equipe_code", "Équipe invalide.")
+    if len(champs_perso) > v.MAX_CHAMPS_PERSO:
+        poser("champs_perso", f"{v.MAX_CHAMPS_PERSO} champs personnalisés au plus.")
+    poser("champs_perso", next((f"Champ personnalisé « {n[:30]} » : nom ou valeur trop long." for n, val in champs_perso.items()
+                                if len(n) > v.MAX_CHAMP_PERSO_NOM or len(val) > v.MAX_CHAMP_PERSO_VALEUR), None))
+    return erreurs
+
+
+def _erreur_fiche(prenom, nom, email, telephone, poste, adresse, date_embauche, equipe_code,
+                  champs_perso) -> str | None:
+    """Premier message de _erreurs_fiche (ou None)."""
+    erreurs = _erreurs_fiche(prenom, nom, email, telephone, poste, adresse, date_embauche, equipe_code, champs_perso)
+    return next(iter(erreurs.values()), None)
+
+
+def _resume_erreurs(erreurs: dict) -> str:
+    """Message d'ensemble (rendu complet sans JavaScript, en plus des
+    messages sous les champs)."""
+    manquants = [c for c in ("prenom", "nom", "email") if erreurs.get(c) == "Obligatoire."]
+    if manquants:
+        return "Prénom, nom et email sont obligatoires."
+    return next(iter(erreurs.values()))
 
 
 def _parser_date_embauche(date_str: str | None):
@@ -278,6 +316,10 @@ def profil_personne(user_id: int):
     if utilisateur is None:
         flash("Utilisateur introuvable.", "error")
         return redirect(url_for("main.accueil"))
+    # Lot 13 (audit rôles M2) : un Client ne consulte pas le profil d'un
+    # compte désactivé (la recherche les lui masque déjà).
+    if g.user["role"] == "client" and not utilisateur.get("actif") and user_id != g.user["id"]:
+        abort(404)
 
     viewer_id = g.user["id"]
     projets_visibles_ids = projets_repo.list_ids_visibles(viewer_id)
@@ -296,12 +338,30 @@ def profil_personne(user_id: int):
     # jointes des projets qu'il voit), limité à ces projets comme pour
     # tout le monde (projets_visibles_ids).
     voir_daily_log = user_id == viewer_id or g.user["role"] in ("admin", "chef_de_projet", "client")
+    jours = (_fenetre_7_jours(utilisateur, projets_visibles_ids, nb_jours=7 * semaines)
+             if voir_daily_log else None)
+    if jours is not None and g.user["role"] == "client" and user_id != viewer_id:
+        # Lot 13 (audit rôles M2) : un Client ne voit que les heures posées
+        # sur SES projets — ni les absences, ni les jours sans rien pour lui.
+        jours = [{**j, "absent": False} for j in jours if j["entrees"]]
 
+    # Premier jour qu'ajoutera « Voir la semaine précédente » (focus).
+    jour_suivant = (jours[-1]["date"] - datetime.timedelta(days=1)) if jours else None
+    if partiel.est_partiel():
+        # Lot 13 : « Voir la semaine précédente » — Daily log et posts
+        # remplacés en place (#profil-activite), l'adresse suit.
+        return partiel.repondre(
+            "partials/profil_activite.html", utilisateur=utilisateur, jours=jours, jour_suivant=jour_suivant,
+            peut_corriger=voir_daily_log and _peut_corriger(utilisateur), semaines=semaines,
+            posts_plus_anciens=posts_plus_anciens, posts_recents=posts_recents,
+            utilisateurs_actifs=utilisateurs_repo.list_actifs(),
+        )
+    projets_postables = [p for p in projets_repo.list_mes_projets_recents(viewer_id, limit=500)
+                         if p["etat"] in ("en_cours", "bloque")]
     return render_template(
         "utilisateur_profil_personne.html",
-        utilisateur=utilisateur,
-        jours=(_fenetre_7_jours(utilisateur, projets_visibles_ids, nb_jours=7 * semaines)
-               if voir_daily_log else None),
+        utilisateur=utilisateur, jour_suivant=jour_suivant,
+        jours=jours,
         peut_corriger=voir_daily_log and _peut_corriger(utilisateur),
         semaines=semaines,
         posts_plus_anciens=posts_plus_anciens,
@@ -314,10 +374,8 @@ def profil_personne(user_id: int):
         utilisateurs_actifs=utilisateurs_repo.list_actifs(),
         # "Reposter" ouvre la fenêtre "Nouveau post" (2026-09-29) : mêmes
         # données que sur l'accueil (voir main.accueil).
-        projets_postables=[
-            p for p in projets_repo.list_mes_projets_recents(viewer_id, limit=500)
-            if p["etat"] in ("en_cours", "bloque")
-        ],
+        projets_postables=projets_postables,
+        voient_par_projet=projets_repo.ids_voient_projets(projets_postables),
         collaborateurs_recents=utilisateurs_repo.list_collaborateurs_recents(viewer_id),
     )
 
@@ -337,6 +395,14 @@ def liste():
 
     tous = utilisateurs_repo.list_tous(q=q, equipe_code=equipe_code, role=role, actif=actif)
     compte = utilisateurs_repo.compter()
+    # Lot 13 : filtres appliqués en mise à jour partielle (tableau seul,
+    # compteur hors cible).
+    if partiel.est_partiel():
+        return partiel.repondre(
+            "partials/utilisateurs_resultats.html", oob_compte=True,
+            utilisateurs=tous, compte=compte, peut_gerer=g.user["role"] in ("admin", "rh"),
+            q=q or "", equipe_code=equipe_code, role=role, actif_param=actif_param or "",
+        )
     # Lot 11 (vue Admin) : projets ouverts dont le chef est désactivé, à
     # réaffecter — la fenêtre Informations ne change pas le chef : liste
     # avec un lien vers chaque projet.
@@ -353,6 +419,7 @@ def liste():
 @bp.route("/nouveau", methods=["GET", "POST"])
 @role_required("admin", "rh")
 def creer():
+    erreurs: dict = {}
     if request.method == "POST":
         _refuser_mot_de_passe_hors_admin()
         prenom = request.form.get("prenom", "").strip()
@@ -380,18 +447,24 @@ def creer():
         except ValueError:
             date_embauche_valide = False
 
-        if not prenom or not nom or not email:
-            flash("Prénom, nom et email sont obligatoires.", "error")
-        elif role not in _roles_attribuables():
-            flash("Rôle invalide.", "error")
-        elif fuseau not in dailylog_repo.FUSEAUX:
-            flash("Bureau (fuseau horaire) invalide.", "error")
-        elif date_embauche_valide is False:
-            flash("Date d'embauche invalide.", "error")
-        elif erreur := _erreur_fiche(prenom, nom, email, telephone, poste, adresse,
-                                     date_embauche_valide, equipe_code, champs_perso):
-            flash(erreur, "error")
-        else:
+        # Lot 13 (audit a11y I5) : toutes les erreurs, chacune sous son champ.
+        for champ, valeur in (("prenom", prenom), ("nom", nom), ("email", email)):
+            if not valeur:
+                erreurs[champ] = "Obligatoire."
+        if role not in _roles_attribuables():
+            erreurs["role"] = "Rôle invalide."
+        if fuseau not in dailylog_repo.FUSEAUX:
+            erreurs["fuseau"] = "Bureau (fuseau horaire) invalide."
+        if date_embauche_valide is False:
+            erreurs["date_embauche"] = "Date d'embauche invalide."
+        if role in ROLES_EQUIPE_OBLIGATOIRE and not equipe_code:
+            # Lot 13 (audit rôles M4) : sans équipe, un intervenant ou un chef
+            # de projet ne voit aucun projet et n'a rien à saisir.
+            erreurs["equipe_code"] = "Choisissez l'équipe de ce compte (intervenant ou chef de projet)."
+        for champ, message in _erreurs_fiche(prenom, nom, email, telephone, poste, adresse,
+                                             date_embauche_valide or None, equipe_code, champs_perso).items():
+            erreurs.setdefault(champ, message)
+        if not erreurs:
             try:
                 # Pas de mot de passe défini ici (retour Fadhel, 2026-09-21 :
                 # "ne pas définir un mot de passe à la création, envoyer un
@@ -410,12 +483,10 @@ def creer():
                 )
             except Exception as exc:
                 if "idx_utilisateur_rh_singleton" in str(exc):
-                    flash(
-                        "Il y a déjà un compte RH actif. Désactivez-le d'abord "
-                        "pour en créer un nouveau.", "error",
-                    )
+                    erreurs["role"] = ("Il y a déjà un compte RH actif. Désactivez-le d'abord "
+                                       "pour en créer un nouveau.")
                 elif "idx_utilisateur_email_lower" in str(exc):
-                    flash(f"Un compte existe déjà avec l'email {email}.", "error")
+                    erreurs["email"] = f"Un compte existe déjà avec l'email {email}."
                 else:
                     flash("Impossible de créer ce compte.", "error")
             else:
@@ -454,13 +525,33 @@ def creer():
                         "(« Envoyer un lien de réinitialisation ») une fois "
                         f"l'envoi d'e-mails opérationnel{autre_option}.", "error",
                     )
+                # Lot 13 : en mise à jour partielle, la redirection devient
+                # une navigation (204 + X-Kairos-Redirection), messages compris.
                 return redirect(url_for("utilisateurs.liste"))
+        erreurs = _ordonner(erreurs)
+        if erreurs and not partiel.est_partiel():
+            flash(_resume_erreurs(erreurs), "error")
 
-    rh_titulaire = utilisateurs_repo.rh_deja_attribue()
+    contexte = dict(equipe_choices=EQUIPE_CHOICES, rh_titulaire=utilisateurs_repo.rh_deja_attribue(),
+                    fuseaux=dailylog_repo.FUSEAUX, erreurs=erreurs)
+    if partiel.est_partiel():
+        return partiel.repondre("partials/utilisateur_creer_form.html", statut=422 if erreurs else 200, **contexte)
+    return render_template("utilisateur_creer.html", **contexte)
+
+
+def _rendre_mon_profil(erreurs_infos=None, erreurs_mdp=None, statut=200):
+    utilisateur = utilisateurs_repo.get_utilisateur(g.user["id"])
+    if erreurs_infos:
+        # Saisie réaffichée telle quelle, à corriger.
+        utilisateur = {**utilisateur, **{c: request.form.get(c, "") for c in ("telephone", "poste", "adresse")}}
+    # Daily log de la semaine dernière (lundi → vendredi — voir
+    # _semaine_derniere), demandé par Fadhel (2026-09-19), affiché en
+    # lecture seule ici (la saisie reste sur /dailylog ; chaque ligne y
+    # renvoie directement, voir utilisateur_profil.html).
     return render_template(
-        "utilisateur_creer.html", equipe_choices=EQUIPE_CHOICES, rh_titulaire=rh_titulaire,
-        fuseaux=dailylog_repo.FUSEAUX,
-    )
+        "utilisateur_profil.html", utilisateur=utilisateur, semaine_derniere=_semaine_derniere(utilisateur),
+        erreurs_infos=erreurs_infos or {}, erreurs_mdp=erreurs_mdp or {},
+    ), statut
 
 
 @bp.route("/moi", methods=["GET", "POST"])
@@ -472,33 +563,36 @@ def mon_profil():
         telephone = request.form.get("telephone", "").strip() or None
         poste = request.form.get("poste", "").strip() or None
         adresse = request.form.get("adresse", "").strip() or None
-        erreur = v.premiere_erreur(
-            v.telephone_invalide(telephone),
-            v.trop_long(poste, v.MAX_POSTE, "Poste"),
-            v.trop_long(adresse, v.MAX_ADRESSE, "Adresse"),
-        )
-        if erreur:
-            flash(erreur, "error")
-            return redirect(url_for("utilisateurs.mon_profil"))
+        erreurs = {c: m for c, m in (
+            ("telephone", v.telephone_invalide(telephone)),
+            ("poste", v.trop_long(poste, v.MAX_POSTE, "Poste")),
+            ("adresse", v.trop_long(adresse, v.MAX_ADRESSE, "Adresse")),
+        ) if m}
+        if erreurs:
+            # Lot 13 (audit a11y I5) : message sous le champ, focus dessus ;
+            # la saisie n'est plus perdue (redirection auparavant).
+            if partiel.est_partiel():
+                utilisateur = {**utilisateurs_repo.get_utilisateur(user_id),
+                               "telephone": telephone, "poste": poste, "adresse": adresse}
+                return partiel.repondre("partials/mes_infos_form.html", statut=422, utilisateur=utilisateur,
+                                        erreurs_infos=erreurs)
+            flash(next(iter(erreurs.values())), "error")
+            return _rendre_mon_profil(erreurs_infos=erreurs)
         utilisateurs_repo.update_profil(
             user_id, telephone=telephone, poste=poste, adresse=adresse,
             current_user_id=user_id,
         )
+        photo = bool(request.files.get("avatar") and request.files["avatar"].filename)
         _enregistrer_avatar_si_fourni(user_id, user_id)
         flash("Vos informations ont été mises à jour.", "success")
+        if partiel.est_partiel():
+            # Formulaire remplacé en place ; la photo suit dans l'en-tête de
+            # la carte et dans la barre du haut (hors cible).
+            return partiel.repondre("partials/mes_infos_form.html", utilisateur=utilisateurs_repo.get_utilisateur(user_id),
+                                    erreurs_infos={}, oob_avatar=photo)
         return redirect(url_for("utilisateurs.mon_profil"))
 
-    utilisateur = utilisateurs_repo.get_utilisateur(user_id)
-
-    # Daily log de la semaine dernière (lundi → vendredi — voir
-    # _semaine_derniere), demandé par Fadhel (2026-09-19), affiché en
-    # lecture seule ici (la saisie reste sur /dailylog ; chaque ligne y
-    # renvoie directement, voir utilisateur_profil.html).
-    return render_template(
-        "utilisateur_profil.html",
-        utilisateur=utilisateur,
-        semaine_derniere=_semaine_derniere(utilisateur),
-    )
+    return _rendre_mon_profil()
 
 
 @bp.route("/moi/mot-de-passe", methods=["POST"])
@@ -509,7 +603,8 @@ def mon_mot_de_passe():
     son mot de passe") — formulaire séparé de mon_profil() (pas le même
     enctype, et une erreur ici ne doit pas faire perdre les autres champs).
     L'ancien mot de passe est exigé, comme tout changement de mot de passe
-    volontaire par son titulaire."""
+    volontaire par son titulaire. Lot 13 (audit a11y I5) : l'erreur est
+    reliée à son champ, qui reçoit le focus."""
     user_id = g.user["id"]
     actuel = request.form.get("mot_de_passe_actuel", "")
     nouveau = request.form.get("nouveau_mot_de_passe", "")
@@ -517,12 +612,13 @@ def mon_mot_de_passe():
 
     hash_actuel = utilisateurs_repo.get_mot_de_passe_hash(user_id)
 
+    erreurs = {}
     if hash_actuel is None or not verify_password(actuel, hash_actuel):
-        flash("Mot de passe actuel incorrect.", "error")
+        erreurs["mot_de_passe_actuel"] = "Mot de passe actuel incorrect."
     elif nouveau != confirmation:
-        flash("Les deux nouveaux mots de passe ne correspondent pas.", "error")
+        erreurs["confirmation"] = "Les deux nouveaux mots de passe ne correspondent pas."
     elif len(nouveau) < MOT_DE_PASSE_MIN_LEN:
-        flash(f"Le nouveau mot de passe doit faire au moins {MOT_DE_PASSE_MIN_LEN} caractères.", "error")
+        erreurs["nouveau_mot_de_passe"] = f"Le nouveau mot de passe doit faire au moins {MOT_DE_PASSE_MIN_LEN} caractères."
     else:
         nouveau_hash = hash_password(nouveau)
         utilisateurs_repo.set_password(user_id, nouveau_hash, user_id)
@@ -534,6 +630,11 @@ def mon_mot_de_passe():
         session["pw_fingerprint"] = password_fingerprint(nouveau_hash)
         flash("Mot de passe changé.", "success")
 
+    if partiel.est_partiel():
+        return partiel.repondre("partials/mot_de_passe_form.html", statut=422 if erreurs else 200, erreurs_mdp=erreurs)
+    if erreurs:
+        flash(next(iter(erreurs.values())), "error")
+        return _rendre_mon_profil(erreurs_mdp=erreurs)
     return redirect(url_for("utilisateurs.mon_profil"))
 
 
@@ -568,9 +669,12 @@ def fiche(user_id: int):
         )
 
     if request.method == "POST" and _cible_protegee(utilisateur):
+        if partiel.est_partiel():
+            return partiel.refuser("Seul un Admin peut modifier le compte d'un Admin.", 403)
         flash("Seul un Admin peut modifier le compte d'un Admin.", "error")
         return redirect(url_for("utilisateurs.fiche", user_id=user_id))
 
+    erreurs: dict = {}
     if request.method == "POST":
         _refuser_mot_de_passe_hors_admin()
         prenom = request.form.get("prenom", "").strip()
@@ -622,25 +726,29 @@ def fiche(user_id: int):
             elif email:
                 email_change_refuse = True
 
+        # Lot 13 (audit a11y I5) : toutes les erreurs, chacune sous son champ.
         if user_id == g.user["id"] and role != utilisateur["role"]:
-            flash("Vous ne pouvez pas changer votre propre rôle depuis cet écran.", "error")
+            erreurs["role"] = "Vous ne pouvez pas changer votre propre rôle depuis cet écran."
         elif role not in _roles_attribuables() and role != utilisateur["role"]:
-            flash("Rôle invalide.", "error")
-        elif fuseau not in dailylog_repo.FUSEAUX:
-            flash("Bureau (fuseau horaire) invalide.", "error")
-        elif not prenom or not nom or not email:
-            flash("Prénom, nom et email sont obligatoires.", "error")
-        elif email_change_refuse:
-            flash(
-                "Seul un Admin peut changer l'adresse e-mail d'un compte (c'est "
-                "à cette adresse que part le lien de réinitialisation).", "error",
-            )
-        elif date_embauche_valide is False:
-            flash("Date d'embauche invalide.", "error")
-        elif erreur := _erreur_fiche(prenom, nom, email, telephone, poste, adresse,
-                                     date_embauche_valide, equipe_code, champs_perso):
-            flash(erreur, "error")
-        else:
+            erreurs["role"] = "Rôle invalide."
+        if fuseau not in dailylog_repo.FUSEAUX:
+            erreurs["fuseau"] = "Bureau (fuseau horaire) invalide."
+        for champ, valeur in (("prenom", prenom), ("nom", nom), ("email", email)):
+            if not valeur:
+                erreurs[champ] = "Obligatoire."
+        if email_change_refuse:
+            erreurs["email"] = ("Seul un Admin peut changer l'adresse e-mail d'un compte (c'est "
+                                "à cette adresse que part le lien de réinitialisation).")
+        if date_embauche_valide is False:
+            erreurs["date_embauche"] = "Date d'embauche invalide."
+        if role in ROLES_EQUIPE_OBLIGATOIRE and not equipe_code:
+            # Contre-expertise rôles M4 : même règle qu'à la création.
+            erreurs["equipe_code"] = "Choisissez l'équipe de ce compte (intervenant ou chef de projet)."
+        for champ, message in _erreurs_fiche(prenom, nom, email, telephone, poste, adresse,
+                                             date_embauche_valide or None, equipe_code, champs_perso).items():
+            erreurs.setdefault(champ, message)
+        avertissement_mdp = None
+        if not erreurs:
             try:
                 utilisateurs_repo.update_utilisateur_complet(
                     user_id, prenom=prenom, nom=nom, email=email, telephone=telephone,
@@ -654,43 +762,53 @@ def fiche(user_id: int):
                 nouveau_mot_de_passe = request.form.get("nouveau_mot_de_passe", "")
                 if nouveau_mot_de_passe:
                     if len(nouveau_mot_de_passe) < MOT_DE_PASSE_MIN_LEN:
-                        flash(
+                        avertissement_mdp = (
                             f"Fiche mise à jour, mais le mot de passe doit faire au "
                             f"moins {MOT_DE_PASSE_MIN_LEN} caractères — il n'a pas été "
-                            "changé.", "error",
-                        )
-                        return redirect(url_for("utilisateurs.fiche", user_id=user_id))
-                    nouveau_hash = hash_password(nouveau_mot_de_passe)
-                    utilisateurs_repo.set_password(user_id, nouveau_hash, g.user["id"])
-                    # Un admin/RH qui change SON PROPRE mot de passe depuis
-                    # sa fiche garde sa session (comme depuis "Infos
-                    # perso") — sans ça, l'empreinte ne correspondait plus
-                    # et il était déconnecté à la requête suivante (P2 #17).
-                    if user_id == g.user["id"]:
-                        session["pw_fingerprint"] = password_fingerprint(nouveau_hash)
+                            "changé.")
+                    else:
+                        nouveau_hash = hash_password(nouveau_mot_de_passe)
+                        utilisateurs_repo.set_password(user_id, nouveau_hash, g.user["id"])
+                        # Un admin/RH qui change SON PROPRE mot de passe depuis
+                        # sa fiche garde sa session (comme depuis "Infos
+                        # perso") — sans ça, l'empreinte ne correspondait plus
+                        # et il était déconnecté à la requête suivante (P2 #17).
+                        if user_id == g.user["id"]:
+                            session["pw_fingerprint"] = password_fingerprint(nouveau_hash)
             except Exception as exc:
                 if "idx_utilisateur_rh_singleton" in str(exc):
-                    flash(
-                        "Il y a déjà un compte RH actif. Désactivez-le d'abord "
-                        "pour en attribuer ce rôle.", "error",
-                    )
+                    erreurs["role"] = ("Il y a déjà un compte RH actif. Désactivez-le d'abord "
+                                       "pour en attribuer ce rôle.")
                 elif "idx_utilisateur_email_lower" in str(exc):
-                    flash(f"Un compte existe déjà avec l'email {email}.", "error")
+                    erreurs["email"] = f"Un compte existe déjà avec l'email {email}."
                 elif "rôle RH" in str(exc):
                     # trg_check_passage_role_rh (migration 0005).
-                    flash(
+                    erreurs["role"] = (
                         "Impossible de passer cette personne au rôle RH : elle est "
                         "encore chef de projet, co-chef ou intervenant. Retirez-la "
-                        "d'abord de ses projets et tâches.", "error",
-                    )
+                        "d'abord de ses projets et tâches.")
                 elif message := _message_garde_admin(exc):
-                    flash(message, "error")
+                    erreurs["role"] = message
                 else:
                     flash("Impossible de mettre à jour ce compte.", "error")
             else:
+                if avertissement_mdp:
+                    if partiel.est_partiel():
+                        erreurs["nouveau_mot_de_passe"] = (
+                            f"{MOT_DE_PASSE_MIN_LEN} caractères au moins : le mot de passe n'a pas été changé "
+                            "(le reste de la fiche est enregistré).")
+                        return _fiche_partielle(user_id, erreurs, statut=422,
+                                                toasts=[partiel.toast("Fiche mise à jour, sauf le mot de passe.", "avertissement")])
+                    flash(avertissement_mdp, "error")
+                    return redirect(url_for("utilisateurs.fiche", user_id=user_id))
                 flash("Fiche mise à jour.", "success")
+                if partiel.est_partiel():
+                    return _fiche_partielle(user_id, {})
                 return redirect(url_for("utilisateurs.fiche", user_id=user_id))
 
+        erreurs = _ordonner(erreurs)
+        if erreurs and not partiel.est_partiel():
+            flash(_resume_erreurs(erreurs), "error")
         # Erreur : on réaffiche la saisie (audit n°2 — la fiche revenait aux
         # valeurs enregistrées, toutes les modifications étaient perdues).
         utilisateur = {
@@ -701,13 +819,27 @@ def fiche(user_id: int):
             "equipe_code": equipe_code, "role": role, "champs_perso": champs_perso,
             "fuseau": fuseau,
         }
+        if partiel.est_partiel():
+            return _fiche_partielle(user_id, erreurs, statut=422 if erreurs else 200, utilisateur=utilisateur)
 
     return render_template(
         "utilisateur_fiche.html",
         utilisateur=utilisateur, equipe_choices=EQUIPE_CHOICES,
         roles_creables=_roles_attribuables(),
         lecture_seule=_cible_protegee(utilisateur),
-        fuseaux=dailylog_repo.FUSEAUX,
+        fuseaux=dailylog_repo.FUSEAUX, erreurs=erreurs,
+    )
+
+
+def _fiche_partielle(user_id: int, erreurs: dict, statut: int = 200, utilisateur: dict | None = None, toasts=None):
+    """Lot 13 : formulaire de la fiche re-rendu en place (après Enregistrer
+    ou avec les erreurs reliées aux champs), le nom du titre suit."""
+    enregistre = utilisateurs_repo.get_utilisateur(user_id)
+    return partiel.repondre(
+        "partials/utilisateur_fiche_form.html", statut=statut, toasts=toasts,
+        utilisateur=utilisateur or enregistre, titre=enregistre, oob_titre=True, equipe_choices=EQUIPE_CHOICES,
+        roles_creables=_roles_attribuables(), lecture_seule=_cible_protegee(enregistre),
+        fuseaux=dailylog_repo.FUSEAUX, erreurs=erreurs,
     )
 
 
@@ -723,6 +855,8 @@ def envoyer_lien_reinitialisation(user_id: int):
     a pas choisi un nouveau : un envoi ne bloque personne."""
     cible = utilisateurs_repo.get_utilisateur(user_id)
     if cible is None:
+        if partiel.est_partiel():
+            return partiel.refuser("Utilisateur introuvable.", 404)
         flash("Utilisateur introuvable.", "error")
         return redirect(url_for("utilisateurs.liste"))
     if _cible_protegee(cible):
@@ -755,6 +889,12 @@ def envoyer_lien_reinitialisation(user_id: int):
             f"L'e-mail de réinitialisation n'a pas pu être envoyé ({_motif_echec_email(cible['email'])}) : "
             f"aucun lien n'a été transmis à {cible['email']}. Réessayez plus tard.", "error",
         )
+    if partiel.est_partiel():
+        # Lot 13 : la carte reste en place, le résultat en toast.
+        if _cible_protegee(cible):
+            partiel.lire_flash()
+            return partiel.refuser("Seul un Admin peut agir sur le compte d'un Admin.", 403)
+        return partiel.repondre("partials/utilisateur_reinit.html", utilisateur=cible)
     return redirect(url_for("utilisateurs.fiche", user_id=user_id))
 
 
@@ -799,4 +939,64 @@ def toggle_actif(user_id: int):
         for cle in ("q", "equipe_code", "role", "actif")
         if request.form.get(cle)
     }
+    # Lot 13 : interrupteur « Compte actif » de la fiche (retour=fiche).
+    depuis_fiche = request.form.get("retour") == "fiche" and cible is not None
+    if partiel.est_partiel():
+        return _toggle_actif_partiel(user_id, cible, filtres, depuis_fiche)
+    if depuis_fiche:
+        return redirect(url_for("utilisateurs.fiche", user_id=user_id))
     return redirect(url_for("utilisateurs.liste", **filtres))
+
+
+def _toggle_actif_partiel(user_id: int, cible: dict | None, filtres: dict, depuis_fiche: bool = False):
+    """Lot 13 (pilote du socle partiel) : réponse de l'interrupteur « Actif »
+    à kairos-partiel.js — la ligne re-rendue (et le compteur), un toast avec
+    « Annuler » ; un refus (message déjà posé par flash()) annule l'état
+    optimiste côté navigateur."""
+    erreurs = [m for c, m in partiel.lire_flash() if c == "error"]
+    if erreurs:
+        if cible is None:
+            statut = 404
+        elif user_id == g.user["id"] or _cible_protegee(cible):
+            statut = 403
+        elif request.form.get("actif_cible") not in ("0", "1"):
+            statut = 400
+        else:
+            statut = 409
+        return partiel.refuser(erreurs[0], statut)
+    u = utilisateurs_repo.get_utilisateur(user_id)
+    if depuis_fiche:
+        action = None
+        if not request.form.get("annulation"):
+            action = {
+                "libelle": "Annuler", "url": url_for("utilisateurs.toggle_actif", user_id=user_id), "methode": "POST",
+                "donnees": {"retour": "fiche", "actif_cible": "0" if u["actif"] else "1", "annulation": "1"},
+                "cible": "#utilisateur-actif", "focus": "#fiche-actif",
+            }
+        texte = f"Compte de {u['prenom']} {u['nom']} {'réactivé' if u['actif'] else 'désactivé'}."
+        return partiel.repondre("partials/utilisateur_actif.html", toasts=[partiel.toast(texte, action=action)],
+                                utilisateur=u, oob_reinit=True)
+    q = filtres.get("q") or None
+    equipe_code = filtres.get("equipe_code") or None
+    role = filtres.get("role") if filtres.get("role") in ("admin", "chef_de_projet", "intervenant", "rh", "client") else None
+    actif_param = filtres.get("actif") or ""
+    nom = f"{u['prenom']} {u['nom']}"
+    action = None
+    if not request.form.get("annulation"):
+        action = {
+            "libelle": "Annuler",
+            "url": url_for("utilisateurs.toggle_actif", user_id=user_id),
+            "methode": "POST",
+            "donnees": {"q": q or "", "equipe_code": equipe_code or "", "role": role or "", "actif": actif_param,
+                        "actif_cible": "0" if u["actif"] else "1", "annulation": "1"},
+            "cible": f"#u-{user_id}",
+            "focus": f"#actif-{user_id}",
+        }
+    texte = f"Compte de {nom} {'réactivé' if u['actif'] else 'désactivé'}."
+    return partiel.repondre(
+        "partials/utilisateur_ligne.html", toasts=[partiel.toast(texte, action=action)], oob_compte=True,
+        u=u, peut_gerer=True, compte=utilisateurs_repo.compter(),
+        utilisateurs=utilisateurs_repo.list_tous(
+            q=q, equipe_code=equipe_code, role=role, actif={"actifs": True, "inactifs": False}.get(actif_param)),
+        q=q or "", equipe_code=equipe_code, role=role, actif_param=actif_param,
+    )

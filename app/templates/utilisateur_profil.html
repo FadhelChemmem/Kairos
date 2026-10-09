@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% import "partials/avatar.html" as avatarm %}
 {% block title %}Mes informations — Kairos{% endblock %}
 {# Pas de fil sur cette page (lot 11, audit front M8). #}
 {% block scripts_fil %}{% endblock %}
@@ -13,86 +12,38 @@
 
 <div class="page-body page-body-2col">
 
-  <!-- Colonne gauche : infos, modifiables -->
+  <!-- Colonne gauche : infos, modifiables (lot 13 : en mise à jour partielle) -->
   <div class="col">
+    {% include "partials/mes_infos_form.html" %}
+    {% include "partials/mot_de_passe_form.html" %}
+    {# Lot 13 (audit UX §4.6, WCAG 2.1.4) : raccourcis d'une touche
+       désactivables — préférence de ce navigateur (raccourcis.js). #}
     <div class="card">
-      <div style="display:flex; align-items:center; gap:12px; margin-bottom:18px;">
-        {{ avatarm.avatar(utilisateur.id, utilisateur.prenom, utilisateur.nom, utilisateur.avatar_chemin, css_class='avatar avatar-lg', style='width:52px; height:52px; font-size:16px;') }}
-        <div style="min-width:0;">
-          <div style="font-size:16px; font-weight:800;">{{ utilisateur.prenom }} {{ utilisateur.nom }}</div>
-          <span class="pill pill-sm" style="background:var(--hover-bg); color:var(--text-muted);" title="Le rôle ne peut être modifié que par un administrateur ou le RH">{{ role_style(utilisateur.role).label }}</span>
-        </div>
-      </div>
-
-      <div style="display:flex; flex-direction:column; gap:10px; font-size:12.5px; margin-bottom:18px;">
-        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">E-mail</span><span style="font-weight:600;">{{ utilisateur.email }}</span></div>
-        {% if utilisateur.equipe_code %}<div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Équipe</span><span style="font-weight:600;">{{ equipe_libelle(utilisateur.equipe_code) }}</span></div>{% endif %}
-        {% if utilisateur.date_embauche %}<div style="display:flex; justify-content:space-between;"><span style="color:var(--text-muted);">Date d'embauche</span><span style="font-weight:600;">{{ utilisateur.date_embauche|date_courte(true) }}</span></div>{% endif %}
-      </div>
-      <div style="font-size:11px; color:var(--text-muted); margin-bottom:14px;">Le prénom, le nom, l'adresse e-mail et le rôle sont gérés par l'administrateur ou le RH. Vous pouvez modifier les champs ci-dessous.</div>
-
-      <form method="post" enctype="multipart/form-data">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="form-row">
-          <label for="avatar">Photo de profil <span style="font-weight:400; color:var(--text-faint);">— remplace les initiales</span></label>
-          <input type="file" id="avatar" name="avatar" accept=".png,.jpg,.jpeg,.gif,.webp,image/*">
-        </div>
-        <div class="form-row">
-          <label for="telephone">Téléphone</label>
-          <input type="tel" id="telephone" name="telephone" maxlength="30" autocomplete="tel" value="{{ utilisateur.telephone or '' }}" placeholder="55 555 555">
-        </div>
-        <div class="form-row">
-          <label for="poste">Poste</label>
-          <input type="text" id="poste" name="poste" maxlength="150" autocomplete="organization-title" value="{{ utilisateur.poste or '' }}" placeholder="Ingénieur, Technicien…">
-        </div>
-        <div class="form-row" style="margin-bottom:16px;">
-          <label for="adresse">Adresse</label>
-          <input type="text" id="adresse" name="adresse" autocomplete="street-address" value="{{ utilisateur.adresse or '' }}" placeholder="Rue, ville…">
-        </div>
-        <button type="submit" class="btn-primary btn-accent">Enregistrer</button>
-      </form>
-    </div>
-
-    <div class="card" style="margin-top:16px;">
-      <h2 class="carte-titre" style="font-size:13px; margin-bottom:14px;">Changer mon mot de passe</h2>
-      <form method="post" action="{{ url_for('utilisateurs.mon_mot_de_passe') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="form-row">
-          <label for="mot_de_passe_actuel">Mot de passe actuel</label>
-          <input type="password" id="mot_de_passe_actuel" name="mot_de_passe_actuel" autocomplete="current-password" required>
-        </div>
-        <div class="form-row">
-          <label for="nouveau_mot_de_passe">Nouveau mot de passe</label>
-          <input type="password" id="nouveau_mot_de_passe" name="nouveau_mot_de_passe" minlength="8" autocomplete="new-password" aria-describedby="aide-mdp" required>
-          <p id="aide-mdp" class="aide-champ">8 caractères minimum.</p>
-        </div>
-        <div class="form-row" style="margin-bottom:16px;">
-          <label for="confirmation">Confirmer le nouveau mot de passe</label>
-          <input type="password" id="confirmation" name="confirmation" minlength="8" autocomplete="new-password" required>
-        </div>
-        <button type="submit" class="btn-primary btn-accent">Changer le mot de passe</button>
-      </form>
+      <h2 class="carte-titre carte-titre-form">Raccourcis clavier</h2>
+      <p class="aide-champ k-carte-texte">Ctrl + K : rechercher. <kbd>?</kbd> : liste des raccourcis.</p>
+      <label class="k-option"><input type="checkbox" data-pref-raccourcis checked> Raccourcis d’une seule touche (g, n, j, k, /, ?) sur ce navigateur</label>
+      <button type="button" class="btn btn-petit k-marge-haut" data-aide-raccourcis>Voir les raccourcis</button>
     </div>
   </div>
 
   <!-- Colonne droite : Daily log de la semaine dernière (ni le RH ni un
        Client n'ont de Daily log : leurs liens menaient à « Accès réservé »). -->
   {% if g.user.role in ('admin', 'chef_de_projet', 'intervenant') %}
-  <div class="col-center" style="max-width:none;">
+  <div class="col-center">
     <div class="card">
-      <h2 class="carte-titre" style="margin-bottom:14px;">Daily log — semaine dernière</h2>
-      <div style="display:flex; flex-direction:column; gap:10px;">
+      <h2 class="carte-titre carte-titre-form">Daily log — semaine dernière</h2>
+      <div class="dl-semaine">
         {% for jour in semaine_derniere %}
-          <a href="{{ url_for('dailylog.formulaire', date=jour.date.isoformat()) }}" style="display:block; border:1px solid var(--border-soft); border-radius:10px; padding:10px 14px; text-decoration:none; color:inherit;" title="Aller au Daily log de ce jour">
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:{{ '8px' if jour.entrees else '0' }};">
-              <span style="font-size:12.5px; font-weight:700; ">{{ date_fr(jour.date) }}</span>
-              <span style="font-size:12px; color:var(--text-muted);">{% if jour.absent %}Absent{% else %}{{ jour.total_heures|heures }}{% endif %}</span>
-            </div>
+          <a href="{{ url_for('dailylog.formulaire', date=jour.date.isoformat()) }}" class="dl-semaine-jour dl-semaine-lien" title="Aller au Daily log de ce jour">
+            <span class="dl-semaine-tete">
+              <span class="dl-semaine-date">{{ date_fr(jour.date) }}</span>
+              <span class="dl-semaine-total">{% if jour.absent %}Absent{% else %}{{ jour.total_heures|heures }}{% endif %}</span>
+            </span>
             {% for e in jour.entrees %}
-              <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-secondary); padding:2px 0;">
+              <span class="dl-semaine-ligne">
                 <span>{{ e.projet_nom }}{% if e.tache_titre %} · {{ e.tache_titre }}{% endif %}</span>
-                <span style="color:var(--text-muted);">{{ e.heures|heures }}</span>
-              </div>
+                <span class="k-muet">{{ e.heures|heures }}</span>
+              </span>
             {% endfor %}
           </a>
         {% endfor %}
@@ -102,4 +53,5 @@
   {% endif %}
 
 </div>
+<script src="{{ url_for('static', filename='js/utilisateur-formulaire.js') }}" defer></script>
 {% endblock %}

@@ -1,0 +1,148 @@
+{# Contenu de la page Deadlines (lot 13 : fragment rendu seul quand on
+   bascule de vue ou qu'on filtre — #deadlines-contenu ; le compteur suit,
+   hors cible). Barres : couleur par classe (même seuils que
+   utils.build_gantt), ligne « aujourd'hui » sur la première colonne.
+   Téléphone (< 600 px) : liste groupée par semaine à la place de la frise
+   (audit a11y I3). Contexte : gantt, semaines, tous, filtres, chefs,
+   sans_echeance, q, vue_admin, nb_taches. #}
+{% set classes_barre = {'#c2401f': 'g-bar-urgent', '#b8520f': 'g-bar-semaine', '#4a7c59': 'g-bar-tard'} %}
+<div id="deadlines-contenu" class="deadlines-contenu">
+
+  {% if tous %}
+  {# Filtres de la vue Admin (GET : l'adresse se partage et se recharge) —
+     appliqués au changement, sans bouton (le bouton reste sans JS). #}
+  <form method="get" action="{{ url_for('deadlines.liste') }}" class="filtres-deadlines-admin" aria-label="Filtrer tous les projets"
+        data-partiel="#deadlines-contenu" data-partiel-auto="change">
+    <input type="hidden" name="vue" value="tous">
+    <select name="chef" id="deadlines-chef" aria-label="Chef de projet">
+      <option value="">Tous les chefs de projet</option>
+      {% for c in chefs %}
+        <option value="{{ c.id }}" {{ 'selected' if filtres.chef == c.id }}>{{ c.prenom }} {{ c.nom }}</option>
+      {% endfor %}
+    </select>
+    <select name="equipe" id="deadlines-equipe" aria-label="Équipe">
+      <option value="">Toutes les équipes</option>
+      {% for code, libelle in equipe_choices %}
+        <option value="{{ code }}" {{ 'selected' if filtres.equipe == code }}>{{ libelle }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn k-sans-js">Filtrer</button>
+    {% if filtres.chef or filtres.equipe %}
+      <a href="{{ url_for('deadlines.liste', vue='tous') }}" class="btn-fantome btn-petit" data-partiel="#deadlines-contenu" data-focus-apres="#deadlines-chef">Réinitialiser</a>
+    {% endif %}
+  </form>
+  {% endif %}
+
+  {% if gantt.rows or sans_echeance %}
+  <div class="deadlines-outils">
+    <div class="search-mini deadlines-recherche">
+      <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="search" id="filtre-deadlines" class="search-mini-champ" value="{{ q }}" autocomplete="off" aria-label="Filtrer par projet ou tâche" aria-describedby="deadlines-vide" placeholder="Filtrer par projet ou tâche…">
+    </div>
+    {# Légende alignée sur les couleurs des barres (app/utils.py:build_gantt). #}
+    <div class="deadlines-legende" aria-hidden="true">
+      <span><span class="deadlines-pastille g-bar-urgent"></span> En retard / imminent</span>
+      <span><span class="deadlines-pastille g-bar-semaine"></span> Cette semaine</span>
+      <span><span class="deadlines-pastille g-bar-tard"></span> Plus tard</span>
+      <span><span class="deadlines-pastille deadlines-pastille-jour"></span> Aujourd’hui</span>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if gantt.rows %}
+  <div class="card deadlines-gantt-carte" id="gantt-carte">
+    <div class="gantt" style="--gantt-days:{{ gantt.window_days }};">
+      <div class="g-label g-coin"><span class="g-entete">Tâche</span></div>
+      {% for d in gantt.days %}
+        <div class="g-daycell{{ ' g-aujourdhui' if loop.first }}{{ ' g-weekend' if d.est_weekend and not loop.first }}"{% if loop.first %} title="Aujourd’hui"{% endif %}>
+          {# Week-end : repéré par le fond (--bg-subtle-1), texte lisible
+             (l'ancien --border-hover faisait 1,5:1). #}
+          <span class="g-jour-lettre">{{ d.lettre }}</span>
+          <span class="g-jour-num">{{ d.label }}</span>
+        </div>
+      {% endfor %}
+
+      {% for t in gantt.rows %}
+        <div class="g-row" data-filtre="{{ (t.projet_code ~ ' ' ~ t.projet_nom ~ ' ' ~ t.titre)|lower }}" data-open-tache="{{ t.id }}" data-tache-url="{{ url_for('taches_fenetre.fenetre', projet_id=t.projet_id, tache_id=t.id) }}">
+          <div class="g-label">
+            <div class="g-titre">{{ t.titre }}</div>
+            <div class="g-projet">{{ t.projet_code }}_{{ t.projet_nom }}{% if t.type_deadline == 'interne' %} · interne{% endif %}{% if tous and t.chef_nom %} · {{ t.chef_prenom }} {{ t.chef_nom }}{% endif %}</div>
+          </div>
+          <div class="g-row-track">
+            {# Lot 12 : la barre ouvre la fenêtre de la tâche (?tache=<id>).
+               Lot 13 (correctifs) : le panneau s'ouvre sur place
+               (tache-dialog.js) ; le lien reste pour un nouvel onglet et
+               sans JavaScript. #}
+            <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) }}" data-ouvrir-tache data-titre="{{ t.titre }}" aria-haspopup="dialog" class="g-bar{% if t.en_retard %} g-bar-retard{% endif %} {{ classes_barre.get(t.couleur, 'g-bar-tard') }}" style="grid-column: 1 / span {{ t.span }};" aria-label="{{ t.titre }} ({{ t.projet_code }}) : {{ t.retard ~ ', ' if t.en_retard }}échéance le {{ t.date_echeance|date_courte }} — ouvrir la tâche">{{ t.label_barre }}</a>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {# Téléphone : la même liste, groupée par semaine (lien = la tâche). #}
+  <div class="deadlines-semaines">
+    {% for s in semaines %}
+    <section class="card deadlines-semaine deadlines-semaine-{{ s.cle }}" aria-labelledby="deadlines-semaine-{{ s.cle }}">
+      <h2 class="carte-titre" id="deadlines-semaine-{{ s.cle }}">{{ s.titre }} <span class="k-muet">({{ s.rows|length }})</span></h2>
+      <ul class="deadlines-semaine-liste">
+        {% for t in s.rows %}
+        <li class="g-row-mobile" data-filtre="{{ (t.projet_code ~ ' ' ~ t.projet_nom ~ ' ' ~ t.titre)|lower }}" data-open-tache="{{ t.id }}" data-tache-url="{{ url_for('taches_fenetre.fenetre', projet_id=t.projet_id, tache_id=t.id) }}">
+          <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) }}" class="deadlines-item" data-ouvrir-tache data-titre="{{ t.titre }}" aria-haspopup="dialog">
+            <span class="deadlines-item-titre">{{ t.titre }}</span>
+            <span class="deadlines-item-projet">{{ t.projet_code }}_{{ t.projet_nom }}{% if tous and t.chef_nom %} · {{ t.chef_prenom }} {{ t.chef_nom }}{% endif %}</span>
+            <span class="deadlines-item-date {{ classes_barre.get(t.couleur, 'g-bar-tard') }}-texte">{{ t.retard if t.en_retard else t.date_echeance|date_courte }}</span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card">
+    <div class="k-vide">
+      <span class="k-vide-icone" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg></span>
+      {% if tous and (filtres.chef or filtres.equipe) %}
+        <p class="k-vide-titre">Aucune échéance pour ces filtres.</p>
+        <p class="k-vide-texte">Choisissez un autre chef de projet ou une autre équipe.</p>
+        <a href="{{ url_for('deadlines.liste', vue='tous') }}" class="btn" data-partiel="#deadlines-contenu" data-focus-apres="#deadlines-chef">Réinitialiser les filtres</a>
+      {% elif vue_admin and not tous %}
+        {# Audit UX M8 : l'Admin sans projet tombait sur une grille vide. #}
+        <p class="k-vide-titre">Aucune échéance sur vos projets.</p>
+        <p class="k-vide-texte">Vous n’êtes ni chef ni intervenant d’un projet en cours avec une échéance.</p>
+        <a href="{{ url_for('deadlines.liste', vue='tous') }}" class="btn btn-primaire" data-partiel="#deadlines-contenu" data-vue="tous">Voir tous les projets</a>
+      {% else %}
+        <p class="k-vide-titre">Aucune échéance à venir.</p>
+        <p class="k-vide-texte">Les tâches en cours avec une date d’échéance apparaîtront ici.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# Indication affichée seulement s'il y a vraiment à défiler (2026-09-29). #}
+  <p id="deadlines-vide" class="deadlines-note" role="status"></p>
+  <p id="gantt-aide-defilement" hidden class="deadlines-note">Faites défiler horizontalement pour voir les semaines suivantes <span aria-hidden="true">→</span></p>
+
+  {% if tous %}
+  {# Lot 12 : vue Admin — les tâches en cours sans échéance aussi. #}
+  <section class="card deadlines-sans-echeance" aria-labelledby="deadlines-sans-echeance-titre">
+    <h2 class="carte-titre" id="deadlines-sans-echeance-titre">Tâches en cours sans échéance <span class="k-muet">({{ sans_echeance|length }}{{ '+' if sans_echeance|length >= 300 }})</span></h2>
+    {% if sans_echeance %}
+    <ul class="liste-sans-echeance">
+      {% for t in sans_echeance %}
+      <li class="g-row-sans-echeance" data-filtre="{{ (t.projet_code ~ ' ' ~ t.projet_nom ~ ' ' ~ t.titre)|lower }}" data-open-tache="{{ t.id }}" data-tache-url="{{ url_for('taches_fenetre.fenetre', projet_id=t.projet_id, tache_id=t.id) }}">
+        <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) }}" class="deadlines-item" data-ouvrir-tache data-titre="{{ t.titre }}" aria-haspopup="dialog">
+          <span class="deadlines-item-titre">{{ t.titre }}</span>
+          <span class="deadlines-item-projet">{{ t.projet_code }}_{{ t.projet_nom }} · {{ t.chef_prenom }} {{ t.chef_nom }}</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="k-muet">Aucune.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+{% if oob_compte %}{% include "partials/deadlines_compte.html" %}{% endif %}

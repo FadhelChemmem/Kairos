@@ -85,7 +85,7 @@ class TestVoirComme(_Base):
         r = self.client.get("/accueil")
         page = self.texte(r)
         self.assertEqual(r.status_code, 200)
-        self.assertIn('class="bandeau-admin bandeau-admin-voir" role="status"', page)
+        self.assertIn('class="bandeau-admin bandeau-admin-voir" role="region"', page)
         self.assertIn("Vous voyez Kairos comme Rim Inter (Intervenant) — Revenir à mon compte", self.visible(r))
         self.assertIn("Revenir à mon compte", page)
         # Menus de l'intervenant : ni Utilisateurs ni Journal d'audit.
@@ -364,7 +364,7 @@ class TestModeTest(_Base):
     def test_agir_comme_ecrit_au_nom_du_compte_et_trace_l_admin(self):
         self.entrer(self.inter, mode="agir")
         r = self.client.get("/accueil")
-        self.assertIn('class="bandeau-admin bandeau-admin-agir" role="status"', self.texte(r))
+        self.assertIn('class="bandeau-admin bandeau-admin-agir" role="region"', self.texte(r))
         self.assertIn("Vous agissez comme Rim Inter (Intervenant) (mode test) — Revenir à mon compte", self.visible(r))
         r = self.client.post("/posts", data={"projet_id": str(self.p1), "type_code": "information",
                                              "contenu": "Post au nom de Rim", "next": "/accueil"})
@@ -399,7 +399,7 @@ class TestModeTest(_Base):
         self.login(self.admin)
         page = self.texte(self.client.get("/admin/voir-comme"))
         self.assertIn('formaction="/admin/agir-comme"', page)
-        self.assertIn('class="bandeau-admin bandeau-admin-test" role="status"', page)
+        self.assertIn('class="bandeau-admin bandeau-admin-test" role="region"', page)
         self.assertIn('name="date"', page)
         # Un non-Admin : ni bandeau, ni route.
         self.login(self.inter)
@@ -415,9 +415,15 @@ class TestModeTest(_Base):
         r = self.client.post("/admin/date-simulee", data={"date": j3.isoformat(), "next": "/accueil"})
         self.assertEqual((r.status_code, r.headers["Location"]), (302, "/accueil"))
         from app.utils import date_longue
-        self.assertIn(f"Date simulée : {date_longue(j3)} — Revenir à aujourd’hui", self.visible(self.client.get("/accueil")))
+        accueil = self.visible(self.client.get("/accueil"))
+        self.assertIn(f"Date simulée : {date_longue(j3)}", accueil)
+        self.assertIn("— Revenir à aujourd’hui", accueil)
         self.assertEqual(self.client.get(f"/dailylog?date={j3.isoformat()}").status_code, 200)
+        # Lot 13 (décision 5) : J+3 se consulte, mais ne s'écrit pas.
         r = self.client.put(f"/dailylog/api/jour/{j3.isoformat()}",
+                            json={"version": 0, "lignes": [{"projet_id": self.p1, "tache_id": None, "minutes": 60}]})
+        self.assertEqual((r.status_code, r.get_json()["erreur"]), (422, "futur_reel"))
+        r = self.client.put(f"/dailylog/api/jour/{self.auj.isoformat()}",
                             json={"version": 0, "lignes": [{"projet_id": self.p1, "tache_id": None, "minutes": 60}]})
         self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
         self.assertEqual(r.get_json()["aujourdhui"], j3.isoformat())
@@ -441,7 +447,7 @@ class TestModeTest(_Base):
         self.assertIn("en retard de 5 j", self.texte(self.client.get("/accueil")))
         # Fenêtre de 14 jours décalée, pour l'intervenant agi.
         sim = self.auj + datetime.timedelta(days=10)
-        for delta, attendu in ((14, 200), (15, 422), (0, 200)):
+        for delta, attendu in ((14, 200), (15, 422), (10, 200), (0, 422)):
             jour = (sim - datetime.timedelta(days=delta)).isoformat()
             with self.subTest(jour=jour):
                 r = self.client.put(f"/dailylog/api/jour/{jour}",
@@ -475,11 +481,11 @@ class TestModeTest(_Base):
         r = self.client.post("/admin/date-simulee", data={"date": (sim + datetime.timedelta(days=1)).isoformat()})
         self.assertEqual(r.status_code, 302)
         self.client.post("/admin/revenir")
-        # Clôture d'une tâche par l'Admin : date_fin = date simulée (fn_aujourdhui).
+        # Clôture d'une tâche par l'Admin sous date simulée FUTURE : jamais
+        # après la vraie date (lot 13, fn_date_ecriture).
         r = self.client.post(f"/projets/{self.p1}/taches/{self.t1}/cloturer", data={"type_code": "envoi"})
         self.assertEqual(r.status_code, 302)
-        self.assertEqual(self.sql("SELECT date_fin FROM tache WHERE id = %s", (self.t1,))[0]["date_fin"],
-                         sim + datetime.timedelta(days=1))
+        self.assertEqual(self.sql("SELECT date_fin FROM tache WHERE id = %s", (self.t1,))[0]["date_fin"], self.auj)
 
 
 class TestMigration0018(_Base):
@@ -493,6 +499,7 @@ class TestMigration0018(_Base):
         for _ in range(2):
             with self.db.get_cursor() as cur:
                 cur.execute(MIGRATION_0018.read_text(encoding="utf-8"))
+            self.rejouer_migrations_suivantes("0018_modes_admin_et_date_simulee")
         self.assertEqual(self.sql("SELECT id, admin_reel_id FROM audit_log ORDER BY id"), avant)
         self.assertEqual(self.compter("SELECT count(*) AS n FROM pg_constraint WHERE conname = 'audit_log_action_valide'"), 1)
         self.assertEqual(self.compter("SELECT count(*) AS n FROM pg_constraint WHERE conrelid = 'audit_log'::regclass "

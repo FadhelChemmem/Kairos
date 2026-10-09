@@ -1,5 +1,6 @@
 """Application factory Flask — Kairos."""
 import logging
+import mimetypes
 import os
 
 from flask import Flask, abort, flash, g, redirect, request, url_for
@@ -7,7 +8,7 @@ from flask.logging import default_handler as flask_default_handler
 from flask_wtf.csrf import CSRFError, CSRFProtect
 from werkzeug.exceptions import HTTPException
 
-from . import db, modes_admin, perf, proxy, utils
+from . import db, modes_admin, paquets, partiel, perf, proxy, utils
 from .config import Config
 
 # Valeurs d'exemple connues ("copié-collé du .env.example sans y toucher")
@@ -19,6 +20,9 @@ _SECRET_KEY_MIN_LEN = 32
 # Protection CSRF sur tous les POST (PROMPT_CORRECTIONS.md P2 #25) — voir
 # config.py (WTF_CSRF_TIME_LIMIT) et base.html (jeton pour fetch()).
 csrf = CSRFProtect()
+
+# Lot 13 : polices auto-hébergées (app/static/fonts) servies avec leur type.
+mimetypes.add_type("font/woff2", ".woff2")
 
 # Préfixes des API qui répondent TOUJOURS en JSON, erreurs comprises
 # (Daily log v9, lot 10).
@@ -118,6 +122,8 @@ def create_app(config_class=Config) -> Flask:
     utils.register(app)
     # Lot 11 (audit front I1) : gzip et statiques versionnés en cache long.
     perf.installer(app)
+    # Lot 13 (audit a11y-perf N9) : scripts communs en un fichier, CSS sans commentaires.
+    paquets.installer(app)
 
     @app.after_request
     def _entetes_securite(response):
@@ -125,25 +131,18 @@ def create_app(config_class=Config) -> Flask:
         # l'appli dans une iframe d'un autre site (clickjacking), le
         # "reniflage" de type MIME, et limite le Referer envoyé hors site.
         response.headers.setdefault("X-Frame-Options", "DENY")
-        # CSP renforcée (audit sécurité/qualité externe, 2026-09-28, item
-        # P0-6) : la version précédente ne posait que frame-ancestors.
-        # script-src et style-src gardent 'unsafe-inline' — l'appli utilise
-        # largement des <script> et des attributs style="..." inline (dont
-        # le script anti-flash du thème clair/sombre dans <head>, qui DOIT
-        # s'exécuter avant le premier rendu, avant tout script externe
-        # differé) ainsi que quelques attributs onclick=/onchange=. Les
-        # supprimer proprement demanderait de nonce-r ou d'externaliser
-        # une dizaine de blocs à travers l'appli — un chantier à part,
-        # plus risqué, qu'on ne fait pas "en passant" ici. Le reste
-        # (default-src, object-src, base-uri, connect-src, img-src,
-        # font-src) est en revanche restreint à ce que l'appli utilise
-        # réellement, ce qui bloque déjà l'exfiltration/l'exécution de
-        # ressources tierces (le risque principal visé par l'audit).
+        # CSP (audit externe 2026-09-28, P0-6 ; lot 13) : plus aucun script
+        # en ligne dans les gabarits (fichiers de app/static/js, versionnés),
+        # donc script-src sans 'unsafe-inline' ; les blocs <script
+        # type="application/json"> (données d'amorce) ne s'exécutent pas et
+        # ne sont pas concernés. style-src garde 'unsafe-inline' (attributs
+        # style="" encore nombreux, @font-face en ligne). Police auto-hébergée
+        # (lot 13) : plus de Google Fonts.
         response.headers.setdefault("Content-Security-Policy", (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-            "font-src 'self' https://fonts.gstatic.com; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "font-src 'self'; "
             "img-src 'self' data: blob:; "
             "connect-src 'self'; "
             "object-src 'none'; "
@@ -193,13 +192,19 @@ def create_app(config_class=Config) -> Flask:
         """Sous /dailylog/api/, toute erreur (404, 405, 400, 500…) répond
         en JSON ; ailleurs, la page d'erreur de Kairos (lot 11), en
         français, sans information technique."""
-        if not _est_api_json():
+        if not _est_api_json() and not partiel.est_partiel():
             return _page_erreur(exc)
+        if exc.code == 401 and partiel.est_partiel():
+            return partiel.session_expiree()
         codes = {400: ("requete_invalide", "Requête invalide."), 401: ("non_connecte", "Session expirée : reconnectez-vous."),
                  403: ("interdit", "Action non autorisée."), 404: ("introuvable", "Adresse inconnue."),
                  405: ("methode_interdite", "Méthode non autorisée."), 413: ("trop_volumineux", "Requête trop volumineuse."),
                  500: ("erreur_serveur", "Erreur du serveur.")}
         code, message = codes.get(exc.code, ("erreur", "Requête refusée."))
+        if partiel.est_partiel():
+            # Requête partielle (lot 13) : le message de la page d'erreur.
+            message = PAGES_ERREUR.get(exc.code, PAGES_ERREUR_DEFAUT)[1]
+            return partiel.refuser(message, exc.code or 500, erreur=code)
         return {"erreur": code, "message": message}, exc.code or 500
 
     def _page_erreur(exc):
@@ -233,12 +238,22 @@ def create_app(config_class=Config) -> Flask:
         # suivrait et prendrait la page d'arrivée pour un succès.
         if _est_api_json():
             return {"erreur": "csrf", "message": "Session expirée : rechargez la page."}, 400
+        if partiel.est_partiel():
+            # Plus de session : 401, la page propose de se reconnecter.
+            if g.get("user") is None:
+                return partiel.session_expiree()
+            return partiel.refuser("Votre session a expiré ou le formulaire n'est plus valide. "
+                                   "Rechargez la page, puis réessayez.", 400, erreur="csrf")
         flash("Votre session a expiré ou le formulaire n'est plus valide. "
               "Veuillez réessayer.", "error")
         retour = _chemin_interne(request.referrer)
         if not utils.is_safe_next(retour):
             retour = url_for("auth.login") if g.get("user") is None else url_for("main.accueil")
         return redirect(retour)
+
+    # Lot 13 : après les autres after_request (exécutés en ordre inverse) —
+    # une requête partielle ne reçoit jamais de redirection.
+    partiel.installer(app)
 
     os.makedirs(app.config["UPLOAD_DIR"], exist_ok=True)
 
@@ -262,8 +277,15 @@ def create_app(config_class=Config) -> Flask:
     def _load_user():
         auth.load_logged_in_user()
 
+    # Après _load_user (les before_request s'exécutent dans l'ordre
+    # d'enregistrement) : ainsi g.user est déjà connu quand un jeton CSRF
+    # est refusé, et _csrf_error renvoie vers la bonne page.
+    csrf.init_app(app)
+
     # Lot 12 : « Voir comme » = lecture seule (403 clair, JSON pour l'API) ;
-    # avant le contrôle CSRF, pour que le refus dise pourquoi.
+    # onglet resté sur un autre mode (lot 13) : 409 / message. Après le
+    # contrôle CSRF (contre-expertise sécurité O6) : une requête intersite
+    # ne pose aucun message dans la session.
     @app.before_request
     def _modes_admin_ecriture():
         return modes_admin.refuser_ecriture()
@@ -275,11 +297,6 @@ def create_app(config_class=Config) -> Flask:
         app.logger.warning("Écriture refusée en « Voir comme » : %s %s", request.method, request.path)
         return modes_admin.reponse_refus("Vous voyez Kairos comme un autre compte : lecture seule, "
                                          "rien n'a été modifié.")
-
-    # Après _load_user (les before_request s'exécutent dans l'ordre
-    # d'enregistrement) : ainsi g.user est déjà connu quand un jeton CSRF
-    # est refusé, et _csrf_error renvoie vers la bonne page.
-    csrf.init_app(app)
 
     from .routes.main import bp as main_bp
     from .routes.projets import bp as projets_bp
@@ -370,6 +387,21 @@ def _register_cli(app: Flask) -> None:
             raise SystemExit(1)
         click.echo(f"Utilisateur créé : {prenom} {nom} <{email}> (id={user_id}, rôle={role})")
 
+    def _purger_simulations_hors_mode_test():
+        """Mode test coupé (KAIROS_MODE_TEST=false, conteneur redémarré) :
+        plus aucun rappel « [Simulation] » ne reste en base (recette
+        finale F3). Jamais bloquant pour le démarrage."""
+        if app.config.get("MODE_TEST") is True:
+            return
+        try:
+            with db.get_cursor() as cur:
+                cur.execute("DELETE FROM notification WHERE simulee")
+                n = getattr(cur, "rowcount", 0) or 0
+                if n > 0:
+                    click.echo(f"Mode test coupé : {n} rappel(s) simulé(s) supprimé(s).")
+        except Exception as exc:
+            click.echo(f"Purge des rappels simulés impossible : {exc}", err=True)
+
     @app.cli.command("migrer")
     def migrer_cmd():
         """Applique les migrations SQL du dossier migrations/ pas encore
@@ -440,6 +472,7 @@ def _register_cli(app: Flask) -> None:
             a_jouer = [f for f in fichiers if f.stem not in deja]
             if not a_jouer:
                 click.echo("Rien à faire : toutes les migrations sont déjà appliquées.")
+                _purger_simulations_hors_mode_test()
                 return
 
             for f in a_jouer:
@@ -472,6 +505,7 @@ def _register_cli(app: Flask) -> None:
                     )
                     raise SystemExit(1)
                 click.echo("  -> OK")
+            _purger_simulations_hors_mode_test()
         finally:
             with verrou.cursor() as vc:
                 vc.execute("SELECT pg_advisory_unlock(hashtext('kairos:flask-migrer'))")

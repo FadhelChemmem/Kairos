@@ -1,0 +1,23 @@
+{# Liste de la page Notifications (lot 13 : fragment rendu seul après
+   « Tout marquer comme lu » — #notifications-liste), groupée par jour.
+   Contexte : groupes, notifications, nb_non_lues, oob_nb, oob_compte. #}
+<div id="notifications-liste" class="notif-groupes">
+  {% for gr in groupes %}
+  <section class="card notif-groupe" aria-labelledby="notif-jour-{{ loop.index }}">
+    <h2 class="notif-jour" id="notif-jour-{{ loop.index }}">{{ gr.titre }}</h2>
+    <ul class="notif-list">
+      {% for n in gr.notifications %}{% include "partials/notification_item.html" %}{% endfor %}
+    </ul>
+  </section>
+  {% else %}
+  <div class="card">
+    <div class="k-vide">
+      <span class="k-vide-icone" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 4.2 1.4 5.5 1.4 5.5H4.6S6 13.2 6 9Z"/><path d="M10 19a2 2 0 0 0 4 0"/></svg></span>
+      <p class="k-vide-titre">Aucune notification pour l’instant.</p>
+      <p class="k-vide-texte">Vous serez prévenu ici quand on vous affecte une tâche ou qu’on vous mentionne.</p>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% if oob_nb %}{% include "partials/notifs_nb.html" %}{% endif %}
+{% if oob_compte %}{% include "partials/notifications_compte.html" %}{% endif %}

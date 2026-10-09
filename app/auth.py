@@ -121,9 +121,10 @@ def load_logged_in_user() -> None:
     """Appelé avant chaque requête (voir app/__init__.py) pour peupler g.user
     et, dans la foulée, le compteur de notifications non lues affiché dans
     la cloche de la barre du haut (base.html)."""
-    if request.endpoint == "static":
-        # Fichiers CSS/JS/images : pas besoin de l'utilisateur, et ça
-        # évitait 3 requêtes SQL par fichier statique servi (audit n°2).
+    if request.endpoint in ("static", "paquet"):
+        # Fichiers CSS/JS/images (et paquets, app/paquets.py) : pas besoin
+        # de l'utilisateur, et ça évitait 3 requêtes SQL par fichier
+        # statique servi (audit n°2) — ni « Vary: Cookie » sur un paquet.
         g.user = None
         g.notifications_non_lues = 0
         return
@@ -155,7 +156,8 @@ def load_logged_in_user() -> None:
     if g.user is not None and g.admin_reel is None and g.date_simulee is None:
         _rappel_dailylog_du_jour()
 
-    g.notifications_non_lues = notifications_repo.compter_non_lues(g.user["id"]) if g.user else 0
+    g.notifications_non_lues = (notifications_repo.compter_non_lues(
+        g.user["id"], avec_simulees=modes_admin.voit_rappels_simules()) if g.user else 0)
 
 
 def _session_revoquee_ou_expiree() -> bool:
@@ -211,7 +213,7 @@ def login_required(view):
     return wrapped
 
 
-def _verifier_rappel_dailylog(user: dict, aujourdhui: "datetime.date | None" = None) -> None:
+def _verifier_rappel_dailylog(user: dict, aujourdhui: "datetime.date | None" = None, simulee: bool = False) -> list:
     """Notification automatique pour les jours ouvrés passés sans heures ni
     absence. Lot 10 : « aujourd'hui » au fuseau de la personne, et pas de
     rappel pour un jour antérieur à son arrivée (date d'embauche, à défaut
@@ -222,14 +224,17 @@ def _verifier_rappel_dailylog(user: dict, aujourdhui: "datetime.date | None" = N
     peut encore saisir (FENETRE_LIBRE_JOURS, week-ends exclus, aujourd'hui
     exclu) qui n'ont jamais été rappelés sont regroupés en UNE notification
     (« 3 jours de Daily log non remplis : … ») — un jour déjà rappelé, même
-    par l'ancien format, ne l'est plus (notification.rappel_jours)."""
+    par l'ancien format, ne l'est plus (notification.rappel_jours).
+
+    Lot 13 (« Simuler le rappel du jour », mode test) : `simulee` marque la
+    notification (notification.simulee) ; renvoie les jours rappelés."""
     aujourdhui = aujourdhui or dailylog_repo.aujourdhui_pour(user)
     # Heures saisies OU journée marquée absente : pas d'oubli.
     manques = [j for j in dailylog_repo.jours_manques_recents(user, aujourdhui=aujourdhui) if j < aujourdhui]
     if not manques:
-        return
-    notifications_repo.creer_rappel_dailylog(
-        user["id"], manques, lambda jours: texte_rappel_daily_log(jours, aujourdhui))
+        return []
+    return notifications_repo.creer_rappel_dailylog(
+        user["id"], manques, lambda jours: texte_rappel_daily_log(jours, aujourdhui), simulee=simulee)
 
 
 def generer_lien_reset(user_id: int, current_user_id: int | None = None) -> str:
@@ -406,6 +411,10 @@ def logout():
     if g.get("date_simulee") is not None and user_id:
         modes_admin.journaliser(modes_admin.TABLE_DATE, "SORTIE", user_id, date=g.date_simulee.isoformat(),
                                 raison="deconnexion")
+    # Fin du test (recette finale F3) : ses rappels « [Simulation] » ne
+    # reviennent pas au test suivant.
+    if admin is not None or g.get("date_simulee") is not None:
+        modes_admin.purger_rappels_simules(user_id, g.user["id"] if g.get("mode_admin") == "agir" else None)
     if user_id:
         try:
             utilisateurs_repo.revoquer_sessions(user_id)

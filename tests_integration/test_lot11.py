@@ -17,6 +17,7 @@ class TestEquipeDesProjets(BaseIntegration):
     def migrer(self):
         with self.db.get_cursor() as cur:
             cur.execute(MIGRATION_0016.read_text(encoding="utf-8"))
+        self.rejouer_migrations_suivantes("0016_equipe_projets_et_recherche")
 
     def test_equipe_du_chef_sinon_midgard_rejouable_sans_toucher_updated_at(self):
         chef_midgard = self.user("chef_de_projet", "MIDGARD")
@@ -64,7 +65,8 @@ class TestEquipeDesProjets(BaseIntegration):
         chef = self.user("chef_de_projet", "URBS")
         self.login(chef)
         self.client.post("/projets/nouveau", data={"nom": "Neuf", "code": "26001X", "phase": "EXE",
-                                                    "chef_projet_id": chef, "date_debut": "2026-10-01"})
+                                                    "chef_projet_id": chef, "date_debut": "2026-10-01",
+                                                    "lots": "GO"})
         self.assertEqual(self.sql("SELECT equipe_code FROM projet WHERE code = '26001X'")[0]["equipe_code"], "URBS")
 
 
@@ -255,6 +257,7 @@ class TestRappelDailyLogMarqueLu(BaseIntegration):
         # 0017 (rejouée ici) leur donne leur jour (rappel_jours).
         with self.db.get_cursor() as cur:
             cur.execute(MIGRATION_0017.read_text(encoding="utf-8"))
+        self.rejouer_migrations_suivantes("0017_chef_projet_et_rappels_dailylog")
 
     def rappel(self, jour):
         self.sql("INSERT INTO notification (utilisateur_id, categorie, message) VALUES (%s, 'rh_info', %s)",

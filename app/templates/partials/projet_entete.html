@@ -1,0 +1,38 @@
+{# En-tête de la fiche projet : nom, phase, état, lots, dates, heures,
+   chef. Lot 13 : fragment remplacé hors cible après une modification des
+   Informations ou un changement d'état (recalcul Bloqué / En cours). #}
+{% import "partials/avatar.html" as avatarm %}
+{% set petat = projet_etat_style(projet.etat) %}
+<div class="card fiche-entete" id="projet-entete"{% if oob %} data-partiel-oob{% endif %}>
+  <div class="fiche-entete-gauche">
+    <div class="fiche-entete-titre">
+      <h1 class="fiche-titre">{{ projet.code }}_{{ projet.nom }}</h1>
+      <span class="pill pill-neutre">{{ projet.phase }}</span>
+      <span class="pill {{ petat.classe }}" id="projet-etat-pastille">{{ petat.label }}</span>
+    </div>
+    <div class="fiche-entete-meta">
+      <span>Lot{{ 's' if lots|length > 1 }} {% for l in lots %}<strong>{{ l.code }}</strong>{% if not loop.last %} · {% endif %}{% endfor %}</span>
+      <span>{% if projet.date_debut %}Début {{ projet.date_debut|date_courte(true) }}{% endif %}{% if projet.date_fin %} → Échéance {{ projet.date_fin|date_courte(true) }}{% endif %}</span>
+      {% if projet_clos and projet.date_cloture %}<span>Clôturé le {{ projet.date_cloture|date_courte(true) }}</span>{% endif %}
+      {% if projet.phase_liee_id %}
+        <a href="{{ url_for('projets.detail', projet_id=projet.phase_liee_id) }}" class="fiche-phase-liee">Phase liée&nbsp;: {{ projet.phase_liee_code }}_{{ projet.phase_liee_nom }}</a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="fiche-entete-droite">
+    <div class="fiche-heures">
+      <div class="fiche-heures-total">{{ projet.heures_cumulees|heures }}</div>
+      <div class="fiche-heures-libelle">cumulées</div>
+      {# Répartition par rôle (retour Fadhel, 2026-09-28, Lot 5). #}
+      <div class="fiche-heures-libelle" title="{{ projet.heures_intervenant|heures }} intervenants / {{ projet.heures_chef|heures }} chef de projet">{{ heures_interv_chef(projet.heures_intervenant, projet.heures_chef) }} <span>interv./chef</span></div>
+    </div>
+    <div class="fiche-separateur" aria-hidden="true"></div>
+    <div>
+      <div class="fiche-chef-libelle">Chef de projet</div>
+      <a href="{{ url_for('utilisateurs.profil_personne', user_id=projet.chef_projet_id) }}" class="lien-personne fiche-chef" title="Voir la fiche de {{ projet.chef_prenom }} {{ projet.chef_nom }}">
+        <span class="nom-personne">{{ projet.chef_prenom }} {{ projet.chef_nom }}</span>
+        {{ avatarm.avatar(projet.chef_projet_id, projet.chef_prenom, projet.chef_nom, projet.chef_avatar_chemin, css_class='avatar avatar-md') }}
+      </a>
+    </div>
+  </div>
+</div>

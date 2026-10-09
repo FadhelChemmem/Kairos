@@ -195,9 +195,14 @@
       if (e.key !== 'Enter' || e.shiftKey || e.isComposing || mentions.ouverte()) return;
       e.preventDefault();
       if (!ta.value.trim()) return;
-      if (form.requestSubmit) form.requestSubmit(); else form.submit();
+      // Lot 13 : envoi par le bouton (il passe « occupé » pendant l'envoi).
+      var envoi = form.querySelector('.comment-send');
+      if (form.requestSubmit) form.requestSubmit(envoi || undefined); else form.submit();
     });
     form.addEventListener('submit', function () {
+      // Envoi partiel (lot 13) : le bouton reste focalisable (aria-disabled,
+      // posé par kairos-partiel.js) et la saisie reste en cas d'erreur.
+      if (form.hasAttribute('data-partiel')) return;
       var b = form.querySelector('.comment-send');
       // Après la validation du navigateur : évite un double envoi.
       setTimeout(function () { if (b) b.disabled = true; }, 0);
@@ -205,8 +210,33 @@
     initFichier(form);
   }
 
+  // Idempotent (data-comment-init) : document au chargement, puis chaque
+  // fragment inséré (lot 13, évènement kairos:fragment).
+  function initForms(racine) {
+    (racine && racine.querySelectorAll ? racine : document)
+      .querySelectorAll('form[data-comment-composer], form[data-comment-edit]').forEach(initForm);
+  }
+  window.KairosCommentComposer = { init: initForms };
+
   function init() {
-    document.querySelectorAll('form[data-comment-composer], form[data-comment-edit]').forEach(initForm);
+    initForms(document);
+    document.addEventListener('kairos:fragment', function (e) {
+      var racine = e.detail && e.detail.racine;
+      initForms(racine);
+      // Lot 13 : commentaires plus anciens dépliés avant l'envoi : ils le
+      // restent une fois le bloc des commentaires remplacé.
+      var carte = racine && racine.closest ? racine.closest('.post-card') : null;
+      if (carte && carte.dataset.commentairesDeplies === '1') {
+        var det = carte.querySelector('details.post-comments-plus');
+        if (det) det.open = true;
+      }
+    });
+    document.addEventListener('submit', function (e) {
+      var carte = e.target && e.target.closest ? e.target.closest('.post-card') : null;
+      if (!carte || !e.target.hasAttribute('data-partiel')) return;
+      var det = carte.querySelector('details.post-comments-plus');
+      carte.dataset.commentairesDeplies = det && det.open ? '1' : '0';
+    }, true);
 
     document.addEventListener('click', function (e) {
       var rep = e.target.closest('[data-repondre]');

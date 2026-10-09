@@ -277,8 +277,8 @@ TACHES_PROJET = [
 ]
 
 UTILISATEURS_ACTIFS = [
-    {"id": 1, "prenom": "Foulen", "nom": "Chedly", "poste": "Ingénieur"},
-    {"id": 3, "prenom": "Omar", "nom": "Aziz", "poste": "Technicien"},
+    {"id": 1, "prenom": "Foulen", "nom": "Chedly", "poste": "Ingénieur", "role": "admin"},
+    {"id": 3, "prenom": "Omar", "nom": "Aziz", "poste": "Technicien", "role": "intervenant"},
 ]
 
 # Bug corrigé (2026-09-27, retour Fadhel) : le filtre "Chef de projet" de
@@ -387,6 +387,12 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.projets.user_est_rattache": False,
             "app.repositories.projets.propose_code": "26099X",
             "app.repositories.projets.update_projet": None,
+            # Lot 13 : personnes qui voient le projet (affectation à une
+            # tâche), rattachements retirables, co-chefs.
+            "app.repositories.projets.ids_utilisateurs_voyant": {u["id"] for u in UTILISATEURS_ACTIFS},
+            "app.repositories.projets.ids_voient_projets": {},
+            "app.repositories.projets.ids_retirables": set(),
+            "app.repositories.projets.ids_co_chefs": set(),
             "app.repositories.taches.list_deadlines": DEADLINES,
             "app.repositories.taches.list_mes_taches": MES_TACHES,
             "app.repositories.taches.list_taches_projet": TACHES_PROJET,
@@ -438,6 +444,7 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.notifications.creer": 201,
             "app.repositories.notifications.marquer_rappels_dailylog_lus": None,
             "app.repositories.notifications.creer_rappel_dailylog": [],
+            "app.repositories.notifications.purger_rappels_simules": 0,
             "app.repositories.notifications.a_deja_la_notification": False,
             "app.repositories.notifications.creer_pour_plusieurs": None,
             "app.repositories.audit.list_entrees": AUDIT_ENTREES,
@@ -578,7 +585,7 @@ class SmokeTestCase(SmokeBase):
             with patch("app.repositories.projets.create_projet") as mock_create:
                 resp = self.client.post(
                     "/projets/nouveau",
-                    data={"nom": "Test", "code": "26099X", "phase": "BIDON"},
+                    data={"nom": "Test", "code": "26099X", "phase": "BIDON", "lots": ["GO"]},
                     follow_redirects=True,
                 )
         finally:
@@ -629,7 +636,7 @@ class SmokeTestCase(SmokeBase):
             with patch("app.repositories.projets.create_projet", return_value=42) as mock_create:
                 resp = self.client.post(
                     "/projets/nouveau",
-                    data={"nom": "Test", "code": "26099X", "phase": "EXE", "date_debut": "2026-09-28"},
+                    data={"nom": "Test", "code": "26099X", "phase": "EXE", "date_debut": "2026-09-28", "lots": ["GO"]},
                     follow_redirects=False,
                 )
         finally:
@@ -1157,7 +1164,7 @@ class SmokeTestCase(SmokeBase):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         self.assertIn("/projets/1", resp.headers["Location"])
-        set_etat.assert_called_once_with(5, 1, "bloque", 1, peut_gerer=False)
+        set_etat.assert_called_once_with(5, 1, "bloque", 1, peut_gerer=False, annulation=False)
 
     def test_changer_etat_tache_introuvable_ne_plante_pas(self):
         """set_etat() renvoie False quand la tâche n'appartient pas à ce
@@ -1540,8 +1547,12 @@ class SmokeTestCase(SmokeBase):
             )
         body = resp.data.decode()
         self.assertIn("Email ou mot de passe incorrect", body)
-        self.assertIn('class="flash-wrap"', body)
-        self.assertNotIn("flash-wrap-login", body)
+        # Lot 13 : zone des toasts (position fixe), message injecté au chargement.
+        self.assertIn('<div id="k-toasts" class="k-toasts" popover="manual">', body)
+        self.assertIn('<template id="k-toasts-initiaux"><p data-type="erreur">Email ou mot de passe incorrect', body)
+        # Page publique : le socle (toasts) n'est chargé que pour afficher un message.
+        self.assertIn("js/kairos-partiel.js", body)
+        self.assertNotIn("flash-wrap", body)
 
     # --- Photo de profil (retour Fadhel, 2026-09-20) : "mettre une image
     # au lieu du diminutif du nom prénom", à la création et à la
@@ -2083,7 +2094,11 @@ class SmokeTestCase(SmokeBase):
         resp = self._get("/accueil")
         body = resp.data.decode()
         boite = body[body.index('class="topbar-search-box"'):body.index("recherche-globale-resultats")]
-        self.assertIn('class="topbar-search-box" style="position:relative;"', boite)
+        self.assertIn('id="recherche-globale"', boite)
+        # Lot 13 (phase 2) : la règle est dans app.css (plus de style="").
+        import pathlib
+        css = (pathlib.Path(__file__).resolve().parent.parent / "app/static/css/app.css").read_text(encoding="utf-8")
+        self.assertIn(".topbar-search-box { position: relative; }", css)
 
     def test_accueil_bannière_deadlines_est_un_mini_gantt_sans_filtres(self):
         """La bannière doit désormais montrer un mini-Gantt (jours + barres),
@@ -2139,7 +2154,7 @@ class SmokeTestCase(SmokeBase):
         body = resp.data.decode()
         self.assertIn(f'<a href="/utilisateurs/{FEED_POST_MANUEL["auteur_id"]}/profil"', body)
         self.assertIn(
-            f'<a href="/projets/{FEED_POST_MANUEL["projet_id"]}" style="color:inherit;">'
+            f'<a href="/projets/{FEED_POST_MANUEL["projet_id"]}" class="lien-discret">'
             f'{FEED_POST_MANUEL["projet_code"]}_{FEED_POST_MANUEL["projet_nom"]}</a>',
             body,
         )
@@ -2463,10 +2478,14 @@ class SmokeTestCase(SmokeBase):
             "base-uri 'self'",
             "connect-src 'self'",
             "img-src 'self' data: blob:",
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-            "font-src 'self' https://fonts.gstatic.com",
+            # Lot 13 : plus de script en ligne ni de Google Fonts.
+            "script-src 'self';",
+            "style-src 'self' 'unsafe-inline';",
+            "font-src 'self';",
         ):
             self.assertIn(directive, csp)
+        self.assertNotIn("googleapis", csp)
+        self.assertNotIn("gstatic", csp)
         self.assertEqual(resp.status_code, 200)
 
     def test_fichier_statique_sans_requete_sql(self):
@@ -3445,10 +3464,14 @@ class TestControlesDAccesStricts(unittest.TestCase):
         add.assert_not_called()
 
     def test_page_projet_bouton_rejoindre_projet_visible_si_non_rattache(self):
+        # Lot 13 (audit rôles M11) : jamais pour l'Admin, qui gère déjà tout.
         body = self._get(
-            "/projets/1", **{"app.repositories.projets.user_est_rattache": False},
+            "/projets/1", **{"app.repositories.projets.user_est_rattache": False,
+                             "app.auth.get_user_by_id": {**USER, "role": "chef_de_projet"}},
         ).data.decode()
         self.assertIn("Rejoindre ce projet", body)
+        body = self._get("/projets/1", **{"app.repositories.projets.user_est_rattache": False}).data.decode()
+        self.assertNotIn("Rejoindre ce projet", body)
 
     def test_page_projet_bouton_rejoindre_projet_masque_si_deja_rattache(self):
         body = self._get(
@@ -3510,9 +3533,11 @@ class TestControlesDAccesStricts(unittest.TestCase):
         self.assertIn("data-open-informations-dialog", body)
         self.assertIn('id="dialog-informations-projet"', body)
         # Préremplie avec les valeurs actuelles du projet (PROJET : nom
-        # "Tour Meridian", état "bloque").
+        # "Tour Meridian", état "bloque") ; lot 13 (décision 1) : plus de
+        # choix « Bloqué », l'état découle des tâches.
         self.assertIn('value="Tour Meridian"', body)
-        self.assertIn('value="bloque" selected', body)
+        self.assertIn('value="en_cours" selected>En cours (bloqué : une tâche est bloquée)', body)
+        self.assertNotIn('value="bloque"', body)
 
     def test_page_projet_bouton_informations_masque_si_ne_peut_pas_gerer(self):
         body = self._get("/projets/1", **{"app.repositories.projets.user_can_manage": False}).data.decode()
@@ -3771,7 +3796,11 @@ class TestProtectionCSRF(unittest.TestCase):
     def test_page_expose_le_jeton_pour_fetch(self):
         resp = self.client.get("/notifications")
         self.assertIn(b'<meta name="csrf-token" content="', resp.data)
-        self.assertIn(b"X-CSRFToken", resp.data)
+        # Lot 13 : l'enveloppe de fetch() est dans un fichier (CSP sans
+        # 'unsafe-inline'), chargé sans defer en tête de page.
+        self.assertIn(b'<script src="/static/js/kairos-amorce.js?v=', resp.data)
+        js = (pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / "js" / "kairos-amorce.js").read_text(encoding="utf-8")
+        self.assertIn("X-CSRFToken", js)
 
     def test_tous_les_formulaires_post_portent_le_jeton(self):
         """Garde-fou statique : chaque <form method="post"> des templates
@@ -4667,35 +4696,30 @@ class TestPostsAutomatiquesEtProjet(SmokeBase):
         self.assertEqual(posts_[0].args[1], (1, 5, 1, "En cours → Bloqué"))
 
     def test_projet_suit_ses_taches_bloque_puis_en_cours(self):
-        """Lot 8 (décision Fadhel) : tâche bloquée → projet bloqué ; tâche
-        remise en cours ou créée → projet en cours ; post etat_projet."""
+        """Lot 8 (décision Fadhel), lot 13 (décision 1) : après chaque
+        écriture de tâche, l'état du projet est RECALCULÉ d'après toutes ses
+        tâches (fn_etat_projet_recalcule, migration 0019) ; un changement
+        donne le post etat_projet « avant → après »."""
         from app.repositories import taches as taches_repo
-        cur = self._cur([{"etat": "en_cours"}, {"id": 1}])
+
+        def recalculs(cur):
+            return [c for c in cur.execute.call_args_list if c.args[0].lstrip().startswith("UPDATE projet p SET etat")]
+
+        cur = self._cur([{"etat": "en_cours"}, {"ancien": "en_cours", "etat": "bloque"}])
         taches_repo.set_etat(5, 1, "bloque", 1)
-        maj = [c for c in cur.execute.call_args_list if c.args[0].startswith("UPDATE projet SET etat")]
-        self.assertEqual(maj[0].args[1], ("bloque", 1, "en_cours"))
+        self.assertEqual(len(recalculs(cur)), 1)
+        self.assertIn("fn_etat_projet_recalcule(p.etat, p.id)", recalculs(cur)[0].args[0])
         self.assertEqual(self._inserts_post(cur)[-1].args[1], (1, 1, "En cours → Bloqué"))
-        cur = self._cur([{"etat": "bloque"}, {"id": 1}])
-        taches_repo.set_etat(5, 1, "en_cours", 1)
-        maj = [c for c in cur.execute.call_args_list if c.args[0].startswith("UPDATE projet SET etat")]
-        self.assertEqual(maj[0].args[1], ("en_cours", 1, "bloque"))
-        cur = self._cur([{"id": 9}, {"id": 1}])
+        # Une nouvelle tâche ne débloque plus un projet qui garde une tâche
+        # bloquée (audit rôles I2) : recalcul sans changement, pas de post.
+        cur = self._cur([{"id": 9}, None])
         taches_repo.create_tache(1, "Nouvelle", 1)
-        maj = [c for c in cur.execute.call_args_list if c.args[0].startswith("UPDATE projet SET etat")]
-        self.assertEqual(maj[0].args[1], ("en_cours", 1, "bloque"))
-        # Vérifié / Arrêt / Abandonné : le projet ne bouge pas.
-        cur = self._cur([{"etat": "en_cours"}])
-        taches_repo.set_etat(5, 1, "arret", 1, peut_gerer=True)
-        self.assertFalse([c for c in cur.execute.call_args_list if c.args[0].startswith("UPDATE projet")])
-        # Tâche bloquée close alors qu'il n'en reste aucune autre : débloque.
-        cur = self._cur([{"etat": "bloque"}, None, {"id": 1}])
+        self.assertEqual(len(recalculs(cur)), 1)
+        self.assertFalse([c for c in self._inserts_post(cur) if "'etat_projet'" in c.args[0]])
+        # Tâche bloquée close, plus aucune autre : le recalcul débloque.
+        cur = self._cur([{"etat": "bloque"}, {"ancien": "bloque", "etat": "en_cours"}])
         taches_repo.set_etat(5, 1, "abandonne", 1, peut_gerer=True)
-        maj = [c for c in cur.execute.call_args_list if c.args[0].startswith("UPDATE projet SET etat")]
-        self.assertEqual(maj[0].args[1], ("en_cours", 1, "bloque"))
-        # ... mais pas s'il reste une autre tâche bloquée.
-        cur = self._cur([{"etat": "bloque"}, {"reste": 1}])
-        taches_repo.set_etat(5, 1, "abandonne", 1, peut_gerer=True)
-        self.assertFalse([c for c in cur.execute.call_args_list if c.args[0].startswith("UPDATE projet")])
+        self.assertEqual(self._inserts_post(cur)[-1].args[1], (1, 1, "Bloqué → En cours"))
 
     def test_meme_etat_pas_de_post_et_tache_inconnue_refusee(self):
         from app.repositories import taches as taches_repo
@@ -4718,10 +4742,13 @@ class TestPostsAutomatiquesEtProjet(SmokeBase):
         projets_repo.create_projet("26077X", "Nouveau", "EXE", 1, ["CM"], equipe_code="MIDGARD", current_user_id=1)
         self.assertIn("'creation_projet'", self._inserts_post(cur)[0].args[0])
         self.assertEqual(self._inserts_post(cur)[0].args[1], (42, 1, "26077X_Nouveau"))
-        cur.fetchone.side_effect = [{"etat": "en_cours"}, {"etat": "termine"}]
+        # Lot 13 : verrou du projet, tâches ouvertes (aucune), recalcul.
+        cur.fetchone.side_effect = [{"etat": "en_cours", "chef_projet_id": 1}, None]
+        cur.fetchall.return_value = []
         cur.execute.reset_mock()
         projets_repo.update_projet(42, nom="N", etat="termine", lots=[], current_user_id=1)
         self.assertEqual(self._inserts_post(cur)[0].args[1], (42, 1, "En cours → Terminé"))
+        cur.fetchone.side_effect = [{"etat": "termine", "chef_projet_id": 1}, None]
         cur.execute.reset_mock()
         projets_repo.update_projet(42, nom="N", etat="termine", lots=[], current_user_id=1)
         self.assertEqual(self._inserts_post(cur), [])
@@ -4829,7 +4856,7 @@ class TestProjetClientHonoraires(SmokeBase):
         self.mock_update = MagicMock(return_value=None)
 
     def test_creation_avec_client_et_honoraires(self):
-        resp = self._post("/projets/nouveau", {"nom": "Tour", "code": "26099X", "phase": "EXE",
+        resp = self._post("/projets/nouveau", {"nom": "Tour", "code": "26099X", "phase": "EXE", "lots": ["GO"],
                                                "chef_projet_id": "1", "client": "  SOGEA ",
                                                "honoraires": "12 500,5"})
         self.assertEqual(resp.status_code, 302)
@@ -4838,7 +4865,7 @@ class TestProjetClientHonoraires(SmokeBase):
         self.assertEqual(str(kwargs["honoraires"]), "12500.50")
 
     def test_creation_client_vide_devient_ipco(self):
-        self._post("/projets/nouveau", {"nom": "Tour", "code": "26099X", "phase": "EXE",
+        self._post("/projets/nouveau", {"nom": "Tour", "code": "26099X", "phase": "EXE", "lots": ["GO"],
                                         "chef_projet_id": "1", "client": "", "honoraires": ""})
         self.assertEqual(self.mock_create.call_args.kwargs["client"], "IPCO")
         self.assertIsNone(self.mock_create.call_args.kwargs["honoraires"])
@@ -5304,12 +5331,23 @@ class TestDecisionsLot7(SmokeBase):
     def test_phase_liee_des_la_creation_du_projet(self):
         """Retour Fadhel (lot 7) : lier un projet existant à la création."""
         candidats = [{"id": 2, "code": "25014D", "nom": "Résidence Les Oliviers"}]
-        for chemin in ("/projets", "/projets/nouveau"):
-            with self.subTest(chemin=chemin):
-                body = self._requete("get", chemin, **{"app.repositories.projets.search": candidats})[0].data.decode()
-                bloc = body.split('name="phase_liee_id"')[1].split("</select>")[0]
-                self.assertIn('<option value="2">25014D_Résidence Les Oliviers</option>', bloc)
-        donnees = {"nom": "Tour B", "code": "26100X", "phase": "EXE", "chef_projet_id": "1", "phase_liee_id": "2"}
+        # Fenêtre « Nouveau projet » (lot 13, audit a11y-perf M11) : même
+        # chargement à la demande, plus aucune option rendue avec la page.
+        body = self._requete("get", "/projets", **{"app.repositories.projets.search": candidats})[0].data.decode()
+        bloc = body.split('name="phase_liee_id"')[1].split("</select>")[0]
+        self.assertIn('data-search-url="/projets/phase-liee/candidats"', bloc)
+        self.assertNotIn('<option value="2">', bloc)
+        # Page de création (lot 13, audit a11y-perf M11) : candidats chargés
+        # à la demande par le champ de recherche.
+        body = self._requete("get", "/projets/nouveau", **{"app.repositories.projets.search": candidats})[0].data.decode()
+        bloc = body.split('name="phase_liee_id"')[1].split("</select>")[0]
+        self.assertIn('data-search-url="/projets/phase-liee/candidats"', bloc)
+        self.assertNotIn('<option value="2">', bloc)
+        resp = self._requete("get", "/projets/phase-liee/candidats?q=oliv",
+                             **{"app.repositories.projets.search": candidats})[0]
+        self.assertEqual(resp.get_json(), {"resultats": [{"id": 2, "libelle": "25014D_Résidence Les Oliviers"}]})
+        donnees = {"nom": "Tour B", "code": "26100X", "phase": "EXE", "chef_projet_id": "1", "phase_liee_id": "2",
+                   "lots": ["GO"]}
         _, mocks = self._requete("post", "/projets/nouveau", data=donnees,
                                  espions=[("app.repositories.projets.create_projet", 77)],
                                  **{"app.repositories.utilisateurs.list_actifs": UTILISATEURS_ACTIFS})
@@ -5406,8 +5444,9 @@ class TestDecisionsLot7(SmokeBase):
         src = inspect.getsource(projets_repo.update_projet)
         self.assertIn("date_cloture = CASE WHEN %s IN ('termine', 'abandonne')", src)
         # Lot 12 : « aujourd'hui » de la base, date simulée comprise (0018).
-        self.assertIn("THEN COALESCE(date_cloture, fn_aujourdhui()) END", src)
-        self.assertIn("honoraires, client, etat, projet_id)", src)
+        # Lot 13 : jamais après la vraie date, au fuseau de l'acteur (0019).
+        self.assertIn("THEN COALESCE(date_cloture, fn_date_ecriture(", src)
+        self.assertIn("honoraires, client, etat_ecrit,", src)
 
     def test_rejoindre_comme_co_chef_previent_le_chef(self):
         _, mocks = self._requete(
@@ -5418,7 +5457,7 @@ class TestDecisionsLot7(SmokeBase):
         mocks["app.repositories.projets.add_co_chef"].assert_called_once()
         args = mocks["app.repositories.notifications.creer"].call_args.args
         self.assertEqual(args[0], 1)
-        self.assertIn("Sami B a rejoint votre projet « Tour Meridian » comme co-chef", args[2])
+        self.assertIn("Sami B a rejoint votre projet « 26099X_Tour Meridian » comme co-chef", args[2])
 
 
 
@@ -5548,7 +5587,7 @@ class TestLot8(SmokeBase):
                                       "app.repositories.posts.create_post"))
 
     def test_creation_de_projet_longueurs_et_dates(self):
-        base = {"nom": "Tour B", "code": "26100X", "phase": "EXE", "chef_projet_id": "1"}
+        base = {"nom": "Tour B", "code": "26100X", "phase": "EXE", "chef_projet_id": "1", "lots": ["GO"]}
         for data, refuse in (({**base, "nom": "x" * 201}, True), ({**base, "client": "c" * 151}, True),
                              ({**base, "date_debut": "20266-01-01"}, True), ({**base, "date_debut": "1900-01-01"}, True),
                              (base, False)):
@@ -5566,7 +5605,7 @@ class TestLot8(SmokeBase):
                                       "app.repositories.posts.create_post"))
 
     def test_fiche_utilisateur_saisies_verifiees(self):
-        base = {"prenom": "Ali", "nom": "Ben", "email": "ali@midgard.tn", "role": "intervenant"}
+        base = {"prenom": "Ali", "nom": "Ben", "email": "ali@midgard.tn", "role": "intervenant", "equipe_code": "MIDGARD"}
         cas = [({**base, "email": "pas-un-email"}, True), ({**base, "equipe_code": "INCONNUE"}, True),
                ({**base, "prenom": "x" * 101}, True), ({**base, "telephone": "abc"}, True),
                ({**base, "date_embauche": "1850-01-01"}, True), ({**base, "telephone": "+216 55 555 555"}, False)]

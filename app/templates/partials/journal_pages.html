@@ -1,0 +1,34 @@
+{# Lignes du journal, un <tbody> par jour (lot 13 : rendu aussi seul pour
+   « Charger 100 de plus », ajouté à la fin du tableau ; la suite et le
+   compteur suivent, hors cible). Contexte : groupes, suite_url,
+   ancre_id, encore, nb_affichees, oob_suite, oob_compte. #}
+{% from "partials/journal_libelles.html" import libelles_action, libelles_table %}
+{% for gr in groupes %}
+<tbody class="journal-jour">
+  <tr class="journal-jour-tete">
+    <th scope="rowgroup" colspan="5"{% if loop.first and ancre_id %} id="journal-apres-{{ ancre_id }}" tabindex="-1"{% endif %}>{{ gr.titre }}</th>
+  </tr>
+  {% for e in gr.entrees %}
+  <tr class="journal-ligne">
+    <td class="journal-heure" data-label="Heure"><time datetime="{{ e.created_at.isoformat() }}">{{ e.heure }}</time></td>
+    <td data-label="Action"><span class="pill pill-sm pill-action-{{ e.action|lower }}">{{ libelles_action.get(e.action, e.action) }}</span></td>
+    <td class="journal-objet" data-label="Objet">{{ libelles_table.get(e.table_cible, e.table_cible) }}{% if e.ligne_id %} <span class="k-muet">n°&nbsp;{{ e.ligne_id }}</span>{% endif %}</td>
+    <td class="journal-auteur" data-label="Auteur">
+      {% if e.auteur_id %}{{ e.auteur_prenom }} {{ e.auteur_nom }}{% else %}<span class="k-muet">—</span>{% endif %}
+      {# Lot 12 : « Agir comme » (mode test) — l'Admin réel en plus de l'auteur. #}
+      {% if e.admin_reel_id and e.admin_reel_id != e.auteur_id %}<span class="journal-admin-reel">(par l’Admin {{ e.admin_reel_prenom }} {{ e.admin_reel_nom }})</span>{% endif %}
+      {% if e.table_cible in ('mode_voir_comme', 'mode_agir_comme') and e.compte_vu %}<span class="journal-admin-reel">compte vu&nbsp;: {{ e.compte_vu }}</span>{% endif %}
+    </td>
+    <td class="journal-donnees-cell">
+      {# Lot 13 (audit a11y I10) : données chargées au premier dépliage. #}
+      <details class="journal-details" data-url="{{ url_for('admin.journal_entree', entree_id=e.id) }}" data-cible="#journal-donnees-{{ e.id }}">
+        <summary class="journal-resume">Voir les données</summary>
+        <div class="journal-donnees-zone" id="journal-donnees-{{ e.id }}"><a href="{{ url_for('admin.journal_entree', entree_id=e.id) }}">Ouvrir le détail de l’entrée n°&nbsp;{{ e.id }}</a></div>
+      </details>
+    </td>
+  </tr>
+  {% endfor %}
+</tbody>
+{% endfor %}
+{% if oob_suite %}{% include "partials/journal_suite.html" %}{% endif %}
+{% if oob_compte %}{% include "partials/journal_compte.html" %}{% endif %}

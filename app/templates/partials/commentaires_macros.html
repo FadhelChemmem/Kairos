@@ -1,0 +1,124 @@
+{# Macros des commentaires du fil (extraites de post_card.html au lot 13,
+   pour rendre seul le bloc des commentaires d'un post en partiel — voir
+   post_commentaires.html). Importées « with context » : csrf_token, g,
+   nouveau_commentaire_id, commentaire_modifie_id. #}
+{% import "partials/avatar.html" as avatarm %}
+{# --- Pièce jointe de commentaire : image affichée en ligne (aperçu),
+   tout autre fichier en lien de téléchargement (Lot 5, "aperçu image"). #}
+{% macro piece_jointe_commentaire(pj) %}
+  {% if is_image_filename(pj.nom_fichier) %}
+    {# Visionneuse (retour Fadhel, 2026-09-29) : l'image s'ouvre dans une
+       fenêtre flottante, un clic à côté ramène au même endroit du fil —
+       voir app/static/js/lightbox.js. Le lien reste un vrai lien (nouvel
+       onglet) sans JavaScript. #}
+    <a href="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" target="_blank" rel="noopener noreferrer" data-lightbox>
+      <img src="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" alt="Image jointe : {{ pj.nom_fichier }}" class="post-comment-attachment-img" loading="lazy">
+    </a>
+  {% else %}
+    <a href="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" class="post-comment-attachment-file">
+      <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+      <span>{{ pj.nom_fichier }}</span>
+    </a>
+  {% endif %}
+{% endmacro %}
+
+{# --- Champ de commentaire (retour Fadhel, 2026-09-29) : toujours
+   visible sous le post ; "@" propose les personnes (le tag s'écrit dans le
+   texte, le serveur retrouve les "@Prénom Nom" — routes/posts.py) ; un
+   fichier se glisse directement sur le champ (ou se colle, ou se choisit
+   avec le trombone du champ) ; Entrée envoie, Maj+Entrée va à la ligne.
+   Sert aussi pour "Répondre" à un commentaire de premier niveau
+   (parent_commentaire_id) — voir comment-composer.js. #}
+{% macro composer_commentaire(post, next_url, parent_commentaire_id=none, placeholder='Commenter…', autofocus=false, etiquette=none) %}
+  {# Lot 13 (audit UX I6) : envoi en partiel, le bloc des commentaires du
+     post est remplacé (le champ se vide et garde le focus). #}
+  <form method="post" action="{{ url_for('posts.commenter', post_id=post.id) }}" enctype="multipart/form-data" class="comment-composer" data-comment-composer data-partiel="#post-{{ post.id }}-commentaires">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
+    {% if parent_commentaire_id %}<input type="hidden" name="parent_commentaire_id" value="{{ parent_commentaire_id }}">{% endif %}
+    <div class="comment-input">
+      <textarea name="contenu" maxlength="5000" rows="1" placeholder="{{ placeholder }}" aria-label="{{ etiquette or ('Commenter le post de ' ~ post.auteur_prenom ~ ' ' ~ post.auteur_nom) }}" required data-mention-input{% if not parent_commentaire_id %} id="commentaire-post-{{ post.id }}"{% endif %}{% if autofocus %} autofocus{% endif %}></textarea>
+      <label class="comment-attach" title="Joindre un fichier (ou le glisser sur le champ)">
+        <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+        <input type="file" name="fichier" aria-label="Joindre un fichier" data-comment-file>
+      </label>
+    </div>
+    <button type="submit" class="comment-send">Envoyer</button>
+    <div class="comment-file" data-comment-file-chip hidden></div>
+  </form>
+{% endmacro %}
+
+{# --- Un commentaire (ou une réponse, `reponse=true` : pas de "Répondre",
+   un seul niveau de profondeur imposé par le serveur). #}
+{% macro commentaire(c, post, next_url, reponse=false) %}
+  {# Lot 13 : le commentaire qu'on vient d'écrire est mis en évidence et
+     reçoit le focus quand le champ d'envoi n'est plus là (réponse). #}
+  {% set nouveau = c.id == nouveau_commentaire_id|default(none) %}
+  <div class="post-comment{{ ' k-surligne' if nouveau }}" id="commentaire-{{ c.id }}"{% if nouveau %} data-partiel-titre tabindex="-1"{% endif %}>
+    {{ avatarm.avatar(c.auteur_id, c.auteur_prenom, c.auteur_nom, c.auteur_avatar_chemin, css_class='avatar avatar-sm avatar-fixe') }}
+    <div class="post-comment-contenu">
+      <div class="post-comment-body">
+        <div>
+          <a href="{{ url_for('utilisateurs.profil_personne', user_id=c.auteur_id) }}" class="post-auteur-lien">{{ c.auteur_prenom }} {{ c.auteur_nom }}</a>
+          {# Ancien tag (champ séparé, avant le 2026-09-29) #}
+          {% if c.mentionne_prenom %}<span class="post-comment-mention">@{{ c.mentionne_prenom }} {{ c.mentionne_nom }}</span>{% endif %}
+          <span class="post-comment-texte">{{ texte_avec_mentions(c.contenu, c.mentions|default([])) }}</span>
+        </div>
+        {# `|default([])` : les commentaires passés par les fixtures de
+           tests n'ont pas forcément ces clés. #}
+        {% for pj in c.pieces_jointes|default([]) %}{{ piece_jointe_commentaire(pj) }}{% endfor %}
+      </div>
+      <div class="post-comment-meta">
+        {% if c.created_at %}<time datetime="{{ c.created_at.isoformat() }}" title="{{ 'Horodatage réel : ' if g.date_simulee }}{{ date_fr(c.created_at) }} à {{ c.created_at.strftime('%H:%M') }}">{{ c.created_at|il_y_a }}</time>{% endif %}
+        {% if c.modifie_le %}<span title="Modifié {{ c.modifie_le|il_y_a }}">· modifié</span>{% endif %}
+        {# Répondre à une réponse : même fil (un seul niveau), la personne
+           est taguée d'office. #}
+        {# Projet clos : ni réponse ni modification (décision Fadhel, lot 7). #}
+        {% set clos = post.projet_etat in ('termine', 'abandonne') %}
+        {% if not clos %}
+        <button type="button" class="post-comment-action" data-repondre="{{ c.parent_commentaire_id if reponse else c.id }}"{% if reponse and c.auteur_id != g.user.id %} data-mention="@{{ c.auteur_prenom }} {{ c.auteur_nom }} "{% endif %}>Répondre</button>
+        {% endif %}
+        {% if c.auteur_id == g.user.id and not clos %}
+          <button type="button" class="post-comment-action" id="commentaire-{{ c.id }}-modifier" data-modifier="{{ c.id }}"{% if c.id == commentaire_modifie_id|default(none) %} data-partiel-titre{% endif %}>Modifier</button>
+        {% endif %}
+        {% if g.user.role == 'admin' %}
+          <details class="post-comment-supprimer">
+            <summary class="post-comment-action">Supprimer</summary>
+            <form method="post" action="{{ url_for('posts.supprimer_commentaire', commentaire_id=c.id) }}" data-partiel="#post-{{ post.id }}-commentaires" data-focus-apres="#commentaire-post-{{ post.id }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
+              <span>Supprimer{{ ' ce commentaire et ses réponses' if c.replies else ' ce commentaire' }}&#8239;?</span>
+              <button type="submit" class="post-comment-action danger" data-confirmer-suppression>Oui, supprimer</button>
+              {# Lot 10 (audit front I12) : on peut renoncer sans recharger. #}
+              <button type="button" class="post-comment-action" data-annuler-suppression>Annuler</button>
+            </form>
+          </details>
+        {% endif %}
+      </div>
+      {% if c.auteur_id == g.user.id and post.projet_etat not in ('termine', 'abandonne') %}
+        <form method="post" action="{{ url_for('posts.modifier_commentaire', commentaire_id=c.id) }}" class="comment-composer comment-edit" data-comment-edit="{{ c.id }}" data-partiel="#post-{{ post.id }}-commentaires" hidden>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
+          <div class="comment-input">
+            <textarea name="contenu" maxlength="5000" rows="1" aria-label="Modifier le commentaire" required data-mention-input>{{ c.contenu }}</textarea>
+          </div>
+          <button type="submit" class="comment-send">Enregistrer</button>
+          <button type="button" class="post-comment-action" data-annuler-modif>Annuler</button>
+        </form>
+      {% endif %}
+      {% if not reponse %}
+        {% if c.replies %}
+          <div class="post-comment-replies">
+            {% for r in c.replies|default([]) %}{{ commentaire(r, post, next_url, reponse=true) }}{% endfor %}
+          </div>
+        {% endif %}
+        {% if post.projet_etat not in ('termine', 'abandonne') %}
+        <div class="post-comment-reply" data-reponse-a="{{ c.id }}" hidden>
+          {{ composer_commentaire(post, next_url, parent_commentaire_id=c.id, placeholder='Répondre à ' ~ c.auteur_prenom ~ '…', etiquette='Répondre au commentaire de ' ~ c.auteur_prenom ~ ' ' ~ c.auteur_nom) }}
+        </div>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+{% endmacro %}
+

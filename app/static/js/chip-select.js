@@ -34,6 +34,10 @@
  *                             puce n'est que la photo ou deux initiales.
  */
 (function () {
+  // Lot 13 : chargé aussi sans defer juste après les filtres de « Tous les
+  // projets » (puces construites avant le premier rendu : plus de décalage
+  // de mise en page, CLS 0,30) — le second chargement ne refait rien.
+  if (window.KairosChipSelect) { window.KairosChipSelect.init(); return; }
   // Lot 11 : filtre sans accents ni casse (« helene » trouve « Hélène »).
   // Mêmes règles que fn_recherche côté serveur (texte-recherche.js,
   // chargé avant par base.html) ; repli minimal si le fichier manque.
@@ -129,7 +133,8 @@
         chip.setAttribute('aria-pressed', opt.selected ? 'true' : 'false');
         select.dispatchEvent(new Event('change', { bubbles: true }));
         if (select.dataset.chipAutosubmit && select.form) {
-          select.form.submit();
+          // requestSubmit : l'évènement submit part (formulaire partiel, lot 13).
+          if (select.form.requestSubmit) select.form.requestSubmit(); else select.form.submit();
         }
         if (filterInput && filterInput.value) {
           // Personne choisie depuis la recherche : on vide la recherche,
@@ -146,12 +151,16 @@
     var modeRecent = !!(filterInput && select.dataset.chipRecent);
     var MAX_RESULTATS = 8;
 
+    // Option désactivée (lot 13, contre-expertise rôles I7 : personne qui
+    // ne voit pas le projet choisi) : puce masquée, jamais choisie.
     function filtrer() {
-      var q = sansAccents(filterInput.value.trim());
+      var q = filterInput ? sansAccents(filterInput.value.trim()) : '';
       var montres = 0;
       chips.forEach(function (chip) {
         var visible;
-        if (!modeRecent) {
+        if (chip._opt.disabled) {
+          visible = false;
+        } else if (!modeRecent) {
           visible = q.length === 0 || contientMots(chip.dataset.label, q);
         } else if (q.length === 0) {
           visible = chip._opt.selected || chip._opt.dataset.recent === '1';
@@ -176,7 +185,7 @@
         chip.classList.toggle('chip-selected', chip._opt.selected);
         chip.setAttribute('aria-pressed', chip._opt.selected ? 'true' : 'false');
       });
-      if (modeRecent) filtrer();
+      filtrer();
     });
 
     select.parentNode.insertBefore(wrap, select.nextSibling);
@@ -265,21 +274,36 @@
 
       render();
       cloud.appendChild(chip);
+      it.opt = opt;
+      it.render = render;
       items.push(it);
+    });
+
+    // Lot 13 : état relu sur les data-mode des options (Retour du
+    // navigateur sur « Tous les projets », projets-liste.js).
+    select.addEventListener('kairos:resynchroniser', function () {
+      items.forEach(function (it) { it.mode = it.opt.dataset.mode || ''; it.render(); });
+      syncHidden();
     });
 
     syncHidden();
     select.parentNode.insertBefore(wrap, select.nextSibling);
   }
 
-  function init() {
-    document.querySelectorAll('select[data-chip-select]').forEach(buildChipSelect);
-    document.querySelectorAll('select[data-chip-tristate]').forEach(buildChipTristate);
+  // Idempotent (data-chip-init) ; `racine` : contenu inséré après coup
+  // (fragment partiel, lot 13 — évènement kairos:fragment).
+  function init(racine) {
+    var r = racine && racine.querySelectorAll ? racine : document;
+    r.querySelectorAll('select[data-chip-select]').forEach(buildChipSelect);
+    r.querySelectorAll('select[data-chip-tristate]').forEach(buildChipTristate);
   }
+  window.KairosChipSelect = { init: init };
+  document.addEventListener('kairos:fragment', function (e) { init(e.detail && e.detail.racine); });
 
+  // Tout de suite (chargement sans defer : les filtres déjà lus reçoivent
+  // leurs puces avant le premier rendu), puis à la fin de la lecture.
+  init();
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
+    document.addEventListener('DOMContentLoaded', function () { init(); });
   }
 })();

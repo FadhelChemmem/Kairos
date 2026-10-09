@@ -7,8 +7,9 @@
 - `mode_test` (enregistré SEULEMENT si KAIROS_MODE_TEST=true : sans lui,
   ces adresses n'existent pas — 404) :
     POST /admin/agir-comme          « Agir comme » (modifications permises)
-    POST /admin/date-simulee        choisir la date simulée
+    POST /admin/date-simulee        choisir la date simulée (heure facultative, lot 13)
     POST /admin/date-simulee/effacer  « Revenir à aujourd'hui »
+    POST /admin/rappel-simule       « Simuler le rappel du jour » (lot 13)
 
 Toutes en POST protégées par le jeton CSRF (CSRFProtect global, champ
 caché des formulaires). Les droits portent sur l'Admin RÉEL (g.admin_reel
@@ -120,6 +121,8 @@ def revenir():
     admin = g.get("admin_reel")
     if admin is not None and g.get("mode_admin"):
         modes.journaliser(modes.TABLES_JOURNAL[g.mode_admin], "SORTIE", admin["id"], g.user, raison="retour")
+        if g.mode_admin == "agir":
+            modes.purger_rappels_simules(g.user["id"])
     session.pop(modes.CLE_MODE, None)
     suivant = request.form.get("next")
     if is_safe_next(suivant):
@@ -137,9 +140,23 @@ def date_simulee():
         flash(f"Date simulée invalide : choisissez une date entre le {modes.DATE_SIMULEE_MIN.strftime('%d/%m/%Y')} "
               f"et le {modes.DATE_SIMULEE_MAX.strftime('%d/%m/%Y')}.", "error")
         return _retour()
-    session[modes.CLE_DATE] = {"admin": admin["id"], "date": date.isoformat()}
-    modes.journaliser(modes.TABLE_DATE, "ENTREE", admin["id"], date=date.isoformat(),
+    # Heure facultative (lot 13, audit temps T-M4) : instant simulé à Tunis.
+    heure_brute = (request.form.get("heure") or "").strip()
+    heure = modes.lire_heure(heure_brute)
+    if heure_brute and heure is None:
+        flash("Heure simulée invalide : HH:MM (ex. 23:30), ou laissez le champ vide.", "error")
+        return _retour()
+    valeur = {"admin": admin["id"], "date": date.isoformat()}
+    if heure is not None:
+        valeur["heure"] = heure.strftime("%H:%M")
+    session[modes.CLE_DATE] = valeur
+    modes.journaliser(modes.TABLE_DATE, "ENTREE", admin["id"], date=date.isoformat(), heure=valeur.get("heure"),
                       compte_vu_id=g.user["id"] if g.get("admin_reel") else None)
+    # Toast à l'arrivée (verif-ux, écart de spécification) : la page est
+    # rechargée — toute la page dépend de la date —, l'Admin sait pourquoi.
+    from ..utils import date_longue
+    flash(f"Date simulée appliquée : {date_longue(date)}"
+          f"{' à ' + valeur['heure'] + ' (Tunis)' if heure is not None else ''}.", "success")
     return _retour()
 
 
@@ -150,5 +167,42 @@ def date_simulee_effacer():
     admin = _admin_reel()
     if g.get("date_simulee") is not None:
         modes.journaliser(modes.TABLE_DATE, "SORTIE", admin["id"], date=g.date_simulee.isoformat(), raison="retour")
+        modes.purger_rappels_simules(admin["id"], g.user["id"] if g.get("mode_admin") == "agir" else None)
     session.pop(modes.CLE_DATE, None)
+    flash("Retour à la date réelle.", "success")
+    return _retour()
+
+
+@bp_test.route("/rappel-simule", methods=["POST"])
+@mode_test_requis
+@admin_reel_requis
+def rappel_simule():
+    """« Simuler le rappel du jour » (lot 13, audit temps T-M6) : le rappel
+    Daily log que le compte agi (ou l'Admin lui-même) recevrait aujourd'hui
+    — date simulée comprise —, avec les mêmes règles que le vrai (un seul
+    rappel groupé, aucun jour rappelé deux fois, rappel lu quand ses jours
+    sont remplis ou hors de la fenêtre). Sous date simulée, la notification
+    est marquée simulée : elle ne bloque jamais un vrai rappel, ne se voit
+    que pendant le test et est supprimée à « Revenir à mon compte » /
+    « Revenir à aujourd'hui ». Refusé en « Voir comme » (lecture seule,
+    app/modes_admin.py) et depuis un onglet resté sur un autre mode."""
+    from ..repositories import dailylog as dailylog_repo
+    from ..repositories import notifications as notifications_repo
+
+    cible = g.user
+    if cible.get("role") not in ("admin", "chef_de_projet", "intervenant"):
+        flash(f"{modes.nom_complet(cible)} n'a pas de Daily log : aucun rappel possible.", "error")
+        return _retour()
+    aujourdhui = dailylog_repo.aujourdhui_pour(cible)
+    simulee = g.get("date_simulee") is not None
+    notifications_repo.marquer_rappels_dailylog_lus(cible["id"])
+    jours = auth._verifier_rappel_dailylog(cible, aujourdhui=aujourdhui, simulee=simulee)
+    from ..utils import date_longue, texte_rappel_daily_log
+
+    if jours:
+        flash(f"Rappel {'simulé ' if simulee else ''}du {date_longue(aujourdhui)} pour {modes.nom_complet(cible)} : "
+              f"« {texte_rappel_daily_log(jours, aujourdhui)} » (cloche).", "success")
+    else:
+        flash(f"Aucun rappel le {date_longue(aujourdhui)} pour {modes.nom_complet(cible)} : rien à rappeler "
+              "(jours remplis, déjà rappelés, week-end ou avant l'arrivée).", "success")
     return _retour()

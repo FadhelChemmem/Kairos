@@ -3,21 +3,30 @@
    - orange : « Vous voyez Kairos comme Prénom Nom (rôle) — Revenir à mon compte » ;
    - rouge : « Vous agissez comme … (mode test) » ;
    - date simulée (mode test) : « Date simulée : jeudi 15 octobre 2026 —
-     Revenir à aujourd'hui », et le champ pour la choisir ;
-   - mode test sans rien d'actif : rappel discret, champ de date et lien
-     « Voir / agir comme… ».
-   role=status : annoncé par les lecteurs d'écran. Formulaires POST + CSRF ;
-   `next` ramène sur la page en cours. #}
+     Revenir à aujourd'hui » ;
+   - mode test : outils (date et heure simulées, rappel du jour, « Voir ou
+     agir comme… »).
+   Formulaires POST + CSRF ; `next` ramène sur la page en cours.
+   Lot 13 (phase 2, audit UX M14, a11y M2 et M4) : bandeau compact — une
+   ligne par état, outils du mode test repliables (bandeau-admin.js : replié
+   d'office sur téléphone, choix mémorisé dans ce navigateur) ; repère
+   nommé (region) au lieu d'une région live relue à chaque page ; une date
+   simulée après la vraie date sert à VOIR le futur (aucune écriture datée
+   après elle).
+   Correctifs du lot 13 (verif-ux N2, verif-temps N4/N5) : « futur » se juge
+   au fuseau du compte agi (Guyane : heure locale affichée) et le bandeau
+   dit ce qui est réel ; date et heure se lisent en entier sur téléphone
+   (lot13-pages.css, dans le paquet app.css). #}
 {% set b = bandeau_admin %}
 {% set variante = 'voir' if b.mode == 'voir' else ('agir' if b.mode == 'agir' else ('date' if b.date_simulee else 'test')) %}
-<div class="bandeau-admin bandeau-admin-{{ variante }}" role="status" id="bandeau-admin">
+<div class="bandeau-admin bandeau-admin-{{ variante }}" role="region" aria-label="Mode de l’Administrateur" id="bandeau-admin">
   <div class="bandeau-admin-inner">
     {% if b.mode %}
     <div class="bandeau-admin-ligne">
       <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
-      <span>{{ 'Vous voyez Kairos comme' if b.mode == 'voir' else 'Vous agissez comme' }} <strong>{{ b.cible.prenom }} {{ b.cible.nom }}</strong> ({{ b.role_cible }}){{ ' (mode test)' if b.mode == 'agir' }}</span>
+      <span class="bandeau-admin-texte"><span class="bandeau-admin-intro">{{ 'Vous voyez Kairos comme' if b.mode == 'voir' else 'Vous agissez comme' }} </span><strong>{{ b.cible.prenom }} {{ b.cible.nom }}</strong><span class="bandeau-admin-intro"> ({{ b.role_cible }}){{ ' (mode test)' if b.mode == 'agir' }}</span></span>
       <span class="bandeau-admin-sep" aria-hidden="true">—</span>
-      <form method="post" action="{{ url_for('modes_admin.revenir') }}" class="bandeau-admin-form">
+      <form method="post" action="{{ url_for('modes_admin.revenir') }}" class="bandeau-admin-form" data-permis-lecture>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% if b.retour %}<input type="hidden" name="next" value="{{ b.retour }}">{% endif %}
         <button type="submit" class="bandeau-admin-bouton">Revenir à mon compte</button>
@@ -25,30 +34,49 @@
     </div>
     {% endif %}
     {% if b.mode_test %}
-    <div class="bandeau-admin-ligne">
-      {% if b.date_simulee %}
-        <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>
-        <span>Date simulée&nbsp;: <strong>{{ b.date_simulee|date_longue }}</strong></span>
-        <span class="bandeau-admin-sep" aria-hidden="true">—</span>
-        <form method="post" action="{{ url_for('mode_test.date_simulee_effacer') }}" class="bandeau-admin-form">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          {% if b.retour %}<input type="hidden" name="next" value="{{ b.retour }}">{% endif %}
-          <button type="submit" class="bandeau-admin-bouton">Revenir à aujourd’hui</button>
-        </form>
-      {% elif not b.mode %}
-        <span class="bandeau-admin-etiquette">Mode test</span>
-      {% endif %}
-      <form method="post" action="{{ url_for('mode_test.date_simulee') }}" class="bandeau-admin-form bandeau-admin-choix-date">
+    {% if b.date_simulee %}
+    <div class="bandeau-admin-ligne bandeau-admin-ligne-date">
+      <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>
+      {% set futur = b.aujourdhui_compte > b.aujourdhui_reel %}
+      {% set villes = {'America/Cayenne': 'Cayenne', 'Africa/Tunis': 'Tunis'} %}
+      <span class="bandeau-admin-texte bandeau-admin-texte-date">Date simulée&nbsp;: <strong><span class="bandeau-admin-insecable">{{ b.date_simulee|date_longue }}</span>{% if b.heure_simulee %} <span class="bandeau-admin-insecable">à {{ b.heure_simulee.strftime('%H:%M') }} (Tunis)</span>{% endif %}</strong>{% if b.fuseau_compte != 'Africa/Tunis' %} <span class="bandeau-admin-insecable" id="bandeau-admin-local">(à {{ villes.get(b.fuseau_compte, b.fuseau_compte) }}&nbsp;: {{ b.maintenant_compte.date()|date_longue }}, {{ b.maintenant_compte.hour }}&nbsp;h&nbsp;{{ '%02d'|format(b.maintenant_compte.minute) }})</span>{% endif %}</span>
+      {% if futur %}<span class="bandeau-admin-futur" id="bandeau-admin-futur">Date simulée future : les saisies datées (Daily log) sont en lecture seule ; les autres actions sont réelles</span>{% endif %}
+      <span class="bandeau-admin-sep" aria-hidden="true">—</span>
+      <form method="post" action="{{ url_for('mode_test.date_simulee_effacer') }}" class="bandeau-admin-form" data-permis-lecture>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% if b.retour %}<input type="hidden" name="next" value="{{ b.retour }}">{% endif %}
-        <label for="bandeau-date-simulee">{{ 'Autre date' if b.date_simulee else 'Date simulée' }}</label>
-        <input type="date" id="bandeau-date-simulee" name="date" required min="2000-01-01" max="2099-12-31" value="{{ (b.date_simulee or today()).isoformat() }}">
-        <button type="submit" class="bandeau-admin-bouton bandeau-admin-bouton-secondaire">Appliquer</button>
+        <button type="submit" class="bandeau-admin-bouton">Revenir à aujourd’hui</button>
       </form>
-      {% if not b.mode %}
-        <a href="{{ url_for('modes_admin.page') }}" class="bandeau-admin-lien">Voir ou agir comme…</a>
-      {% endif %}
     </div>
+    {% endif %}
+    <details class="bandeau-admin-outils" id="bandeau-admin-outils" open data-bandeau-outils>
+      <summary class="bandeau-admin-resume">
+        <span class="bandeau-admin-etiquette">Mode test</span>
+        <span class="sr-only">: date simulée{{ ' et rappel' if b.rappel_simulable }}</span>
+        <svg class="bandeau-admin-chevron" aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </summary>
+      <div class="bandeau-admin-panneau">
+        <form method="post" action="{{ url_for('mode_test.date_simulee') }}" class="bandeau-admin-form bandeau-admin-choix-date" data-permis-lecture>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if b.retour %}<input type="hidden" name="next" value="{{ b.retour }}">{% endif %}
+          <label for="bandeau-date-simulee">{{ 'Autre date' if b.date_simulee else 'Date simulée' }}</label>
+          <input type="date" id="bandeau-date-simulee" name="date" required min="{{ b.date_min.isoformat() }}" max="{{ b.date_max.isoformat() }}" value="{{ (b.date_simulee or today()).isoformat() }}">
+          <label for="bandeau-heure-simulee">Heure <span class="bandeau-admin-note">(Tunis, facultatif)</span></label>
+          <input type="time" id="bandeau-heure-simulee" name="heure" value="{{ b.heure_simulee.strftime('%H:%M') if b.heure_simulee else '' }}">
+          <button type="submit" class="bandeau-admin-bouton bandeau-admin-bouton-secondaire">Appliquer</button>
+        </form>
+        {% if b.rappel_simulable %}
+        <form method="post" action="{{ url_for('mode_test.rappel_simule') }}" class="bandeau-admin-form" id="bandeau-rappel-simule">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if b.retour %}<input type="hidden" name="next" value="{{ b.retour }}">{% endif %}
+          <button type="submit" class="bandeau-admin-bouton bandeau-admin-bouton-secondaire">Simuler le rappel du jour</button>
+        </form>
+        {% endif %}
+        {% if not b.mode %}
+          <a href="{{ url_for('modes_admin.page') }}" class="bandeau-admin-lien">Voir ou agir comme…</a>
+        {% endif %}
+      </div>
+    </details>
     {% endif %}
   </div>
 </div>

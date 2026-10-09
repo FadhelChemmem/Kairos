@@ -176,7 +176,7 @@ class TestDecision3EtatsReserves(_Base):
                 _, m = self._requete("post", "/projets/1/taches/5/etat", {"etat": etat},
                                      espions=[("app.repositories.taches.set_etat", True)],
                                      **self.INTERVENANT_DE_LA_TACHE)
-                m["app.repositories.taches.set_etat"].assert_called_once_with(5, 1, etat, 1, peut_gerer=False)
+                m["app.repositories.taches.set_etat"].assert_called_once_with(5, 1, etat, 1, peut_gerer=False, annulation=False)
 
     def test_intervenant_ne_rouvre_pas_une_tache_reservee(self):
         """La tâche est Vérifiée (lu sous verrou par set_etat) : refus propre."""
@@ -215,7 +215,7 @@ class TestDecision3EtatsReserves(_Base):
                                          espions=[("app.repositories.taches.set_etat", True)],
                                          **{"app.auth.get_user_by_id": {**smoke.USER, "role": role},
                                             "app.repositories.projets.user_can_manage": True})
-                    m["app.repositories.taches.set_etat"].assert_called_once_with(5, 1, etat, 1, peut_gerer=True)
+                    m["app.repositories.taches.set_etat"].assert_called_once_with(5, 1, etat, 1, peut_gerer=True, annulation=False)
         _, m = self._requete("post", "/projets/1/taches/5/cloturer", {"type_code": "envoi"},
                              espions=[("app.repositories.taches.close_tache", 100)])
         self.assertEqual(m["app.repositories.taches.close_tache"].call_args.kwargs, {"peut_gerer": True})
@@ -257,7 +257,7 @@ class TestDecision3EtatsReserves(_Base):
         with self.assertRaises(taches.EtatReserve):
             taches.close_tache(5, 1, 1, "envoi")
         update = self._updates(cur)[0]
-        self.assertEqual(update.args[1][3:], (False, ["arret", "abandonne"]))
+        self.assertEqual(update.args[1][4:], (False, ["arret", "abandonne"]))
         # Déjà terminée : simple « rien à clôturer », pas un refus d'état réservé.
         self._curseur([None, {"etat": "termine"}])
         self.assertIsNone(taches.close_tache(5, 1, 1, "envoi"))
@@ -275,18 +275,24 @@ class TestDecision3EtatsReserves(_Base):
         self.assertEqual(resp.status_code, 200)
         return resp.data.decode()
 
+    # Lot 13 (phase 2) : liste de choix sans « Appliquer » — un bouton par
+    # état proposé (name="etat" value="…").
+    @staticmethod
+    def _choix(etat):
+        return f'name="etat" value="{etat}"'
+
     def test_intervenant_ne_voit_que_en_cours_et_bloquee(self):
         dialogue = self._page(INTERVENANT, False, "bloque")
-        self.assertIn('<option value="en_cours"', dialogue)
-        self.assertIn('<option value="bloque"', dialogue)
+        self.assertIn(self._choix("en_cours"), dialogue)
+        self.assertIn(self._choix("bloque"), dialogue)
         for etat in ("verifie", "arret", "abandonne"):
-            self.assertNotIn(f'<option value="{etat}"', dialogue)
+            self.assertNotIn(self._choix(etat), dialogue)
         self.assertIn("Marquer comme terminée", dialogue)
 
     def test_intervenant_sur_tache_terminee_peut_rouvrir_mais_pas_verifier(self):
         dialogue = self._page(INTERVENANT, False, "termine")
-        self.assertIn("Rouvrir (en cours)", dialogue)
-        self.assertNotIn('<option value="verifie"', dialogue)
+        self.assertIn(">Rouvrir</button>", dialogue)
+        self.assertNotIn(self._choix("verifie"), dialogue)
 
     def test_intervenant_sur_tache_reservee_aucune_action_d_etat(self):
         for etat in ("verifie", "arret", "abandonne"):
@@ -299,9 +305,9 @@ class TestDecision3EtatsReserves(_Base):
     def test_chef_voit_tous_les_etats(self):
         dialogue = self._page(CHEF, True, "bloque")
         for etat in ("en_cours", "bloque", "verifie", "arret", "abandonne"):
-            self.assertIn(f'<option value="{etat}"', dialogue)
-        self.assertIn('<option value="verifie">Vérifiée</option>', self._page(CHEF, True, "termine"))
-        self.assertIn("Rouvrir (en cours)", self._page(CHEF, True, "verifie"))
+            self.assertIn(self._choix(etat), dialogue)
+        self.assertRegex(self._page(CHEF, True, "termine"), self._choix("verifie") + r'[^>]*>Vérifiée</button>')
+        self.assertIn(">Rouvrir</button>", self._page(CHEF, True, "verifie"))
         self.assertIn("Marquer comme terminée", self._page(CHEF, True, "arret"))
 
 

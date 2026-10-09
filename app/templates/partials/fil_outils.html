@@ -1,0 +1,9 @@
+{# « + Nouveau post » de la fiche projet. Lot 13 : remplacé hors cible
+   quand le projet est clos ou rouvert. Ouvert à tous ceux qui voient le
+   projet (2026-09-29) ; l'onglet Tâche seulement pour qui gère le projet
+   (data-gere). Projet clos : plus aucune publication (lot 7). #}
+<span class="fil-nouveau-post" id="fil-nouveau-post"{% if oob %} data-partiel-oob{% endif %}>
+  {% if not projet_clos %}
+  <button type="button" id="nouveau-post" data-open-post-dialog data-raccourci-n aria-keyshortcuts="N" data-intent="{{ 'tache' if peut_gerer else 'information' }}" data-gere="{{ '1' if peut_gerer else '0' }}" class="btn">+ Nouveau post</button>
+  {% endif %}
+</span>

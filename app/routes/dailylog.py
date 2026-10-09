@@ -30,8 +30,8 @@ from ..auth import role_required
 from ..repositories import dailylog as dl
 from ..repositories import notifications as notifications_repo
 from ..repositories import utilisateurs as utilisateurs_repo
-from .. import utils
-from ..validation import DATE_MIN
+from .. import partiel, utils
+from ..validation import DATE_MAX, DATE_MIN
 
 bp = Blueprint("dailylog", __name__, url_prefix="/dailylog")
 
@@ -98,6 +98,8 @@ TEXTES_DAILYLOG = {
     "absent_carte_titre": "Jour marqué absent",
     "absent_carte_texte": "Congé, férié ou récupération — aucune heure à saisir.",
     "aucun_projet": "Aucun projet pour ce jour — ajoutez-en un ou copiez une journée précédente.",
+    "aucun_projet_futur": "Jour à venir : consultation seulement.",
+    "aucun_projet_lecture": "Aucune heure saisie ce jour.",
     "ajouter_projet": "+ Ajouter un projet",
     "recherche_placeholder": "Code ou nom du projet…",
     "recherche_label": "Rechercher un projet",
@@ -134,8 +136,10 @@ TEXTES_DAILYLOG = {
     "mois_suivant": "Mois suivant",
     "aujourdhui": "aujourd’hui",
     "week_end": "week-end",
-    "legende": {"rempli": "Rempli", "absent": "Absent", "vide": "Non renseigné"},
-    "statut_jour": {"rempli": "rempli", "absent": "absent", "vide": "non renseigné"},
+    "legende": {"rempli": "Rempli", "absent": "Absent", "vide": "Non renseigné",
+                "verrouille": "Non renseigné, verrouillé (au-delà de 14 jours)"},
+    "statut_jour": {"rempli": "rempli", "absent": "absent", "vide": "non renseigné",
+                    "verrouille": "non renseigné, verrouillé au-delà de 14 jours"},
     "banniere": "{x} sans saisie",
     "banniere_jour": "jour",
     "banniere_jours": "jours",
@@ -151,6 +155,8 @@ TEXTES_DAILYLOG = {
     "ligne_verrouillee_fenetre": "Au-delà de 14 jours : correction par le chef de projet ou l’Admin",
     "ligne_masquee": "Projet non visible pour vous",
     "lecture_seule": "Au-delà de 14 jours, seule une correction par votre chef de projet ou l’Admin est possible.",
+    "futur_reel": "Date simulée : ce jour est après la vraie date du jour — affichage seulement, aucune saisie (mode test).",
+    "ligne_futur_reel": "Jour après la vraie date du jour : lecture seule (mode test)",
     "lecture_seule_chef": "Au-delà de 14 jours, vous ne pouvez modifier que les lignes de vos projets.",
     "correction": "Correction du Daily log de {x} — vos modifications seront tracées à votre nom.",
     "correction_chef": " Seules les lignes de vos projets sont modifiables.",
@@ -186,6 +192,7 @@ TEXTES_DAILYLOG = {
         "ligne_non_modifiable": "Ligne non modifiable : au-delà de 14 jours, seuls le chef du projet ou l’Admin corrigent.",
         "absence_non_autorisee": "Absence non modifiable pour ce jour.",
         "date_future": "Pas de saisie pour un jour futur.",
+        "futur_reel": "Pas de saisie après la vraie date du jour, même sous date simulée (mode test : la date simulée sert à voir le futur, pas à y écrire).",
         "date_invalide": "Date invalide.",
         "refus_base": "Saisie refusée.",
         "interdit": "Action non autorisée.",
@@ -229,14 +236,15 @@ def api(view):
 
 
 def _date_ou_none(texte):
-    """Date stricte AAAA-MM-JJ (chiffres ASCII), ≥ 1990 ; None sinon."""
+    """Date stricte AAAA-MM-JJ (chiffres ASCII), entre DATE_MIN et DATE_MAX ;
+    None sinon."""
     if not isinstance(texte, str) or not _RE_DATE.match(texte):
         return None
     try:
         d = datetime.date.fromisoformat(texte)
     except ValueError:
         return None
-    return d if d >= DATE_MIN else None
+    return d if DATE_MIN <= d <= DATE_MAX else None
 
 
 def _date_api(texte) -> datetime.date:
@@ -289,19 +297,22 @@ def _nom(personne: dict) -> str:
 # ---------------------------------------------------------------------
 # Droits (gérant, lot 10)
 # ---------------------------------------------------------------------
-def droits_jour(acteur: dict, proprio: dict, date, aujourdhui) -> dict:
+def droits_jour(acteur: dict, proprio: dict, date, aujourdhui, reel=None) -> dict:
     """Matrice de la spécification §5.1 :
     - le titulaire : tout, aujourd'hui et les 14 jours précédents ;
     - l'Admin : tout, toujours (absence comprise) ;
     - un chef de projet (titulaire ou co-chef) : les lignes de SES projets,
       à toute date et pour n'importe quel employé ; jamais l'absence d'un
       autre ;
-    - sinon : lecture seule."""
+    - sinon : lecture seule.
+    Lot 13 (décision 5) : un jour postérieur à la vraie date de la personne
+    (`reel`, vu sous date simulée) est en lecture seule pour tout le monde."""
     soi = acteur["id"] == proprio["id"]
     admin = acteur["role"] == "admin"
     debut = aujourdhui - datetime.timedelta(days=dl.FENETRE_LIBRE_JOURS)
-    libre = admin or (soi and date >= debut)
-    chef = acteur["role"] == "chef_de_projet"
+    futur_reel = date > (reel or dl.aujourdhui_reel_pour(proprio))
+    libre = not futur_reel and (admin or (soi and date >= debut))
+    chef = acteur["role"] == "chef_de_projet" and not futur_reel
     return {
         "mode": "saisie" if soi else "correction",
         "saisie_libre": libre,
@@ -309,6 +320,7 @@ def droits_jour(acteur: dict, proprio: dict, date, aujourdhui) -> dict:
         "copie": libre,
         "lignes_de_ses_projets": (not libre) and chef,
         "lecture_seule": (not libre) and not chef,
+        "futur_reel": futur_reel,
         "fenetre_debut": debut.isoformat(),
     }
 
@@ -375,6 +387,9 @@ def jour_json(proprio: dict, date, aujourdhui, contexte: bool = True) -> dict:
     out = {
         "date": date.isoformat(),
         "aujourdhui": aujourdhui.isoformat(),
+        # Vraie date de la personne (lot 13, verif-temps N5) : sous date
+        # simulée, les jours après elle ne sont pas « à compléter ».
+        "aujourdhui_reel": dl.aujourdhui_reel_pour(proprio).isoformat(),
         "statut": statut,
         "version": jour["version"],
         "total_minutes": sum(l["minutes"] for l in lignes),
@@ -397,7 +412,7 @@ def _mois_json(proprio: dict, annee: int, mois: int, aujourdhui) -> dict:
     jours = {}
     if premier <= aujourdhui:
         manques = dl.jours_manques_recents(proprio, aujourdhui=aujourdhui)
-        jours = dl.etats_mois(proprio, premier, min(dernier, aujourdhui), manques)
+        jours = dl.etats_mois(proprio, premier, min(dernier, aujourdhui), manques, aujourdhui=aujourdhui)
     return {"mois": f"{annee:04d}-{mois:02d}", "aujourdhui": aujourdhui.isoformat(), "jours": jours}
 
 
@@ -452,21 +467,28 @@ def formulaire():
             for u in utilisateurs_repo.list_actifs()
             if u.get("role", "intervenant") in ROLES_DAILYLOG and u["id"] != g.user["id"]
         ]
-    return render_template(
-        "dailylog.html", amorce=amorce, textes=TEXTES_DAILYLOG, proprio=proprio, soi=soi,
-        date=date, personnes=personnes,
-    )
+    contexte = dict(amorce=amorce, textes=TEXTES_DAILYLOG, proprio=proprio, soi=soi, date=date, personnes=personnes)
+    # Lot 13 (correctifs, verif-ux) : « Daily log de » charge la page d'une
+    # autre personne sans recharger (fragment #dl9, amorce comprise).
+    if partiel.est_partiel():
+        return partiel.repondre("partials/dailylog_page.html", **contexte)
+    return render_template("dailylog.html", **contexte)
 
 
 # ---------------------------------------------------------------------
 # API
 # ---------------------------------------------------------------------
-def _contexte_jour(date_iso):
+def _contexte_jour(date_iso, ecriture: bool = False):
     proprio = _proprietaire()
     aujourdhui = dl.aujourdhui_pour(proprio)
     date = _date_api(date_iso)
     if date > aujourdhui:
         raise ErreurApi(422, "date_future", aujourdhui=aujourdhui.isoformat())
+    # Lot 13 (décision 5, audit temps T-I1) : sous date simulée, le futur
+    # réel se consulte mais ne s'écrit pas (garde en base : 0019).
+    reel = dl.aujourdhui_reel_pour(proprio)
+    if ecriture and date > reel:
+        raise ErreurApi(422, "futur_reel", aujourdhui_reel=reel.isoformat())
     return proprio, date, aujourdhui
 
 
@@ -585,6 +607,9 @@ def _ecrire(proprio: dict, date, aujourdhui, corps: dict, absent: bool, lignes_b
         code = getattr(exc, "pgcode", None)
         if code in ("23514", "23503", "23505"):  # garde-fous de la base (0014), clé étrangère
             current_app.logger.warning("Daily log refusé par la base : %s", exc)
+            if "dailylog_futur_reel" in str(getattr(getattr(exc, "diag", None), "constraint_name", "") or "") \
+                    or "vraie date du jour" in str(exc):
+                raise ErreurApi(422, "futur_reel")
             raise ErreurApi(422, "refus_base")
         if code == "42501":
             current_app.logger.warning("Daily log refusé par la base (droits) : %s", exc)
@@ -602,8 +627,7 @@ def _notifier_correction(proprio: dict, date) -> None:
     acteur et par jour). Jamais bloquant."""
     message = f"Daily log du {date.strftime('%d/%m/%Y')} corrigé par {_nom(g.user)}."
     try:
-        aujourdhui = dl.aujourdhui_pour(proprio)
-        if not notifications_repo.a_deja_la_notification(proprio["id"], message, aujourdhui):
+        if not notifications_repo.a_deja_la_notification(proprio["id"], message):
             notifications_repo.creer(proprio["id"], "rh_info", message)
     except Exception:
         current_app.logger.exception("Notification de correction du Daily log impossible")
@@ -612,7 +636,7 @@ def _notifier_correction(proprio: dict, date) -> None:
 @bp.route("/api/jour/<date_iso>", methods=["PUT"])
 @api
 def api_jour_enregistrer(date_iso):
-    proprio, date, aujourdhui = _contexte_jour(date_iso)
+    proprio, date, aujourdhui = _contexte_jour(date_iso, ecriture=True)
     corps = _corps()
     vider = corps.get("vider", False)
     if not isinstance(vider, bool):
@@ -623,7 +647,7 @@ def api_jour_enregistrer(date_iso):
 @bp.route("/api/jour/<date_iso>/absence", methods=["POST"])
 @api
 def api_absence(date_iso):
-    proprio, date, aujourdhui = _contexte_jour(date_iso)
+    proprio, date, aujourdhui = _contexte_jour(date_iso, ecriture=True)
     corps = _corps()
     absent = corps.get("absent")
     if not isinstance(absent, bool):
@@ -639,7 +663,7 @@ def api_mois(mois_iso):
     if not _RE_MOIS.match(mois_iso):
         raise ErreurApi(400, "mois_invalide", "Mois invalide.")
     annee, mois = int(mois_iso[:4]), int(mois_iso[5:])
-    if not 1 <= mois <= 12 or annee < DATE_MIN.year or annee > 2100:
+    if not 1 <= mois <= 12 or annee < DATE_MIN.year or annee > DATE_MAX.year:
         raise ErreurApi(400, "mois_invalide", "Mois invalide.")
     return jsonify(_mois_json(proprio, annee, mois, dl.aujourdhui_pour(proprio)))
 

@@ -424,7 +424,11 @@ async function contrastes(p) {
   await p.click('#dl-liste .dl-row[data-cle="1:0"] .dl-pinfo');
   etape('nom du projet : ligne désactivée (0 h)', (await valeur(p, '1:0')) === '0 h');
   etape('total à 0 : bouton « Vider la journée »', (await p.textContent('#dl-enregistrer')) === 'Vider la journée');
-  await p.click('#dl-enregistrer');   // confirmation acceptée (dialog)
+  await p.click('#dl-enregistrer');
+  // Lot 13 : confirmation en ligne (plus de boîte native), focus sur « Annuler ».
+  await p.waitForSelector('.k-confirmation');
+  etape('vider : confirmation en ligne, focus sur Annuler', await p.evaluate(() => document.activeElement && document.activeElement.textContent === 'Annuler'));
+  await p.click('.k-confirmation .btn-primaire');
   await attendre(() => heures(RIM, jPrec) === '0', 3000);
   etape('journée vidée après confirmation', heures(RIM, jPrec) === '0' && (await toast(p)).includes('Journée vidée'));
   await p.goto(BASE + '/dailylog?date=' + T); await pret(p);
@@ -462,7 +466,7 @@ async function contrastes(p) {
   // 21. Correction par le chef au-delà de 14 jours
   const ali = await contexte(navigateur, 'ali@x.tn');
   const c = await ouvrir(ali, `/dailylog?utilisateur=${RIM}&date=${j20}`);
-  etape('correction : bandeau et sélection de l\'employé', (await c.textContent('#dl-correction')).includes('Rim Inter') && await c.isVisible('#dl-qui-select'));
+  etape('correction : bandeau et sélection de l\'employé', (await c.textContent('#dl-correction')).includes('Rim Inter') && await c.isVisible('.dl-qui .search-combobox-input'));
   etape('ligne d\'un projet invisible pour le chef : masquée', (await c.textContent('#dl-liste')).includes('Projet non visible') &&
     !(await c.textContent('#dl-liste')).includes('Passerelle'));
   await moins(c, '1:0', 2);

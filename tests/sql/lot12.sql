@@ -1,6 +1,7 @@
 -- Lot 12 (migration 0018) sur un vrai PostgreSQL : date simulée
 -- (fn_date_simulee, fn_aujourdhui, fn_dailylog_garde : jour futur et
--- fenêtre de 14 jours décalés, valeur forgée ignorée), Admin réel dans le
+-- fenêtre de 14 jours décalés, valeur forgée ignorée ; depuis la migration
+-- 0019, jamais d'écriture après la vraie date), Admin réel dans le
 -- journal d'audit (audit_log.admin_reel_id via app.admin_reel_id), actions
 -- ENTREE / SORTIE des modes. Tout est annulé (ROLLBACK). Lancé par la CI
 -- avec psql -v ON_ERROR_STOP=1 sur la base neuve, la base montée de version
@@ -24,6 +25,7 @@ DECLARE
   p   BIGINT := (SELECT id FROM projet WHERE code = 'T1201X');
   auj DATE := (now() AT TIME ZONE 'Africa/Tunis')::DATE;
   sim DATE := (now() AT TIME ZONE 'Africa/Tunis')::DATE + 30;
+  passe DATE := (now() AT TIME ZONE 'Africa/Tunis')::DATE - 30;
   v   TEXT;
   n   INT := 0;
   attendu INT := 0;
@@ -54,31 +56,35 @@ BEGIN
   attendu := attendu + 1;
   BEGIN INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (u, auj + 3, p, 2);
   EXCEPTION WHEN check_violation THEN n := n + 1; END;
-  --    … accepté avec la date simulée à J+3 (titulaire, dans sa fenêtre).
+  --    … et aussi avec la date simulée à J+3 (lot 13, migration 0019 : la
+  --    date simulée montre le futur, elle n'y écrit pas).
   PERFORM set_config('kairos.date_simulee', (auj + 3)::TEXT, true);
-  INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (u, auj + 3, p, 2);
-  --    Fenêtre de 14 jours décalée : avec la date simulée à J+30, le
-  --    titulaire écrit J+16 (= simulée − 14), pas J+15 ni aujourd'hui réel.
-  PERFORM set_config('kairos.date_simulee', sim::TEXT, true);
-  INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (u, sim - 14, p, 1);
   attendu := attendu + 1;
-  BEGIN INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (u, sim - 15, p, 1);
+  BEGIN INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (u, auj + 3, p, 2);
+  EXCEPTION WHEN check_violation THEN n := n + 1; END;
+  --    Fenêtre de 14 jours décalée : avec la date simulée à J−30, le
+  --    titulaire écrit J−44 (= simulée − 14), pas J−45 ; aujourd'hui réel
+  --    est un jour futur pour la date simulée.
+  PERFORM set_config('kairos.date_simulee', passe::TEXT, true);
+  INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (u, passe - 14, p, 1);
+  attendu := attendu + 1;
+  BEGIN INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (u, passe - 15, p, 1);
   EXCEPTION WHEN insufficient_privilege THEN n := n + 1; END;
   attendu := attendu + 1;
   BEGIN INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (u, auj, p, 1);
-  EXCEPTION WHEN insufficient_privilege THEN n := n + 1; END;
+  EXCEPTION WHEN check_violation THEN n := n + 1; END;
   --    Jour futur par rapport à la date simulée : refusé, même en Guyane.
   PERFORM set_config('app.current_user_id', gy::TEXT, true);
   attendu := attendu + 1;
-  BEGIN INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (gy, sim + 1, p, 1);
+  BEGIN INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (gy, passe + 1, p, 1);
   EXCEPTION WHEN check_violation THEN n := n + 1; END;
-  INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (gy, sim, p, 1);
-  --    Sans date simulée : retour à la règle réelle (J+16 hors limites).
+  INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (gy, passe, p, 1);
+  --    Sans date simulée : retour à la règle réelle (J−43 hors de la fenêtre).
   PERFORM set_config('kairos.date_simulee', '', true);
   PERFORM set_config('app.current_user_id', u::TEXT, true);
   attendu := attendu + 1;
-  BEGIN INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (u, sim - 13, p, 1);
-  EXCEPTION WHEN check_violation THEN n := n + 1; END;
+  BEGIN INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (u, passe - 13, p, 1);
+  EXCEPTION WHEN insufficient_privilege THEN n := n + 1; END;
 
   -- 3. Journal d'audit : l'Admin réel est recopié, l'auteur reste le compte cible.
   PERFORM set_config('app.admin_reel_id', ad::TEXT, true);

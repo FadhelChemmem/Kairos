@@ -1,0 +1,7 @@
+{# Pastille du projet ouvert dans la topbar (retour Fadhel, 2026-09-27) :
+   état + code, visible où qu'on soit sur la fiche. Lot 13 : fragment
+   remplacé hors cible (data-partiel-oob) quand l'état change. #}
+<a href="{{ url_for('projets.detail', projet_id=projet.id) }}" id="topbar-projet" class="topbar-projet-pill" title="{{ projet.code }}_{{ projet.nom }}"{% if oob %} data-partiel-oob{% endif %}>
+  <span class="point-etat point-etat-{{ projet.etat }}" aria-hidden="true"></span>
+  <span>{{ projet.code }}</span>
+</a>

@@ -1,91 +1,59 @@
 {% extends "base.html" %}
-{% block title %}Journal d'audit — Kairos{% endblock %}
+{% from "partials/journal_libelles.html" import libelles_action, libelles_table %}
+{% block title %}Journal d'audit{{ ' — suite' if suite_page }} — Kairos{% endblock %}
 {# Pas de fil sur cette page (lot 11, audit front M8). #}
 {% block scripts_fil %}{% endblock %}
 {% block body %}
 {# Lot 10 (audit front I13, §7) : libellés français des actions et des
-   tables, données en JSON lisible, filtres validés par un bouton. #}
-{% set libelles_action = {'INSERT': 'Création', 'UPDATE': 'Modification', 'DELETE': 'Suppression', 'ENTREE': 'Entrée', 'SORTIE': 'Sortie'} %}
-{% set libelles_table = {'utilisateur': 'Utilisateur', 'projet': 'Projet', 'projet_lot': 'Lot de projet', 'projet_co_chef': 'Co-chef de projet', 'projet_intervenant': 'Intervenant de projet', 'tache': 'Tâche', 'tache_intervenant': 'Intervenant de tâche', 'tache_piece_jointe': 'Pièce jointe de tâche', 'dailylog_entree': 'Daily log (ligne)', 'dailylog_jour': 'Daily log (jour)', 'post': 'Post', 'post_piece_jointe': 'Pièce jointe de post', 'post_mention': 'Mention dans un post', 'post_commentaire': 'Commentaire', 'post_commentaire_piece_jointe': 'Pièce jointe de commentaire', 'post_equipe': 'Équipe destinataire', 'post_commentaire_mention': 'Mention dans un commentaire', 'mode_voir_comme': 'Voir comme (Admin)', 'mode_agir_comme': 'Agir comme (mode test)', 'date_simulee': 'Date simulée (mode test)'} %}
+   tables. Lot 13 : filtres appliqués automatiquement en mise à jour
+   partielle (le bouton « Filtrer » reste sans JavaScript), 100 entrées par
+   page, données chargées à la demande (journal.js). #}
 
 <div class="subbar">
   <div class="subbar-inner">
     <h1 class="page-titre">Journal d'audit</h1>
-    <span style="font-size:12.5px; color:var(--text-muted);">{{ entrees|length }} entrée{{ 's' if entrees|length > 1 else '' }} affichée{{ 's' if entrees|length > 1 else '' }} (300 au maximum)</span>
-    <a href="{{ url_for('modes_admin.page') }}" class="lien-carte" style="margin-left:auto; font-size:12.5px; font-weight:700;">Voir Kairos comme…</a>
-    <span class="pill" style="background:var(--hover-bg); color:var(--text-muted);">Visible par&nbsp;: administrateur</span>
+    {% include "partials/journal_compte.html" %}
+    <a href="{{ url_for('modes_admin.page') }}" class="lien-carte subbar-lien">Voir Kairos comme…</a>
+    <span class="pill pill-neutre">Visible par&nbsp;: administrateur</span>
   </div>
 </div>
 
-<div class="page-wrap" style="padding-top:20px; padding-bottom:60px;">
+<div class="page-wrap k-page">
 
-  <form method="get" class="filtres-journal" style="display:flex; align-items:center; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
-    <select name="table" aria-label="Table">
+  <form method="get" action="{{ url_for('admin.journal') }}" class="filtres-journal" role="search" aria-label="Filtrer le journal"
+        data-partiel="#journal-resultats" data-partiel-auto="change">
+    <select name="table" id="journal-table-filtre" aria-label="Table">
       <option value="">Toutes les tables</option>
       {% for t in tables %}
-        <option value="{{ t }}" {{ 'selected' if table_cible == t }}>{{ libelles_table.get(t, t) }}</option>
+        <option value="{{ t }}" {{ 'selected' if filtres.table == t }}>{{ libelles_table.get(t, t) }}</option>
       {% endfor %}
     </select>
-    <select name="action" aria-label="Action">
+    <select name="action" id="journal-action-filtre" aria-label="Action">
       <option value="">Toutes les actions</option>
       {% for a in actions %}
-        <option value="{{ a }}" {{ 'selected' if action == a }}>{{ libelles_action.get(a, a) }}</option>
+        <option value="{{ a }}" {{ 'selected' if filtres.action == a }}>{{ libelles_action.get(a, a) }}</option>
       {% endfor %}
     </select>
-    <select name="utilisateur_id" aria-label="Auteur">
+    <select name="utilisateur_id" id="journal-auteur-filtre" aria-label="Auteur">
       <option value="">Tous les auteurs</option>
       {% for u in auteurs %}
-        <option value="{{ u.id }}" {{ 'selected' if utilisateur_id|string == u.id|string }}>{{ u.prenom }} {{ u.nom }}</option>
+        <option value="{{ u.id }}" {{ 'selected' if filtres.utilisateur_id|string == u.id|string }}>{{ u.prenom }} {{ u.nom }}</option>
       {% endfor %}
     </select>
-    <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--text-muted); margin:0;">
-      Du
-      <input type="date" name="date_debut" value="{{ date_debut }}" aria-label="Date de début" style="width:auto;">
+    <label class="filtre-date" for="journal-du">Du
+      <input type="date" id="journal-du" name="date_debut" value="{{ filtres.date_debut }}" aria-label="Du (date de début)">
     </label>
-    <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--text-muted); margin:0;">
-      Au
-      <input type="date" name="date_fin" value="{{ date_fin }}" aria-label="Date de fin" style="width:auto;">
+    <label class="filtre-date" for="journal-au">Au
+      <input type="date" id="journal-au" name="date_fin" value="{{ filtres.date_fin }}" aria-label="Au (date de fin)">
     </label>
-    <button type="submit" class="btn-secondary" style="width:auto; padding:9px 16px;">Filtrer</button>
-    {% if table_cible or action or utilisateur_id or date_debut or date_fin %}
-      <a href="{{ url_for('admin.journal') }}" style="font-size:12.5px; color:var(--text-muted); font-weight:600;">Réinitialiser</a>
-    {% endif %}
+    <button type="submit" class="btn k-sans-js">Filtrer</button>
+    <a href="{{ url_for('admin.journal') }}" class="btn-fantome btn-petit journal-reinit" data-partiel="#journal-resultats" data-focus-apres="#journal-table-filtre"{% if not filtre_actif %} hidden{% endif %}>Réinitialiser</a>
   </form>
 
-  <div class="card table-scroll" style="padding:16px 18px 6px;">
-    <div class="uhead" style="grid-template-columns: 150px 90px 160px 1fr 160px;">
-      <span>Date</span>
-      <span>Action</span>
-      <span>Table / ligne</span>
-      <span>Détail</span>
-      <span>Auteur</span>
-    </div>
+  {% if suite_page %}<p class="k-muet journal-page-suite">Entrées plus anciennes. <a href="{{ url_for('admin.journal', **filtres_url) }}">Revenir aux plus récentes</a></p>{% endif %}
 
-    {% for e in entrees %}
-      <div class="urow" style="grid-template-columns: 150px 90px 160px 1fr 160px; align-items:flex-start;">
-        <span style="font-size:12px; color:var(--text-secondary); white-space:nowrap;">{{ e.created_at|date_courte(true) }} à {{ e.created_at.strftime('%H:%M') }}</span>
-        <span class="pill pill-sm pill-action-{{ e.action|lower }}">{{ libelles_action.get(e.action, e.action) }}</span>
-        <span style="font-size:12.5px; font-weight:600;">{{ libelles_table.get(e.table_cible, e.table_cible) }}{% if e.ligne_id %} <span style="font-weight:400; color:var(--text-muted);">n°&nbsp;{{ e.ligne_id }}</span>{% endif %}</span>
-        <details style="font-size:11.5px; color:var(--text-secondary); min-width:0;">
-          <summary class="journal-resume" style="cursor:pointer; color:var(--text-muted); font-weight:600;">Voir les données</summary>
-          {% if e.donnees_avant %}
-            <div style="margin-top:4px;"><strong style="font-weight:600;">Avant&nbsp;:</strong> <pre class="journal-donnees">{{ e.donnees_avant|tojson(indent=2) if e.donnees_avant is mapping else e.donnees_avant }}</pre></div>
-          {% endif %}
-          {% if e.donnees_apres %}
-            <div style="margin-top:4px;"><strong style="font-weight:600;">Après&nbsp;:</strong> <pre class="journal-donnees">{{ e.donnees_apres|tojson(indent=2) if e.donnees_apres is mapping else e.donnees_apres }}</pre></div>
-          {% endif %}
-        </details>
-        <span style="font-size:12.5px; color:var(--text-secondary);">
-          {% if e.auteur_id %}{{ e.auteur_prenom }} {{ e.auteur_nom }}{% else %}<span style="color:var(--text-muted);">—</span>{% endif %}
-          {# Lot 12 : « Agir comme » (mode test) — l'Admin réel en plus de l'auteur. #}
-          {% if e.admin_reel_id and e.admin_reel_id != e.auteur_id %}<span class="journal-admin-reel">(par l’Admin {{ e.admin_reel_prenom }} {{ e.admin_reel_nom }})</span>{% endif %}
-          {% if e.table_cible in ('mode_voir_comme', 'mode_agir_comme') and e.donnees_apres and e.donnees_apres is mapping and e.donnees_apres.compte_vu %}<span class="journal-admin-reel">compte vu&nbsp;: {{ e.donnees_apres.compte_vu }}</span>{% endif %}
-        </span>
-      </div>
-    {% else %}
-      <p style="padding:24px 4px; color:var(--text-muted); font-size:13px;">Aucune entrée pour ces filtres.</p>
-    {% endfor %}
-  </div>
+  {% include "partials/journal_resultats.html" %}
 
 </div>
+<script src="{{ url_for('static', filename='js/journal.js') }}" defer></script>
 {% endblock %}

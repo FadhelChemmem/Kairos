@@ -7,16 +7,17 @@
   var dialog = document.getElementById('dialog-nouveau-projet');
   if (!dialog) return;
 
-  document.querySelectorAll('[data-open-projet-dialog]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      if (typeof dialog.showModal === 'function') {
-        dialog.showModal();
-      } else {
-        dialog.setAttribute('open', 'open');
-      }
-      // Lot 10 : focus sur le premier champ (et non sur « Fermer »).
-      window.KairosFloatingWindow.focusPremierChamp(dialog);
-    });
+  // Délégation (lot 13) : déclencheurs insérés après coup compris.
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('[data-open-projet-dialog]');
+    if (!btn || btn.disabled || dialog.open) return;
+    if (typeof dialog.showModal === 'function') {
+      dialog.showModal();
+    } else {
+      dialog.setAttribute('open', 'open');
+    }
+    // Lot 10 : focus sur le premier champ (et non sur « Fermer »).
+    window.KairosFloatingWindow.focusPremierChamp(dialog);
   });
 
   dialog.querySelectorAll('[data-close-projet-dialog]').forEach(function (b) {

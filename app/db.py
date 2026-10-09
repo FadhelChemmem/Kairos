@@ -43,17 +43,20 @@ class LectureSeule(Exception):
     répond 403 « lecture seule » (app/__init__.py), jamais une erreur 500."""
 
 
-def _reglages_requete() -> tuple[bool, int | None, "datetime.date | None"]:
+def _reglages_requete() -> tuple[bool, int | None, "datetime.datetime | None"]:
     """Réglages de la requête HTTP en cours, posés par
     app/modes_admin.py:appliquer (lot 12) : (lecture seule, Admin réel qui
-    « agit comme », date simulée). Hors requête (CLI, scripts) : rien."""
+    « agit comme », instant simulé — lot 13). Hors requête (CLI, scripts) :
+    rien."""
     try:
         from flask import g, has_request_context
     except ImportError:  # pragma: no cover - Flask est toujours là dans l'appli
         return False, None, None
     if not has_request_context():
         return False, None, None
-    return bool(g.get("lecture_seule")), g.get("admin_reel_agit"), g.get("date_simulee")
+    from . import horloge
+
+    return bool(g.get("lecture_seule")), g.get("admin_reel_agit"), horloge.instant_simule()
 
 
 def init_pool(database_url: str, minconn: int = 1, maxconn: int = 10) -> None:
@@ -84,8 +87,9 @@ def get_cursor(user_id: int | None = None, commit: bool = True):
       la transaction est READ ONLY (aucune écriture possible, même par un
       chemin oublié) ; en « Agir comme », app.admin_reel_id porte l'Admin
       réel (recopié par fn_audit_log, migration 0018) ; avec une date
-      simulée (mode test seulement), kairos.date_simulee la porte
-      (fn_aujourdhui, gardes du Daily log).
+      simulée (mode test seulement), kairos.instant_simule porte l'instant
+      simulé (fn_aujourdhui au fuseau de chacun, gardes du Daily log,
+      migration 0019).
     - Commit automatique en sortie normale du bloc `with`, rollback
       automatique si une exception est levée à l'intérieur.
     - La connexion est toujours rendue au pool (bloc finally), même en
@@ -94,7 +98,7 @@ def get_cursor(user_id: int | None = None, commit: bool = True):
     if _pool is None:
         raise RuntimeError("db.init_pool() n'a pas été appelé — vérifier app/__init__.py")
 
-    lecture_seule, admin_reel_id, date_simulee = _reglages_requete()
+    lecture_seule, admin_reel_id, instant_simule = _reglages_requete()
     conn = _pool.getconn()
     conn.autocommit = False
     cur = None
@@ -112,8 +116,8 @@ def get_cursor(user_id: int | None = None, commit: bool = True):
             cur.execute("SET LOCAL app.current_user_id = %s", (str(int(user_id)),))
         if admin_reel_id is not None:
             cur.execute("SET LOCAL app.admin_reel_id = %s", (str(int(admin_reel_id)),))
-        if date_simulee is not None:
-            cur.execute("SET LOCAL kairos.date_simulee = %s", (date_simulee.isoformat(),))
+        if instant_simule is not None:
+            cur.execute("SET LOCAL kairos.instant_simule = %s", (instant_simule.isoformat(timespec="seconds"),))
         yield cur
         if commit:
             conn.commit()

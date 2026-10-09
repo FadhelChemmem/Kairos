@@ -60,12 +60,14 @@ class TestCacheEtCompression(_Base):
 
     def test_statique_versionne_reste_immuable_meme_connecte(self):
         html = self._get("/projets/1").data.decode()
-        url = re.search(r'href="(/static/css/app\.css\?v=[0-9a-f]{12})"', html).group(1)
-        resp = self._get(url, {"Accept-Encoding": "gzip"})
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.headers["Cache-Control"], "public, max-age=31536000, immutable")
-        self.assertEqual(resp.headers["Content-Encoding"], "gzip")
-        resp.close()
+        # Fichier statique et paquet (app/paquets.py, lot 13).
+        for motif in (r'src="(/static/js/kairos-amorce\.js\?v=[0-9a-f]{12})"', r'href="(/static/paquets/app\.css\?v=[0-9a-f]{12})"'):
+            url = re.search(motif, html).group(1)
+            resp = self._get(url, {"Accept-Encoding": "gzip"})
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(resp.headers["Cache-Control"], "public, max-age=31536000, immutable")
+            self.assertEqual(resp.headers["Content-Encoding"], "gzip")
+            resp.close()
 
     def test_piece_jointe_no_store_jamais_compressee(self):
         _ecrire(PIECE, b"%PDF-1.4 " + b"x" * 4000)
@@ -155,7 +157,9 @@ class TestFenetreDatesEtHeures(_Base):
                  "heures_cumulees": 5.25, "heures_intervenant": 3.5, "heures_chef": 1.75}
         resp = self._get("/projets/1/taches/5/fenetre", **{"app.repositories.taches.list_taches_projet": [tache]})
         html = resp.data.decode()
-        self.assertIn(f"Échéance 17 nov. {annee_passee}", html)
+        # Lot 13 : pour qui gère le projet, l'échéance est un champ date (année
+        # comprise) ; sinon, le texte « 17 nov. <année> ».
+        self.assertTrue(f'value="{annee_passee}-11-17"' in html or f"17 nov. {annee_passee}" in html)
         self.assertIn("3\u00a0h\u00a030 intervenants / 1\u00a0h\u00a045 chef de projet", html)
         self.assertNotIn("heures_courtes", html)
 

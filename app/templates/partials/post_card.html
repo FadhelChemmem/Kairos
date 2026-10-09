@@ -11,120 +11,8 @@
    ce post (post_dialog.html). #}
 {% import "partials/avatar.html" as avatarm %}
 
-{# --- Pièce jointe de commentaire : image affichée en ligne (aperçu),
-   tout autre fichier en lien de téléchargement (Lot 5, "aperçu image"). #}
-{% macro piece_jointe_commentaire(pj) %}
-  {% if is_image_filename(pj.nom_fichier) %}
-    {# Visionneuse (retour Fadhel, 2026-09-29) : l'image s'ouvre dans une
-       fenêtre flottante, un clic à côté ramène au même endroit du fil —
-       voir app/static/js/lightbox.js. Le lien reste un vrai lien (nouvel
-       onglet) sans JavaScript. #}
-    <a href="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" target="_blank" rel="noopener noreferrer" data-lightbox>
-      <img src="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" alt="Image jointe : {{ pj.nom_fichier }}" class="post-comment-attachment-img" loading="lazy">
-    </a>
-  {% else %}
-    <a href="{{ url_for('fichiers.commentaire_piece_jointe', piece_id=pj.id) }}" class="post-comment-attachment-file">
-      <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
-      <span>{{ pj.nom_fichier }}</span>
-    </a>
-  {% endif %}
-{% endmacro %}
-
-{# --- Champ de commentaire (retour Fadhel, 2026-09-29) : toujours
-   visible sous le post ; "@" propose les personnes (le tag s'écrit dans le
-   texte, le serveur retrouve les "@Prénom Nom" — routes/posts.py) ; un
-   fichier se glisse directement sur le champ (ou se colle, ou se choisit
-   avec le trombone du champ) ; Entrée envoie, Maj+Entrée va à la ligne.
-   Sert aussi pour "Répondre" à un commentaire de premier niveau
-   (parent_commentaire_id) — voir comment-composer.js. #}
-{% macro composer_commentaire(post, next_url, parent_commentaire_id=none, placeholder='Commenter…', autofocus=false, etiquette=none) %}
-  <form method="post" action="{{ url_for('posts.commenter', post_id=post.id) }}" enctype="multipart/form-data" class="comment-composer" data-comment-composer>
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
-    {% if parent_commentaire_id %}<input type="hidden" name="parent_commentaire_id" value="{{ parent_commentaire_id }}">{% endif %}
-    <div class="comment-input">
-      <textarea name="contenu" maxlength="5000" rows="1" placeholder="{{ placeholder }}" aria-label="{{ etiquette or ('Commenter le post de ' ~ post.auteur_prenom ~ ' ' ~ post.auteur_nom) }}" required data-mention-input{% if not parent_commentaire_id %} id="commentaire-post-{{ post.id }}"{% endif %}{% if autofocus %} autofocus{% endif %}></textarea>
-      <label class="comment-attach" title="Joindre un fichier (ou le glisser sur le champ)">
-        <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
-        <input type="file" name="fichier" aria-label="Joindre un fichier" data-comment-file>
-      </label>
-    </div>
-    <button type="submit" class="comment-send">Envoyer</button>
-    <div class="comment-file" data-comment-file-chip hidden></div>
-  </form>
-{% endmacro %}
-
-{# --- Un commentaire (ou une réponse, `reponse=true` : pas de "Répondre",
-   un seul niveau de profondeur imposé par le serveur). #}
-{% macro commentaire(c, post, next_url, reponse=false) %}
-  <div class="post-comment" id="commentaire-{{ c.id }}">
-    {{ avatarm.avatar(c.auteur_id, c.auteur_prenom, c.auteur_nom, c.auteur_avatar_chemin, css_class='avatar avatar-sm', style='flex-shrink:0;') }}
-    <div style="flex:1; min-width:0;">
-      <div class="post-comment-body">
-        <div>
-          <a href="{{ url_for('utilisateurs.profil_personne', user_id=c.auteur_id) }}" style="font-weight:700; color:inherit;">{{ c.auteur_prenom }} {{ c.auteur_nom }}</a>
-          {# Ancien tag (champ séparé, avant le 2026-09-29) #}
-          {% if c.mentionne_prenom %}<span class="post-comment-mention">@{{ c.mentionne_prenom }} {{ c.mentionne_nom }}</span>{% endif %}
-          <span class="post-comment-texte">{{ texte_avec_mentions(c.contenu, c.mentions|default([])) }}</span>
-        </div>
-        {# `|default([])` : les commentaires passés par les fixtures de
-           tests n'ont pas forcément ces clés. #}
-        {% for pj in c.pieces_jointes|default([]) %}{{ piece_jointe_commentaire(pj) }}{% endfor %}
-      </div>
-      <div class="post-comment-meta">
-        {% if c.created_at %}<time datetime="{{ c.created_at.isoformat() }}" title="{{ date_fr(c.created_at) }} à {{ c.created_at.strftime('%H:%M') }}">{{ c.created_at|il_y_a }}</time>{% endif %}
-        {% if c.modifie_le %}<span title="Modifié {{ c.modifie_le|il_y_a }}">· modifié</span>{% endif %}
-        {# Répondre à une réponse : même fil (un seul niveau), la personne
-           est taguée d'office. #}
-        {# Projet clos : ni réponse ni modification (décision Fadhel, lot 7). #}
-        {% set clos = post.projet_etat in ('termine', 'abandonne') %}
-        {% if not clos %}
-        <button type="button" class="post-comment-action" data-repondre="{{ c.parent_commentaire_id if reponse else c.id }}"{% if reponse and c.auteur_id != g.user.id %} data-mention="@{{ c.auteur_prenom }} {{ c.auteur_nom }} "{% endif %}>Répondre</button>
-        {% endif %}
-        {% if c.auteur_id == g.user.id and not clos %}
-          <button type="button" class="post-comment-action" data-modifier="{{ c.id }}">Modifier</button>
-        {% endif %}
-        {% if g.user.role == 'admin' %}
-          <details class="post-comment-supprimer">
-            <summary class="post-comment-action">Supprimer</summary>
-            <form method="post" action="{{ url_for('posts.supprimer_commentaire', commentaire_id=c.id) }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
-              <span>Supprimer{{ ' ce commentaire et ses réponses' if c.replies else ' ce commentaire' }}&#8239;?</span>
-              <button type="submit" class="post-comment-action danger" data-confirmer-suppression>Oui, supprimer</button>
-              {# Lot 10 (audit front I12) : on peut renoncer sans recharger. #}
-              <button type="button" class="post-comment-action" data-annuler-suppression>Annuler</button>
-            </form>
-          </details>
-        {% endif %}
-      </div>
-      {% if c.auteur_id == g.user.id and post.projet_etat not in ('termine', 'abandonne') %}
-        <form method="post" action="{{ url_for('posts.modifier_commentaire', commentaire_id=c.id) }}" class="comment-composer comment-edit" data-comment-edit="{{ c.id }}" hidden>
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
-          <div class="comment-input">
-            <textarea name="contenu" maxlength="5000" rows="1" aria-label="Modifier le commentaire" required data-mention-input>{{ c.contenu }}</textarea>
-          </div>
-          <button type="submit" class="comment-send">Enregistrer</button>
-          <button type="button" class="post-comment-action" data-annuler-modif>Annuler</button>
-        </form>
-      {% endif %}
-      {% if not reponse %}
-        {% if c.replies %}
-          <div class="post-comment-replies">
-            {% for r in c.replies|default([]) %}{{ commentaire(r, post, next_url, reponse=true) }}{% endfor %}
-          </div>
-        {% endif %}
-        <div class="post-comment-reply" data-reponse-a="{{ c.id }}" hidden>
-          {{ composer_commentaire(post, next_url, parent_commentaire_id=c.id, placeholder='Répondre à ' ~ c.auteur_prenom ~ '…', etiquette='Répondre au commentaire de ' ~ c.auteur_prenom ~ ' ' ~ c.auteur_nom) }}
-        </div>
-      {% endif %}
-    </div>
-  </div>
-{% endmacro %}
-
 <div class="card post-card" id="post-{{ post.id }}">
-  <div style="display:flex; align-items:center; gap:10px;">
+  <div class="post-entete">
     {# Pastille + nom du posteur, et nom du projet, cliquables (retour
        Fadhel, 2026-09-28). Le lien mène désormais à la page de profil
        (Lot 5, retour Fadhel, 2026-09-28 — utilisateurs.profil_personne,
@@ -136,37 +24,41 @@
     <a href="{{ auteur_url }}" aria-hidden="true" tabindex="-1">
       {{ avatarm.avatar(post.auteur_id, post.auteur_prenom, post.auteur_nom, post.auteur_avatar_chemin, css_class='avatar avatar-lg') }}
     </a>
-    <div style="flex:1; min-width:0;">
+    <div class="post-entete-texte">
       {% if post.est_creation_tache %}
-        <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a créé une tâche</div>
+        <div class="post-entete-ligne"><a href="{{ auteur_url }}" class="post-auteur-lien">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a créé une tâche</div>
       {% elif post.est_cloture_tache %}
-        <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a terminé une tâche</div>
-      {% elif post.evenement|default(none) in ('creation_projet', 'etat_projet', 'etat_tache', 'titre_tache', 'chef_projet') %}
+        <div class="post-entete-ligne"><a href="{{ auteur_url }}" class="post-auteur-lien">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a terminé une tâche</div>
+      {% elif post.evenement|default(none) in ('creation_projet', 'etat_projet', 'etat_tache', 'titre_tache', 'chef_projet', 'intervenant_tache', 'echeance_tache', 'intervenant_projet') %}
         {# Posts automatiques (retour Fadhel, 2026-09-29, P1 ; changement de
-           chef : lot 11 b). #}
+           chef : lot 11 b ; intervenants et échéance d'une tâche, retrait
+           du projet : lot 13). #}
         {% set phrase = {'creation_projet': 'a créé le projet', 'etat_projet': "a changé l'état du projet",
                          'etat_tache': "a changé l'état d'une tâche", 'titre_tache': 'a renommé une tâche',
-                         'chef_projet': 'a changé le chef de projet'}[post.evenement] %}
-        <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> {{ phrase }}</div>
+                         'chef_projet': 'a changé le chef de projet',
+                         'intervenant_tache': "a changé les intervenants d'une tâche",
+                         'echeance_tache': "a changé l'échéance d'une tâche",
+                         'intervenant_projet': 'a retiré un intervenant du projet'}[post.evenement] %}
+        <div class="post-entete-ligne"><a href="{{ auteur_url }}" class="post-auteur-lien">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> {{ phrase }}</div>
       {% elif post.est_repost or post.parent_post_id %}
         {# "Reposter" (Lot 5, retour Fadhel, 2026-09-28) : distinct du rebond
            normal — voir posts_repo.repost(). Le post d'origine cité
            s'affiche automatiquement plus bas via le bloc parent_post_id,
            déjà générique (même bloc que pour un rebond). #}
-        <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a reposté</div>
+        <div class="post-entete-ligne"><a href="{{ auteur_url }}" class="post-auteur-lien">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a reposté</div>
       {% else %}
-        <div style="font-size:13.5px;"><a href="{{ auteur_url }}" style="font-weight:700; color:inherit;">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a></div>
+        <div class="post-entete-ligne"><a href="{{ auteur_url }}" class="post-auteur-lien">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a></div>
       {% endif %}
-      <div style="font-size:11.5px; color:var(--text-muted);">
+      <div class="post-meta">
         {# Information d'équipe sans projet (migration 0009) : ses équipes
            destinataires à la place du projet. #}
-        {% if post.projet_id is none %}<span>{{ 'Équipes' if post.equipes|default([])|length > 1 else 'Équipe' }}&nbsp;: {{ post.equipes|default([])|join(', ') }}</span> · {% elif show_projet %}<a href="{{ url_for('projets.detail', projet_id=post.projet_id) }}" style="color:inherit;">{{ post.projet_code }}_{{ post.projet_nom }}</a> · {% endif %}{% if post.created_at %}<time datetime="{{ post.created_at.isoformat() }}" title="{{ date_fr(post.created_at) }} à {{ post.created_at.strftime('%H:%M') }}">{{ post.created_at|il_y_a }}</time>{% endif %}
+        {% if post.projet_id is none %}<span>{{ 'Équipes' if post.equipes|default([])|length > 1 else 'Équipe' }}&nbsp;: {{ post.equipes|default([])|join(', ') }}</span> · {% elif show_projet %}<a href="{{ url_for('projets.detail', projet_id=post.projet_id) }}" class="lien-discret">{{ post.projet_code }}_{{ post.projet_nom }}</a> · {% endif %}{% if post.created_at %}<time datetime="{{ post.created_at.isoformat() }}" title="{{ 'Horodatage réel : ' if g.date_simulee }}{{ date_fr(post.created_at) }} à {{ post.created_at.strftime('%H:%M') }}">{{ post.created_at|il_y_a }}</time>{% endif %}
       </div>
     </div>
-    {% if post.est_creation_tache or post.evenement|default(none) in ('etat_tache', 'titre_tache') %}
-      <span class="pill" style="background:{{ post_tache_pill.bg }}; color:{{ post_tache_pill.fg }};">{{ post_tache_pill.label }}</span>
-    {% elif post.evenement|default(none) in ('creation_projet', 'etat_projet', 'chef_projet') %}
-      <span class="pill" style="background:var(--hover-bg); color:var(--text-secondary);">Projet</span>
+    {% if post.est_creation_tache or post.evenement|default(none) in ('etat_tache', 'titre_tache', 'intervenant_tache', 'echeance_tache') %}
+      <span class="pill {{ post_tache_pill.classe }}">{{ post_tache_pill.label }}</span>
+    {% elif post.evenement|default(none) in ('creation_projet', 'etat_projet', 'chef_projet', 'intervenant_projet') %}
+      <span class="pill pill-neutre">Projet</span>
     {% elif post.est_cloture_tache %}
       {# Bug corrigé (2026-09-27, retour Fadhel) : affichait toujours
          l'état "Terminé" de la tâche, jamais le tag (Envoi/Réponse/
@@ -174,24 +66,24 @@
          clôture (voir taches.close_tache / routes/projets.cloturer_tache)
          — même style que pour un post normal. #}
       {% set st = post_type_style(post.type_code) %}
-      <span class="pill" style="background:{{ st.bg }}; color:{{ st.fg }};">{{ st.label }}</span>
+      <span class="pill {{ st.classe }}">{{ st.label }}</span>
     {% else %}
       {% set st = post_type_style(post.type_code) %}
-      <span class="pill" style="background:{{ st.bg }}; color:{{ st.fg }};">{{ st.label }}</span>
+      <span class="pill {{ st.classe }}">{{ st.label }}</span>
     {% endif %}
   </div>
 
-  {% if post.evenement|default(none) in ('etat_tache', 'titre_tache') %}
-    <div style="font-size:13.5px; line-height:1.55; margin:12px 0 10px 46px;">
-      {% if post.evenement == 'etat_tache' %}<div style="font-weight:600;">{{ post.tache_titre }}</div>{% endif %}
-      <div class="post-texte" style="color:var(--text-secondary);">{{ post.contenu }}</div>
+  {% if post.evenement|default(none) in ('etat_tache', 'titre_tache', 'intervenant_tache', 'echeance_tache') %}
+    <div class="post-corps post-corps-serre">
+      {% if post.evenement != 'titre_tache' %}<div class="post-corps-fort">{{ post.tache_titre }}</div>{% endif %}
+      <div class="post-texte post-corps-second">{{ post.contenu }}</div>
     </div>
-  {% elif post.evenement|default(none) in ('etat_projet', 'chef_projet') %}
-    <div class="post-texte" style="font-size:13.5px; line-height:1.55; margin:12px 0 10px 46px; color:var(--text-secondary);">{{ post.contenu }}</div>
+  {% elif post.evenement|default(none) in ('etat_projet', 'chef_projet', 'intervenant_projet') %}
+    <div class="post-texte post-corps post-corps-serre post-corps-second">{{ post.contenu }}</div>
   {% elif post.est_creation_tache or post.est_cloture_tache or post.evenement|default(none) == 'creation_projet' %}
-    <div class="post-texte" style="font-size:13.5px; line-height:1.55; margin:12px 0 10px 46px; font-weight:600;">{{ post.contenu or post.tache_titre }}</div>
+    <div class="post-texte post-corps post-corps-serre post-corps-fort">{{ post.contenu or post.tache_titre }}</div>
   {% else %}
-    <div class="post-texte" style="font-size:13.5px; line-height:1.55; margin:12px 0 12px 46px;">{{ post.contenu }}</div>
+    <div class="post-texte post-corps">{{ post.contenu }}</div>
   {% endif %}
 
   {# « avec » + pastilles des personnes ajoutées au post (retour Fadhel,
@@ -231,7 +123,7 @@
     {% else %}
     <a href="{{ post.lien }}" target="_blank" rel="noopener noreferrer" class="post-lien">
       <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
-      <span style="font-size:12px; color:var(--text-muted); overflow-wrap:anywhere;">{{ post.lien }}</span>
+      <span class="post-fichier-nom">{{ post.lien }}</span>
       <span class="sr-only">(nouvel onglet)</span>
     </a>
     {% endif %}
@@ -242,31 +134,31 @@
      de captures d'écran ») ; autres fichiers en lien de téléchargement. #}
   {% for pj in post.pieces_jointes %}
     {% if is_image_filename(pj.nom_fichier) %}
-      <a href="{{ url_for('fichiers.download_post', piece_id=pj.id) }}" target="_blank" rel="noopener noreferrer" data-lightbox style="display:block; margin:0 0 8px 46px;">
+      <a href="{{ url_for('fichiers.download_post', piece_id=pj.id) }}" target="_blank" rel="noopener noreferrer" data-lightbox class="post-image-lien">
         <img src="{{ url_for('fichiers.download_post', piece_id=pj.id) }}" alt="Image jointe : {{ pj.nom_fichier }}" class="post-attachment-img" loading="lazy">
       </a>
     {% else %}
-    <a href="{{ url_for('fichiers.download_post', piece_id=pj.id) }}" style="display:flex; align-items:center; gap:6px; margin:0 0 6px 46px;">
+    <a href="{{ url_for('fichiers.download_post', piece_id=pj.id) }}" class="post-fichier-lien">
       <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
-      <span style="font-size:12px; color:var(--text-muted);">{{ pj.nom_fichier }}</span>
+      <span class="post-fichier-nom">{{ pj.nom_fichier }}</span>
     </a>
     {% endif %}
   {% endfor %}
 
   {% if post.parent_post_id %}
-    <div style="margin:0 0 12px 46px; background:var(--bg-subtle-1); border:1px solid var(--border-soft); border-radius:12px; padding:12px 14px;">
-      <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+    <div class="post-parent">
+      <div class="post-parent-entete">
         <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h6a3 3 0 0 1 3 3v3"/><path d="M13 7l3 3-3 3"/><path d="M7 17h4"/></svg>
-        <span style="font-size:11.5px; color:var(--text-muted);">En réponse à <a href="#post-{{ post.parent_post_id }}" style="color:inherit; font-weight:700;">{{ post.parent_auteur_prenom }} {{ post.parent_auteur_nom }}</a></span>
+        <span class="post-meta">En réponse à <a href="#post-{{ post.parent_post_id }}" class="post-auteur-lien">{{ post.parent_auteur_prenom }} {{ post.parent_auteur_nom }}</a></span>
       </div>
-      <div style="display:flex; align-items:center; gap:8px;">
+      <div class="post-parent-corps">
         {% if post.parent_tache_titre %}
-          <span class="pill pill-sm" style="background:{{ post_tache_pill.bg }}; color:{{ post_tache_pill.fg }};">{{ post_tache_pill.label }}</span>
-          <span style="font-size:13px; font-weight:600;">{{ post.parent_tache_titre }}</span>
+          <span class="pill pill-sm {{ post_tache_pill.classe }}">{{ post_tache_pill.label }}</span>
+          <span class="post-parent-titre">{{ post.parent_tache_titre }}</span>
         {% else %}
           {% set pst = post_type_style(post.parent_type_code) %}
-          <span class="pill pill-sm" style="background:{{ pst.bg }}; color:{{ pst.fg }};">{{ pst.label }}</span>
-          <span class="post-texte" style="font-size:13px; font-weight:600;">{{ (post.parent_contenu or '')|truncate(200, true, '…') }}</span>
+          <span class="pill pill-sm {{ pst.classe }}">{{ pst.label }}</span>
+          <span class="post-texte post-parent-titre">{{ (post.parent_contenu or '')|truncate(200, true, '…') }}</span>
         {% endif %}
       </div>
     </div>
@@ -284,7 +176,7 @@
        en AJAX, sans recharger la page. Sans JavaScript, le formulaire
        fonctionne comme avant (rechargement complet via next). #}
     <form method="post" action="{{ url_for('posts.retirer_reaction' if post.ma_reaction else 'posts.reagir', post_id=post.id) }}"
-          class="post-reaction-form" style="display:inline;"
+          class="post-reaction-form"
           data-reagir-url="{{ url_for('posts.reagir', post_id=post.id) }}"
           data-retirer-url="{{ url_for('posts.retirer_reaction', post_id=post.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -300,12 +192,7 @@
     {# Compteur : un <label> vers le champ de commentaire s'il existe (un
        clic y place le curseur), un simple texte si le projet est clos (le
        champ n'existe pas) — lot 10, audit front I17. #}
-    {% set compteur_commentaires %}<svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="4"/><path d="M8.5 17 6.5 20v-3"/></svg> {{ post.nb_commentaires }} commentaire{{ 's' if post.nb_commentaires > 1 else '' }}{% endset %}
-    {% if projet_clos %}
-    <span class="post-action post-action-compteur">{{ compteur_commentaires }}</span>
-    {% else %}
-    <label for="commentaire-post-{{ post.id }}" class="post-action post-action-compteur">{{ compteur_commentaires }}</label>
-    {% endif %}
+    {% include "partials/post_compteur.html" %}
     {# "Reposter" (retour Fadhel, 2026-09-29, P2) : remplace le trombone et
        la flèche. Ouvre la fenêtre "Nouveau post" (Tâche / Information /
        Requête) liée à ce post, qui s'affichera "en réponse à" lui dans le
@@ -315,7 +202,7 @@
     {# Un Client ne publie que sur un projet : pas de "Reposter" sur une
        Information d'équipe sans projet (lot 7). #}
     {% if post.projet_id or g.user.role != 'client' %}
-    <button type="button" class="post-action" style="margin-left:auto;"
+    <button type="button" class="post-action post-action-reposter"
             data-open-post-dialog data-intent="information"
             data-intents="{{ ('tache,' if post.je_gere else '') ~ 'information,requete' if post.projet_id else 'information' }}"
             data-gere="{{ '1' if post.je_gere else '0' }}"
@@ -330,23 +217,5 @@
     {% endif %}
   </div>
 
-  {# Commentaires toujours affichés (retour Fadhel, 2026-09-29) — les 3
-     derniers, les plus anciens repliés au-delà. #}
-  {% set commentaires = post.commentaires|default([]) %}
-  {% if commentaires %}
-    <div class="post-comments">
-      {% if commentaires|length > 3 %}
-        <details class="post-comments-plus">
-          <summary>Voir {{ 'le commentaire précédent' if commentaires|length == 4 else 'les ' ~ (commentaires|length - 3) ~ ' commentaires précédents' }}</summary>
-          <div class="post-comments" style="margin:8px 0 0 0;">
-            {% for c in commentaires[:-3] %}{{ commentaire(c, post, next_url) }}{% endfor %}
-          </div>
-        </details>
-      {% endif %}
-      {% for c in commentaires[-3:] %}{{ commentaire(c, post, next_url) }}{% endfor %}
-    </div>
-  {% endif %}
-  {% if not projet_clos %}
-  {{ composer_commentaire(post, next_url) }}
-  {% endif %}
+  {% include "partials/post_commentaires.html" %}
 </div>

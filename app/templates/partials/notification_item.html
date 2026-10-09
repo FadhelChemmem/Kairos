@@ -1,0 +1,33 @@
+{# Une notification (lot 13 : liste de la page et aperçu de la cloche ;
+   fragment rendu seul après « Marquer comme lue » — #notif-<id>).
+   Ouvrir = POST puis la page concernée (vraie navigation, audit n°2) ;
+   « Marquer comme lue » : optimiste, sans quitter la page. Contexte : n. #}
+{% set cs = notif_categorie_style(n.categorie) %}
+<li class="notif-ligne{{ '' if n.lu else ' non-lu' }}" id="notif-{{ n.id }}">
+  <form method="post" action="{{ url_for('notifications.ouvrir', notification_id=n.id) }}" class="notif-ouvrir">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="notif-item{{ '' if n.lu else ' non-lu' }}" id="notif-ouvrir-{{ n.id }}">
+      {# Lot 10 (audit front I8) : <span> en display:block — un <div>
+         n'est pas permis dans un <button>. État « non lue » dit en texte. #}
+      <span class="notif-dot{{ ' vide' if n.lu }}" aria-hidden="true"></span>
+      <span class="notif-corps">
+        <span class="notif-meta">
+          <span class="pill pill-sm {{ cs.classe }}">{{ cs.label }}</span>
+          <time class="notif-quand" datetime="{{ n.created_at.isoformat() if n.created_at }}">{{ n.created_at|il_y_a }}</time>
+          {% if not n.lu %}<span class="sr-only notif-etat">(non lue)</span>{% endif %}
+        </span>
+        <span class="notif-message">{{ n.message }}</span>
+      </span>
+    </button>
+  </form>
+  {% if not n.lu %}
+  <form method="post" action="{{ url_for('notifications.marquer_lue', notification_id=n.id) }}" class="notif-lire"
+        data-partiel="#notif-{{ n.id }}" data-optimiste="notif-lue" data-focus-apres="#notif-ouvrir-{{ n.id }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="notif-lire-btn" id="notif-lire-{{ n.id }}" title="Marquer comme lue" aria-label="Marquer comme lue : {{ n.message|truncate(80) }}">
+      <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+    </button>
+  </form>
+  {% endif %}
+</li>
+{% if oob_item %}{% with oob_nb=True %}{% include "partials/notifs_nb.html" %}{% endwith %}{% endif %}

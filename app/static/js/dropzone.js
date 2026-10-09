@@ -89,9 +89,12 @@
     });
   }
 
-  function init() {
-    document.querySelectorAll('[data-dropzone]').forEach(build);
+  // Idempotent (data-dropzone-init) ; racine : fragment inséré (lot 13).
+  function init(racine) {
+    (racine && racine.querySelectorAll ? racine : document).querySelectorAll('[data-dropzone]').forEach(build);
   }
+  window.KairosDropzone = { init: init };
+  document.addEventListener('kairos:fragment', function (e) { init(e.detail && e.detail.racine); });
 
   // Capture d'écran collée (Ctrl+V) pendant qu'on écrit un post : elle va
   // dans la zone de dépôt du formulaire en cours (retour Fadhel : « on
@@ -117,7 +120,7 @@
   });
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', function () { init(); });
   } else {
     init();
   }

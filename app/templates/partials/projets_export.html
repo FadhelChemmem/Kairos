@@ -1,0 +1,8 @@
+{# « Télécharger en Excel » (retour Fadhel, 2026-09-29) : la liste affichée,
+   avec les filtres en cours (toute la chaîne de requête : plusieurs
+   valeurs par filtre). Lot 13 : remplacé hors cible à chaque filtre ;
+   téléchargement avec retour (« Préparation… », projets-liste.js). #}
+<a id="export-excel" href="{{ export_url }}" class="btn" download{% if partiel %} data-partiel-oob{% endif %}>
+  <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+  <span class="export-libelle">Télécharger en Excel</span>
+</a>

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "partials/journal_libelles.html" import libelles_action, libelles_table %}
+{% block title %}Journal d'audit — entrée n° {{ e.id }} — Kairos{% endblock %}
+{% block scripts_fil %}{% endblock %}
+{% block body %}
+<div class="subbar">
+  <div class="subbar-inner">
+    <a href="{{ url_for('admin.journal') }}" class="lien-retour"><span aria-hidden="true">←</span> Journal d’audit</a>
+    <h1 class="page-titre">{{ libelles_action.get(e.action, e.action) }} — {{ libelles_table.get(e.table_cible, e.table_cible) }}{% if e.ligne_id %} n°&nbsp;{{ e.ligne_id }}{% endif %}</h1>
+  </div>
+</div>
+<div class="page-wrap k-page journal-entree">
+  <div class="card">
+    <p class="k-muet">{{ e.created_at|date_courte(true) }} · {% if e.auteur_id %}{{ e.auteur_prenom }} {{ e.auteur_nom }}{% else %}auteur inconnu{% endif %}{% if e.admin_reel_id and e.admin_reel_id != e.auteur_id %} (par l’Admin {{ e.admin_reel_prenom }} {{ e.admin_reel_nom }}){% endif %}</p>
+    {% include "partials/journal_diff.html" %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,4 @@
+{# Nombre de notifications non lues, lu par notifications.js pour tenir à
+   jour le badge de la cloche et de la barre basse (lot 13) — remplacé hors
+   cible après chaque action sur les notifications. #}
+<data id="notifs-nb" value="{{ nb_non_lues }}" hidden{% if oob_nb %} data-partiel-oob{% endif %}></data>

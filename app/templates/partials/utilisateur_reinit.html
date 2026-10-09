@@ -1,0 +1,15 @@
+{# Carte « Réinitialisation du mot de passe » de la fiche (lot 13 : rendue
+   aussi seule — envoi en place, résultat en toast ; suit l'interrupteur
+   « Compte actif », hors cible). Le lien part vers l'adresse ENREGISTRÉE
+   du compte : aucune adresse n'est envoyée par ce formulaire. #}
+<form method="post" action="{{ url_for('utilisateurs.envoyer_lien_reinitialisation', user_id=utilisateur.id) }}" class="card k-carte-fiche" id="utilisateur-reinit"
+      data-partiel="#utilisateur-reinit" data-focus-apres="#utilisateur-reinit-envoyer"{% if oob_reinit %} data-partiel-oob{% endif %}>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="section-title section-title-carte">Réinitialisation du mot de passe</h2>
+  {% if utilisateur.actif %}
+    <p class="aide-champ k-carte-texte">Envoie à l'adresse e-mail enregistrée un lien (valable 1 heure) pour choisir un nouveau mot de passe. Le mot de passe actuel reste valable jusque-là.</p>
+    <button type="submit" class="btn" id="utilisateur-reinit-envoyer">Envoyer un lien de réinitialisation</button>
+  {% else %}
+    <p class="aide-champ k-carte-texte">Compte désactivé : réactivez-le avant d'envoyer un lien de réinitialisation.</p>
+  {% endif %}
+</form>

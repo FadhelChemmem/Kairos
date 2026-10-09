@@ -4,27 +4,25 @@
    l'ouvre par-dessus la page, sans navigation — voir
    app/static/js/projet-dialog.js.
 
-   Le formulaire poste vers la route existante `projets.creer`,
-   inchangée : en cas de succès elle redirige directement vers la page du
-   nouveau projet (comme avant). En cas d'ERREUR de validation, elle
-   re-rend la page complète `projet_creer.html` (comportement historique,
-   volontairement conservé — voir PROMPT_CORRECTIONS.md audit n°2 : la
-   saisie y est repréremplie). Cette page complète reste donc la page de
-   secours automatique en cas d'erreur ; la fenêtre flottante ne couvre
-   que le cas normal (création réussie du premier coup).
+   Le formulaire poste vers la route `projets.creer` en partiel (lot 13,
+   audit a11y I5) : en cas d'erreur, la fenêtre reste ouverte avec la
+   saisie, le champ en cause est signalé (aria-invalid, message relié,
+   focus) ; en cas de succès, vraie navigation vers la fiche du nouveau
+   projet (changement de contexte voulu). Sans JavaScript : page complète
+   projet_creer.html en cas d'erreur, comme avant.
 
    Attend dans le contexte : utilisateurs_creation_projet, phases_creation,
    code_propose_dialog, phase_initiale_dialog, date_du_jour.
 #}
 <dialog id="dialog-nouveau-projet" class="post-dialog" aria-labelledby="dialog-nouveau-projet-titre" data-url-code-propose="{{ url_for('projets.api_code_propose') }}">
-  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-    <span id="dialog-nouveau-projet-titre" style="font-size:15px; font-weight:800;">Nouveau projet</span>
+  <div class="fenetre-entete">
+    <span id="dialog-nouveau-projet-titre" class="fenetre-titre">Nouveau projet</span>
     <button type="button" data-close-projet-dialog aria-label="Fermer" class="dialog-fermer">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
     </button>
   </div>
 
-  <form method="post" action="{{ url_for('projets.creer') }}">
+  <form method="post" action="{{ url_for('projets.creer') }}" id="form-nouveau-projet" data-partiel="#dialog-nouveau-projet">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-row">
       <label for="dialog-projet-nom">Nom du projet</label>
@@ -44,28 +42,33 @@
     </div>
     <div class="form-row">
       <label for="dialog-projet-lots">Lot(s)</label>
-      <select id="dialog-projet-lots" name="lots" multiple data-chip-select>
+      <select id="dialog-projet-lots" name="lots" multiple data-chip-select aria-describedby="dialog-projet-lots-aide">
         <option value="CM">CM — Charpente métallique</option>
         <option value="GO">GO — Gros œuvre</option>
       </select>
+      <p id="dialog-projet-lots-aide" class="aide-champ">Au moins un lot.</p>
     </div>
     <div class="form-row">
       <label for="dialog-projet-chef">Chef de projet</label>
-      <select id="dialog-projet-chef" name="chef_projet_id">
+      {# Lot 13 (décision 3, audit rôles I4 / M14) : chef de projet ou Admin
+         actif, même sélecteur à recherche que la fenêtre Informations. #}
+      <select id="dialog-projet-chef" name="chef_projet_id" data-search-combobox data-search-riche data-search-placeholder="Rechercher un chef de projet…" data-search-vide="Aucun chef de projet trouvé" aria-describedby="dialog-projet-chef-aide">
         {% for u in utilisateurs_creation_projet %}
-          <option value="{{ u.id }}" {{ 'selected' if u.id == g.user.id }}>{{ u.prenom }} {{ u.nom }}</option>
+          {% set rs = role_style(u.role) %}
+          <option value="{{ u.id }}" {{ 'selected' if u.id == g.user.id }} data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}" data-couleur="{{ avatar_color(u.id) }}"{% if u.avatar_chemin %} data-photo="{{ avatar_url(u.id, u.avatar_chemin) }}"{% endif %} data-sous-titre="{{ rs.label }}{% if u.poste and u.poste|lower != rs.label|lower %} · {{ u.poste }}{% endif %}">{{ u.prenom }} {{ u.nom }}</option>
         {% endfor %}
       </select>
+      <p id="dialog-projet-chef-aide" class="aide-champ">Chef de projet ou administrateur. Si vous confiez le projet à un autre chef, vous en devenez co-chef.</p>
     </div>
     {# Client (« IPCO » par défaut) et honoraires — retour Fadhel,
        Remarques du 2026-09-28, migration 0010. #}
-    <div class="form-row-2" style="margin-bottom:0;">
+    <div class="form-row-2 form-row-serre">
       <div class="form-row">
         <label for="dialog-projet-client">Client</label>
         <input type="text" id="dialog-projet-client" name="client" value="IPCO" maxlength="150">
       </div>
       <div class="form-row">
-        <label for="dialog-projet-honoraires">Honoraires <span style="font-weight:400; color:var(--text-faint);">— facultatif</span></label>
+        <label for="dialog-projet-honoraires">Honoraires <span class="label-note">— facultatif</span></label>
         <input type="text" id="dialog-projet-honoraires" name="honoraires" inputmode="decimal" placeholder="12 500,00">
       </div>
     </div>
@@ -73,12 +76,13 @@
       <label for="dialog-projet-debut">Date de début</label>
       <input type="date" id="dialog-projet-debut" name="date_debut" value="{{ date_du_jour }}">
     </div>
-    <div class="form-row" style="margin-bottom:0;">
-      <label for="dialog-projet-phase-liee">Phase liée <span style="font-weight:400; color:var(--text-faint);">— facultatif</span></label>
+    <div class="form-row form-row-serre">
+      <label for="dialog-projet-phase-liee">Phase liée <span class="label-note">— facultatif</span></label>
       {# Lier le nouveau projet à un projet existant dès sa création (ex. le
          EXE qui suit un DCE) — retour Fadhel, lot 7 ; même champ que la
          fenêtre Informations. #}
-      <select id="dialog-projet-phase-liee" name="phase_liee_id" data-search-combobox data-search-placeholder="Rechercher un projet…">
+      <select id="dialog-projet-phase-liee" name="phase_liee_id" data-search-combobox data-search-placeholder="Rechercher un projet…"
+              data-search-url="{{ url_for('projets.api_phase_liee_candidats') }}">
         <option value="" data-vide>— Aucune —</option>
         {% for p in projets_phase_liee|default([]) %}
           <option value="{{ p.id }}">{{ p.code }}_{{ p.nom }}</option>
@@ -86,9 +90,9 @@
       </select>
     </div>
 
-    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border-soft);">
-      <button type="button" data-close-projet-dialog class="btn-secondary" style="width:auto; padding:9px 16px;">Annuler</button>
-      <button type="submit" class="btn-primary btn-accent" style="width:auto; padding:9px 18px;">Créer le projet</button>
+    <div class="fenetre-actions">
+      <button type="button" data-close-projet-dialog class="btn">Annuler</button>
+      <button type="submit" id="nouveau-projet-creer" class="btn-primaire">Créer le projet</button>
     </div>
   </form>
 </dialog>

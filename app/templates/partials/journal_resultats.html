@@ -1,0 +1,33 @@
+{# Résultats du journal (lot 13 : fragment rendu seul quand les filtres
+   changent — #journal-resultats ; le compteur suit, hors cible). Vrai
+   tableau (audit a11y I6), un groupe de lignes par jour. #}
+<div id="journal-resultats">
+  {% if groupes %}
+  <div class="card journal-carte">
+    <table class="journal-table" id="journal-table">
+      <caption class="sr-only">Journal d’audit, le plus récent d’abord, groupé par jour</caption>
+      <thead>
+        <tr>
+          <th scope="col" class="journal-col-heure">Heure</th>
+          <th scope="col" class="journal-col-action">Action</th>
+          <th scope="col" class="journal-col-objet">Table / ligne</th>
+          <th scope="col" class="journal-col-auteur">Auteur</th>
+          <th scope="col">Détail</th>
+        </tr>
+      </thead>
+      {% include "partials/journal_pages.html" %}
+    </table>
+  </div>
+  {% with oob_suite=False %}{% include "partials/journal_suite.html" %}{% endwith %}
+  {% else %}
+  <div class="card">
+    <div class="k-vide">
+      <span class="k-vide-icone" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+      <p class="k-vide-titre">Aucune entrée pour ces filtres.</p>
+      <p class="k-vide-texte">Élargissez la période ou retirez un filtre.</p>
+      <a href="{{ url_for('admin.journal') }}" class="btn" data-partiel="#journal-resultats" data-focus-apres="#journal-table-filtre">Réinitialiser les filtres</a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% if oob_compte %}{% include "partials/journal_compte.html" %}{% endif %}

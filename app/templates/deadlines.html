@@ -1,159 +1,43 @@
 {% extends "base.html" %}
-{% block title %}Deadlines — Kairos{% endblock %}
+{% block title %}Deadlines{{ ' — tous les projets' if tous }} — Kairos{% endblock %}
 {# Pas de fil sur cette page (lot 11, audit front M8). #}
 {% block scripts_fil %}{% endblock %}
+{% block head %}
+  {# Lot 13 (correctifs) : panneau de tâche sur place (barres du Gantt). #}
+  <script src="{{ url_for('static', filename='js/dropzone.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/floating-window.js') }}" defer></script>
+{% endblock %}
 {% block body %}
 
 <div class="subbar">
   <div class="subbar-inner">
     <h1 class="page-titre">Deadlines</h1>
-    <span style="font-size:12.5px; color:var(--text-muted);">{{ nb_taches }} tâche{{ 's' if nb_taches > 1 else '' }} avec échéance{{ ' — tous les projets' if tous }}</span>
-    {# Lot 12 : l'Admin bascule entre ses projets et tous les projets. #}
+    {% include "partials/deadlines_compte.html" %}
+    {# Lot 12 : l'Admin bascule entre ses projets et tous les projets.
+       Lot 13 : en mise à jour partielle (seul le contenu change, l'adresse
+       suit et Retour revient à la vue précédente). #}
     {% if vue_admin %}
-    <nav class="bascule-vue" aria-label="Projets affichés" style="margin-left:auto;">
-      <a href="{{ url_for('deadlines.liste') }}"{% if not tous %} aria-current="page"{% endif %}>Mes projets</a>
-      <a href="{{ url_for('deadlines.liste', vue='tous') }}"{% if tous %} aria-current="page"{% endif %}>Tous les projets</a>
+    <nav class="bascule-vue k-segmente deadlines-bascule" aria-label="Projets affichés" data-deadlines-bascule>
+      <a href="{{ url_for('deadlines.liste') }}" data-partiel="#deadlines-contenu" data-vue=""{% if not tous %} aria-current="page"{% endif %}>Mes projets</a>
+      <a href="{{ url_for('deadlines.liste', vue='tous') }}" data-partiel="#deadlines-contenu" data-vue="tous"{% if tous %} aria-current="page"{% endif %}>Tous les projets</a>
     </nav>
     {% endif %}
   </div>
 </div>
 
-<div class="page-wrap" style="padding-top:20px; padding-bottom:60px;">
-
-  {% if tous %}
-  {# Filtres de la vue Admin (GET : l'adresse se partage et se recharge). #}
-  <form method="get" class="filtres-deadlines-admin" style="margin-bottom:12px;" aria-label="Filtrer tous les projets">
-    <input type="hidden" name="vue" value="tous">
-    <select name="chef" aria-label="Chef de projet">
-      <option value="">Tous les chefs de projet</option>
-      {% for c in chefs %}
-        <option value="{{ c.id }}" {{ 'selected' if filtres.chef == c.id }}>{{ c.prenom }} {{ c.nom }}</option>
-      {% endfor %}
-    </select>
-    <select name="equipe" aria-label="Équipe">
-      <option value="">Toutes les équipes</option>
-      {% for code, libelle in equipe_choices %}
-        <option value="{{ code }}" {{ 'selected' if filtres.equipe == code }}>{{ libelle }}</option>
-      {% endfor %}
-    </select>
-    <button type="submit" class="btn-secondary" style="width:auto; padding:9px 16px;">Filtrer</button>
-    {% if filtres.chef or filtres.equipe %}
-      <a href="{{ url_for('deadlines.liste', vue='tous') }}" style="font-size:12.5px; color:var(--text-muted); font-weight:600;">Réinitialiser</a>
-    {% endif %}
-  </form>
-  {% endif %}
-
-  <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
-    <div class="search-mini" style="flex:1; min-width:200px;">
-      <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="search" id="filtre-deadlines" autocomplete="off" aria-label="Filtrer par projet ou tâche" placeholder="Filtrer par projet ou tâche…" style="flex:1; min-width:0; border:none; outline:none; background:none; padding:0; font-size:13.5px; font-family:inherit;">
-    </div>
-    {# Légende alignée sur les couleurs des barres (app/utils.py:build_gantt). #}
-    <div style="display:flex; align-items:center; gap:6px 16px; flex-wrap:wrap; font-size:11.5px; color:var(--text-muted);" aria-hidden="true">
-      <span style="display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:3px; background:#c2401f;"></span> En retard / imminent</span>
-      <span style="display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:3px; background:#b8520f;"></span> Cette semaine</span>
-      <span style="display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:3px; background:#4a7c59;"></span> Plus tard</span>
-    </div>
-  </div>
-
-  <div class="card" id="gantt-carte" style="overflow-x:auto; padding:0;">
-    <div class="gantt" style="--gantt-days:{{ gantt.window_days }};">
-
-      <div class="g-label" style="z-index:10; top:0;">
-        <span style="font-size:12px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em;">Tâche</span>
-      </div>
-      {% for d in gantt.days %}
-        <div class="g-daycell" style="background:{{ 'var(--brand-bg-soft)' if d.date == gantt.days[0].date else ('var(--bg-subtle-1)' if d.est_weekend else 'transparent') }};">
-          {# Week-end : repéré par le fond (--bg-subtle-1), texte lisible
-             (l'ancien --border-hover faisait 1,5:1). #}
-          <span style="font-size:10px; font-weight:700; color:{{ 'var(--brand-text-strong)' if d.date == gantt.days[0].date else 'var(--text-muted)' }};">{{ d.lettre }}</span>
-          <span style="font-size:11px; font-weight:800; color:{{ 'var(--brand-text-strong)' if d.date == gantt.days[0].date else ('var(--text-muted)' if d.est_weekend else 'var(--text-secondary)') }};">{{ d.label }}</span>
-        </div>
-      {% endfor %}
-
-      {% for t in gantt.rows %}
-        <div class="g-row" style="display:contents;" data-filtre="{{ (t.projet_code ~ ' ' ~ t.projet_nom ~ ' ' ~ t.titre)|lower }}">
-          <div class="g-label">
-            <div style="font-size:12.5px; font-weight:600; line-height:1.3;">{{ t.titre }}</div>
-            <div style="font-size:11px; color:var(--text-muted);">{{ t.projet_code }}_{{ t.projet_nom }}{% if t.type_deadline == 'interne' %} · interne{% endif %}{% if tous and t.chef_nom %} · {{ t.chef_prenom }} {{ t.chef_nom }}{% endif %}</div>
-          </div>
-          <div class="g-row-track">
-            {# Lot 12 : la barre ouvre la fenêtre de la tâche (?tache=<id>). #}
-            <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) }}" class="g-bar{% if t.en_retard %} g-bar-retard{% endif %}" style="grid-column: 1 / span {{ t.span }}; background:{{ t.couleur }}; justify-content:flex-start;" aria-label="{{ t.titre }} ({{ t.projet_code }}) : {{ t.retard ~ ', ' if t.en_retard }}échéance le {{ t.date_echeance|date_courte }} — ouvrir la tâche">{{ t.label_barre }}</a>
-          </div>
-        </div>
-      {% else %}
-        <div class="g-label" style="grid-column: 1 / -1; border-right:none;">
-          <span style="font-size:12.5px; color:var(--text-muted);">Aucune échéance à venir.</span>
-        </div>
-      {% endfor %}
-
-    </div>
-  </div>
-
-  {# Indication affichée seulement s'il y a vraiment à défiler (2026-09-29). #}
-  <div id="deadlines-vide" role="status" style="font-size:12.5px; color:var(--text-muted); margin-top:10px;"></div>
-  <div id="gantt-aide-defilement" hidden style="font-size:11.5px; color:var(--text-muted); margin-top:10px;">Faites défiler horizontalement pour voir les semaines suivantes <span aria-hidden="true">→</span></div>
-
-  {% if tous %}
-  {# Lot 12 : vue Admin — les tâches en cours sans échéance aussi. #}
-  <div class="card" style="margin-top:16px;">
-    <h2 class="carte-titre" style="margin-bottom:10px;">Tâches en cours sans échéance <span style="font-weight:600; color:var(--text-muted);">({{ sans_echeance|length }}{{ '+' if sans_echeance|length >= 300 }})</span></h2>
-    {% if sans_echeance %}
-    <ul class="liste-sans-echeance" style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px;">
-      {% for t in sans_echeance %}
-      <li class="g-row-sans-echeance" data-filtre="{{ (t.projet_code ~ ' ' ~ t.projet_nom ~ ' ' ~ t.titre)|lower }}">
-        <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) }}" style="display:block; color:inherit;">
-          <span style="font-size:12.5px; font-weight:600;">{{ t.titre }}</span>
-          <span style="display:block; font-size:11.5px; color:var(--text-muted);">{{ t.projet_code }}_{{ t.projet_nom }} · {{ t.chef_prenom }} {{ t.chef_nom }}</span>
-        </a>
-      </li>
-      {% endfor %}
-    </ul>
-    {% else %}
-    <p style="margin:0; font-size:12.5px; color:var(--text-muted);">Aucune.</p>
-    {% endif %}
-  </div>
-  {% endif %}
-
+<div class="page-wrap k-page">
+  {% include "partials/deadlines_contenu.html" %}
 </div>
-<script>
-(function () {
-  var carte = document.getElementById('gantt-carte');
-  var aide = document.getElementById('gantt-aide-defilement');
-  if (!carte || !aide) return;
-  function maj() { aide.hidden = carte.scrollWidth <= carte.clientWidth + 1; }
-  maj();
-  window.addEventListener('resize', maj);
-  window.kairosMajAideGantt = maj;
-})();
-
-// Filtre "Filtrer par projet…" (voir plus haut) — masque les lignes du
-// Gantt dont le projet ou la tâche ne correspondent pas, sans recharger la
-// page (demandé par Fadhel, 2026-09-19).
-(function () {
-  var input = document.getElementById('filtre-deadlines');
-  if (!input) return;
-  // Lot 10 (audit front M15, I11) : sans accents, état vide annoncé, aide
-  // au défilement recalculée.
-  function norm(s) { return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
-  var rows = Array.prototype.slice.call(document.querySelectorAll('.g-row'));
-  rows.forEach(function (r) { r._filtre = norm(r.dataset.filtre); });
-  // Lot 12 (vue Admin) : la liste des tâches sans échéance suit le filtre.
-  var autres = Array.prototype.slice.call(document.querySelectorAll('.g-row-sans-echeance'));
-  autres.forEach(function (r) { r._filtre = norm(r.dataset.filtre); });
-  var vide = document.getElementById('deadlines-vide');
-  input.addEventListener('input', function () {
-    var q = norm(input.value.trim()), visibles = 0;
-    rows.forEach(function (row) {
-      var ok = !q || row._filtre.indexOf(q) !== -1;
-      row.style.display = ok ? 'contents' : 'none';
-      if (ok) visibles++;
-    });
-    autres.forEach(function (li) { li.style.display = (!q || li._filtre.indexOf(q) !== -1) ? '' : 'none'; });
-    if (vide) vide.textContent = (rows.length && !visibles) ? 'Aucune échéance ne correspond à ce filtre.' : '';
-    if (window.kairosMajAideGantt) window.kairosMajAideGantt();
-  });
-})();
-</script>
+{# Lot 13 (correctifs, verif-ux) : une barre ouvre le panneau de sa tâche
+   sur place, comme sur la fiche projet (tache-dialog.js) : adresse du
+   panneau portée par la ligne, ?tache=<id> dans l'adresse, ↑ / ↓ entre
+   les échéances affichées, contenu rafraîchi après chaque action. #}
+<dialog class="post-dialog tache-dialog" id="dialog-tache" aria-label="Tâche" data-url="{{ url_for('taches_fenetre.fenetre', projet_id=0, tache_id=0) }}" data-lignes="#deadlines-contenu [data-open-tache]" data-ouvrir-param data-rafraichir="#deadlines-contenu">
+  <button type="button" data-close-tache aria-label="Fermer le panneau de la tâche" class="dialog-fermer tache-dialog-fermer">
+    <svg aria-hidden="true" focusable="false" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+  </button>
+  <div class="tache-dialog-corps" data-tache-corps></div>
+</dialog>
+<script src="{{ url_for('static', filename='js/deadlines.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/tache-dialog.js') }}" defer></script>
 {% endblock %}

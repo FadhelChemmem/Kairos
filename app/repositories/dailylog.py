@@ -79,6 +79,12 @@ def aujourdhui_pour(user: dict, maintenant: datetime.datetime | None = None) -> 
     return maintenant_pour(user, maintenant).date()
 
 
+def aujourdhui_reel_pour(user: dict) -> datetime.date:
+    """La vraie date au fuseau de la personne, jamais simulée (lot 13 :
+    aucune écriture datée après elle, même en mode test)."""
+    return horloge.aujourdhui_reel(_zone(user))
+
+
 def debut_daily_log(user: dict) -> datetime.date | None:
     """Premier jour où un oubli peut être reproché : la date d'embauche, à
     défaut la création du compte (pas de rappel pour un jour où la personne
@@ -210,11 +216,15 @@ def jours_manques_recents(
     return sorted(j for j in jours if j not in remplis)
 
 
-def etats_mois(user: dict, premier, dernier, manques: list | None = None) -> dict:
-    """{date iso: 'rempli' | 'absent' | 'vide'} entre deux dates (requête
-    par plage : l'index (utilisateur_id, date, …) sert). 'vide' : jour
-    ouvré oublié de la fenêtre de rappel (`manques`, voir
-    jours_manques_recents). Week-ends et jours futurs : pas d'entrée."""
+def etats_mois(user: dict, premier, dernier, manques: list | None = None,
+               aujourdhui: datetime.date | None = None) -> dict:
+    """{date iso: 'rempli' | 'absent' | 'vide' | 'verrouille'} entre deux
+    dates (requête par plage : l'index (utilisateur_id, date, …) sert).
+    'vide' : jour ouvré oublié de la fenêtre de rappel (`manques`, voir
+    jours_manques_recents). 'verrouille' (lot 13, audit temps T-M8) : jour
+    ouvré oublié AVANT la fenêtre de 14 jours (seuls le chef ou l'Admin
+    peuvent encore le remplir), depuis l'arrivée de la personne — avec
+    `aujourdhui`. Week-ends et jours futurs : pas d'entrée."""
     rows = db.query_all(
         """
         SELECT date, 'rempli' AS etat FROM dailylog_entree
@@ -232,6 +242,13 @@ def etats_mois(user: dict, premier, dernier, manques: list | None = None) -> dic
     for jour in manques or []:
         if premier <= jour <= dernier:
             etats.setdefault(jour.isoformat(), "vide")
+    if aujourdhui is not None:
+        limite = min(dernier, aujourdhui - datetime.timedelta(days=FENETRE_LIBRE_JOURS + 1))
+        jour = max(premier, debut_daily_log(user) or premier)
+        while jour <= limite:
+            if jour.weekday() < 5:
+                etats.setdefault(jour.isoformat(), "verrouille")
+            jour += datetime.timedelta(days=1)
     return etats
 
 

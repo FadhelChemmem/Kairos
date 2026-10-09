@@ -44,6 +44,10 @@ function sql(requete) {
   return execFileSync('psql', ['-X', '-At', '-d', DB, '-c', requete], { encoding: 'utf8' }).trim();
 }
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+async function attendre(fn, delai = 5000) {
+  const fin = Date.now() + delai;
+  for (;;) { const v = await fn(); if (v) return v; if (Date.now() > fin) return v; await pause(50); }
+}
 
 async function contexte(navigateur, email, opts = {}) {
   const ctx = await navigateur.newContext({ viewport: { width: opts.largeur || 1280, height: opts.hauteur || 900 },
@@ -108,16 +112,18 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     await p.keyboard.press('Enter');
     await p.waitForSelector('#dialog-tache [data-tache-fenetre="2"]');
     etape('une requête de fragment à l’ouverture', requetes === 1, requetes);
-    etape('fenêtre modale nommée par la tâche', await p.evaluate(() => {
+    // Lot 13 : à 1 280 px, panneau latéral non modal ; ?tache=2 dans l'adresse.
+    etape('panneau latéral nommé par la tâche, ?tache=2', await p.evaluate(() => {
       const d = document.getElementById('dialog-tache');
-      return d.open && d.matches(':modal') && d.getAttribute('aria-label') === 'Tâche « Plans de ferraillage »';
+      return d.open && !d.matches(':modal') && d.classList.contains('tache-panneau')
+        && d.getAttribute('aria-label') === 'Tâche « Plans de ferraillage »' && location.search === '?tache=2';
     }));
     a = await actif(p);
     etape('focus sur le premier champ (titre)', a.id === 'tache-titre-2', a);
     etape('« Rejoindre cette tâche » proposé dans la fenêtre', await p.locator('#dialog-tache button:has-text("Rejoindre cette tâche")').count() === 1);
     await capture(p, 'e2e-projet-fenetre.png');
     await p.keyboard.press('Escape');
-    await pause(150);
+    await pause(350);
     a = await actif(p);
     etape('Échap ferme, focus rendu au titre de la tâche',
       !(await p.evaluate(() => document.getElementById('dialog-tache').open)) && a.texte === 'Plans de ferraillage', a);
@@ -127,7 +133,7 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     await p.waitForSelector('#dialog-tache [data-tache-fenetre="3"]');
     etape('clic sur la ligne ouvre la bonne tâche', true);
     await p.click('#dialog-tache [data-close-tache]');
-    await pause(150);
+    await pause(350);
     a = await actif(p);
     etape('Fermer rend le focus au titre', a.texte === 'Descente de charges', a);
 
@@ -156,7 +162,8 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     etape('état « Chargement de la tâche… »', (await p.locator('#dialog-tache .tache-dialog-chargement').innerText()).includes('Chargement de la tâche'));
     await p.keyboard.press('Escape');
     await pause(800);
-    etape('réponse tardive ignorée après fermeture', (await p.locator('#dialog-tache [data-tache-corps]').innerHTML()).trim() === '');
+    etape('réponse tardive ignorée après fermeture', (await p.locator('#dialog-tache [data-tache-corps]').innerHTML()).trim() === '',
+      await p.evaluate(() => [document.getElementById('dialog-tache').open, location.search, document.querySelector('[data-tache-corps]').innerHTML.trim().slice(0, 60)]));
     await p.unroute(/\/taches\/6\/fenetre$/);
 
     // --- 5. Tâche close : dépliée, fenêtre sans « Rejoindre » ------------
@@ -167,6 +174,8 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     await p.waitForSelector('#dialog-tache [data-tache-fenetre="10"]');
     etape('tâche arrêtée : pas de « Rejoindre »', await p.locator('#dialog-tache :text("Rejoindre")').count() === 0);
     await p.keyboard.press('Escape');
+    // Panneau refermé (fin du glissement, focus rendu à la ligne) avant le geste suivant.
+    await p.waitForFunction(() => !document.getElementById('dialog-tache').open);
 
     // --- 6. Sélecteur d'intervenant --------------------------------------
     await p.evaluate(() => { window.__sansRechargement = 1; });
@@ -202,14 +211,17 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     etape('↓ : option active annoncée (aria-activedescendant)', !!ad && await p.locator('#' + ad).getAttribute('aria-selected') === 'true', ad);
     await champ.fill('helene');
     await champ.press('Enter');
-    await p.waitForFunction(() => /ajouté/.test((document.querySelector('#carte-intervenants .ajout-intervenant-statut') || {}).textContent || ''));
+    // Lot 13 : carte remplacée en partiel, message en toast (région live).
+    await p.waitForFunction(() => /Intervenant ajouté/.test((document.getElementById('k-toasts') || {}).textContent || ''));
     etape('Entrée : Hélène ajoutée en base', sql('SELECT count(*) FROM projet_intervenant WHERE projet_id=1 AND utilisateur_id=4') === '1');
     etape('liste des intervenants mise à jour sans rechargement',
       await p.evaluate(() => window.__sansRechargement === 1)
       && (await p.locator('#carte-intervenants .nom-personne').allInnerTexts()).includes('Hélène Bénard'));
-    etape('message « Intervenant ajouté. » annoncé (role=status)',
-      (await p.locator('#carte-intervenants [data-ajout-statut]').innerText()) === 'Intervenant ajouté.'
-      && await p.locator('#carte-intervenants [data-ajout-statut]').getAttribute('role') === 'status');
+    // Contre-expertise a11y R2 : annonce par la région persistante #k-annonce.
+    await p.waitForFunction(() => /Intervenant ajouté/.test(document.getElementById('k-annonce').textContent));
+    etape('message « Intervenant ajouté. » affiché et annoncé (#k-annonce, role=status)',
+      await p.locator('#k-toasts .k-toast:has-text("Intervenant ajouté.")').count() === 1
+      && await p.getAttribute('#k-annonce', 'role') === 'status');
     a = await actif(p);
     etape('focus rendu au champ, liste fermée', a.cls.includes('search-combobox-input')
       && await p.locator('#carte-intervenants .search-combobox-input').getAttribute('aria-expanded') === 'false', a);
@@ -219,22 +231,26 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     etape('Hélène n’est plus proposée', !noms.includes('Hélène Bénard') && noms.length === 3, noms);
     // Souris : un chef de projet ajouté devient co-chef.
     await p.locator('#carte-intervenants [role=option]:has-text("Sami Chérif")').click();
-    await p.waitForFunction(() => /co-chef/.test((document.querySelector('#carte-intervenants .ajout-intervenant-statut') || {}).textContent || ''));
+    await p.waitForFunction(() => /co-chef/.test((document.getElementById('k-toasts') || {}).textContent || ''));
     etape('clic : Sami ajouté comme co-chef', sql('SELECT count(*) FROM projet_co_chef WHERE projet_id=1 AND utilisateur_id=5') === '1');
     etape('toujours sans rechargement', await p.evaluate(() => window.__sansRechargement === 1));
     etape('aucun message flash en attente au rechargement suivant', await (async () => {
       await p.reload();
       await pause(400);
-      return await p.locator('.flash').count() === 0;
+      return await p.locator('#k-toasts .k-toast').count() === 0;
     })());
 
     // --- 7. Rejoindre une tâche (survol) ---------------------------------
     const rim = await contexte(navigateur, 'rim@x.tn');
     const pr = await ouvrir(rim, FICHE);
     await pr.hover('[data-open-tache="2"]');
-    await Promise.all([pr.waitForNavigation(), pr.click('[data-open-tache="2"] .task-join-btn')]);
+    await pr.click('[data-open-tache="2"] .task-join-btn');
+    await attendre(() => sql('SELECT count(*) FROM tache_intervenant WHERE tache_id=2 AND utilisateur_id=3') === '1');
     etape('« Rejoindre » au survol : Rim intervenante de la tâche 2',
       sql('SELECT count(*) FROM tache_intervenant WHERE tache_id=2 AND utilisateur_id=3') === '1');
+    await pr.waitForFunction(() => !document.querySelector('[data-open-tache="2"] .task-join-btn'));
+    etape('« Rejoindre » : ligne remplacée sans rechargement (bouton retiré, avatar ajouté)',
+      await pr.locator('[data-open-tache="2"] .avatar-stack .avatar').count() >= 1);
     etape('le sélecteur n’est pas proposé à un simple intervenant', await pr.locator('#ajout-intervenant-choix').count() === 0);
     await rim.close();
 
@@ -270,12 +286,12 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     await pg.keyboard.press('ArrowDown');
     await Promise.all([pg.waitForNavigation(), pg.keyboard.press('Enter')]);
     await pg.waitForSelector('#dialog-tache [data-tache-fenetre="2"]');
-    etape('clavier ↓ Entrée : fiche ouverte, fenêtre de la tâche affichée',
-      await pg.evaluate(() => document.getElementById('dialog-tache').matches(':modal')));
+    etape('clavier ↓ Entrée : fiche ouverte, panneau de la tâche affiché',
+      await pg.evaluate(() => document.getElementById('dialog-tache').open && document.getElementById('dialog-tache').classList.contains('tache-panneau')));
     etape('focus dans la fenêtre', await pg.evaluate(() => document.getElementById('dialog-tache').contains(document.activeElement)));
     await capture(pg, 'e2e-11b-recherche-tache-1280-clair.png');
     await pg.keyboard.press('Escape');
-    await pause(150);
+    await pause(350);
     a = await actif(pg);
     etape('Échap : focus rendu à la ligne de la tâche', a.cls.includes('taskrow-titre') && a.texte === 'Plans de ferraillage', a);
     etape('adresse nettoyée à la fermeture', await pg.evaluate(() => location.search === '' && location.pathname === '/projets/1'));
@@ -286,7 +302,7 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     etape('tâche close : tâches closes dépliées, fenêtre ouverte',
       await pg.evaluate(() => document.getElementById('taches-closes').open));
     await pg.click('#dialog-tache [data-close-tache]');
-    await pause(150);
+    await pause(350);
     a = await actif(pg);
     etape('Fermer : focus sur la ligne de la tâche close', a.texte === 'Dossier DOE', a);
     await pg.goto(BASE + '/projets/1#tache-3');
@@ -340,10 +356,12 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     etape('Entrée : Sami Chérif choisi', await champChef.inputValue() === 'Sami Chérif'
       && await pg.evaluate(() => document.getElementById('dialog-info-chef').value) === '5');
     await pg.focus('#dialog-informations-projet button[type=submit]');
-    await Promise.all([pg.waitForNavigation(), pg.keyboard.press('Enter')]);
-    await pg.waitForSelector('#flash-wrap .flash');
+    // Lot 13 : enregistrement en partiel — fenêtre fermée, fiche mise à jour.
+    await pg.keyboard.press('Enter');
+    await pg.waitForSelector('#k-toasts .k-toast');
+    await pg.waitForFunction(() => !document.getElementById('dialog-informations-projet').open);
     etape('message : projet confié, l’ancien chef devient co-chef',
-      (await pg.locator('#flash-wrap .flash').allInnerTexts()).join(' ').includes('projet confié à Sami Chérif (Ali Chef devient co-chef)'));
+      (await pg.locator('#k-toasts .k-toast').allInnerTexts()).join(' ').includes('projet confié à Sami Chérif (Ali Chef devient co-chef)'));
     etape('base : Sami chef, Ali co-chef, Sami ni co-chef ni intervenant',
       sql('SELECT chef_projet_id FROM projet WHERE id=1') === '5'
       && sql('SELECT string_agg(utilisateur_id::text, \',\' ORDER BY utilisateur_id) FROM projet_co_chef WHERE projet_id=1') === '2'
@@ -391,7 +409,8 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     await capture(pg, 'e2e-11b-encart-chef-375-sombre.png');
     await pg.keyboard.type('ali');
     await pg.keyboard.press('Enter');
-    await Promise.all([pg.waitForNavigation(), pg.click('#dialog-informations-projet button[type=submit]')]);
+    await pg.click('#dialog-informations-projet button[type=submit]');
+    await pg.waitForFunction(() => !document.getElementById('dialog-informations-projet').open);
     etape('Admin : projet du chef désactivé confié à Ali, Sami devient co-chef',
       sql('SELECT chef_projet_id FROM projet WHERE id=1') === '2'
       && sql('SELECT count(*) FROM projet_co_chef WHERE projet_id=1 AND utilisateur_id=5') === '1'
@@ -405,6 +424,7 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
       const ctx = await contexte(navigateur, 'ali@x.tn', { largeur, hauteur: 860, theme });
       const pv = await ouvrir(ctx, '/projets/1?tache=9');
       await pv.waitForSelector('#dialog-tache [data-tache-fenetre="9"]');
+      await pause(400);   // fin du glissement du panneau (240 ms)
       const bt = await pv.locator('#dialog-tache').boundingBox();
       etape(`${largeur} px ${theme} : tâche close ouverte par ?tache, dans l’écran`, bt.x >= 0 && bt.x + bt.width <= largeur
         && await debordement(pv) === 0, bt);
@@ -422,6 +442,81 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
       }
       await capture(pv, `e2e-11b-informations-${largeur}-${theme}.png`);
       await ctx.close();
+    }
+
+    // --- 16. Contre-expertise du lot 13 (a11y / UX, correctifs F2) --------
+    {
+      const ctx = await contexte(navigateur, 'ali@x.tn', { largeur: 1280, hauteur: 900 });
+      let pc = await ouvrir(ctx, '/projets/1?tache=9');
+      await pc.waitForSelector('#dialog-tache [data-tache-fenetre="9"]');
+      await pause(400);
+      // a11y N2 : la page se resserre à gauche du panneau, rien de caché dessous.
+      const sous = await pc.evaluate(() => {
+        const pan = document.getElementById('dialog-tache').getBoundingClientRect();
+        const main = document.querySelector('main').getBoundingClientRect();
+        const caches = [...document.querySelectorAll('main a[href], main button, main input, main select, main textarea, main [tabindex="0"]')]
+          .filter((e) => !e.closest('#dialog-tache') && !e.closest('details:not([open]) > :not(summary)') && e.offsetParent !== null)
+          .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.right > pan.left + 1 && r.bottom > pan.top && r.top < innerHeight; })
+          .map((e) => e.textContent.trim().slice(0, 30) || e.tagName);
+        return { mainDroite: Math.round(main.right), panneauGauche: Math.round(pan.left), caches };
+      });
+      etape('panneau ouvert (1 280 px) : page décalée, aucun contrôle sous le panneau',
+        sous.mainDroite <= sous.panneauGauche + 1 && sous.caches.length === 0, sous);
+      // a11y N5 : tâche close sur la ligne ouverte, contraste ≥ 4,5:1.
+      const ratio = await pc.evaluate(() => {
+        const rgb = (c) => c.match(/[\d.]+/g).map(Number);
+        const fond = (el) => { for (let n = el; n; n = n.parentElement) { const c = rgb(getComputedStyle(n).backgroundColor); if (c.length < 4 || c[3] === 1) return c; } return [255, 255, 255]; };
+        const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+        const t = document.querySelector('.taskrow-ouverte .taskrow-titre.taskrow-close');
+        const a = lum(rgb(getComputedStyle(t).color)), b = lum(fond(t));
+        return Math.round((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) * 100) / 100;
+      });
+      etape('tâche close sur la ligne ouverte : contraste ≥ 4,5:1', ratio >= 4.5, ratio);
+      // a11y N1 : Tab hors du champ « Affecter quelqu'un » ouvert → jamais <body>.
+      await pc.goto(BASE + '/projets/1?tache=1');
+      await pc.waitForSelector('#dialog-tache [data-tache-fenetre="1"] .search-combobox-input');
+      await pc.focus('#dialog-tache .search-combobox-input');
+      await pause(150);
+      const ouverte = await pc.getAttribute('#dialog-tache .search-combobox-input', 'aria-expanded');
+      await pc.keyboard.press('Tab');
+      a = await actif(pc);
+      etape('Tab depuis « Affecter quelqu’un » ouvert : focus sur le contrôle suivant, pas sur <body>',
+        ouverte === 'true' && a.tag !== 'BODY' && !a.cls.includes('search-combobox-list'), a);
+      // a11y M7 : recherche globale, le focus reste dans le champ.
+      await pc.keyboard.press('Escape');
+      await pc.fill('#recherche-globale', 'Siem');
+      await pc.waitForSelector('#recherche-globale-resultats [role=option]');
+      await pc.focus('#recherche-globale');
+      await pc.keyboard.press('ArrowDown');
+      const rg = await pc.evaluate(() => { const i = document.getElementById('recherche-globale'); const o = document.getElementById(i.getAttribute('aria-activedescendant') || 'x');
+        return { focus: document.activeElement === i, option: !!o && o.getAttribute('role') === 'option' && o.getAttribute('aria-selected') === 'true' }; });
+      etape('recherche globale : ↓ garde le focus dans le champ, option désignée par aria-activedescendant', rg.focus && rg.option, rg);
+      await Promise.all([pc.waitForNavigation(), pc.keyboard.press('Enter')]);
+      etape('recherche globale : Entrée ouvre l’option désignée', /\/projets\/1/.test(pc.url()), pc.url());
+      // a11y N3 / UX N5 : j / k sur « Tous les projets ».
+      await pc.goto(BASE + '/projets');
+      await pc.locator('main').focus();
+      await pc.keyboard.press('j');
+      a = await actif(pc);
+      etape('« Tous les projets » : j place le focus sur le lien de la première ligne',
+        a.tag === 'A' && await pc.evaluate(() => !!document.activeElement.closest('.ptable-row')), a);
+      await ctx.close();
+      // a11y R1 / N6 : 360 px, focus jamais sous la barre basse ; heures visibles.
+      const tel = await contexte(navigateur, 'ali@x.tn', { largeur: 360, hauteur: 740 });
+      pc = await ouvrir(tel, '/projets/1');
+      const heures = await pc.evaluate(() => [...document.querySelectorAll('.carte-taches .taskrow-heures')].filter((c) => c.offsetParent && (c.clientWidth === 0 || c.scrollWidth > c.clientWidth + 1)).length);
+      etape('360 px : heures des tâches jamais rognées', heures === 0, heures);
+      let masques = 0;
+      for (let i = 0; i < 45; i++) {
+        await pc.keyboard.press('Tab');
+        masques += await pc.evaluate(() => { const e = document.activeElement; if (!e || e === document.body || e.closest('.k-nav-basse')) return 0;
+          const r = e.getBoundingClientRect(); const nav = document.querySelector('.k-nav-basse').getBoundingClientRect(); return r.height && r.top >= nav.top - 1 ? 1 : 0; });
+      }
+      etape('360 px : aucun élément focalisé caché sous la barre basse (45 Tab)', masques === 0, masques);
+      await pc.setViewportSize({ width: 320, height: 225 });
+      etape('320 × 225 (zoom 400 %) : barres non fixes', await pc.evaluate(() => getComputedStyle(document.querySelector('.k-nav-basse')).position === 'static'
+        && getComputedStyle(document.querySelector('.topbar')).position === 'static'));
+      await tel.close();
     }
 
     etape('aucune erreur JavaScript', erreursJs.length === 0, erreursJs);

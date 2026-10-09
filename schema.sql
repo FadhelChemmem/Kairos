@@ -498,7 +498,8 @@ CREATE TABLE post (
   -- changement de chef depuis la fenêtre Informations.
   evenement      VARCHAR(20) CONSTRAINT post_evenement_check CHECK (evenement IS NULL OR evenement IN (
                    'creation_tache', 'cloture_tache', 'repost',
-                   'creation_projet', 'etat_tache', 'etat_projet', 'titre_tache', 'chef_projet')),
+                   'creation_projet', 'etat_tache', 'etat_projet', 'titre_tache', 'chef_projet',
+                   'intervenant_tache', 'echeance_tache', 'intervenant_projet')),
   updated_by     BIGINT REFERENCES utilisateur(id), -- si le post est modifié après publication
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -618,11 +619,17 @@ CREATE TABLE notification (
   -- Rappel Daily log (migration 0017) : les jours oubliés qu'il cite —
   -- clé du dédoublonnage et du marquage « lu » (plus de LIKE sur le texte).
   rappel_jours   DATE[] CONSTRAINT notification_rappel_jours_check
-                   CHECK (rappel_jours IS NULL OR cardinality(rappel_jours) BETWEEN 1 AND 31)
+                   CHECK (rappel_jours IS NULL OR cardinality(rappel_jours) BETWEEN 1 AND 31),
+  -- Migration 0019 : projet ouvert par une notification sans post ni tâche
+  -- (« ajouté au projet ») ; rappel créé par « Simuler le rappel du jour »
+  -- (mode test), ignoré par le dédoublonnage des vrais rappels.
+  projet_id      BIGINT REFERENCES projet(id),
+  simulee        BOOLEAN NOT NULL DEFAULT false
 );
 CREATE INDEX idx_notification_user_lu ON notification(utilisateur_id, lu);
 CREATE INDEX idx_notification_user_date ON notification(utilisateur_id, created_at DESC); -- migration 0005
 CREATE INDEX idx_notification_rappel_jours ON notification (utilisateur_id) WHERE rappel_jours IS NOT NULL; -- migration 0017
+CREATE INDEX idx_notification_projet ON notification (projet_id) WHERE projet_id IS NOT NULL; -- migration 0019
 
 
 -- =====================================================================
@@ -1219,7 +1226,7 @@ BEGIN
   v_date    := (v_ligne->>'date')::DATE;
   v_projet  := (v_ligne->>'projet_id')::BIGINT;
   SELECT role, fuseau INTO v_role_proprio, v_fuseau FROM utilisateur WHERE id = v_proprio;
-  -- Date simulée (0018, mode test) ou aujourd'hui au fuseau du titulaire.
+  -- Date (ou instant) simulée en mode test, ou aujourd'hui au fuseau du titulaire.
   v_aujourdhui := fn_aujourdhui(v_fuseau);
 
   IF TG_OP <> 'DELETE' THEN
@@ -1227,6 +1234,12 @@ BEGIN
       RAISE EXCEPTION 'Daily log : date % hors limites (aujourd''hui : % pour l''utilisateur %).',
         v_date, v_aujourdhui, v_proprio
         USING ERRCODE = 'check_violation', CONSTRAINT = 'dailylog_date_plausible';
+    END IF;
+    -- Lot 13 (décision 5) : la date simulée montre le futur, elle n'y écrit pas.
+    IF v_date > fn_aujourdhui_reel(v_fuseau) THEN
+      RAISE EXCEPTION 'Daily log : date % postérieure à la vraie date du jour (% pour l''utilisateur %), même en mode test.',
+        v_date, fn_aujourdhui_reel(v_fuseau), v_proprio
+        USING ERRCODE = 'check_violation', CONSTRAINT = 'dailylog_futur_reel';
     END IF;
     IF v_role_proprio IN ('rh', 'client') THEN
       RAISE EXCEPTION 'Daily log : un compte RH ou Client n''a pas de Daily log (utilisateur %).', v_proprio
@@ -1426,9 +1439,57 @@ EXCEPTION WHEN others THEN
 END;
 $$ LANGUAGE plpgsql STABLE;
 
+
+-- ---------------------------------------------------------------------
+-- Migration 0019 (lot 13) : état du projet recalculé, instant simulé,
+-- vraie date — mêmes définitions que
+-- migrations/0019_lot13_etat_projet_et_temps.sql (notification.projet_id,
+-- notification.simulee et post_evenement_check : voir plus haut ;
+-- fn_dailylog_garde : section 0014).
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_etat_projet_recalcule(p_etat projet_etat_enum, p_projet BIGINT)
+RETURNS projet_etat_enum AS $$
+  SELECT CASE
+    WHEN p_etat NOT IN ('en_cours', 'bloque') THEN p_etat
+    WHEN EXISTS (SELECT 1 FROM tache t WHERE t.projet_id = p_projet AND t.etat = 'bloque') THEN 'bloque'::projet_etat_enum
+    ELSE 'en_cours'::projet_etat_enum
+  END
+$$ LANGUAGE sql STABLE;
+
+CREATE OR REPLACE FUNCTION fn_instant_simule()
+RETURNS TIMESTAMPTZ AS $$
+DECLARE
+  v TEXT := current_setting('kairos.instant_simule', true);
+  t TIMESTAMPTZ;
+BEGIN
+  IF v IS NULL OR v !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?([+-][0-9]{2}:[0-9]{2}|Z)$' THEN
+    RETURN NULL;
+  END IF;
+  t := v::TIMESTAMPTZ;
+  IF t < TIMESTAMPTZ '2000-01-01 00:00+00' OR t >= TIMESTAMPTZ '2100-01-01 00:00+00' THEN
+    RETURN NULL;
+  END IF;
+  RETURN t;
+EXCEPTION WHEN others THEN
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
 CREATE OR REPLACE FUNCTION fn_aujourdhui(p_fuseau TEXT DEFAULT 'Africa/Tunis')
 RETURNS DATE AS $$
-  SELECT COALESCE(fn_date_simulee(), (now() AT TIME ZONE COALESCE(p_fuseau, 'Africa/Tunis'))::DATE)
+  SELECT COALESCE((fn_instant_simule() AT TIME ZONE COALESCE(p_fuseau, 'Africa/Tunis'))::DATE,
+                  fn_date_simulee(),
+                  (now() AT TIME ZONE COALESCE(p_fuseau, 'Africa/Tunis'))::DATE)
+$$ LANGUAGE sql STABLE;
+
+CREATE OR REPLACE FUNCTION fn_aujourdhui_reel(p_fuseau TEXT DEFAULT 'Africa/Tunis')
+RETURNS DATE AS $$
+  SELECT (now() AT TIME ZONE COALESCE(p_fuseau, 'Africa/Tunis'))::DATE
+$$ LANGUAGE sql STABLE;
+
+CREATE OR REPLACE FUNCTION fn_date_ecriture(p_fuseau TEXT DEFAULT 'Africa/Tunis')
+RETURNS DATE AS $$
+  SELECT LEAST(fn_aujourdhui(p_fuseau), fn_aujourdhui_reel(p_fuseau))
 $$ LANGUAGE sql STABLE;
 
 
@@ -1463,5 +1524,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0015_etats_taches_reserves'),
   ('0016_equipe_projets_et_recherche'),
   ('0017_chef_projet_et_rappels_dailylog'),
-  ('0018_modes_admin_et_date_simulee')
+  ('0018_modes_admin_et_date_simulee'),
+  ('0019_lot13_etat_projet_et_temps')
 ON CONFLICT (version) DO NOTHING;

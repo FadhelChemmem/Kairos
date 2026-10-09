@@ -1,0 +1,12 @@
+{# Liste des posts de la fiche projet (#fil-posts). Lot 13 : remplacée hors
+   cible quand l'état du projet change (commentaires et publication
+   fermés ou rouverts). Contexte : fil, projet ; facultatif : oob. #}
+<div id="fil-posts" class="fil-liste"{% if oob %} data-partiel-oob{% endif %}>
+{% for post in fil %}
+  {% with post=post, show_projet=false, next_url=url_for('projets.detail', projet_id=projet.id), oob=false %}
+    {% include "partials/fil_item.html" %}
+  {% endwith %}
+{% else %}
+  <div class="card fil-vide-carte" data-partiel-vide>Aucun post pour l'instant.</div>
+{% endfor %}
+</div>

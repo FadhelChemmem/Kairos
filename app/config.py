@@ -32,6 +32,15 @@ class Config:
     # automatique (et cette durée est reconduite à chaque visite, puisque
     # SESSION_REFRESH_EACH_REQUEST est activé par défaut dans Flask).
     PERMANENT_SESSION_LIFETIME = datetime.timedelta(days=30)
+    # Lot 13 (audit temps T-I3) : le cookie n'est plus renvoyé à CHAQUE
+    # réponse, seulement quand la session change (connexion, mode de
+    # l'Admin, message, rappel du jour…). Sinon, plusieurs onglets qui se
+    # rechargent en même temps (static/js/mode-onglets.js) pouvaient
+    # réécrire, avec une réponse arrivée en retard, un cookie plus récent
+    # (« Agir comme » choisi entre-temps, perdu). La durée de 30 jours est
+    # de toute façon plafonnée par SESSION_DUREE_ABSOLUE ci-dessous ; le
+    # rappel du jour (session["rappel_le"]) reconduit le cookie chaque jour.
+    SESSION_REFRESH_EACH_REQUEST = False
     # Durée de vie ABSOLUE d'une session (audit sécurité I7, lot 10) : la
     # durée ci-dessus est glissante (reconduite à chaque visite), donc un
     # cookie volé restait valable indéfiniment. Au-delà de cette durée

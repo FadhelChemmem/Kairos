@@ -1,0 +1,70 @@
+{# Carte « Intervenants » de la fiche projet. Lot 13 : ajout, retrait et
+   « Rejoindre ce projet » en partiel — la carte seule est remplacée
+   (cible), le tableau des tâches et le fil suivent hors cible. Contexte :
+   projet, intervenants, peut_gerer, projet_clos, intervenants_retirables,
+   utilisateurs_affectables, peut_rejoindre_projet ; facultatif : oob. #}
+{% import "partials/avatar.html" as avatarm %}
+<div class="card" id="carte-intervenants"{% if oob %} data-partiel-oob{% endif %}>
+  <h2 class="carte-titre carte-titre-espace" data-partiel-titre tabindex="-1">Intervenants</h2>
+  <ul class="intervenants-liste">
+    {% for iv in intervenants %}
+      {# Ligne cliquable vers la fiche de la personne (retour Fadhel,
+         2026-10-01). Lot 13 (décision 4) : « Retirer » du projet pour le
+         chef, un co-chef ou l'Admin (pas le chef titulaire). #}
+      <li id="projet-intervenant-{{ iv.id }}" class="intervenant-ligne">
+        <a href="{{ url_for('utilisateurs.profil_personne', user_id=iv.id) }}" class="lien-personne intervenant-lien" title="Voir la fiche de {{ iv.prenom }} {{ iv.nom }}">
+          {{ avatarm.avatar(iv.id, iv.prenom, iv.nom, iv.avatar_chemin, css_class='avatar avatar-md') }}
+          <span class="intervenant-texte">
+            <span class="nom-personne intervenant-nom">{{ iv.prenom }} {{ iv.nom }}</span>
+            <span class="intervenant-role">{{ iv.role_label }}</span>
+          </span>
+        </a>
+        {% if peut_gerer and iv.id in intervenants_retirables|default([]) %}
+        <form method="post" action="{{ url_for('projets.retirer_intervenant_projet', projet_id=projet.id, utilisateur_id=iv.id) }}" data-partiel="#carte-intervenants" data-focus-apres="#carte-intervenants [data-partiel-titre]">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" id="retirer-intervenant-{{ iv.id }}" class="btn btn-petit" aria-label="Retirer {{ iv.prenom }} {{ iv.nom }} du projet" data-confirmer="Retirer {{ iv.prenom }} {{ iv.nom }} du projet et de ses tâches en cours ?" data-confirmer-ok="Retirer" data-confirmer-danger>Retirer</button>
+        </form>
+        {% endif %}
+      </li>
+    {% else %}
+      <li class="intervenant-vide">Aucun intervenant pour l'instant.</li>
+    {% endfor %}
+  </ul>
+  {% if peut_gerer and not projet_clos %}
+  <div class="divider divider-plein"></div>
+  {# Lot 11 (demande du gérant) : un seul champ de recherche ; le choix
+     ajoute immédiatement la personne (projet-intervenants.js, en partiel
+     depuis le lot 13). Sans JavaScript : liste déroulante + « Ajouter ». #}
+  {% set ids_membres = intervenants|map(attribute='id')|list %}
+  {% set candidats = utilisateurs_affectables|rejectattr('id', 'in', ids_membres)|list %}
+  {% if candidats %}
+  <form method="post" action="{{ url_for('projets.ajouter_intervenant', projet_id=projet.id) }}" class="ajout-intervenant" data-ajout-intervenant data-partiel="#carte-intervenants">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="ajout-intervenant-choix" class="sr-only">Ajouter un intervenant</label>
+    <div class="ajout-intervenant-champ">
+      <select id="ajout-intervenant-choix" name="utilisateur_id" required data-search-combobox data-search-riche data-search-action data-search-placeholder="+ Ajouter un intervenant…" data-search-vide="Aucune personne trouvée">
+        <option value="" disabled selected>Choisir…</option>
+        {% for u in candidats %}
+          {% set rs = role_style(u.role) %}
+          <option value="{{ u.id }}" data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}" data-couleur="{{ avatar_color(u.id) }}"{% if u.avatar_chemin %} data-photo="{{ avatar_url(u.id, u.avatar_chemin) }}"{% endif %} data-sous-titre="{{ rs.label }}{% if u.poste and u.poste|lower != rs.label|lower %} · {{ u.poste }}{% endif %}">{{ u.prenom }} {{ u.nom }}</option>
+        {% endfor %}
+      </select>
+      <noscript><button type="submit" class="btn">Ajouter</button></noscript>
+    </div>
+    <p class="ajout-intervenant-statut" data-ajout-statut role="status">{{ statut_ajout|default('') }}</p>
+  </form>
+  {% else %}
+  <p class="ajout-intervenant-statut">Toutes les personnes affectables sont déjà sur ce projet.</p>
+  {% endif %}
+  {% endif %}
+  {# « Rejoindre ce projet » (retour Fadhel, 2026-09-28) : à qui voit le
+     projet sans y être rattaché, jamais au RH, au client ni à l'Admin. #}
+  {% if peut_rejoindre_projet %}
+  <div class="divider divider-plein"></div>
+  <form method="post" action="{{ url_for('projets.rejoindre', projet_id=projet.id) }}" data-partiel="#carte-intervenants">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {# Un chef de projet rejoint comme co-chef (2026-09-29, PR8). #}
+    <button type="submit" id="rejoindre-projet" class="btn btn-pleine-largeur">+ Rejoindre ce projet{% if g.user.role == 'chef_de_projet' %} comme co-chef{% endif %}</button>
+  </form>
+  {% endif %}
+</div>

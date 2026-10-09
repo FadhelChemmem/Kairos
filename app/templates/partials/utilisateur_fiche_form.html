@@ -1,0 +1,155 @@
+{# Formulaire de la fiche d'un compte (Admin, RH) — lot 13 : rendu aussi
+   seul après Enregistrer (toast « Fiche mise à jour. ») ou avec les erreurs
+   reliées aux champs (422, audit a11y I5) ; le titre suit, hors cible.
+   Contexte : utilisateur, erreurs, equipe_choices, roles_creables,
+   lecture_seule, fuseaux, (titre, oob_titre). #}
+{% import "partials/champs.html" as ch %}
+{% import "partials/avatar.html" as avatarm %}
+<form method="post" action="{{ url_for('utilisateurs.fiche', user_id=utilisateur.id) }}" class="card k-formulaire" id="utilisateur-form" enctype="multipart/form-data"
+      data-partiel="#utilisateur-form" novalidate>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if lecture_seule %}<p class="k-note k-note-alerte" role="note">Compte Admin : seul un Admin peut le modifier.</p>{% endif %}
+  <fieldset {{ 'disabled' if lecture_seule }} class="k-fieldset">
+
+  <div class="section-title">Identité</div>
+  <div class="form-row-2">
+    <div class="form-row">
+      <label for="prenom">Prénom</label>
+      <input type="text" id="prenom" name="prenom" maxlength="100" value="{{ utilisateur.prenom }}" required{{ ch.attrs(erreurs, 'prenom') }}>
+      {{ ch.message(erreurs, 'prenom') }}
+    </div>
+    <div class="form-row">
+      <label for="nom">Nom</label>
+      <input type="text" id="nom" name="nom" maxlength="100" value="{{ utilisateur.nom }}" required{{ ch.attrs(erreurs, 'nom') }}>
+      {{ ch.message(erreurs, 'nom') }}
+    </div>
+  </div>
+  <div class="form-row form-row-avatar">
+    {{ avatarm.avatar(utilisateur.id, utilisateur.prenom, utilisateur.nom, utilisateur.avatar_chemin, css_class='avatar avatar-lg avatar-fiche') }}
+    <img class="avatar avatar-lg avatar-apercu" id="apercu-avatar-fiche" alt="Aperçu de la nouvelle photo" hidden>
+    <div class="form-row-avatar-champ">
+      <label for="avatar">Photo de profil <span class="label-note">— facultatif, remplace les initiales</span></label>
+      <input type="file" id="avatar" name="avatar" accept=".png,.jpg,.jpeg,.gif,.webp,image/*" data-apercu-avatar="apercu-avatar-fiche">
+    </div>
+  </div>
+  <div class="form-row">
+    {# Adresse réservée à l'Admin (lot 10) : c'est là que part le lien de
+       réinitialisation — modifiable par le RH, elle lui redonnerait
+       l'accès au compte. Refusé aussi côté serveur (fiche()). #}
+    {% set email_verrouille = g.user.role != 'admin' %}
+    <label for="email">Adresse e-mail <span class="label-note">— identifiant de connexion{{ ', modifiable uniquement par un Admin' if email_verrouille }}</span></label>
+    <input type="email" id="email" name="email" maxlength="255" value="{{ utilisateur.email }}" autocomplete="off" required{{ ' readonly' if email_verrouille }}{{ ch.attrs(erreurs, 'email') }}>
+    {{ ch.message(erreurs, 'email') }}
+  </div>
+  <div class="form-row">
+    <label for="telephone">Téléphone</label>
+    <input type="tel" id="telephone" name="telephone" maxlength="30" autocomplete="off" value="{{ utilisateur.telephone or '' }}" placeholder="55 555 555"{{ ch.attrs(erreurs, 'telephone') }}>
+    {{ ch.message(erreurs, 'telephone') }}
+  </div>
+  <div class="form-row-2">
+    <div class="form-row">
+      <label for="poste">Poste</label>
+      <input type="text" id="poste" name="poste" maxlength="150" autocomplete="off" value="{{ utilisateur.poste or '' }}" placeholder="Ingénieur, Technicien…"{{ ch.attrs(erreurs, 'poste') }}>
+      {{ ch.message(erreurs, 'poste') }}
+    </div>
+    <div class="form-row">
+      <label for="date_embauche">Date d'embauche</label>
+      <input type="date" id="date_embauche" name="date_embauche" value="{{ utilisateur.date_embauche or '' }}"{{ ch.attrs(erreurs, 'date_embauche') }}>
+      {{ ch.message(erreurs, 'date_embauche') }}
+    </div>
+  </div>
+  <div class="form-row">
+    <label for="adresse">Adresse</label>
+    <input type="text" id="adresse" name="adresse" autocomplete="off" value="{{ utilisateur.adresse or '' }}" placeholder="Rue, ville…"{{ ch.attrs(erreurs, 'adresse') }}>
+    {{ ch.message(erreurs, 'adresse') }}
+  </div>
+
+  <div class="section-title">Équipe et rôle</div>
+  <div class="form-row-2">
+    <div class="form-row">
+      <label for="equipe_code">Équipe</label>
+      {# L'option vide (PROMPT_CORRECTIONS.md P1 #12) : equipe_code est
+         facultatif en base — sans option « aucune équipe », un <select>
+         sans <option> `selected` affiche la PREMIÈRE option ("Midgard") et
+         l'enregistrer rattachait silencieusement le compte à Midgard. #}
+      <select id="equipe_code" name="equipe_code"{{ ch.attrs(erreurs, 'equipe_code') }}>
+        <option value="" {{ 'selected' if not utilisateur.equipe_code }}>— Aucune —</option>
+        {% for code, libelle in equipe_choices %}
+          <option value="{{ code }}" {{ 'selected' if code == utilisateur.equipe_code }}>{{ libelle }}</option>
+        {% endfor %}
+      </select>
+      {{ ch.message(erreurs, 'equipe_code') }}
+    </div>
+    <div class="form-row">
+      {% set role_hors_liste = utilisateur.role not in roles_creables %}
+      <label for="role">Rôle
+        {% if utilisateur.id == g.user.id %}
+          <span class="label-note">— non modifiable sur votre propre compte</span>
+        {% elif role_hors_liste %}
+          <span class="label-note">— non modifiable depuis cet écran</span>
+        {% endif %}
+      </label>
+      {# Rôle hors ROLES_CREABLES (PROMPT_CORRECTIONS.md P1 #12) : "client"
+         existe en base mais n'est pas proposé par cet écran ; sans l'option
+         ci-dessous, enregistrer la fiche changeait silencieusement le rôle. #}
+      <select id="role" name="role" {{ 'disabled' if utilisateur.id == g.user.id or role_hors_liste }}{{ ch.attrs(erreurs, 'role') }}>
+        {% if role_hors_liste %}
+          <option value="{{ utilisateur.role }}" selected>{{ utilisateur.role|capitalize }}</option>
+        {% endif %}
+        {% for r in roles_creables %}
+          <option value="{{ r }}" {{ 'selected' if r == utilisateur.role }}>
+            {{ {"intervenant": "Intervenant", "chef_de_projet": "Chef de projet", "admin": "Administrateur", "rh": "RH"}[r] }}
+          </option>
+        {% endfor %}
+      </select>
+      {# Un <select> désactivé n'envoie pas sa valeur : renvoyée en champ caché. #}
+      {% if utilisateur.id == g.user.id or role_hors_liste %}
+        <input type="hidden" name="role" value="{{ utilisateur.role }}">
+      {% endif %}
+      {{ ch.message(erreurs, 'role') }}
+    </div>
+  </div>
+
+  <div class="form-row">
+    <label for="fuseau">Bureau <span class="label-note">— fuseau horaire du Daily log (« aujourd’hui », fenêtre de 14 jours, rappel)</span></label>
+    <select id="fuseau" name="fuseau"{{ ch.attrs(erreurs, 'fuseau') }}>
+      {% for code, libelle in fuseaux.items() %}
+        <option value="{{ code }}" {{ 'selected' if code == (utilisateur.fuseau or 'Africa/Tunis') }}>{{ libelle }}</option>
+      {% endfor %}
+    </select>
+    {{ ch.message(erreurs, 'fuseau') }}
+  </div>
+
+  {# Décision du gérant (lot 10) : seul l'Admin fixe un mot de passe ici ;
+     le RH envoie un lien de réinitialisation (carte sous la fiche). Un
+     champ forgé par le RH est refusé (403) côté serveur. #}
+  {% if g.user.role == 'admin' %}
+  <div class="section-title">Mot de passe</div>
+  <div class="form-row">
+    <label for="nouveau_mot_de_passe">Nouveau mot de passe <span class="label-note">— laisser vide pour ne pas le changer</span></label>
+    <input type="password" id="nouveau_mot_de_passe" name="nouveau_mot_de_passe" minlength="8" autocomplete="new-password"{{ ch.attrs(erreurs, 'nouveau_mot_de_passe', aide='aide-mdp-fiche') }}>
+    <p id="aide-mdp-fiche" class="aide-champ">8 caractères minimum.</p>
+    {{ ch.message(erreurs, 'nouveau_mot_de_passe') }}
+  </div>
+  {% endif %}
+
+  <div class="section-title">Champs personnalisés <span class="section-title-note">(facultatif)</span></div>
+  {{ ch.message(erreurs, 'champs_perso') }}
+  <div id="cf-list">
+    {% for cle, valeur in (utilisateur.champs_perso or {}).items() %}
+      <div class="cf-row">
+        <input type="text" name="champ_perso_nom" aria-label="Nom du champ" value="{{ cle }}" placeholder="Nom du champ">
+        <input type="text" name="champ_perso_valeur" aria-label="Valeur" value="{{ valeur }}" placeholder="Valeur">
+        <button type="button" class="linkbtn cf-remove" aria-label="Retirer ce champ"><svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+    {% endfor %}
+  </div>
+  <button type="button" id="cf-add" class="cf-ajouter">+ Ajouter un champ</button>
+
+  <div class="k-formulaire-actions">
+    <a href="{{ url_for('utilisateurs.liste') }}" class="btn">Retour à la liste</a>
+    <button type="submit" class="btn-primaire" id="utilisateur-enregistrer">Enregistrer</button>
+  </div>
+  </fieldset>
+</form>
+{% if oob_titre %}{% include "partials/utilisateur_titre.html" %}{% endif %}

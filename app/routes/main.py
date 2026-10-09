@@ -73,6 +73,7 @@ def accueil():
         "accueil.html",
         mes_projets=mes_projets_recents,
         projets_postables=projets_postables,
+        voient_par_projet=projets.ids_voient_projets(projets_postables),
         intent_par_defaut=intent,
         # "+ Nouveau post" : un projet où publier, ou une Information
         # d'équipe (pas pour un Client, ni sans équipe) — voir post_dialog.html.

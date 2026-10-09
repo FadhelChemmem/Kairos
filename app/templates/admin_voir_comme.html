@@ -9,20 +9,20 @@
 <div class="subbar">
   <div class="subbar-inner">
     <h1 class="page-titre">Voir Kairos comme…</h1>
-    <span class="pill" style="background:var(--hover-bg); color:var(--text-muted); margin-left:auto;">Visible par&nbsp;: administrateur</span>
+    <span class="pill pill-neutre subbar-fin">Visible par&nbsp;: administrateur</span>
   </div>
 </div>
 
-<div class="page-wrap" style="padding-top:20px; padding-bottom:60px;">
+<div class="page-wrap k-page">
   <div class="card voir-comme-carte">
-    <p style="margin:0 0 10px; font-size:13.5px; line-height:1.5; color:var(--text-secondary);">
+    <p class="voir-comme-texte">
       Choisissez un compte actif (hors Admin)&nbsp;: vous verrez Kairos <strong>exactement comme cette personne</strong>
       — menus, projets visibles, Mes tâches, Deadlines, Daily log, boutons autorisés.
       <strong>Voir comme</strong> est en lecture seule&nbsp;: rien ne peut être modifié. Un bandeau orange le rappelle
       sur chaque page, avec «&nbsp;Revenir à mon compte&nbsp;». L’entrée et la sortie sont notées dans le journal d’audit.
     </p>
     {% if mode_test %}
-    <p style="margin:0 0 10px; font-size:13.5px; line-height:1.5; color:var(--text-secondary);">
+    <p class="voir-comme-texte">
       <span class="pill pill-sm pill-warn">Mode test</span>
       <strong>Agir comme</strong> permet en plus de modifier au nom de ce compte (posts, tâches, Daily log, états…)&nbsp;;
       chaque modification est tracée à son nom et au vôtre («&nbsp;par l’Admin&nbsp;») dans le journal d’audit, et les
@@ -50,7 +50,7 @@
       </div>
     </form>
     {% else %}
-    <p style="margin:0; font-size:13px; color:var(--text-muted);">Aucun compte actif hors Admin.</p>
+    <p class="k-muet voir-comme-vide">Aucun compte actif hors Admin.</p>
     {% endif %}
   </div>
 </div>

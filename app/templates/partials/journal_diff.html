@@ -1,0 +1,29 @@
+{# Données d'une entrée du journal en différences lisibles (lot 13, audit
+   UX §2.7) : champ, avant (barré) et après. Contexte : e, diff. #}
+<div class="journal-diff">
+  {% if diff.lignes %}
+  <table class="journal-diff-table">
+    <caption class="sr-only">Données de l’entrée n° {{ e.id }}</caption>
+    <thead><tr><th scope="col">Champ</th>{% if e.donnees_avant is mapping %}<th scope="col">Avant</th>{% endif %}{% if e.donnees_apres is mapping %}<th scope="col">Après</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for l in diff.lignes %}
+      <tr class="journal-diff-{{ l.type }}">
+        <th scope="row">{{ l.champ }}</th>
+        {% if e.donnees_avant is mapping %}<td>{% if l.avant is defined %}<del>{{ l.avant }}</del>{% else %}<span class="k-muet">—</span>{% endif %}</td>{% endif %}
+        {% if e.donnees_apres is mapping %}<td>{% if l.apres is defined %}<ins>{{ l.apres }}</ins>{% else %}<span class="k-muet">—</span>{% endif %}</td>{% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% elif diff.brut %}
+  <pre class="journal-donnees">{{ diff.brut }}</pre>
+  {% else %}
+  <p class="k-muet">Aucune donnée modifiée.</p>
+  {% endif %}
+  {% if diff.inchanges %}
+  <details class="journal-inchanges">
+    <summary class="journal-resume">{{ diff.inchanges|length }} champ{{ 's' if diff.inchanges|length > 1 }} inchangé{{ 's' if diff.inchanges|length > 1 }}</summary>
+    <dl>{% for c in diff.inchanges %}<dt>{{ c.champ }}</dt><dd>{{ c.valeur }}</dd>{% endfor %}</dl>
+  </details>
+  {% endif %}
+</div>

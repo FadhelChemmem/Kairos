@@ -76,50 +76,52 @@ def redirect_vers_next(default_endpoint: str = "main.accueil"):
 # lisibles (contraste ≥ 4,5:1, contre 3,0 à 4,0 auparavant).
 _AVATAR_PALETTE = ["#4a7c59", "#b8520f", "#2f65b8", "#5f52d1", "#c0401d", "#1f7a55"]
 
-# Lot 10 (audit front §3.6, §7) : textes des pastilles assombris pour
-# atteindre 4,5:1 sur leur fond clair (#3b7de0 → #2f66b0, #7c6ff0 →
-# #5f52d1, #e3512c → #b93a1a, #4a7c59 → #2f6b45, #6c766f → #5f6962).
+# Lot 13 (audit UX §4.4, M3) : les pastilles portent une CLASSE de teinte
+# (pill-bleu, pill-rouge, pill-vert, pill-violet, pill-orange, pill-neutre)
+# au lieu de couleurs en dur : fond et texte viennent des jetons --etat-*
+# de app.css, thémés en clair et en sombre (≥ 4,5:1 dans les deux thèmes,
+# tests/test_lot13_front.py). Gabarits : class="pill {{ st.classe }}".
 # « libelle » : état de TÂCHE accordé au féminin pour l'affichage (« Tâche
 # bloquée ») ; « label » reste inchangé, il sert aussi au texte des posts
 # automatiques enregistrés en base (repositories/taches.py).
 _TACHE_ETAT_STYLE = {
-    "en_cours": {"bg": "#eaf1fd", "fg": "#2f66b0", "label": "En cours", "libelle": "En cours"},
-    "bloque": {"bg": "#fdeae4", "fg": "#b93a1a", "label": "Bloqué", "libelle": "Bloquée"},
-    "verifie": {"bg": "#efecfd", "fg": "#5f52d1", "label": "Vérifié", "libelle": "Vérifiée"},
-    "termine": {"bg": "#eaf3ee", "fg": "#2f6b45", "label": "Terminé", "libelle": "Terminée"},
-    "arret": {"bg": "#f2f4f0", "fg": "#55605a", "label": "Arrêt", "libelle": "Arrêtée"},
-    "abandonne": {"bg": "#f2f4f0", "fg": "#5f6962", "label": "Abandonné", "libelle": "Abandonnée"},
+    "en_cours": {"classe": "pill-bleu", "label": "En cours", "libelle": "En cours"},
+    "bloque": {"classe": "pill-rouge", "label": "Bloqué", "libelle": "Bloquée"},
+    "verifie": {"classe": "pill-violet", "label": "Vérifié", "libelle": "Vérifiée"},
+    "termine": {"classe": "pill-vert", "label": "Terminé", "libelle": "Terminée"},
+    "arret": {"classe": "pill-neutre", "label": "Arrêt", "libelle": "Arrêtée"},
+    "abandonne": {"classe": "pill-neutre", "label": "Abandonné", "libelle": "Abandonnée"},
 }
 
 _PROJET_ETAT_STYLE = {
-    "en_cours": {"dot": "#2fa876", "bg": "#eaf3ee", "fg": "#2f6b45", "label": "En cours"},
-    "bloque": {"dot": "#e3512c", "bg": "#fdeae4", "fg": "#b93a1a", "label": "Bloqué"},
-    "termine": {"dot": "#c7cdc4", "bg": "#f2f4f0", "fg": "#55605a", "label": "Terminé"},
-    "abandonne": {"dot": "#c7cdc4", "bg": "#f2f4f0", "fg": "#5f6962", "label": "Abandonné"},
+    "en_cours": {"dot": "#2fa876", "classe": "pill-vert", "label": "En cours"},
+    "bloque": {"dot": "#e3512c", "classe": "pill-rouge", "label": "Bloqué"},
+    "termine": {"dot": "#c7cdc4", "classe": "pill-neutre", "label": "Terminé"},
+    "abandonne": {"dot": "#c7cdc4", "classe": "pill-neutre", "label": "Abandonné"},
 }
 
 _POST_TYPE_STYLE = {
-    "envoi": {"bg": "#eaf3ee", "fg": "#2f6b45", "label": "Envoi"},
-    "reponse": {"bg": "#eaf1fd", "fg": "#2f66b0", "label": "Réponse"},
-    "question": {"bg": "#f2f4f0", "fg": "#55605a", "label": "Question"},
-    "requete": {"bg": "#fdeee4", "fg": "#a3480d", "label": "Requête"},
+    "envoi": {"classe": "pill-vert", "label": "Envoi"},
+    "reponse": {"classe": "pill-bleu", "label": "Réponse"},
+    "question": {"classe": "pill-neutre", "label": "Question"},
+    "requete": {"classe": "pill-orange", "label": "Requête"},
     # Teinte propre (2026-09-29) : Information est publiable depuis la
     # migration 0009 et ne doit plus se confondre avec "Question".
-    "information": {"bg": "#efecfd", "fg": "#5f52d1", "label": "Information"},
+    "information": {"classe": "pill-violet", "label": "Information"},
 }
 
 # Pill "Tâche" utilisée pour les posts système de création de tâche
 # (voir partials/post_card.html) ; ne correspond à aucun type_code,
 # c'est une présentation dédiée aux événements liés à une tâche.
-POST_TACHE_PILL = {"bg": "#efecfd", "fg": "#5f52d1", "label": "Tâche"}
+POST_TACHE_PILL = {"classe": "pill-violet", "label": "Tâche"}
 
 # Couleurs/labels de rôle (page Utilisateurs), reprises de Utilisateurs.dc.html.
 _ROLE_STYLE = {
-    "admin": {"bg": "#efecfd", "fg": "#5f52d1", "label": "Administrateur"},
-    "chef_de_projet": {"bg": "#eaf1fd", "fg": "#2f66b0", "label": "Chef de projet"},
-    "intervenant": {"bg": "#f2f4f0", "fg": "#55605a", "label": "Intervenant"},
-    "rh": {"bg": "#f2f4f0", "fg": "#5f6962", "label": "RH"},
-    "client": {"bg": "#f2f4f0", "fg": "#5f6962", "label": "Client"},
+    "admin": {"classe": "pill-violet", "label": "Administrateur"},
+    "chef_de_projet": {"classe": "pill-bleu", "label": "Chef de projet"},
+    "intervenant": {"classe": "pill-neutre", "label": "Intervenant"},
+    "rh": {"classe": "pill-neutre", "label": "RH"},
+    "client": {"classe": "pill-neutre", "label": "Client"},
 }
 
 # Équipes de référence (table `equipe`, schema.sql) — codes stockés en
@@ -136,7 +138,7 @@ EQUIPE_CHOICES = [
 
 
 def role_style(role: str) -> dict:
-    return _ROLE_STYLE.get(role, {"bg": "#f2f4f0", "fg": "#55605a", "label": role or ""})
+    return _ROLE_STYLE.get(role, {"classe": "pill-neutre", "label": role or ""})
 
 
 def equipe_libelle(code: str) -> str:
@@ -175,36 +177,46 @@ def avatar_color(user_id: int) -> str:
 
 
 def tache_etat_style(etat: str) -> dict:
-    return _TACHE_ETAT_STYLE.get(etat, {"bg": "#f2f4f0", "fg": "#55605a", "label": etat or "", "libelle": etat or ""})
+    return _TACHE_ETAT_STYLE.get(etat, {"classe": "pill-neutre", "label": etat or "", "libelle": etat or ""})
 
 
 def projet_etat_style(etat: str) -> dict:
-    return _PROJET_ETAT_STYLE.get(etat, {"dot": "#c7cdc4", "bg": "#f2f4f0", "fg": "#55605a", "label": etat or ""})
+    return _PROJET_ETAT_STYLE.get(etat, {"dot": "#c7cdc4", "classe": "pill-neutre", "label": etat or ""})
 
 
 def post_type_style(type_code: str) -> dict:
-    return _POST_TYPE_STYLE.get(type_code, {"bg": "#f2f4f0", "fg": "#55605a", "label": type_code or ""})
+    return _POST_TYPE_STYLE.get(type_code, {"classe": "pill-neutre", "label": type_code or ""})
 
 
 # Deux catégories de notification (voir spec : "un seul mécanisme... avec
 # une différenciation par catégorie : Projet/Travail vs Info/RH").
 _NOTIF_CATEGORIE_STYLE = {
-    "projet": {"bg": "#eaf1fd", "fg": "#2f66b0", "label": "Projet"},
-    "rh_info": {"bg": "#f2f4f0", "fg": "#55605a", "label": "RH & Infos"},
+    "projet": {"classe": "pill-bleu", "label": "Projet"},
+    "rh_info": {"classe": "pill-neutre", "label": "RH & Infos"},
 }
 
 
 def notif_categorie_style(categorie: str) -> dict:
-    return _NOTIF_CATEGORIE_STYLE.get(categorie, {"bg": "#f2f4f0", "fg": "#55605a", "label": categorie or ""})
+    return _NOTIF_CATEGORIE_STYLE.get(categorie, {"classe": "pill-neutre", "label": categorie or ""})
 
 
 def il_y_a(dt) -> str:
     """Formatage relatif façon réseau social ("il y a 1 h", "hier"),
-    comme dans les maquettes."""
+    comme dans les maquettes.
+
+    Lot 13 (audit temps T-M5) : sous date simulée (mode test), la date
+    absolue de l'horodatage RÉEL (« 9 oct. à 13 h 08 », au fuseau de la
+    personne) — « il y a 11 min » à côté d'une date simulée trompait."""
     import datetime
+
+    from . import horloge
 
     if dt is None:
         return ""
+    if horloge.date_simulee() is not None:
+        local = dt.astimezone(horloge.maintenant_reel().tzinfo) if dt.tzinfo else dt
+        jour = date_courte(local.date(), avec_annee=local.year != horloge.aujourdhui_reel().year)
+        return f"{jour} à {local.hour}\u00a0h\u00a0{local.minute:02d}"
     now = datetime.datetime.now(dt.tzinfo) if dt.tzinfo else datetime.datetime.now()
     delta = now - dt
     secondes = delta.total_seconds()

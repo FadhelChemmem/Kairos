@@ -1,0 +1,12 @@
+{# Sous-en-tête collant : le nom du projet reste visible au défilement. #}
+{% set petat = projet_etat_style(projet.etat) %}
+<div class="subbar" id="projet-subbar"{% if oob %} data-partiel-oob{% endif %}>
+  <div class="subbar-inner">
+    <nav aria-label="Fil d'Ariane" class="subbar-ariane">
+      <a href="{{ url_for('projets.liste') }}" class="lien-retour">Projets</a>
+      <span aria-hidden="true">›</span>
+    </nav>
+    <span class="subbar-nom">{{ projet.code }}_{{ projet.nom }}</span>
+    <span class="pill pill-sm {{ petat.classe }}">{{ petat.label }}</span>
+  </div>
+</div>

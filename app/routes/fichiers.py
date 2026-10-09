@@ -1,6 +1,7 @@
 """Upload et téléchargement des pièces jointes (tâches et posts)."""
 from flask import Blueprint, abort, current_app, flash, g, request, send_from_directory
 
+from .. import partiel
 from ..auth import login_required
 from ..repositories import posts as posts_repo
 from ..repositories import projets as projets_repo
@@ -35,20 +36,18 @@ def upload_tache(tache_id: int):
     if g.user["role"] == "client":
         abort(403)
     if tache.get("projet_etat") in projets_repo.ETATS_CLOS:
-        flash("Ce projet est clos (terminé ou abandonné) : on ne peut plus y ajouter de fichier.", "error")
-        return _safe_redirect()
+        return _refus("Ce projet est clos (terminé ou abandonné) : on ne peut plus y ajouter de fichier.", 409)
     # Même règle que les autres actions sur une tâche (état, titre, clôture)
     # et que le point G de l'audit pour les posts : chef, co-chef ou
     # intervenant de CETTE tâche — plus n'importe qui voyant le projet.
     if not (projets_repo.user_can_manage(tache["projet_id"], g.user["id"])
             or taches_repo.user_est_intervenant(tache_id, g.user["id"])):
-        flash("Seuls le chef de projet, un co-chef ou un intervenant de cette tâche peuvent y joindre un fichier.", "error")
-        return _safe_redirect()
+        return _refus("Seuls le chef de projet, un co-chef ou un intervenant de cette tâche peuvent y joindre un "
+                      "fichier.", 403)
 
     fichier = request.files.get("fichier")
     if not fichier or not fichier.filename:
-        flash("Aucun fichier sélectionné.", "error")
-        return _safe_redirect()
+        return _refus("Aucun fichier sélectionné.", 422)
 
     nom_fichier, chemin = save_upload(fichier, f"taches/{tache_id}")
     # Fichier orphelin sur disque si l'INSERT échoue juste après (audit
@@ -58,7 +57,22 @@ def upload_tache(tache_id: int):
     except Exception:
         delete_upload(chemin)
         raise
+    if partiel.est_partiel():
+        # Lot 13 : envoi avec progression (tache-dialog.js) ; le panneau de
+        # la tâche montre aussitôt la pièce jointe.
+        from .projets import _reponse_tache
+
+        return _reponse_tache(tache["projet_id"], tache_id, [partiel.toast(f"Pièce jointe « {nom_fichier} » ajoutée.")])
     flash("Pièce jointe ajoutée.", "success")
+    return _safe_redirect()
+
+
+def _refus(message: str, statut: int):
+    """Refus d'un envoi de fichier : JSON en partiel (lot 13), message et
+    retour à la page sinon."""
+    if partiel.est_partiel():
+        return partiel.refuser(message, statut)
+    flash(message, "error")
     return _safe_redirect()
 
 

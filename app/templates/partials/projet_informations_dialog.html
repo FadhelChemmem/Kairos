@@ -24,95 +24,13 @@
    Admin de la liste Utilisateurs) ouvre la fenêtre, le champ prêt.
 #}
 <dialog id="dialog-informations-projet" class="post-dialog" aria-labelledby="dialog-informations-projet-titre"{% if ouvrir_informations %} data-ouvrir-au-chargement="chef"{% endif %}>
-  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-    <span id="dialog-informations-projet-titre" style="font-size:15px; font-weight:800;">Informations du projet</span>
+  <div class="fenetre-entete">
+    <span id="dialog-informations-projet-titre" class="fenetre-titre">Informations du projet</span>
     <button type="button" data-close-informations-dialog aria-label="Fermer" class="dialog-fermer">
       <svg aria-hidden="true" focusable="false" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
     </button>
   </div>
 
-  <form method="post" action="{{ url_for('projets.editer_informations', projet_id=projet.id) }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="form-row">
-      <label for="dialog-info-nom">Nom du projet</label>
-      <input type="text" id="dialog-info-nom" name="nom" maxlength="200" value="{{ projet.nom }}" required>
-    </div>
-    <div class="form-row-2" style="margin-bottom:0;">
-      <div class="form-row">
-        <span class="label">Code <span style="font-weight:400; color:var(--text-faint);">— fixe</span></span>
-        <div style="font-size:13px; font-weight:600; padding:8px 0;">{{ projet.code }}</div>
-      </div>
-      <div class="form-row">
-        <span class="label">Phase <span style="font-weight:400; color:var(--text-faint);">— fixe</span></span>
-        <div style="font-size:13px; font-weight:600; padding:8px 0;">{{ projet.phase }}</div>
-      </div>
-    </div>
-    <div class="form-row-2" style="margin-bottom:0;">
-      <div class="form-row">
-        <label for="dialog-info-client">Client</label>
-        <input type="text" id="dialog-info-client" name="client" value="{{ projet.client or 'IPCO' }}" maxlength="150">
-      </div>
-      <div class="form-row">
-        <label for="dialog-info-honoraires">Honoraires</label>
-        <input type="text" id="dialog-info-honoraires" name="honoraires" inputmode="decimal" placeholder="12 500,00" value="{{ montant_fr(projet.honoraires) }}">
-      </div>
-    </div>
-    <div class="form-row">
-      {% if chef_modifiable %}
-      <label for="dialog-info-chef">Chef de projet</label>
-      <select id="dialog-info-chef" name="chef_projet_id" data-search-combobox data-search-riche data-search-placeholder="Rechercher un chef de projet…" data-search-vide="Aucun chef de projet trouvé" aria-describedby="dialog-info-chef-aide">
-        {% for u in chefs_possibles %}
-          {% set rs = role_style(u.role) if u.role else none %}
-          <option value="{{ u.id }}" {{ 'selected' if u.id == projet.chef_projet_id }} data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}" data-couleur="{{ avatar_color(u.id) }}"{% if u.avatar_chemin %} data-photo="{{ avatar_url(u.id, u.avatar_chemin) }}"{% endif %} data-sous-titre="{% if u.inactif %}Compte désactivé · chef actuel{% elif u.id == projet.chef_projet_id %}Chef actuel{% if rs %} · {{ rs.label }}{% endif %}{% else %}{{ rs.label if rs }}{% if u.poste and (not rs or u.poste|lower != rs.label|lower) %} · {{ u.poste }}{% endif %}{% endif %}">{{ u.prenom }} {{ u.nom }}{{ ' (désactivé)' if u.inactif }}</option>
-        {% endfor %}
-      </select>
-      <p id="dialog-info-chef-aide" class="aide-champ">Chef de projet ou administrateur, compte actif. L'ancien chef devient co-chef.</p>
-      {% else %}
-      <span class="label">Chef de projet</span>
-      <div style="font-size:13px; font-weight:600; padding:8px 0 2px;">{{ projet.chef_prenom }} {{ projet.chef_nom }}</div>
-      <p class="aide-champ">Projet clos : rouvrez-le d'abord pour changer de chef.</p>
-      {% endif %}
-    </div>
-    <div class="form-row">
-      <label for="dialog-info-etat">État</label>
-      <select id="dialog-info-etat" name="etat">
-        <option value="en_cours" {{ 'selected' if projet.etat == 'en_cours' }}>En cours</option>
-        <option value="bloque" {{ 'selected' if projet.etat == 'bloque' }}>Bloqué</option>
-        <option value="termine" {{ 'selected' if projet.etat == 'termine' }}>Terminé</option>
-        <option value="abandonne" {{ 'selected' if projet.etat == 'abandonne' }}>Abandonné</option>
-      </select>
-    </div>
-    <div class="form-row">
-      <label for="dialog-info-lots">Lots</label>
-      <select id="dialog-info-lots" name="lots" multiple data-chip-select>
-        <option value="CM" {{ 'selected' if 'CM' in lots|map(attribute='code')|list }}>CM — Charpente métallique</option>
-        <option value="GO" {{ 'selected' if 'GO' in lots|map(attribute='code')|list }}>GO — Gros œuvre</option>
-      </select>
-    </div>
-    <div class="form-row-2" style="margin-bottom:0;">
-      <div class="form-row">
-        <label for="dialog-info-debut">Date de début</label>
-        <input type="date" id="dialog-info-debut" name="date_debut" value="{{ projet.date_debut.isoformat() if projet.date_debut else '' }}">
-      </div>
-      <div class="form-row">
-        <label for="dialog-info-fin">Date de fin</label>
-        <input type="date" id="dialog-info-fin" name="date_fin" value="{{ projet.date_fin.isoformat() if projet.date_fin else '' }}"{% if projet.date_debut and (not projet.date_fin or projet.date_fin >= projet.date_debut) %} min="{{ projet.date_debut.isoformat() }}"{% endif %}>
-      </div>
-    </div>
-    <div class="form-row" style="margin-bottom:0;">
-      <label for="dialog-info-phase-liee">Phase liée <span style="font-weight:400; color:var(--text-faint);">— facultatif</span></label>
-      <select id="dialog-info-phase-liee" name="phase_liee_id" data-search-combobox data-search-placeholder="Rechercher un projet…">
-        <option value="" data-vide>— Aucune —</option>
-        {% for p in projets_phase_liee %}
-          <option value="{{ p.id }}" {{ 'selected' if p.id == projet.phase_liee_id }}>{{ p.code }}_{{ p.nom }}</option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border-soft);">
-      <button type="button" data-close-informations-dialog class="btn-secondary" style="width:auto; padding:9px 16px;">Annuler</button>
-      <button type="submit" class="btn-primary btn-accent" style="width:auto; padding:9px 18px;">Enregistrer</button>
-    </div>
-  </form>
+  {% include "partials/projet_informations_form.html" %}
 </dialog>
 <script src="{{ url_for('static', filename='js/projet-informations-dialog.js') }}" defer></script>

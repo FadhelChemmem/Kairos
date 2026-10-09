@@ -1,0 +1,19 @@
+{# Interrupteur « Compte actif » de la fiche (lot 13) : optimiste, la carte
+   seule est remplacée, toast « Annuler » ; la carte de réinitialisation
+   suit (hors cible). Même route que la liste (retour=fiche). #}
+<form method="post" action="{{ url_for('utilisateurs.toggle_actif', user_id=utilisateur.id) }}" class="card k-carte-fiche k-interrupteur-ligne" id="utilisateur-actif"
+      data-partiel="#utilisateur-actif" data-optimiste="bascule">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="retour" value="fiche">
+  <input type="hidden" name="actif_cible" value="{{ '0' if utilisateur.actif else '1' }}">
+  <div>
+    <h2 class="k-interrupteur-titre" id="fiche-actif-titre">Compte actif</h2>
+    <p class="k-interrupteur-note" id="fiche-actif-note">{{ 'Le compte peut se connecter.' if utilisateur.actif else 'Désactivé : le compte ne peut plus se connecter et disparaît des listes d’affectation ; rien n’est supprimé.' }}</p>
+  </div>
+  <button type="submit" id="fiche-actif" class="toggle toggle-liste" role="switch" aria-checked="{{ 'true' if utilisateur.actif else 'false' }}"
+          aria-labelledby="fiche-actif-titre" aria-describedby="fiche-actif-note"
+          {% if utilisateur.id == g.user.id %}disabled title="Vous ne pouvez pas désactiver votre propre compte"{% else %}title="{{ 'Désactiver' if utilisateur.actif else 'Réactiver' }} ce compte"{% endif %}>
+    <span class="toggle-knob"></span>
+  </button>
+</form>
+{% if oob_reinit %}{% include "partials/utilisateur_reinit.html" %}{% endif %}

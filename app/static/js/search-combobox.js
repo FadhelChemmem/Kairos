@@ -28,6 +28,11 @@
  *   - data-search-vide : texte quand rien ne correspond ;
  *   - window.KairosSearchCombobox.init(racine) pour les contenus insérés
  *     après coup.
+ *
+ * Lot 13 (audit a11y-perf M11) : data-search-url — les options sont
+ * chargées à la demande (GET <url>?q=…, réponse {"resultats": [{id,
+ * libelle}]}) au lieu d'être toutes rendues dans la page ; l'option choisie
+ * et l'option vide (data-vide) restent toujours dans le <select>.
  */
 (function () {
   // Mêmes règles que fn_recherche côté serveur (texte-recherche.js,
@@ -60,6 +65,7 @@
     select.style.display = 'none';
     var riche = select.hasAttribute('data-search-riche');
     var modeAction = select.hasAttribute('data-search-action');
+    var urlDistante = select.getAttribute('data-search-url');
 
     var wrap = document.createElement('div');
     wrap.className = 'search-combobox-wrap' + (riche ? ' search-combobox-riche' : '');
@@ -87,6 +93,11 @@
     var list = document.createElement('div');
     list.className = 'search-combobox-list';
     list.setAttribute('role', 'listbox');
+    // Lot 13 (audit a11y N1) : liste défilante hors de l'ordre de
+    // tabulation — sans cela, Chromium la rend focalisable : Tab depuis le
+    // champ ouvert y allait, le blur la fermait et le focus tombait sur
+    // <body>. Les options restent pilotées par aria-activedescendant.
+    list.tabIndex = -1;
     list.hidden = true;
     wrap.appendChild(list);
 
@@ -99,6 +110,12 @@
     input.setAttribute('aria-autocomplete', 'list');
     input.setAttribute('aria-controls', listId);
     input.setAttribute('aria-expanded', 'false');
+
+    // Lot 13 (audit a11y M7) : nombre de résultats annoncé pendant la frappe.
+    var statut = document.createElement('span');
+    statut.className = 'sr-only';
+    statut.setAttribute('role', 'status');
+    wrap.appendChild(statut);
 
     select.insertAdjacentElement('afterend', wrap);
 
@@ -156,6 +173,9 @@
         list.appendChild(vide);
       }
       trouves = matches;
+      statut.textContent = !f ? '' : (matches.length
+        ? matches.length + ' résultat' + (matches.length > 1 ? 's' : '')
+        : (select.getAttribute('data-search-vide') || 'Aucun résultat'));
       // Sans filtre, le choix en cours reste surligné : Entrée juste après
       // le focus ne change rien (avant : le premier projet de la liste était
       // choisi en silence). Avec un filtre, le premier résultat.
@@ -196,7 +216,40 @@
       surligner();
     }
 
+    // Options chargées à la demande (data-search-url) : dernière réponse
+    // seulement (frappe rapide), puis la liste ouverte est réaffichée.
+    var demande = 0, minuteur = null;
+    function charger(texte) {
+      if (!urlDistante) return;
+      clearTimeout(minuteur);
+      minuteur = setTimeout(function () {
+        var numero = ++demande;
+        var adresse = urlDistante + (urlDistante.indexOf('?') === -1 ? '?' : '&') + 'q=' + encodeURIComponent(texte.trim());
+        fetch(adresse, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (corps) {
+            if (!corps || numero !== demande) return;
+            Array.prototype.slice.call(select.options).forEach(function (o) {
+              if (o.value && !o.hasAttribute('data-vide') && o.value !== select.value) select.removeChild(o);
+            });
+            (corps.resultats || []).forEach(function (r) {
+              var valeur = String(r.id);
+              if (valeur === select.value) return;
+              var o = document.createElement('option');
+              o.value = valeur;
+              o.textContent = r.libelle;
+              select.appendChild(o);
+            });
+            if (!list.hidden && document.activeElement === input) {
+              afficher(input.value === labelFor(select.value) ? '' : input.value);
+            }
+          })
+          .catch(function () { /* hors ligne : la liste actuelle reste */ });
+      }, texte ? 200 : 0);
+    }
+
     input.addEventListener('focus', function () {
+      if (urlDistante) charger(input.value === labelFor(select.value) ? '' : input.value);
       // Focus rendu par le code après une action (data-sans-ouverture) :
       // la liste reste fermée (flèche ↓ ou clic pour l'ouvrir).
       if (input.dataset.sansOuverture) { delete input.dataset.sansOuverture; return; }
@@ -212,6 +265,7 @@
     });
     input.addEventListener('input', function () {
       afficher(input.value);
+      charger(input.value);
       // Champ vidé : Entrée choisit « — Aucune — » (retirer la phase liée).
       if (!input.value.trim()) {
         for (var i = 0; i < trouves.length; i++) {
@@ -253,9 +307,11 @@
     function annulerSaisie() {
       if (input.value !== labelFor(select.value)) input.value = labelFor(select.value);
     }
-    document.addEventListener('click', function (evt) {
-      if (!wrap.contains(evt.target)) { fermer(); annulerSaisie(); }
-    });
+    // Une seule écoute du document pour tous les champs (lot 13 : les
+    // champs remplacés par un fragment partiel ne laissent rien derrière).
+    wrap._fermerSiDehors = function (cibleClic) {
+      if (!wrap.contains(cibleClic)) { fermer(); annulerSaisie(); }
+    };
     // Un clic dans la liste (résultat, barre de défilement) ne fait pas
     // perdre le focus au champ : quitter le champ (Tab, clic ailleurs) veut
     // donc toujours dire « abandonner la saisie » — liste fermée, texte
@@ -282,6 +338,10 @@
     (racine && racine.querySelectorAll ? racine : document).querySelectorAll('select[data-search-combobox]').forEach(build);
   }
   window.KairosSearchCombobox = { init: init };
+  document.addEventListener('click', function (evt) {
+    document.querySelectorAll('.search-combobox-wrap').forEach(function (w) { if (w._fermerSiDehors) w._fermerSiDehors(evt.target); });
+  });
+  document.addEventListener('kairos:fragment', function (e) { init(e.detail && e.detail.racine); });
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function () { init(); });

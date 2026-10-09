@@ -305,42 +305,86 @@ def _verrouiller_projet(cur, projet_id: int) -> None:
     cur.execute("SELECT 1 FROM projet WHERE id = %s FOR NO KEY UPDATE", (projet_id,))
 
 
-def _suivre_etat_projet(cur, projet_id: int, etat_tache: str, current_user_id: int,
-                        ancien_etat: str | None = None) -> None:
-    """État du projet qui suit ses tâches (décision Fadhel, lot 8) : une
-    tâche qui passe « Bloqué » bloque le projet ; une tâche créée ou remise
-    « En cours » le remet « En cours ». Une tâche bloquée qui est terminée,
-    vérifiée, arrêtée ou abandonnée le débloque aussi, s'il ne reste plus
-    aucune tâche bloquée (sinon le projet restait bloqué pour une tâche
-    close). Seulement entre En cours et Bloqué :
-    un projet terminé ou abandonné n'est jamais rouvert par ce biais (il
-    est de toute façon figé, voir routes/projets.py:_refus_si_clos). Même
-    transaction que le changement de la tâche, avec le post automatique
-    habituel du changement d'état du projet."""
-    from ..utils import projet_etat_style
+# « Annuler » d'un toast (lot 13, contre-expertise UX N9) : rejoué dans ce
+# délai, le retour à l'état d'avant retire le post automatique de l'aller
+# (s'il est resté sans réaction, commentaire, réponse ni notification) au
+# lieu d'en ajouter un second ; la suppression reste au journal d'audit.
+DELAI_ANNULATION_SECONDES = 60
 
-    passage = {"bloque": ("en_cours", "bloque"), "en_cours": ("bloque", "en_cours")}.get(etat_tache)
-    if passage is None and ancien_etat == "bloque":
-        cur.execute("SELECT 1 AS reste FROM tache WHERE projet_id = %s AND etat = 'bloque' LIMIT 1", (projet_id,))
-        if cur.fetchone() is None:
-            passage = ("bloque", "en_cours")
-    if passage is None:
-        return
-    avant, apres = passage
-    cur.execute(
-        "UPDATE projet SET etat = %s WHERE id = %s AND etat = %s RETURNING id",
-        (apres, projet_id, avant),
-    )
-    if cur.fetchone() is None:
-        return
+
+def _retirer_post_annule(cur, projet_id: int, auteur_id: int, evenement: str, contenu: str | None,
+                         tache_id: int | None = None) -> bool:
+    """Supprime le dernier post automatique `evenement` de l'auteur (sur la
+    tâche, ou sur le projet sans tâche), récent et intact ; `contenu` None :
+    post sans texte (clôture sans message). Vrai si un post a été retiré."""
     cur.execute(
         """
-        INSERT INTO post (projet_id, auteur_id, type_code, contenu, evenement)
-        VALUES (%s, %s, 'information', %s, 'etat_projet')
+        DELETE FROM post p
+        WHERE p.id = (
+                SELECT id FROM post
+                WHERE projet_id = %(p)s AND tache_id IS NOT DISTINCT FROM %(t)s AND evenement = %(e)s
+                ORDER BY created_at DESC, id DESC LIMIT 1)
+          AND p.auteur_id = %(a)s
+          AND p.contenu IS NOT DISTINCT FROM %(c)s
+          AND p.created_at > now() - make_interval(secs => %(d)s)
+          AND NOT EXISTS (SELECT 1 FROM post_commentaire c WHERE c.post_id = p.id)
+          AND NOT EXISTS (SELECT 1 FROM post_reaction r WHERE r.post_id = p.id)
+          AND NOT EXISTS (SELECT 1 FROM post_piece_jointe j WHERE j.post_id = p.id)
+          AND NOT EXISTS (SELECT 1 FROM notification n WHERE n.post_id = p.id)
+          AND NOT EXISTS (SELECT 1 FROM post r WHERE r.parent_post_id = p.id)
+        RETURNING p.id
         """,
-        (projet_id, current_user_id,
-         f"{projet_etat_style(avant)['label']} → {projet_etat_style(apres)['label']}"),
+        {"p": projet_id, "t": tache_id, "e": evenement, "a": auteur_id, "c": contenu,
+         "d": DELAI_ANNULATION_SECONDES},
     )
+    return cur.fetchone() is not None
+
+
+def recalculer_etat_projet(cur, projet_id: int, current_user_id: int | None,
+                           annulation: bool = False) -> tuple[str, str] | None:
+    """État d'un projet OUVERT recalculé d'après ses tâches (décision 1 du
+    lot 13, règle du lot 11) : Bloqué si et seulement si une de ses tâches
+    est bloquée, En cours sinon ; un projet Terminé ou Abandonné ne bouge
+    pas. Fonction unique, appelée dans la transaction de TOUTE écriture de
+    tâche ou de projet (création, changement d'état, clôture, informations
+    du projet), sous le verrou du projet (_verrouiller_projet ou FOR
+    UPDATE) — même règle que fn_etat_projet_recalcule (migration 0019), qui
+    sert ici. Un changement donne le post automatique habituel « En cours →
+    Bloqué » au nom de l'acteur. Renvoie (avant, après), None sans
+    changement.
+
+    Pourquoi dans l'appli plutôt qu'un trigger : le post automatique porte
+    l'auteur de l'action (un trigger ne le connaît pas toujours : scripts,
+    rechargement Chronos), le verrou du projet est déjà pris par chaque
+    écriture, et le rechargement Chronos applique déjà la même règle sans
+    déclencher des milliers de recalculs ligne à ligne."""
+    from ..utils import projet_etat_style
+
+    cur.execute(
+        """
+        UPDATE projet p SET etat = fn_etat_projet_recalcule(p.etat, p.id)
+        FROM (SELECT etat AS ancien FROM projet WHERE id = %(p)s) a
+        WHERE p.id = %(p)s AND p.etat <> fn_etat_projet_recalcule(p.etat, p.id)
+        RETURNING a.ancien, p.etat
+        """,
+        {"p": projet_id},
+    )
+    row = cur.fetchone()
+    if row is None:
+        return None
+    avant, apres = str(row["ancien"]), str(row["etat"])
+    if current_user_id is not None and not (annulation and _retirer_post_annule(
+            cur, projet_id, current_user_id, "etat_projet",
+            f"{projet_etat_style(apres)['label']} → {projet_etat_style(avant)['label']}")):
+        cur.execute(
+            """
+            INSERT INTO post (projet_id, auteur_id, type_code, contenu, evenement)
+            VALUES (%s, %s, 'information', %s, 'etat_projet')
+            """,
+            (projet_id, current_user_id,
+             f"{projet_etat_style(avant)['label']} → {projet_etat_style(apres)['label']}"),
+        )
+    return avant, apres
 
 
 def create_tache(
@@ -383,8 +427,9 @@ def create_tache(
             """,
             (projet_id, tache_id, parent_post_id, current_user_id, titre),
         )
-        # Nouvelle tâche (En cours) : un projet bloqué repasse En cours.
-        _suivre_etat_projet(cur, projet_id, "en_cours", current_user_id)
+        # Lot 13 : l'état du projet suit TOUTES ses tâches (une nouvelle tâche
+        # ne débloque plus un projet qui garde une tâche bloquée).
+        recalculer_etat_projet(cur, projet_id, current_user_id)
         return tache_id
 
 
@@ -435,7 +480,8 @@ def add_intervenant(tache_id: int, projet_id: int, utilisateur_id: int, current_
         return True
 
 
-def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, peut_gerer: bool = False) -> bool:
+def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, peut_gerer: bool = False,
+             annulation: bool = False) -> bool:
     """Changement d'état simple (En cours / Bloqué / Vérifié / Arrêt /
     Abandonné) — avec un post automatique "ancien état → nouvel état"
     depuis le 2026-09-29 (P1) ; la clôture ("Terminé", voir close_tache)
@@ -459,7 +505,11 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, 
     tâche dans un état de ETATS_RESERVES_GESTION ou l'en faire sortir lève
     EtatReserve — contrôlé sur l'état LU SOUS VERROU, pas sur celui affiché
     au moment du clic. Faux par défaut : un appelant qui oublie de le
-    préciser n'obtient que les droits d'un intervenant."""
+    préciser n'obtient que les droits d'un intervenant.
+
+    `annulation` (« Annuler » d'un toast, contre-expertise UX N9) : le post
+    automatique de l'aller (changement d'état, ou clôture sans message) est
+    retiré au lieu d'ajouter celui du retour (_retirer_post_annule)."""
     from ..utils import tache_etat_style
 
     with db.get_cursor(user_id=current_user_id) as cur:
@@ -485,15 +535,22 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, 
         # Post automatique du changement d'état (retour Fadhel, 2026-09-29,
         # P1 — avant, seules la création et la clôture en avaient un).
         if avant["etat"] != etat:
-            cur.execute(
-                """
-                INSERT INTO post (projet_id, tache_id, auteur_id, type_code, contenu, evenement)
-                VALUES (%s, %s, %s, 'information', %s, 'etat_tache')
-                """,
-                (projet_id, tache_id, current_user_id,
-                 f"{tache_etat_style(avant['etat'])['label']} → {tache_etat_style(etat)['label']}"),
-            )
-            _suivre_etat_projet(cur, projet_id, etat, current_user_id, ancien_etat=avant["etat"])
+            retire = annulation and (
+                _retirer_post_annule(cur, projet_id, current_user_id, "cloture_tache", None, tache_id)
+                if avant["etat"] == "termine" else
+                _retirer_post_annule(cur, projet_id, current_user_id, "etat_tache",
+                                     f"{tache_etat_style(etat)['label']} → {tache_etat_style(avant['etat'])['label']}",
+                                     tache_id))
+            if not retire:
+                cur.execute(
+                    """
+                    INSERT INTO post (projet_id, tache_id, auteur_id, type_code, contenu, evenement)
+                    VALUES (%s, %s, %s, 'information', %s, 'etat_tache')
+                    """,
+                    (projet_id, tache_id, current_user_id,
+                     f"{tache_etat_style(avant['etat'])['label']} → {tache_etat_style(etat)['label']}"),
+                )
+            recalculer_etat_projet(cur, projet_id, current_user_id, annulation=annulation)
         return True
 
 
@@ -581,17 +638,19 @@ def close_tache(
     reserves_hors_cloture = tuple(e for e in ETATS_RESERVES_GESTION if e not in ("termine", "verifie"))
     with db.get_cursor(user_id=current_user_id) as cur:
         _verrouiller_projet(cur, projet_id)
-        # `avant` (CTE) : l'état AVANT la clôture — une tâche bloquée qui se
-        # termine peut débloquer le projet (_suivre_etat_projet).
+        # date_fin (lot 13, décision 5 et audit temps T-I2 / T-M3) : la date du
+        # jour au fuseau de l'acteur, date simulée comprise mais jamais après
+        # la vraie date (fn_date_ecriture, migration 0019).
         cur.execute(
             """
             WITH avant AS (SELECT etat FROM tache WHERE id = %s)
-            UPDATE tache SET etat = 'termine', date_fin = fn_aujourdhui()
+            UPDATE tache SET etat = 'termine',
+                             date_fin = fn_date_ecriture((SELECT fuseau FROM utilisateur WHERE id = %s))
             WHERE id = %s AND projet_id = %s AND etat NOT IN ('termine', 'verifie')
               AND (%s OR etat::text <> ALL (%s))
             RETURNING id, projet_id, titre, (SELECT etat FROM avant) AS ancien_etat
             """,
-            (tache_id, tache_id, projet_id, peut_gerer, list(reserves_hors_cloture)),
+            (tache_id, current_user_id, tache_id, projet_id, peut_gerer, list(reserves_hors_cloture)),
         )
         row = cur.fetchone()
         if row is None:
@@ -612,6 +671,136 @@ def close_tache(
             (row["projet_id"], tache_id, current_user_id, type_code, contenu),
         )
         post_id = cur.fetchone()["id"]
-        _suivre_etat_projet(cur, row["projet_id"], "termine", current_user_id,
-                            ancien_etat=row.get("ancien_etat"))
+        recalculer_etat_projet(cur, row["projet_id"], current_user_id)
         return post_id
+
+
+# ---------------------------------------------------------------------
+# Intervenants et échéance d'une tâche existante (lot 13, décision 4)
+# ---------------------------------------------------------------------
+def _noms(cur, ids: list[int]) -> dict:
+    cur.execute("SELECT id, prenom, nom, role FROM utilisateur WHERE id = ANY(%s)", (list(ids),))
+    return {r["id"]: dict(r) for r in cur.fetchall()}
+
+
+def _nom_complet(u: dict | None) -> str:
+    u = u or {}
+    return f"{u.get('prenom') or ''} {u.get('nom') or ''}".strip()
+
+
+def _tache_ouverte_sous_verrou(cur, tache_id: int, projet_id: int) -> dict | None:
+    """Projet puis tâche verrouillés (même ordre que set_etat) ; None si la
+    tâche n'est pas de ce projet ; TacheClose si elle est close."""
+    _verrouiller_projet(cur, projet_id)
+    cur.execute(
+        "SELECT id, titre, etat, date_debut, date_echeance, type_deadline FROM tache "
+        "WHERE id = %s AND projet_id = %s FOR UPDATE",
+        (tache_id, projet_id),
+    )
+    tache = cur.fetchone()
+    if tache is not None and tache["etat"] in ETATS_CLOS:
+        raise TacheClose()
+    return tache
+
+
+def ajouter_intervenants(tache_id: int, projet_id: int, utilisateur_ids: list[int], current_user_id: int) -> dict | None:
+    """Ajoute des intervenants à une tâche OUVERTE (le chef, un co-chef ou
+    l'Admin : contrôlé par la route) — post automatique 'intervenant_tache'
+    dans la même transaction. Un chef de projet ajouté devient co-chef du
+    projet (trigger 0013) : il est signalé dans `co_chefs`. Renvoie
+    {post_id, titre, ajoutes: [ids], co_chefs: [ids]} (ajoutes vide : tous
+    déjà affectés, pas de post), None si la tâche n'est pas de ce projet."""
+    with db.get_cursor(user_id=current_user_id) as cur:
+        tache = _tache_ouverte_sous_verrou(cur, tache_id, projet_id)
+        if tache is None:
+            return None
+        cur.execute("SELECT utilisateur_id FROM projet_co_chef WHERE projet_id = %s", (projet_id,))
+        co_chefs_avant = {r["utilisateur_id"] for r in cur.fetchall()}
+        ajoutes = []
+        for uid in dict.fromkeys(utilisateur_ids):
+            cur.execute(
+                "INSERT INTO tache_intervenant (tache_id, utilisateur_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (tache_id, uid),
+            )
+            if cur.rowcount == 1:
+                ajoutes.append(uid)
+        if not ajoutes:
+            return {"post_id": None, "titre": tache["titre"], "ajoutes": [], "co_chefs": []}
+        cur.execute("SELECT utilisateur_id FROM projet_co_chef WHERE projet_id = %s", (projet_id,))
+        co_chefs = [uid for uid in ajoutes if uid not in co_chefs_avant
+                    and uid in {r["utilisateur_id"] for r in cur.fetchall()}]
+        gens = _noms(cur, ajoutes + [current_user_id])
+        noms = ", ".join(_nom_complet(gens.get(uid)) for uid in ajoutes)
+        cur.execute(
+            """
+            INSERT INTO post (projet_id, tache_id, auteur_id, type_code, contenu, evenement)
+            VALUES (%s, %s, %s, 'information', %s, 'intervenant_tache')
+            RETURNING id
+            """,
+            (projet_id, tache_id, current_user_id, f"{_nom_complet(gens.get(current_user_id))} a ajouté {noms}."),
+        )
+        return {"post_id": cur.fetchone()["id"], "titre": tache["titre"], "ajoutes": ajoutes, "co_chefs": co_chefs}
+
+
+def retirer_intervenant(tache_id: int, projet_id: int, utilisateur_id: int, current_user_id: int) -> dict | None:
+    """Retire un intervenant d'une tâche OUVERTE, post automatique
+    'intervenant_tache' dans la même transaction (ses heures restent).
+    Renvoie {post_id, titre, personne} ; {} s'il n'était pas affecté ; None
+    si la tâche n'est pas de ce projet."""
+    with db.get_cursor(user_id=current_user_id) as cur:
+        tache = _tache_ouverte_sous_verrou(cur, tache_id, projet_id)
+        if tache is None:
+            return None
+        cur.execute("DELETE FROM tache_intervenant WHERE tache_id = %s AND utilisateur_id = %s",
+                    (tache_id, utilisateur_id))
+        if cur.rowcount == 0:
+            return {}
+        gens = _noms(cur, [utilisateur_id, current_user_id])
+        cur.execute(
+            """
+            INSERT INTO post (projet_id, tache_id, auteur_id, type_code, contenu, evenement)
+            VALUES (%s, %s, %s, 'information', %s, 'intervenant_tache')
+            RETURNING id
+            """,
+            (projet_id, tache_id, current_user_id,
+             f"{_nom_complet(gens.get(current_user_id))} a retiré {_nom_complet(gens.get(utilisateur_id))}."),
+        )
+        return {"post_id": cur.fetchone()["id"], "titre": tache["titre"], "personne": gens.get(utilisateur_id)}
+
+
+TYPES_DEADLINE_LIBELLES = {"rendu_client": "rendu client", "interne": "interne"}
+
+
+def set_echeance(tache_id: int, projet_id: int, date_echeance, type_deadline: str, current_user_id: int) -> dict | None:
+    """Échéance et type d'échéance d'une tâche OUVERTE (« modifiable » selon
+    la spécification) — post automatique 'echeance_tache' « 14 oct. 2026
+    (rendu client) → 21 oct. 2026 (interne) » dans la même transaction.
+    `date_echeance` None : sans échéance. Renvoie {post_id, titre, avant,
+    apres} ({} si rien ne change), None si la tâche n'est pas de ce projet.
+    Les dates incohérentes (échéance avant le début de la tâche) sont
+    refusées par la route, puis par le trigger trg_check_dates_tache_maj."""
+    from ..utils import date_courte
+
+    def libelle(d, t):
+        return f"{date_courte(d, True) if d else 'sans échéance'} ({TYPES_DEADLINE_LIBELLES.get(t, t)})"
+
+    with db.get_cursor(user_id=current_user_id) as cur:
+        tache = _tache_ouverte_sous_verrou(cur, tache_id, projet_id)
+        if tache is None:
+            return None
+        if tache["date_echeance"] == date_echeance and tache["type_deadline"] == type_deadline:
+            return {}
+        cur.execute("UPDATE tache SET date_echeance = %s, type_deadline = %s WHERE id = %s",
+                    (date_echeance, type_deadline, tache_id))
+        avant = libelle(tache["date_echeance"], tache["type_deadline"])
+        apres = libelle(date_echeance, type_deadline)
+        cur.execute(
+            """
+            INSERT INTO post (projet_id, tache_id, auteur_id, type_code, contenu, evenement)
+            VALUES (%s, %s, %s, 'information', %s, 'echeance_tache')
+            RETURNING id
+            """,
+            (projet_id, tache_id, current_user_id, f"Échéance : {avant} → {apres}"),
+        )
+        return {"post_id": cur.fetchone()["id"], "titre": tache["titre"], "avant": avant, "apres": apres,
+                "date_debut": tache["date_debut"]}

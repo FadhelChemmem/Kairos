@@ -1,0 +1,26 @@
+{# Commentaires d'un post et son champ d'envoi (retour Fadhel, 2026-09-29 :
+   toujours affichés, les 3 derniers, les plus anciens repliés au-delà).
+   Lot 13 : cible des envois en partiel (#post-<id>-commentaires) —
+   commentaire, réponse, modification, suppression. Contexte : post,
+   next_url ; facultatifs : nouveau_commentaire_id, commentaire_modifie_id. #}
+{% import "partials/commentaires_macros.html" as cm with context %}
+{% set commentaires = post.commentaires|default([]) %}
+<div class="post-commentaires" id="post-{{ post.id }}-commentaires">
+  {% if commentaires %}
+    <div class="post-comments">
+      {% if commentaires|length > 3 %}
+        <details class="post-comments-plus">
+          <summary>Voir {{ 'le commentaire précédent' if commentaires|length == 4 else 'les ' ~ (commentaires|length - 3) ~ ' commentaires précédents' }}</summary>
+          <div class="post-comments post-comments-anciens">
+            {% for c in commentaires[:-3] %}{{ cm.commentaire(c, post, next_url) }}{% endfor %}
+          </div>
+        </details>
+      {% endif %}
+      {% for c in commentaires[-3:] %}{{ cm.commentaire(c, post, next_url) }}{% endfor %}
+    </div>
+  {% endif %}
+  {# Projet terminé ou abandonné : plus de commentaire (décision Fadhel, lot 7). #}
+  {% if post.projet_etat not in ('termine', 'abandonne') %}
+  {{ cm.composer_commentaire(post, next_url) }}
+  {% endif %}
+</div>

@@ -30,10 +30,12 @@ MAX_CHAMPS_PERSO = 30
 MAX_CHAMP_PERSO_NOM = 100
 MAX_CHAMP_PERSO_VALEUR = 500
 
-# Dates plausibles pour un projet, une tâche ou une embauche : attrape les
-# fautes de frappe (« 0202 » au lieu de « 2026 », « 20266 »).
-DATE_MIN = datetime.date(1990, 1, 1)
-DATE_MAX = datetime.date(2100, 12, 31)
+# Dates plausibles pour un projet, une tâche, une embauche, le Daily log et
+# la date simulée (une seule paire de bornes depuis le lot 13, la même que la
+# garde du Daily log en base) : attrape les fautes de frappe (« 0202 » au
+# lieu de « 2026 », « 20266 »).
+DATE_MIN = datetime.date(2000, 1, 1)
+DATE_MAX = datetime.date(2099, 12, 31)
 
 _EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 _TELEPHONE = re.compile(r"[0-9+ ().\-/]*")

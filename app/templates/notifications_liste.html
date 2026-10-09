@@ -7,39 +7,19 @@
 <div class="subbar">
   <div class="subbar-inner">
     <h1 class="page-titre">Notifications</h1>
-    <span style="font-size:12.5px; color:var(--text-muted);">{% set nb_non_lues = notifications|selectattr('lu', 'equalto', false)|list|length %}{{ nb_non_lues }} non lue{{ 's' if nb_non_lues > 1 }}</span>
+    {% include "partials/notifications_compte.html" %}
     {% if notifications %}
-    <form method="post" action="{{ url_for('notifications.marquer_toutes_lues') }}" style="margin-left:auto;">
+    {# Lot 13 : optimiste (pastilles éteintes, badge à 0), sans recharger ;
+       sans JavaScript : POST puis retour à la page. #}
+    <form method="post" action="{{ url_for('notifications.marquer_toutes_lues') }}" class="notif-toutes" data-partiel="#notifications-liste" data-optimiste="notifs-toutes-lues">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="linkbtn" style="width:auto; padding:6px 12px; font-size:12.5px; font-weight:600; color:var(--brand-text-strong);">Tout marquer comme lu</button>
+      <button type="submit" class="btn-fantome btn-petit" id="notifs-toutes-lues">Tout marquer comme lu</button>
     </form>
     {% endif %}
   </div>
 </div>
 
-<div class="page-wrap" style="max-width:760px; padding-top:20px; padding-bottom:60px;">
-  <div class="card notif-list" style="padding:4px 12px;">
-    {% for n in notifications %}
-      <form method="post" action="{{ url_for('notifications.ouvrir', notification_id=n.id) }}" style="margin:0;">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="notif-item {{ '' if n.lu else 'non-lu' }}">
-        {# Lot 10 (audit front I8) : <span> en display:block — un <div>
-           n'est pas permis dans un <button>. État « non lue » dit en texte. #}
-        <span class="notif-dot {{ 'vide' if n.lu }}" aria-hidden="true"></span>
-        <span style="display:block; flex:1; min-width:0;">
-          <span style="display:flex; align-items:center; gap:8px; margin-bottom:3px;">
-            {% set cs = notif_categorie_style(n.categorie) %}
-            <span class="pill pill-sm" style="background:{{ cs.bg }}; color:{{ cs.fg }};">{{ cs.label }}</span>
-            <span style="font-size:11px; color:var(--text-muted);">{{ n.created_at|il_y_a }}</span>
-            {% if not n.lu %}<span class="sr-only">(non lue)</span>{% endif %}
-          </span>
-          <span style="display:block; font-size:13px; {{ 'font-weight:600;' if not n.lu }} color:var(--text);">{{ n.message }}</span>
-        </span>
-      </button>
-      </form>
-    {% else %}
-      <div style="padding:28px 4px; font-size:13px; color:var(--text-muted); text-align:center;">Aucune notification pour l'instant.</div>
-    {% endfor %}
-  </div>
+<div class="page-wrap k-page notif-page">
+  {% include "partials/notifications_liste.html" %}
 </div>
 {% endblock %}

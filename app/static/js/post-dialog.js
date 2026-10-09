@@ -51,6 +51,7 @@
   // doit alors jamais le choisir d'office.
   var aucunPossible = !!(projetSelect && Array.prototype.some.call(projetSelect.options, function (o) { return o.value === AUCUN; }));
   var gereForce = null;        // data-gere du déclencheur, s'il y en a un
+  var ouvreur = null;          // bouton qui a ouvert la fenêtre
 
   function radio(intent) { return dialog.querySelector('#intent-' + intent); }
   function onglet(intent) { return dialog.querySelector('.seg label[for="intent-' + intent + '"]'); }
@@ -117,12 +118,34 @@
     if (projetOptionnel) projetOptionnel.style.display = intentCourant() === 'information' ? '' : 'none';
   }
 
+  // Lot 13 (contre-expertise rôles I7) : l'onglet Tâche ne propose que les
+  // personnes qui voient le projet choisi (option data-voient, ids fournis
+  // par le serveur) ; sans cette donnée (projet imposé), tout reste proposé
+  // et le serveur écarte en le disant.
+  var intervenantsTache = tacheForm ? tacheForm.querySelector('select[name="intervenants"]') : null;
+  function filtrerIntervenants(pid) {
+    if (!intervenantsTache || !projetSelect) return;
+    var opt = pid && pid !== AUCUN ? optionProjet(pid) : null;
+    var voient = null;
+    if (opt && opt.hasAttribute('data-voient')) {
+      voient = {};
+      opt.getAttribute('data-voient').split(' ').forEach(function (id) { if (id) voient[id] = true; });
+    }
+    Array.prototype.forEach.call(intervenantsTache.options, function (o) {
+      var hors = !!voient && !voient[o.value];
+      if (hors) o.selected = false;
+      o.disabled = hors;
+    });
+    intervenantsTache.dispatchEvent(new Event('change'));
+  }
+
   function appliquerProjet() {
     var pid = projetCourant();
     var valeur = (!pid || pid === AUCUN) ? '' : pid;
     if (tacheForm && tacheActionTemplate && valeur) {
       tacheForm.action = tacheActionTemplate.replace('999999999', valeur);
     }
+    filtrerIntervenants(pid);
     if (projetSelect) {
       dialog.querySelectorAll('.panel-information form, .panel-requete form').forEach(function (f) {
         var champ = f.querySelector('input[name="projet_id"]');
@@ -142,8 +165,13 @@
     }
   }
 
-  document.querySelectorAll('[data-open-post-dialog]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
+  // Délégation (lot 13) : les déclencheurs insérés par un fragment partiel
+  // (« Reposter » d'un post ajouté) fonctionnent aussi.
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('[data-open-post-dialog]');
+    if (!btn) return;
+    ouvreur = btn;
+    (function () {
       if (btn.disabled) return;
       // Lot 10 (audit front I4) : un brouillon reste lié à SON contexte
       // (post d'origine, projet). Ouvrir la fenêtre pour un autre post ou
@@ -205,7 +233,7 @@
       // Focus sur le premier champ du panneau ouvert (et non sur « Fermer »).
       var panneau = dialog.querySelector('.panel-' + intentCourant());
       if (panneau) window.KairosFloatingWindow.focusPremierChamp(panneau);
-    });
+    })();
   });
 
   if (projetSelect) {
@@ -265,6 +293,47 @@
       }
     });
   }
+
+  // Lot 13 (audit UX §2.2 « Publier ») : envoi en partiel. La fenêtre se
+  // ferme, le post arrive en tête du fil de la page (data-fil : #fil-liste
+  // à l'accueil, #fil-posts sur la fiche projet) avec un surlignage ; une
+  // tâche créée apparaît aussi, surlignée, dans le tableau de la fiche.
+  // Erreur : la fenêtre reste ouverte avec la saisie, le champ en cause
+  // est signalé (422). Sans JavaScript : POST puis retour à la page.
+  function viderFormulaires() {
+    dialog.querySelectorAll('.intent-panel form').forEach(function (f) {
+      f.reset();
+      if (window.Kairos && window.Kairos.effacerErreurs) window.Kairos.effacerErreurs(f);
+      f.querySelectorAll('select[data-chip-select], .dropzone-input').forEach(function (x) { x.dispatchEvent(new Event('change')); });
+    });
+    delete dialog.dataset.contexte;
+  }
+  dialog.addEventListener('submit', function (e) {
+    var form = e.target;
+    var K = window.Kairos;
+    if (e.defaultPrevented || !K || !K.requete || !form.closest('.intent-panel')) return;
+    e.preventDefault();
+    if (K.lectureSeule && K.lectureSeule()) { K.toast(K.MESSAGE_LECTURE_SEULE, { type: 'info' }); return; }
+    var envoyeur = e.submitter || form.querySelector('button[type="submit"]');
+    if (envoyeur && envoyeur.getAttribute('aria-disabled') === 'true') return;
+    var selecteurFil = dialog.getAttribute('data-fil');
+    var fil = selecteurFil ? document.querySelector(selecteurFil) : null;
+    K.requete({
+      url: form.action, methode: 'POST', corps: new FormData(form),
+      cible: fil ? selecteurFil : '#dialog-nouveau-post', mode: fil ? 'avant' : 'outer',
+      historique: 'aucun', declencheur: envoyeur || form
+    }).then(function (res) {
+      if (!res || res.statut < 200 || res.statut >= 300 || res.redirection) return;
+      viderFormulaires();
+      dialog.close();
+      // Le bouton qui a ouvert la fenêtre a pu être remplacé (carte des
+      // tâches mise à jour) : le focus va à son homologue.
+      if (!ouvreur || !document.contains(ouvreur)) {
+        var homologue = (ouvreur && ouvreur.id && document.getElementById(ouvreur.id)) || document.querySelector('[data-open-post-dialog]:not([disabled])');
+        if (homologue) homologue.focus();
+      }
+    });
+  });
 
   dialog.querySelectorAll('[data-close-post-dialog]').forEach(function (b) {
     b.addEventListener('click', function () {

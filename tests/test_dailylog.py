@@ -816,7 +816,8 @@ class TestAutresPages(_BaseDailyLog):
     def test_fuseau_modifiable_par_admin_et_rh_et_valide(self):
         # L'email reste celui du compte : depuis le lot 10, seul l'Admin peut
         # changer l'adresse d'un employé (le RH n'envoie qu'un lien).
-        base = {"prenom": "Ali", "nom": "Ben", "email": EMPLOYE["email"], "role": "intervenant"}
+        base = {"prenom": "Ali", "nom": "Ben", "email": EMPLOYE["email"], "role": "intervenant",
+                "equipe_code": "MIDGARD"}
         self._login()
         for user in (ADMIN, smoke.RH):
             for fuseau, accepte in (("America/Cayenne", True), ("Africa/Tunis", True),

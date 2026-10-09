@@ -16,8 +16,11 @@ _POST_SANS_PROJET_VISIBLE = """
             SELECT 1 FROM utilisateur uv
             WHERE uv.id = %(uid)s AND uv.actif
               AND (uv.role IN ('admin', 'rh')
-                   OR EXISTS (SELECT 1 FROM post_equipe pev
-                              WHERE pev.post_id = p.id AND pev.equipe_code = uv.equipe_code))
+                   -- Lot 13 (décision 6, audit rôles M3) : une Information
+                   -- interne d'équipe n'arrive jamais chez un Client (sauf
+                   -- s'il y est nommément mentionné).
+                   OR (uv.role <> 'client' AND EXISTS (SELECT 1 FROM post_equipe pev
+                              WHERE pev.post_id = p.id AND pev.equipe_code = uv.equipe_code)))
         )
     ))
 """
@@ -262,6 +265,26 @@ def list_feed_auteur(auteur_id: int, viewer_id: int, limit: int = 8, depuis=None
         cur.execute(sql, {"uid": viewer_id, "auteur_id": auteur_id, "limit": limit,
                           "depuis": depuis, "avant": avant})
         return _structurer_commentaires([dict(r) for r in cur.fetchall()])
+
+
+def get_post_carte(post_id: int, viewer_id: int) -> dict | None:
+    """Un post tel que le fil l'affiche pour `viewer_id` (réactions,
+    commentaires, pièces jointes…) : fragment d'une mise à jour partielle
+    (lot 13). La visibilité est contrôlée par l'appelant (peut_voir)."""
+    with db.get_cursor() as cur:
+        cur.execute(_FEED_SELECT + " WHERE p.id = %(pid)s", {"uid": viewer_id, "pid": post_id})
+        rows = _structurer_commentaires([dict(r) for r in cur.fetchall()])
+    return rows[0] if rows else None
+
+
+def id_post_creation_tache(tache_id: int) -> int | None:
+    """Post automatique « a créé une tâche » de `tache_id` (lot 13 : inséré
+    en tête du fil après « + Tâche »)."""
+    row = db.query_one(
+        "SELECT id FROM post WHERE tache_id = %s AND evenement = 'creation_tache' ORDER BY id DESC LIMIT 1",
+        (tache_id,),
+    )
+    return row["id"] if row else None
 
 
 def get_post(post_id: int) -> dict | None:

@@ -226,9 +226,11 @@ class TestTransactions(unittest.TestCase):
             g.lecture_seule, g.admin_reel_agit, g.date_simulee = False, 1, datetime.date(2026, 10, 15)
             with db.get_cursor(user_id=3) as c:
                 c.execute("SELECT 1")
-        self.assertEqual(cur.ordres[:3], [("SET LOCAL app.current_user_id = %s", ("3",)),
-                                          ("SET LOCAL app.admin_reel_id = %s", ("1",)),
-                                          ("SET LOCAL kairos.date_simulee = %s", ("2026-10-15",))])
+        # Lot 13 : l'instant simulé (date simulée à l'heure réelle de Tunis).
+        self.assertEqual(cur.ordres[:2], [("SET LOCAL app.current_user_id = %s", ("3",)),
+                                          ("SET LOCAL app.admin_reel_id = %s", ("1",))])
+        self.assertEqual(cur.ordres[2][0], "SET LOCAL kairos.instant_simule = %s")
+        self.assertRegex(cur.ordres[2][1][0], r"^2026-10-15T[0-9]{2}:[0-9]{2}:[0-9]{2}\+01:00$")
         self.assertNotIn("SET TRANSACTION READ ONLY", [o[0] for o in cur.ordres])
 
     def test_ecriture_refusee_par_la_base_devient_lecture_seule(self):
@@ -291,7 +293,7 @@ class TestVoirCommeRoutes(_Base):
         self.session(mode_admin=self.MODE)
         resp, _ = self.requete("get", "/accueil")
         page = self.texte(resp)
-        self.assertIn('<div class="bandeau-admin bandeau-admin-voir" role="status" id="bandeau-admin">', page)
+        self.assertIn('<div class="bandeau-admin bandeau-admin-voir" role="region" aria-label="Mode de l’Administrateur" id="bandeau-admin">', page)
         self.assertIn("Vous voyez Kairos comme Rim Inter (Intervenant) — Revenir à mon compte", self.visible(resp))
         self.assertIn('<header class="topbar topbar-mode-voir">', page)
         self.assertIn("<title>[Vu comme Rim Inter] Accueil — Kairos</title>", page)
@@ -392,7 +394,7 @@ class TestModeTestRoutes(_Base):
         self.session()
         resp, _ = self.requete("get", "/accueil")
         page = self.texte(resp)
-        self.assertIn('class="bandeau-admin bandeau-admin-test" role="status"', page)
+        self.assertIn('class="bandeau-admin bandeau-admin-test" role="region"', page)
         self.assertIn('action="/admin/date-simulee"', page)
         self.assertIn("Voir ou agir comme…", page)
 
@@ -413,7 +415,8 @@ class TestModeTestRoutes(_Base):
         self.assertEqual((resp.status_code, resp.headers["Location"]), (302, "/deadlines"))
         self.assertEqual(m["app.repositories.audit.journaliser_mode"].call_args.args[:3], ("date_simulee", "ENTREE", 1))
         resp, _ = self.requete("get", "/accueil")
-        self.assertIn("Date simulée : jeudi 15 octobre 2026 — Revenir à aujourd’hui", self.visible(resp))
+        self.assertIn("Date simulée : jeudi 15 octobre 2026", self.visible(resp))
+        self.assertIn("— Revenir à aujourd’hui", self.visible(resp))
         self.assertIn('class="bandeau-admin bandeau-admin-date"', self.texte(resp))
         self.assertIn('value="2026-10-15"', self.texte(resp))
         resp, _ = self.requete("post", "/admin/date-simulee/effacer", data={"next": "//evil.tld"},
@@ -490,7 +493,13 @@ class TestDeploiement(unittest.TestCase):
         for fonction in ("fn_app_admin_reel_id", "fn_audit_log", "fn_date_simulee", "fn_aujourdhui", "fn_dailylog_garde"):
             with self.subTest(fonction=fonction):
                 debut = f"CREATE OR REPLACE FUNCTION {fonction}("
-                corps_mig = mig[mig.index(debut):mig.index("$$ LANGUAGE", mig.index(debut))]
+                # Dernière version de la fonction (fn_aujourdhui et
+                # fn_dailylog_garde : migration 0019, lot 13).
+                from pathlib import Path
+                dossier = Path(__file__).resolve().parent.parent / "migrations"
+                derniere = [m.read_text(encoding="utf-8") for m in sorted(dossier.glob("*.sql"))
+                            if debut in m.read_text(encoding="utf-8")][-1]
+                corps_mig = derniere[derniere.index(debut):derniere.index("$$ LANGUAGE", derniere.index(debut))]
                 corps_schema = schema[schema.index(debut):schema.index("$$ LANGUAGE", schema.index(debut))]
                 self.assertEqual(corps_mig, corps_schema)
         # Rejouable : rien qui échoue à la seconde passe.

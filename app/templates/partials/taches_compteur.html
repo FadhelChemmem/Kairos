@@ -1,0 +1,2 @@
+{# Compteur de la carte Tâches (lot 13 : mis à jour hors cible, région live). #}
+<span id="taches-compteur" class="taches-compteur" role="status"{% if oob %} data-partiel-oob{% endif %}>{{ nb_taches }} tâche{{ 's' if nb_taches > 1 else '' }} · {{ nb_en_cours }} en cours</span>

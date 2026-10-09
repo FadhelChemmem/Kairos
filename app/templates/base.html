@@ -1,72 +1,18 @@
 {% import "partials/avatar.html" as avatarm %}
+{% import "partials/icones.html" as ic %}
 <!doctype html>
-<html lang="fr">
+<html lang="fr"{% if bandeau_admin and bandeau_admin.mode == 'voir' %} data-lecture-seule{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <script>
-    // Thème clair/sombre (demande Fadhel, 2026-09-27) : appliqué ici, dans
-    // le <head>, avant tout rendu — sinon la page flasherait en clair une
-    // fraction de seconde avant de basculer en sombre. Mémorisé par
-    // navigateur dans localStorage ; à défaut, suit la préférence système.
-    // Voir #theme-toggle plus bas (bascule manuelle, visible une fois
-    // connecté) et app/static/css/app.css (variables :root /
-    // :root[data-theme="dark"]).
-    // Lot 10 (audit front M4) : la préférence système est lue HORS du
-    // try — si localStorage lève (navigation privée, stockage bloqué),
-    // le thème suit quand même le système au lieu de rester clair ; et
-    // tant qu'aucun choix n'est mémorisé, un changement de thème du
-    // système est suivi en direct.
-    (function () {
-      var enregistre = null;
-      try { enregistre = localStorage.getItem('kairos-theme'); } catch (e) { /* stockage indisponible */ }
-      var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
-      document.documentElement.dataset.theme = enregistre || (mq && mq.matches ? 'dark' : 'light');
-      if (mq && !enregistre && mq.addEventListener) {
-        mq.addEventListener('change', function (e) {
-          if (window.kairosThemeChoisi) return;
-          document.documentElement.dataset.theme = e.matches ? 'dark' : 'light';
-          var b = document.getElementById('theme-toggle');
-          if (b) b.setAttribute('aria-pressed', e.matches ? 'true' : 'false');
-        });
-      }
-    })();
-  </script>
-  <script>
-    // Protection CSRF (PROMPT_CORRECTIONS.md P2 #25) : les formulaires POST
-    // portent un champ caché csrf_token ; pour les appels fetch() qui
-    // écrivent (POST/PUT/PATCH/DELETE) vers l'appli, le jeton est ajouté
-    // automatiquement dans l'en-tête X-CSRFToken attendu par Flask-WTF —
-    // aucun appel fetch() n'a donc à s'en soucier individuellement.
-    (function () {
-      var jeton = document.querySelector('meta[name="csrf-token"]').content;
-      var fetchOrigine = window.fetch;
-      window.fetch = function (ressource, options) {
-        options = options || {};
-        var methode = (options.method || (ressource && ressource.method) || 'GET').toUpperCase();
-        // Request -> son .url ; chaîne ou objet URL -> String(...). Avec un
-        // objet URL, `ressource.url` valait undefined, qui se résolvait vers
-        // CE site : le jeton partait alors vers n'importe quel autre site
-        // (audit n°2). Une URL invalide laisse le fetch d'origine renvoyer
-        // sa promesse rejetée habituelle au lieu de lever ici.
-        var url;
-        try {
-          url = new URL(ressource instanceof Request ? ressource.url : String(ressource), window.location.href);
-        } catch (e) {
-          return fetchOrigine.call(this, ressource, options);
-        }
-        if (['GET', 'HEAD', 'OPTIONS', 'TRACE'].indexOf(methode) === -1 && url.origin === window.location.origin) {
-          var entetes = new Headers(options.headers || (ressource && ressource.headers) || {});
-          if (!entetes.has('X-CSRFToken')) entetes.set('X-CSRFToken', jeton);
-          options = Object.assign({}, options, { headers: entetes });
-        }
-        return fetchOrigine.call(this, ressource, options);
-      };
-    })();
-  </script>
+  <meta name="kairos-mode" content="{{ empreinte_mode or '' }}" data-methode="{{ request.method }}">
+  <script src="{{ url_for('static', filename='js/mode-onglets.js') }}" defer></script>
+  {# Lot 13 : thème appliqué avant le premier rendu et jeton CSRF des
+     fetch() — fichier chargé SANS defer (CSP sans 'unsafe-inline'). #}
+  <script src="{{ url_for('static', filename='js/kairos-amorce.js') }}"></script>
   {# Lot 12 : l'onglet rappelle le mode de l'Admin (« Voir / Agir comme »). #}
-  <title>{% if bandeau_admin and bandeau_admin.mode %}[{{ 'Vu' if bandeau_admin.mode == 'voir' else 'Agi' }} comme {{ g.user.prenom }} {{ g.user.nom }}] {% endif %}{% block title %}Kairos{% endblock %}</title>
+  <title>{% if bandeau_admin and bandeau_admin.mode %}[{{ 'Vu comme' if bandeau_admin.mode == 'voir' else 'En tant que' }} {{ g.user.prenom }} {{ g.user.nom }}] {% endif %}{% block title %}Kairos{% endblock %}</title>
   {# Icône d'onglet (favicon) tirée du logo Kairos (retour Fadhel,
      2026-09-29). SVG en priorité (déclaré après le .ico, recette
      habituelle pour que Chrome/Firefox le choisissent) : son K passe en blanc quand le
@@ -75,13 +21,32 @@
   <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}" sizes="32x32">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
-  {# Recherche sans accents commune (mêmes règles que fn_recherche côté
-     serveur) : avant chip-select, search-combobox et dailylog. #}
-  <script src="{{ url_for('static', filename='js/texte-recherche.js') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/chip-select.js') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/search-combobox.js') }}" defer></script>
+  {# Lot 13 : Plus Jakarta Sans auto-hébergée (licence OFL, static/fonts/
+     OFL.txt), plus de Google Fonts. Trois graisses (400, 600, 700 : le
+     navigateur prend la plus proche pour 500 et 800), sous-ensemble latin
+     + latin étendu A, espace fine insécable (U+202F) comprise. Aucun
+     preload : il retardait le premier rendu en 3G (mesure A/B, audit
+     a11y-perf R5). font-display: optional : sur le réseau du bureau la
+     police arrive avant le premier rendu ; sur un réseau lent, la première
+     page reste dans la police de repli ajustée (aucun saut de mise en page
+     au chargement de la police) et les suivantes l'ont en cache. #}
+  <style>
+    {% for graisse in (400, 600, 700) %}@font-face { font-family: 'Plus Jakarta Sans'; font-style: normal; font-weight: {{ graisse }}; font-display: optional; src: url("{{ url_for('static', filename='fonts/plus-jakarta-sans-' ~ graisse ~ '.woff2') }}") format("woff2"); }
+    {% endfor %}
+  </style>
+  {# Lot 13 (audit a11y-perf N9) : app.css servie sans ses commentaires, et
+     les scripts communs assemblés en un seul fichier (app/paquets.py :
+     sources inchangées dans static/, URL à empreinte, cache long). #}
+  <link rel="stylesheet" href="{{ paquet_url('app.css') }}">
+  {% if g.user %}
+  {# commun.js = kairos-partiel (socle : partiel, toasts, confirmation,
+     annonces), texte-recherche, chip-select, search-combobox, kairos-ui,
+     recherche-globale, raccourcis, notifications — dans cet ordre. #}
+  <script src="{{ paquet_url('commun.js') }}" defer></script>
+  {% elif get_flashed_messages() %}
+  {# Page publique : le socle seulement s'il y a un message à afficher. #}
+  <script src="{{ url_for('static', filename='js/kairos-partiel.js') }}" defer></script>
+  {% endif %}
   {# Lot 11 (audit front M8) : scripts du fil (réaction, glisser-déposer,
      commentaire, visionneuse) — une page sans fil ni fenêtre de post les
      retire avec {% block scripts_fil %}{% endblock %}. #}
@@ -106,7 +71,7 @@
   {# Lot 10 : CSS/JS propres à une page (ex. Daily log v9, dailylog.css). #}
   {% block head %}{% endblock %}
 </head>
-<body class="{% block body_class %}{% endblock %}">
+<body class="{% block body_class %}{% endblock %}{{ ' k-avec-nav-basse' if g.user }}">
 
 {% if g.user %}
 {# Lot 10 (audit front B9) : lien d'évitement, repères header/nav/main. #}
@@ -115,7 +80,7 @@
    barre du haut, qui reste visible au défilement (barre collante). #}
 <header class="topbar{{ ' topbar-mode-' ~ bandeau_admin.mode if bandeau_admin and bandeau_admin.mode }}">
   <div class="topbar-inner">
-  <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+  <div class="topbar-gauche">
     {# Logo en deux versions (retour Fadhel, 2026-09-27) : le PNG d'origine a
        le mot "KAIROS" en noir plein, invisible sur fond sombre — une
        variante avec ce texte repassé en blanc (O orange, trait et pastille
@@ -133,251 +98,122 @@
     {% block topbar_projet %}{% endblock %}
   </div>
 
-  <div class="topbar-search" style="position:relative;">
-    <div class="topbar-search-box" style="position:relative;">
-      <svg aria-hidden="true" focusable="false" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="search" id="recherche-globale" aria-label="Rechercher un projet, une tâche ou une personne" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="recherche-globale-resultats" aria-expanded="false" placeholder="Rechercher un projet, une tâche, une personne…" style="border:none; outline:none; background:none; font-size:14px; color:var(--text-strong); width:100%; font-family:inherit;">
+  {# Lot 13 : sous 860 px, le champ laisse place au bouton loupe (barre
+     d'actions), qui ouvre cette même recherche en plein écran. #}
+  <div class="topbar-search" role="search">
+    <div class="topbar-search-ligne">
+    <div class="topbar-search-box">
+      {{ ic.icone('recherche', 17) }}
+      <input type="search" id="recherche-globale" class="topbar-search-champ" data-url="{{ url_for('main.recherche_api') }}" aria-label="Rechercher un projet, une tâche ou une personne" aria-keyshortcuts="Control+K /" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="recherche-globale-resultats" aria-expanded="false" placeholder="Rechercher un projet, une tâche, une personne…">
       <div id="recherche-globale-statut" class="sr-only" role="status"></div>
-      <div id="recherche-globale-resultats" role="listbox" aria-label="Résultats de la recherche" style="display:none; position:absolute; top:calc(100% + 6px); left:0; right:0; background:var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow:0 8px 24px rgba(20,30,25,0.12); padding:6px; z-index:200; max-height:360px; overflow-y:auto;"></div>
+      <div id="recherche-globale-resultats" class="recherche-resultats" role="listbox" aria-label="Résultats de la recherche" hidden></div>
+    </div>
+    <button type="button" class="iconbtn topbar-search-fermer" data-recherche-fermer aria-label="Fermer la recherche">{{ ic.icone('fermer', 18) }}</button>
     </div>
   </div>
 
+  {% set nb_notifs = g.notifications_non_lues or 0 %}
+  {% set libelle_notifs = 'Notifications' ~ ((', ' ~ nb_notifs ~ (' non lues' if nb_notifs > 1 else ' non lue')) if nb_notifs else '') %}
   <nav class="topbar-actions" aria-label="Navigation principale">
+    <button type="button" class="iconbtn topbar-recherche-btn" data-recherche-ouvrir aria-expanded="false" aria-controls="recherche-globale" title="Rechercher (Ctrl+K)" aria-label="Rechercher">{{ ic.icone('recherche') }}</button>
     {# Ordre de la topbar (retour Fadhel, 2026-09-28) : Accueil, Projet,
        Deadlines, Daily log, Utilisateurs, Journal d'audit (Admin
-       seulement), Notifications, Thème, Déconnexion. #}
-    <a class="iconbtn" href="{{ url_for('main.accueil') }}" title="Accueil" aria-label="Accueil"{% if request.endpoint == 'main.accueil' %} aria-current="page"{% endif %}>
-      <svg aria-hidden="true" focusable="false" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></svg>
-    </a>
-    {# Icône "carnet à lignes" (retour Fadhel, 2026-09-28 — variante "A"
-       choisie parmi 3 propositions envoyées en aperçu), à la place de
-       l'ancienne bulle de discussion. #}
+       seulement), Notifications, Thème, Déconnexion. Lot 13 : sous 600 px,
+       les liens k-nav-principal passent dans la barre basse. #}
+    <a class="iconbtn k-nav-principal" href="{{ url_for('main.accueil') }}" data-raccourci-g="a" title="Accueil" aria-label="Accueil"{% if request.endpoint == 'main.accueil' %} aria-current="page"{% endif %}>{{ ic.icone('accueil') }}</a>
     {# RH : aucun accès aux projets, ni échéances ni Daily log ; Client : ni
        échéances (pas de tâches) ni Daily log (décisions Fadhel, lot 7). #}
     {% if g.user.role != 'rh' %}
-    <a class="iconbtn" href="{{ url_for('projets.liste') }}" title="Tous les projets" aria-label="Tous les projets"{% if request.endpoint == 'projets.liste' %} aria-current="page"{% elif request.endpoint == 'projets.detail' %} aria-current="true"{% endif %}>
-      <svg aria-hidden="true" focusable="false" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M15 3v5h5"/><path d="M8 12h8M8 15.5h8M8 9h4"/></svg>
-    </a>
+    <a class="iconbtn k-nav-principal" href="{{ url_for('projets.liste') }}" data-raccourci-g="p" title="Tous les projets" aria-label="Tous les projets"{% if request.endpoint == 'projets.liste' %} aria-current="page"{% elif request.endpoint == 'projets.detail' %} aria-current="true"{% endif %}>{{ ic.icone('projets') }}</a>
     {% endif %}
     {% if g.user.role not in ('rh', 'client') %}
-    <a class="iconbtn" href="{{ url_for('deadlines.liste') }}" title="Deadlines" aria-label="Deadlines"{% if request.endpoint == 'deadlines.liste' %} aria-current="page"{% endif %}>
-      <svg aria-hidden="true" focusable="false" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>
-    </a>
-    <a class="iconbtn" href="{{ url_for('dailylog.formulaire') }}" title="Daily log" aria-label="Daily log"{% if request.endpoint == 'dailylog.formulaire' %} aria-current="page"{% endif %}>
-      <svg aria-hidden="true" focusable="false" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
-    </a>
+    <a class="iconbtn k-nav-principal" href="{{ url_for('deadlines.liste') }}" data-raccourci-g="d" title="Deadlines" aria-label="Deadlines"{% if request.endpoint == 'deadlines.liste' %} aria-current="page"{% endif %}>{{ ic.icone('deadlines') }}</a>
+    <a class="iconbtn k-nav-principal" href="{{ url_for('dailylog.formulaire') }}" data-raccourci-g="l" title="Daily log" aria-label="Daily log"{% if request.endpoint == 'dailylog.formulaire' %} aria-current="page"{% endif %}>{{ ic.icone('dailylog') }}</a>
     {% endif %}
     {# Le chef de projet a accès à la liste (lecture seule) : lien affiché
        pour lui aussi (PROMPT_CORRECTIONS.md P3 #27). #}
     {% if g.user.role in ('admin', 'rh', 'chef_de_projet') %}
-    <a class="iconbtn" href="{{ url_for('utilisateurs.liste') }}" title="Utilisateurs" aria-label="Utilisateurs"{% if request.endpoint == 'utilisateurs.liste' %} aria-current="page"{% endif %}>
-      <svg aria-hidden="true" focusable="false" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-    </a>
+    <a class="iconbtn" href="{{ url_for('utilisateurs.liste') }}" title="Utilisateurs" aria-label="Utilisateurs"{% if request.endpoint == 'utilisateurs.liste' %} aria-current="page"{% endif %}>{{ ic.icone('utilisateurs') }}</a>
     {% endif %}
     {% if g.user.role == 'admin' %}
-    <a class="iconbtn" href="{{ url_for('admin.journal') }}" title="Journal d'audit" aria-label="Journal d'audit"{% if request.endpoint == 'admin.journal' %} aria-current="page"{% endif %}>
-      <svg aria-hidden="true" focusable="false" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/><path d="M9 8h8M9 12h8"/></svg>
-    </a>
+    <a class="iconbtn" href="{{ url_for('admin.journal') }}" title="Journal d'audit" aria-label="Journal d'audit"{% if request.endpoint == 'admin.journal' %} aria-current="page"{% endif %}>{{ ic.icone('journal') }}</a>
     {% endif %}
     {# Nom accessible explicite : sans lui, le badge (« 1 ») l'emportait sur le title. #}
-    {% set nb_notifs = g.notifications_non_lues or 0 %}
-    <a class="iconbtn" href="{{ url_for('notifications.liste') }}" title="Notifications" aria-label="Notifications{{ (', ' ~ nb_notifs ~ (' non lues' if nb_notifs > 1 else ' non lue')) if nb_notifs }}"{% if request.endpoint == 'notifications.liste' %} aria-current="page"{% endif %}>
-      <svg aria-hidden="true" focusable="false" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 4.2 1.4 5.5 1.4 5.5H4.6S6 13.2 6 9Z"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>
-      {% if g.notifications_non_lues %}
-        <span class="iconbtn-badge" aria-hidden="true">{{ g.notifications_non_lues if g.notifications_non_lues < 10 else '9+' }}</span>
-      {% endif %}
+    {# Lot 13 : la cloche ouvre l'aperçu des 10 dernières notifications
+       (chargé à la demande, notifications.js) ; sans JavaScript, et sur
+       téléphone (barre basse), le lien mène à la page. Badge tenu à jour
+       sans recharger (#notifs-nb, /notifications/compte). #}
+    <div class="notifs-cloche-zone">
+    <a class="iconbtn k-nav-principal" href="{{ url_for('notifications.liste') }}" id="notifs-cloche" data-notifs-cloche data-raccourci-g="n" title="Notifications" aria-label="{{ libelle_notifs }}" aria-haspopup="dialog" aria-expanded="false" aria-controls="notifs-popover" data-url-compte="{{ url_for('notifications.compte') }}"{% if request.endpoint == 'notifications.liste' %} aria-current="page"{% endif %}>
+      {{ ic.icone('notifications') }}
+      <span class="iconbtn-badge" aria-hidden="true" data-notifs-badge{% if not nb_notifs %} hidden{% endif %}>{{ nb_notifs if nb_notifs < 10 else '9+' }}</span>
     </a>
+    <div class="notifs-popover" id="notifs-popover" role="dialog" aria-labelledby="notifs-apercu-titre" hidden>
+      <div id="notifs-apercu" class="notifs-apercu" data-squelette>
+        <h2 class="sr-only" id="notifs-apercu-titre">Notifications</h2>
+        <div class="notifs-apercu-squelette" aria-hidden="true">
+          <span class="k-squelette k-squelette-titre"></span>
+          <span class="k-squelette k-squelette-ligne"></span>
+          <span class="k-squelette k-squelette-ligne k-squelette-court"></span>
+          <span class="k-squelette k-squelette-ligne"></span>
+          <span class="k-squelette k-squelette-ligne k-squelette-court"></span>
+        </div>
+      </div>
+    </div>
+    </div>
     <button type="button" class="iconbtn" id="theme-toggle" title="Thème sombre" aria-label="Thème sombre" aria-pressed="false">
       <svg aria-hidden="true" focusable="false" class="theme-icon-sun" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
       <svg aria-hidden="true" focusable="false" class="theme-icon-moon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
     </button>
     {# Déconnexion en POST (PROMPT_CORRECTIONS.md P2 #25) — display:contents
-       garde le bouton aligné dans la barre exactement comme l'ancien lien. #}
-    <form method="post" action="{{ url_for('auth.logout') }}" style="display:contents;">
+       garde le bouton aligné dans la barre exactement comme l'ancien lien.
+       Permise en « Voir comme » (data-permis-lecture). #}
+    <form method="post" action="{{ url_for('auth.logout') }}" class="k-contents" data-permis-lecture>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="iconbtn" title="Déconnexion" aria-label="Déconnexion">
         <svg aria-hidden="true" focusable="false" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
       </button>
     </form>
-    <a href="{{ url_for('utilisateurs.mon_profil') }}" style="display:inline-block; margin-left:6px;" title="{{ g.user.prenom }} {{ g.user.nom }}" aria-label="Mes informations ({{ g.user.prenom }} {{ g.user.nom }})">
-      {{ avatarm.avatar(g.user.id, g.user.prenom, g.user.nom, g.user.avatar_chemin, css_class='avatar avatar-lg') }}
-    </a>
+    {% with oob_avatar=False %}{% include "partials/topbar_avatar.html" %}{% endwith %}
   </nav>
   </div>
 </header>
-{% if bandeau_admin %}{% include "partials/bandeau_admin.html" %}{% endif %}
-<script>
-// Recherche globale (topbar) — demandé par Fadhel (2026-09-19) : jusqu'ici
-// décorative. Cherche parmi les projets visibles par l'utilisateur (par
-// "Code_nom") ; interroge /recherche/api en arrière-plan, avec un léger
-// délai pour ne pas spammer le serveur à chaque frappe.
-// Lot 10 (audit front I1) : jeton de séquence (une réponse lente à « ab »
-// n'écrase plus celle de « cit »), combobox ARIA, flèches ↑/↓, Échap,
-// fermeture quand le focus quitte la recherche, nombre de résultats annoncé.
-(function () {
-  var input = document.getElementById('recherche-globale');
-  var box = document.getElementById('recherche-globale-resultats');
-  var statut = document.getElementById('recherche-globale-statut');
-  if (!input || !box) return;
-  var timer = null;
-  var seq = 0;
-
-  function montrer(v) {
-    box.style.display = v ? 'block' : 'none';
-    input.setAttribute('aria-expanded', v ? 'true' : 'false');
-  }
-  function liens() { return Array.prototype.slice.call(box.querySelectorAll('a')); }
-
-  function render(items) {
-    // Contrôle XSS (PROMPT_CORRECTIONS.md P0 #4) : `it.label` vient d'un
-    // nom de projet (saisi par un chef de projet) — construire le lien via
-    // innerHTML + concaténation de chaîne l'exécuterait comme du HTML pour
-    // TOUT utilisateur qui tape dans cette recherche, y compris un admin.
-    // On construit donc chaque élément avec le DOM (textContent), jamais
-    // par concaténation de HTML.
-    box.innerHTML = '';
-    if (statut) statut.textContent = items.length ? (items.length + (items.length > 1 ? ' résultats' : ' résultat')) : 'Aucun résultat';
-    if (!items.length) {
-      var vide = document.createElement('div');
-      vide.style.cssText = 'padding:10px 12px; font-size:12.5px; color:var(--text-faint);';
-      vide.textContent = 'Aucun résultat.';
-      box.appendChild(vide);
-      montrer(true);
-      return;
-    }
-    items.forEach(function (it) {
-      var a = document.createElement('a');
-      a.href = it.url;
-      a.setAttribute('role', 'option');
-      a.className = 'recherche-resultat';
-      var label = document.createElement('span');
-      label.textContent = it.label;
-      a.appendChild(label);
-      // Distingue une personne (poste en sous-titre) d'un projet, dans la
-      // même liste de résultats (Lot 5, retour Fadhel, 2026-09-28).
-      if (it.sous_titre) {
-        var sous = document.createElement('span');
-        sous.className = 'recherche-resultat-sous';
-        sous.textContent = it.sous_titre;
-        a.appendChild(sous);
-      }
-      box.appendChild(a);
-    });
-    montrer(true);
-  }
-
-  input.addEventListener('input', function () {
-    var q = input.value.trim();
-    clearTimeout(timer);
-    var n = ++seq;
-    if (q.length < 2) { montrer(false); if (statut) statut.textContent = ''; return; }
-    timer = setTimeout(function () {
-      fetch('{{ url_for("main.recherche_api") }}?q=' + encodeURIComponent(q))
-        .then(function (r) { return r.json(); })
-        .then(function (data) { if (n === seq) render(data.resultats || []); })
-        .catch(function () { if (n === seq) montrer(false); });
-    }, 220);
-  });
-
-  input.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') {
-      if (box.style.display === 'block') { e.preventDefault(); montrer(false); }
-    } else if (e.key === 'ArrowDown') {
-      var l = liens();
-      if (l.length && box.style.display === 'block') { e.preventDefault(); l[0].focus(); }
-    }
-  });
-  box.addEventListener('keydown', function (e) {
-    var l = liens(), i = l.indexOf(document.activeElement);
-    if (e.key === 'ArrowDown') { e.preventDefault(); if (i < l.length - 1) l[i + 1].focus(); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); (i > 0 ? l[i - 1] : input).focus(); }
-    else if (e.key === 'Escape') { e.preventDefault(); montrer(false); input.focus(); }
-  });
-  // Liste fermée dès que le focus (Tab) ou un clic quitte la recherche.
-  document.addEventListener('focusin', function (e) {
-    if (!box.contains(e.target) && e.target !== input) montrer(false);
-  });
-  document.addEventListener('click', function (e) {
-    if (!box.contains(e.target) && e.target !== input) montrer(false);
-  });
-})();
-
-// Bascule manuelle du thème clair/sombre — voir le script dans <head> qui
-// applique le thème mémorisé/système avant le premier rendu. Lot 10 :
-// bouton « Thème sombre » à état (aria-pressed), lisible par un lecteur
-// d'écran.
-(function () {
-  var bouton = document.getElementById('theme-toggle');
-  if (!bouton) return;
-  bouton.setAttribute('aria-pressed', document.documentElement.dataset.theme === 'dark' ? 'true' : 'false');
-  bouton.addEventListener('click', function () {
-    var actuel = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
-    var suivant = actuel === 'dark' ? 'light' : 'dark';
-    document.documentElement.dataset.theme = suivant;
-    bouton.setAttribute('aria-pressed', suivant === 'dark' ? 'true' : 'false');
-    window.kairosThemeChoisi = true;
-    try { localStorage.setItem('kairos-theme', suivant); } catch (e) {
-      // Session en cours seulement, voir la note dans <head>.
-    }
-  });
-})();
-</script>
+{% if bandeau_admin %}{% include "partials/bandeau_admin.html" %}<script src="{{ url_for('static', filename='js/bandeau-admin.js') }}"></script>{% endif %}
+{# Lot 13 : barre de navigation basse du téléphone (< 600 px, 5 icônes au
+   plus ; masquée au-delà). #}
+<nav class="k-nav-basse" aria-label="Navigation rapide">
+  <a href="{{ url_for('main.accueil') }}"{% if request.endpoint == 'main.accueil' %} aria-current="page"{% endif %}>{{ ic.icone('accueil', 22) }}<span>Accueil</span></a>
+  {% if g.user.role != 'rh' %}
+  <a href="{{ url_for('projets.liste') }}"{% if request.endpoint == 'projets.liste' %} aria-current="page"{% elif request.endpoint == 'projets.detail' %} aria-current="true"{% endif %}>{{ ic.icone('projets', 22) }}<span>Projets</span></a>
+  {% endif %}
+  {% if g.user.role not in ('rh', 'client') %}
+  <a href="{{ url_for('deadlines.liste') }}"{% if request.endpoint == 'deadlines.liste' %} aria-current="page"{% endif %}>{{ ic.icone('deadlines', 22) }}<span>Deadlines</span></a>
+  <a href="{{ url_for('dailylog.formulaire') }}"{% if request.endpoint == 'dailylog.formulaire' %} aria-current="page"{% endif %}>{{ ic.icone('dailylog', 22) }}<span>Daily log</span></a>
+  {% endif %}
+  <a href="{{ url_for('notifications.liste') }}" aria-label="{{ libelle_notifs }}" data-notifs-lien{% if request.endpoint == 'notifications.liste' %} aria-current="page"{% endif %}>{{ ic.icone('notifications', 22) }}<span aria-hidden="true">Notifications</span><span class="k-nav-badge" aria-hidden="true" data-notifs-badge{% if not nb_notifs %} hidden{% endif %}>{{ nb_notifs if nb_notifs < 10 else '9+' }}</span></a>
+</nav>
 {% endif %}
 
+{# Lot 13 : messages dans la zone des toasts (en bas à droite ; en bas au
+   centre sur téléphone). Ceux du rendu complet (flash) sont injectés par
+   kairos-partiel.js juste après le chargement ; ceux d'une mise à jour
+   partielle arrivent dans l'en-tête X-Kairos-Toasts. Succès effacé après
+   5 s (10 s avec « Annuler », Ctrl+Z ; suspendu au survol / focus),
+   erreur jusqu'à fermeture. Zone en popover (couche supérieure), déplacée
+   dans la fenêtre modale ouverte. Régions live PERSISTANTES, vides au
+   chargement (audit a11y R2) : le texte des toasts et de Kairos.annoncer()
+   y est écrit — k-annonce (role=status), k-alerte (role=alert). #}
+<div id="k-toasts" class="k-toasts" popover="manual"><div id="k-annonce" class="sr-only" role="status" aria-atomic="true"></div><div id="k-alerte" class="sr-only" role="alert" aria-atomic="true"></div></div>
 {% with messages = get_flashed_messages(with_categories=true) %}
   {% if messages %}
-  {# Popup flottant partout, y compris sur la page de connexion (retour
-     Fadhel, 2026-09-20) : "Email ou mot de passe incorrect" ne doit plus
-     pousser toute la page vers le bas — même bandeau flottant (.flash-wrap)
-     qu'ailleurs dans l'appli, jamais dans le flux normal de la mise en page.
-     Lot 10 (audit front B7, WCAG 4.1.3 / 2.2.1) : messages annoncés
-     (role=alert pour une erreur, role=status sinon), fermables au clavier
-     (vrai bouton), et seuls les succès s'effacent seuls — après 8 s, et
-     jamais tant que la souris ou le focus est dessus ; une erreur reste
-     jusqu'à ce qu'on la ferme. Injectés juste APRÈS le chargement : une
-     région live déjà présente au rendu n'est pas lue par tous les
-     lecteurs d'écran. #}
-  <div class="flash-wrap" id="flash-wrap"></div>
-  <template id="flash-modeles">
-    {% for category, message in messages %}
-      <div class="flash flash-{{ category }}" role="{{ 'alert' if category == 'error' else 'status' }}">
-        <span class="flash-texte">{{ message }}</span>
-        <button type="button" class="flash-fermer" aria-label="Fermer le message">
-          <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-        </button>
-      </div>
-    {% endfor %}
-  </template>
-  <script>
-    (function () {
-      var zone = document.getElementById('flash-wrap');
-      var modeles = document.getElementById('flash-modeles');
-      if (!zone || !modeles) return;
-      setTimeout(function () { zone.appendChild(modeles.content.cloneNode(true)); }, 150);
-      zone.addEventListener('click', function (e) {
-        var b = e.target.closest('.flash-fermer');
-        if (!b) return;
-        var flash = b.closest('.flash');
-        // Le focus ne doit pas tomber sur <body> : il revient au contenu.
-        var suivant = flash.nextElementSibling || flash.previousElementSibling;
-        flash.remove();
-        if (suivant) suivant.querySelector('.flash-fermer').focus();
-        else { var m = document.getElementById('contenu'); if (m) m.focus({ preventScroll: true }); }
-      });
-      function effacerSucces() {
-        zone.querySelectorAll('.flash-success').forEach(function (el) {
-          if (el.matches(':hover') || el.contains(document.activeElement)) { setTimeout(effacerSucces, 4000); return; }
-          el.remove();
-        });
-      }
-      setTimeout(effacerSucces, 8000);
-    })();
-  </script>
+  {% set types = {'success': 'succes', 'error': 'erreur', 'warning': 'avertissement'} %}
+  <template id="k-toasts-initiaux">{% for categorie, message in messages %}<p data-type="{{ types.get(categorie, 'info') }}">{{ message }}</p>{% endfor %}</template>
   {% endif %}
 {% endwith %}
 
 {# Un seul <main> par page : les gabarits n'en déclarent pas (Daily log v9
    compris, cf. audit front §8). tabindex=-1 : cible du lien d'évitement. #}
+{% if g.user %}{% with nb_non_lues=nb_notifs, oob_nb=False %}{% include "partials/notifs_nb.html" %}{% endwith %}{% endif %}
 <main id="contenu" tabindex="-1">
 {% block body %}{% endblock %}
 </main>
@@ -387,78 +223,5 @@
 {% if utilisateurs_actifs is defined and utilisateurs_actifs %}
 <script type="application/json" id="kairos-personnes">{{ utilisateurs_actifs|map('personne_mentionnable')|list|tojson }}</script>
 {% endif %}
-<script>
-// Lot 10 (audit front B8) : chemins réseau \\NAS\… — un navigateur ne sait
-// pas les ouvrir (ils devenaient http://nas/…). Bouton « Copier le
-// chemin », avec repli : navigator.clipboard n'existe qu'en contexte
-// sécurisé (HTTPS ou localhost), or Kairos est servi en HTTP sur le LAN.
-(function () {
-  // Copie par sélection d'un <textarea> caché (execCommand) : seule voie en
-  // HTTP sur le LAN. Le focus revient ensuite sur le bouton.
-  function parSelection(texte, bouton) {
-    var ta = document.createElement('textarea');
-    ta.value = texte;
-    ta.setAttribute('readonly', '');
-    ta.style.cssText = 'position:fixed; top:0; left:0; opacity:0;';
-    document.body.appendChild(ta);
-    ta.select();
-    var reussi = false;
-    try { reussi = document.execCommand('copy'); } catch (x) { reussi = false; }
-    ta.remove();
-    bouton.focus();
-    return reussi;
-  }
-  function copier(texte, bouton) {
-    if (navigator.clipboard && window.isSecureContext) {
-      // API refusée (permission) : nouvel essai par sélection.
-      return navigator.clipboard.writeText(texte).catch(function () {
-        if (!parSelection(texte, bouton)) throw new Error('copie impossible');
-      });
-    }
-    return parSelection(texte, bouton) ? Promise.resolve() : Promise.reject(new Error('copie impossible'));
-  }
-  document.addEventListener('click', function (e) {
-    var b = e.target.closest('[data-copier]');
-    if (!b) return;
-    var texte = b.getAttribute('data-copier');
-    var libelle = b.querySelector('.copier-libelle') || b;
-    var initial = b.dataset.libelleInitial || libelle.textContent;
-    b.dataset.libelleInitial = initial;
-    var retour = b.parentNode.querySelector('.copier-statut');
-    function afficher(msg) {
-      libelle.textContent = msg;
-      if (retour) retour.textContent = msg;
-      clearTimeout(b._minuteur);
-      b._minuteur = setTimeout(function () { libelle.textContent = initial; if (retour) retour.textContent = ''; }, 2500);
-    }
-    copier(texte, b).then(function () { afficher('Chemin copié'); }, function () {
-      // Dernier recours : le chemin est sélectionné pour un Ctrl+C manuel.
-      var code = b.parentNode.querySelector('code');
-      if (code) { var r = document.createRange(); r.selectNodeContents(code); var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); }
-      afficher('Sélectionné : Ctrl+C pour copier');
-    });
-  });
-})();
-
-// Lot 10 (audit front I4) : pas de double envoi. Tout formulaire POST
-// (hors réaction ✓, gérée en AJAX par post-reaction.js) désactive ses
-// boutons d'envoi une fois parti — setTimeout(0) laisse le navigateur
-// composer la requête (et la valeur du bouton) avant. Réactivés si la page
-// revient du cache (bouton Précédent).
-document.addEventListener('submit', function (e) {
-  var f = e.target;
-  if (e.defaultPrevented || (f.method || '').toLowerCase() !== 'post' || f.classList.contains('post-reaction-form')) return;
-  setTimeout(function () {
-    if (e.defaultPrevented) return;
-    f.querySelectorAll('button[type=submit], button:not([type])').forEach(function (b) {
-      b.disabled = true;
-      b.dataset.autoDesactive = '1';
-    });
-  }, 0);
-});
-window.addEventListener('pageshow', function (e) {
-  if (e.persisted) document.querySelectorAll('[data-auto-desactive]').forEach(function (b) { b.disabled = false; delete b.dataset.autoDesactive; });
-});
-</script>
 </body>
 </html>

@@ -6,117 +6,87 @@
    comportement historique conservé — voir PROMPT_CORRECTIONS.md audit
    n°2) ; elle reste aussi directement accessible via /projets/nouveau. #}
 {% extends "base.html" %}
+{% import "partials/champ_erreur.html" as err %}
 {% block title %}Nouveau projet — Kairos{% endblock %}
 {% block body %}
-<div style="max-width:560px; margin:0 auto; padding:24px 32px 60px;">
-  <h1 class="page-titre" style="font-size:18px; font-weight:800; margin-bottom:16px;">Nouveau projet</h1>
+<div class="page-etroite">
+  <h1 class="page-titre page-titre-espace">Nouveau projet</h1>
 
-  <form method="post" class="card">
+  <form method="post" class="card" id="form-projet-creer">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-row">
       <label for="nom">Nom du projet</label>
-      <input type="text" id="nom" name="nom" maxlength="200" value="{{ saisie.nom or '' }}" required autofocus>
+      <input type="text" id="nom" name="nom" maxlength="200" value="{{ saisie.nom or '' }}" required{{ err.attrs(erreurs, 'nom') }}{{ ' autofocus' if not erreurs }}>
+      {{ err.message(erreurs, 'nom') }}
     </div>
     <div class="form-row">
       <label for="code">Code (proposé, modifiable)</label>
-      <input type="text" id="code" name="code" maxlength="20" value="{{ code_propose }}" required pattern="[0-9]{5,}[PDXE]" title="Année sur 2 chiffres + numéro (3 chiffres ou plus) + lettre de la phase : P (APS/APD), D (DCE), X (EXE), E (DOE)">
+      <input type="text" id="code" name="code" data-url-code-propose="{{ url_for('projets.api_code_propose') }}" data-modifie="{{ '1' if saisie.code else '0' }}" maxlength="20" value="{{ code_propose }}" required pattern="[0-9]{5,}[PDXE]" title="Année sur 2 chiffres + numéro (3 chiffres ou plus) + lettre de la phase : P (APS/APD), D (DCE), X (EXE), E (DOE)"{{ err.attrs(erreurs, 'code') }}>
+      {{ err.message(erreurs, 'code') }}
     </div>
     <div class="form-row">
       <label for="phase">Phase</label>
-      <select id="phase" name="phase">
+      <select id="phase" name="phase"{{ err.attrs(erreurs, 'phase') }}>
         {% for ph in phases %}
           <option value="{{ ph }}" {{ 'selected' if ph == phase_initiale }}>{{ ph }}</option>
         {% endfor %}
       </select>
+      {{ err.message(erreurs, 'phase') }}
     </div>
     <div class="form-row">
       <label for="lots">Lot(s)</label>
-      <select id="lots" name="lots" multiple data-chip-select>
+      <select id="lots" name="lots" multiple data-chip-select{{ err.attrs(erreurs, 'lots', 'lots-aide') }}>
         <option value="CM" {{ 'selected' if 'CM' in (saisie.lots or []) }}>CM — Charpente métallique</option>
         <option value="GO" {{ 'selected' if 'GO' in (saisie.lots or []) }}>GO — Gros œuvre</option>
       </select>
+      <p id="lots-aide" class="aide-champ">Au moins un lot.</p>
+      {{ err.message(erreurs, 'lots') }}
     </div>
     <div class="form-row">
       <label for="chef_projet_id">Chef de projet</label>
-      <select id="chef_projet_id" name="chef_projet_id">
+      {# Lot 13 (décision 3) : chef de projet ou Admin actif, sélecteur à recherche. #}
+      <select id="chef_projet_id" name="chef_projet_id" data-search-combobox data-search-riche data-search-placeholder="Rechercher un chef de projet…" data-search-vide="Aucun chef de projet trouvé"{{ err.attrs(erreurs, 'chef_projet_id') }}>
         {% for u in utilisateurs_actifs %}
-          <option value="{{ u.id }}" {{ 'selected' if u.id == (saisie.chef_projet_id or g.user.id) }}>{{ u.prenom }} {{ u.nom }}</option>
+{% set rs = role_style(u.role) %}
+          <option value="{{ u.id }}" {{ 'selected' if u.id == (saisie.chef_projet_id or g.user.id) }} data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}" data-couleur="{{ avatar_color(u.id) }}"{% if u.avatar_chemin %} data-photo="{{ avatar_url(u.id, u.avatar_chemin) }}"{% endif %} data-sous-titre="{{ rs.label }}{% if u.poste and u.poste|lower != rs.label|lower %} · {{ u.poste }}{% endif %}">{{ u.prenom }} {{ u.nom }}</option>
         {% endfor %}
       </select>
+      {{ err.message(erreurs, 'chef_projet_id') }}
     </div>
-    <div class="form-row-2" style="margin-bottom:0;">
+    <div class="form-row-2 form-row-serre">
       <div class="form-row">
         <label for="client">Client</label>
-        <input type="text" id="client" name="client" value="{{ saisie.client if saisie else 'IPCO' }}" maxlength="150">
+        <input type="text" id="client" name="client" value="{{ saisie.client if saisie else 'IPCO' }}" maxlength="150"{{ err.attrs(erreurs, 'client') }}>
+        {{ err.message(erreurs, 'client') }}
       </div>
       <div class="form-row">
-        <label for="honoraires">Honoraires <span style="font-weight:400; color:var(--text-faint);">— facultatif</span></label>
-        <input type="text" id="honoraires" name="honoraires" inputmode="decimal" placeholder="12 500,00" value="{{ saisie.honoraires if saisie else '' }}">
+        <label for="honoraires">Honoraires <span class="label-note">— facultatif</span></label>
+        <input type="text" id="honoraires" name="honoraires" inputmode="decimal" placeholder="12 500,00" value="{{ saisie.honoraires if saisie else '' }}"{{ err.attrs(erreurs, 'honoraires') }}>
+        {{ err.message(erreurs, 'honoraires') }}
       </div>
     </div>
     <div class="form-row">
       <label for="date_debut">Date de début</label>
-      <input type="date" id="date_debut" name="date_debut" value="{{ saisie.date_debut if saisie else date_du_jour }}">
+      <input type="date" id="date_debut" name="date_debut" value="{{ saisie.date_debut if saisie else date_du_jour }}"{{ err.attrs(erreurs, 'date_debut') }}>
+      {{ err.message(erreurs, 'date_debut') }}
     </div>
     <div class="form-row">
-      <label for="phase_liee_id">Phase liée <span style="font-weight:400; color:var(--text-faint);">— facultatif</span></label>
+      <label for="phase_liee_id">Phase liée <span class="label-note">— facultatif</span></label>
       {# Lier le nouveau projet à un projet existant dès sa création (ex. le
          EXE qui suit un DCE) — retour Fadhel, lot 7 ; même champ que la
-         fenêtre Informations. #}
-      <select id="phase_liee_id" name="phase_liee_id" data-search-combobox data-search-placeholder="Rechercher un projet…">
+         fenêtre Informations. Candidats chargés à la demande (audit
+         a11y-perf M11) : seule la phase déjà choisie est rendue. #}
+      <select id="phase_liee_id" name="phase_liee_id" data-search-combobox data-search-placeholder="Rechercher un projet…"
+              data-search-url="{{ url_for('projets.api_phase_liee_candidats') }}"{{ err.attrs(erreurs, 'phase_liee_id') }}>
         <option value="" data-vide>— Aucune —</option>
         {% for p in projets_phase_liee|default([]) %}
           <option value="{{ p.id }}"{{ ' selected' if p.id == saisie.phase_liee_id }}>{{ p.code }}_{{ p.nom }}</option>
         {% endfor %}
       </select>
+      {{ err.message(erreurs, 'phase_liee_id') }}
     </div>
-    <button type="submit" class="btn-primary btn-accent">Créer le projet</button>
+    <button type="submit" class="btn-primaire">Créer le projet</button>
   </form>
 </div>
-<script>
-  // PROMPT_CORRECTIONS.md P2 #22 : le code proposé n'était calculé qu'une
-  // fois par le serveur au chargement de la page — changer la phase dans
-  // le formulaire ne le mettait jamais à jour (ex. rester sur un suffixe
-  // "X" d'EXE après être passé sur DCE). On le recalcule maintenant côté
-  // serveur (voir projets.api_code_propose) à chaque changement de phase,
-  // sauf si l'utilisateur a lui-même déjà modifié le champ (il reste
-  // "proposé, modifiable" — on ne veut pas écraser une saisie manuelle).
-  (function () {
-    var champCode = document.getElementById('code');
-    var champPhase = document.getElementById('phase');
-    var urlCodePropose = {{ url_for('projets.api_code_propose')|tojson }};
-    // Code déjà saisi (renvoi après erreur) : ne jamais l'écraser.
-    var modifieManuellement = {{ 'true' if saisie.code else 'false' }};
-    var derniereDemande = 0;
-
-    champCode.addEventListener('input', function () {
-      modifieManuellement = true;
-    });
-
-    // Phase liée choisie (lot 8) : même numéro, lettre de la phase.
-    var champLie = document.getElementById('phase_liee_id');
-    function recalculer() {
-      if (modifieManuellement) return;
-      // Changements de phase rapides : seule la réponse à la DERNIÈRE
-      // demande est appliquée (audit n°2 : la plus lente gagnait).
-      var numero = ++derniereDemande;
-      fetch(urlCodePropose + '?phase=' + encodeURIComponent(champPhase.value)
-            + (champLie && champLie.value ? '&phase_liee_id=' + encodeURIComponent(champLie.value) : ''))
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          if (numero !== derniereDemande || modifieManuellement) return;
-          if (data.code) {
-            champCode.value = data.code;
-          }
-        })
-        .catch(function () {
-          // Silencieux : le code déjà affiché reste une proposition
-          // valable, juste pour la phase précédente — l'utilisateur peut
-          // toujours l'ajuster à la main.
-        });
-    }
-    champPhase.addEventListener('change', recalculer);
-    if (champLie) champLie.addEventListener('change', recalculer);
-  })();
-</script>
+<script src="{{ url_for('static', filename='js/projet-creer.js') }}" defer></script>
 {% endblock %}

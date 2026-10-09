@@ -101,9 +101,10 @@ html:has(body.page-dailylog) { scroll-padding-bottom: 140px; }
 .dl9 .dl-cal-day.dl-rempli .dl-pip { background: var(--dl-accent-text); }
 .dl9 .dl-cal-day.dl-absent .dl-pip { background: var(--dl-blue); border-radius: 1.5px; width: 7px; height: 3px; }
 .dl9 .dl-cal-day.dl-vide .dl-pip { background: transparent; border: 1.5px solid var(--dl-amber); }
+.dl9 .dl-cal-day.dl-verrouille .dl-pip { background: transparent; border: 1.5px solid var(--dl-muted); }
 .dl9 .dl-cal-day.dl-sel { background: var(--dl-accent); color: var(--dl-on-accent); }
 .dl9 .dl-cal-day.dl-sel.dl-rempli .dl-pip, .dl9 .dl-cal-day.dl-sel.dl-absent .dl-pip { background: var(--dl-on-accent); }
-.dl9 .dl-cal-day.dl-sel.dl-vide .dl-pip { border-color: var(--dl-on-accent); }
+.dl9 .dl-cal-day.dl-sel.dl-vide .dl-pip, .dl9 .dl-cal-day.dl-sel.dl-verrouille .dl-pip { border-color: var(--dl-on-accent); }
 .dl9 .dl-cal-day.dl-today { outline: 2px solid var(--dl-accent-text); outline-offset: -2px; }
 .dl9 .dl-cal-day:focus-visible { outline-offset: -2px; }
 .dl9 .dl-cal-day.dl-today:focus-visible { outline: 2px solid var(--dl-fg); outline-offset: -4px; box-shadow: 0 0 0 2px var(--dl-surface); }
@@ -114,6 +115,7 @@ html:has(body.page-dailylog) { scroll-padding-bottom: 140px; }
 .dl9 .dl-cal-legend .dl-ldot { width: 7px; height: 7px; border-radius: var(--dl-r-pill); background: var(--dl-accent-text); }
 .dl9 .dl-cal-legend .dl-lbar { width: 8px; height: 3px; border-radius: 1.5px; background: var(--dl-blue); }
 .dl9 .dl-cal-legend .dl-lring { width: 8px; height: 8px; border-radius: var(--dl-r-pill); border: 1.5px solid var(--dl-amber); }
+.dl9 .dl-cal-legend .dl-lring-gris { width: 8px; height: 8px; border-radius: var(--dl-r-pill); border: 1.5px solid var(--dl-muted); }
 
 /* Bannière des jours manqués */
 .dl9 .dl-banner { display: flex; align-items: center; gap: 10px; background: var(--dl-amber-soft); border: 1px solid var(--dl-amber-border);
@@ -254,7 +256,7 @@ html:has(body.page-dailylog) { scroll-padding-bottom: 140px; }
   .dl9 .dl-add:hover { border-color: var(--dl-accent-text); color: var(--dl-accent-text); }
   .dl9 .dl-catrow:hover, .dl9 .dl-cattaches:hover { background: var(--dl-surface-2); }
   .dl9 button.dl-pinfo:hover .dl-pname { text-decoration: underline; text-decoration-color: var(--dl-control-border); text-underline-offset: 3px; }
-  .dl9 .dl-save:hover:not(:disabled):not(.dl-done):not(.dl-danger) { background: var(--accent-fill-hover); }
+  .dl9 .dl-save:hover:not(:disabled):not([aria-disabled="true"]):not(.dl-done):not(.dl-danger) { background: var(--accent-fill-hover); }
 }
 /* tactile : cibles ≥ 40 px, champs à 16 px (évite le zoom iOS) */
 @media (pointer: coarse) {
@@ -294,4 +296,29 @@ html:has(body.page-dailylog) { scroll-padding-bottom: 140px; }
 }
 @media print {
   .dl9 .dl-totalbar, .dl9 .dl-toast, .dl9 .dl-addwrap, .dl9 .dl-daytools, .dl9 .dl-qui { display: none !important; }
+}
+/* Lot 13 : sous 600 px, la barre de total et son message restent au-dessus
+   de la barre de navigation basse de l'appli (--nav-basse-h, app.css). */
+@media (max-width: 600px) and (min-height: 481px) {
+  .dl9 .dl-totalbar { bottom: calc(var(--nav-basse-h, 0px) + env(safe-area-inset-bottom, 0px)); padding-bottom: 12px; }
+  .dl9 .dl-toast { bottom: calc(122px + var(--nav-basse-h, 0px) + env(safe-area-inset-bottom, 0px)); }
+}
+/* Lot 13 (phase 2) : boutons indisponibles sans perdre le focus (bug UX I3) ;
+   page montrée une fois construite (CLS du Daily log d'un chef : 0,14) ;
+   catalogue lisible sur téléphone (audit a11y I9). */
+.dl9 .dl-save[aria-disabled="true"] { background: var(--dl-border-strong); color: var(--dl-faint-text); cursor: default; box-shadow: none; }
+:root[data-theme="dark"] .dl9 .dl-save[aria-disabled="true"] { color: var(--text-secondary); }
+.dl9 .dl-tool[aria-disabled="true"] { opacity: .55; cursor: default; }
+html.k-js .dl9:not(.dl-pret) .dl-wrap { visibility: hidden; animation: dl-reveler 0s linear 1.5s forwards; }
+@keyframes dl-reveler { to { visibility: visible; } }
+.dl-toast-k .k-toast-texte { font-weight: 500; }
+.dl-toast-k.dl-has-undo { flex-wrap: wrap; }
+.dl-toast-k.dl-has-undo .k-toast-texte { flex: 1 1 200px; }
+.dl-toast-k.dl-has-undo .k-toast-actions { flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; max-width: 100%; }
+@media (max-width: 480px) {
+  .dl9 .dl-catitem { flex-wrap: wrap; }
+  .dl9 .dl-catrow { flex-wrap: wrap; row-gap: 2px; }
+  .dl9 .dl-catrow .dl-cname { flex: 1 1 calc(100% - 60px); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .dl9 .dl-catrow .dl-cin { flex: 1 1 100%; margin-left: 19px; }
+  .dl9 .dl-cattaches { margin-left: 29px; margin-bottom: 4px; }
 }

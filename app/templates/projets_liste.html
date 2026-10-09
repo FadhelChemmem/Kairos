@@ -1,36 +1,31 @@
 {% extends "base.html" %}
 {% import "partials/avatar.html" as avatarm %}
-{% block title %}Tous les projets — Kairos{% endblock %}
+{% block title %}Tous les projets{% if page > 1 %} — page {{ page }}{% endif %} — Kairos{% endblock %}
 {% block body %}
-<div class="page-wrap" style="padding-top:24px; padding-bottom:60px;">
-  <div style="display:flex; align-items:center; justify-content:space-between; gap:8px 12px; flex-wrap:wrap; margin-bottom:16px;">
-    <h1 class="page-titre" style="font-size:18px; font-weight:800;">Tous les projets</h1>
+<div class="page-wrap projets-page">
+  <div class="projets-entete">
+    <h1 class="page-titre projets-titre">Tous les projets</h1>
     {# Même règle que la route projets.creer (admin, chef de projet) — le
        bouton était montré à tous (audit n°2). #}
-    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-      {# « Télécharger en Excel » (retour Fadhel, 2026-09-29) : la liste
-         affichée, avec les filtres en cours (lien mis à jour à chaque
-         rafraîchissement, voir le script plus bas). Toute la chaîne de
-         requête, pas **request.args : ce dernier ne garde que la PREMIÈRE
-         valeur de chaque filtre (audit du 2026-09-29 — export incomplet
-         avec plusieurs phases cochées). #}
-      <a id="export-excel" href="{{ url_for('projets.export_excel') }}{% if request.query_string %}?{{ request.query_string.decode() }}{% endif %}" class="btn-secondary" style="width:auto; padding:9px 14px; display:inline-flex; align-items:center; gap:6px;" download>
-        <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
-        Télécharger en Excel
-      </a>
+    <div class="projets-actions">
+      {% include "partials/projets_export.html" %}
       {% if g.user.role in ('admin', 'chef_de_projet') %}
       {# Fenêtre flottante depuis le 2026-09-28 (retour Fadhel), même principe
          que "+ Nouveau post" — voir partials/projet_dialog.html. #}
-      <button type="button" data-open-projet-dialog class="btn-secondary" style="width:auto; padding:9px 16px;">+ Nouveau projet</button>
+      <button type="button" data-open-projet-dialog class="btn-primaire">+ Nouveau projet</button>
       {% endif %}
     </div>
   </div>
 
-  <form method="get" id="filtres-projets">
+  {# Lot 13 (phase 2) : filtres automatiques au socle partiel (frappe
+     250 ms, puces au changement) : seul #projets-resultats est remplacé,
+     l'adresse suit (pushState, Retour = filtre précédent). Le bouton
+     « Filtrer » reste pour le repli sans JavaScript. #}
+  <form method="get" id="filtres-projets" action="{{ url_for('projets.liste') }}" data-partiel="#projets-resultats" data-partiel-auto="input:250 change">
     <input type="hidden" name="filtres_actifs" value="1">
-    <div class="search-mini" style="margin-bottom:12px;">
+    <div class="search-mini projets-recherche">
       <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="search" name="q" value="{{ q }}" aria-label="Rechercher un projet (code ou nom)" autocomplete="off" placeholder="Rechercher un projet (code ou nom)…" style="flex:1; min-width:0; border:none; outline:none; background:none; padding:0; font-size:13.5px; font-family:inherit;">
+      <input type="search" id="filtre-projets-q" name="q" value="{{ q }}" aria-label="Rechercher un projet (code ou nom)" autocomplete="off" placeholder="Rechercher un projet (code ou nom)…" class="projets-recherche-champ">
     </div>
 
     {# Les quatre filtres tiennent sur une seule ligne (retour Fadhel,
@@ -42,7 +37,7 @@
        (title natif du navigateur). Plus de champ "Rechercher une
        personne…" pour ce filtre : avec des puces aussi compactes, l'équipe
        Midgard (une quinzaine de personnes) tient déjà d'un coup d'œil. #}
-    <div class="card" style="padding:14px 18px; margin-bottom:14px;">
+    <div class="card projets-filtres">
       {# Une seule ligne, chefs de projet compris (retour Fadhel,
          2026-09-29) — les avatars passent à la ligne DANS leur groupe si
          besoin. #}
@@ -92,78 +87,20 @@
           </select>
         </div>
       </div>
+      <button type="submit" class="btn k-sans-js">Filtrer</button>
     </div>
   </form>
+  {# Lot 13 (audit a11y I1, CLS 0,30) : puces construites AVANT le premier
+     rendu (script non différé, juste après les filtres) — les <select
+     multiple> natifs ne sont plus jamais affichés puis remplacés. #}
+  <script src="{{ url_for('static', filename='js/chip-select.js') }}"></script>
 
   {# Lot 10 (audit front I2) : nombre de projets annoncé après chaque
      rafraîchissement (zone hors du bloc remplacé). #}
   <p id="projets-statut" class="sr-only" role="status"></p>
-  <div id="projets-resultats">
-    {% include "partials/projets_tableau.html" %}
-  </div>
+  {% include "partials/projets_tableau.html" %}
 </div>
-<script>
-// Recherche + filtres à puces (retour Fadhel, 2026-09-27) : ne rafraîchit
-// plus que le bloc #projets-resultats (compteur + tableau) via une requête
-// AJAX vers cette même route (voir la branche X-Requested-With côté
-// routes/projets.liste), sans recharger toute la page ni exiger d'appuyer
-// sur Entrée. data-chip-autosubmit a été retiré des <select> ci-dessus :
-// chip-select.js se contente de déclencher un évènement "change" sur le
-// <select>, qu'on écoute ici pour lancer le rafraîchissement nous-mêmes.
-(function () {
-  var form = document.getElementById('filtres-projets');
-  var input = form.querySelector('input[name="q"]');
-  var resultats = document.getElementById('projets-resultats');
-  var statut = document.getElementById('projets-statut');
-  var timer = null;
-  // Lot 10 (audit front I2) : seule la DERNIÈRE requête compte — taper
-  // « sig » (réponse lente) puis vider le champ affichait le tableau et
-  // l'URL de « sig ». La requête précédente est annulée (AbortController)
-  // et, par sécurité, une réponse arrivée hors séquence est ignorée.
-  var seq = 0;
-  var enCours = null;
-
-  function refresh() {
-    var n = ++seq;
-    if (enCours) enCours.abort();
-    enCours = window.AbortController ? new AbortController() : null;
-    var params = new URLSearchParams(new FormData(form));
-    var url = window.location.pathname + '?' + params.toString();
-    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, signal: enCours ? enCours.signal : undefined })
-      .then(function (r) {
-        // Session expirée : la requête a été redirigée vers la connexion —
-        // on y va vraiment, au lieu d'injecter la page de connexion dans le
-        // tableau (audit n°2).
-        if (r.redirected || !r.ok) { window.location.href = r.redirected ? r.url : url; return null; }
-        return r.text();
-      })
-      .then(function (html) {
-        if (html === null || n !== seq) return;
-        resultats.innerHTML = html;
-        var compte = resultats.querySelector('[data-compte]');
-        if (statut && compte) statut.textContent = compte.textContent.trim();
-        window.history.replaceState(null, '', url);
-        var lien = document.getElementById('export-excel');
-        if (lien) lien.href = lien.pathname + '?' + params.toString();
-      })
-      .catch(function (err) {
-        if ((err && err.name === 'AbortError') || n !== seq) return;
-        form.submit();
-      });
-  }
-
-  input.addEventListener('input', function () {
-    clearTimeout(timer);
-    timer = setTimeout(refresh, 250);
-  });
-
-  form.addEventListener('change', function (e) {
-    if (e.target.matches && e.target.matches('select[data-chip-select], select[data-chip-tristate]')) {
-      refresh();
-    }
-  });
-})();
-</script>
+<script src="{{ url_for('static', filename='js/projets-liste.js') }}" defer></script>
 
 {% if g.user.role in ('admin', 'chef_de_projet') %}
   {% include "partials/projet_dialog.html" %}

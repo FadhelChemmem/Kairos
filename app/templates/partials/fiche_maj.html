@@ -1,0 +1,8 @@
+{# Réponse partielle d'une action sur la fiche projet (lot 13, phase 2) :
+   le fragment de la cible (`racine`), puis les fragments hors cible
+   (`parties`, rendus avec oob : data-partiel-oob) — ligne et carte des
+   tâches, compteur, état du projet, intervenants, fil. Voir
+   routes/projets.py:_maj_fiche. #}
+{% if racine %}{% include racine %}{% endif %}
+{% for partie in parties %}{% with oob=true %}{% include partie %}{% endwith %}
+{% endfor %}

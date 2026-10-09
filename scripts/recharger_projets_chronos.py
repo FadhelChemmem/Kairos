@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Rechargement des projets et tâches Chronos dans une base Kairos DÉJÀ en
-service (lot 12 : migrations jusqu'à 0018), sans toucher aux comptes.
+service (lot 13 : migrations jusqu'à 0019), sans toucher aux comptes.
 
 Cas d'usage : la base a été chargée une première fois par
 scripts/migrate_from_chronos.py (reprise COMPLÈTE, id Chronos conservés),
@@ -11,7 +11,7 @@ devenus (rôles, e-mails, mots de passe, fuseaux, équipes, sessions).
 Le script lit un dump mysqldump et écrit UN fichier SQL, une seule
 transaction (BEGIN … COMMIT, ON_ERROR_STOP), qui :
   1. vérifie que la base est à jour (dernière migration :
-     0018_modes_admin_et_date_simulee) et que toutes ses tables sont
+     0019_lot13_etat_projet_et_temps) et que toutes ses tables sont
      connues ;
   2. vérifie que chaque utilisateur Chronos référencé (chef, créateur,
      intervenant) existe dans Kairos avec le même id et les mêmes
@@ -63,7 +63,7 @@ from migrate_from_chronos import (  # noqa: E402
 )
 from mysqldump_parser import load_dump  # noqa: E402
 
-MIGRATION_ATTENDUE = "0018_modes_admin_et_date_simulee"
+MIGRATION_ATTENDUE = "0019_lot13_etat_projet_et_temps"
 
 # Données métier effacées puis rechargées (ou laissées vides) — ordre
 # indifférent pour TRUNCATE. Toute table de la base doit figurer ici ou

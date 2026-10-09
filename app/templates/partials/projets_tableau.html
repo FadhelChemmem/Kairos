@@ -1,63 +1,80 @@
-{# Partiel extrait de projets_liste.html (retour Fadhel, 2026-09-27) :
-   la recherche/les filtres ne doivent rafraîchir QUE ce bloc (compteur +
-   tableau), pas toute la page. Rendu à la fois par projets_liste.html
-   (premier chargement complet) et par routes/projets.liste() en réponse
-   AJAX (X-Requested-With: XMLHttpRequest) — voir le script en bas de
-   projets_liste.html. #}
+{# Résultats de « Tous les projets » (#projets-resultats) : compteur,
+   tableau, pagination. Rendu par projets_liste.html (premier affichage)
+   et seul par routes/projets.liste() pour une requête partielle (lot 13 :
+   filtres automatiques, pagination et Retour sans recharger la page). #}
 {% import "partials/avatar.html" as avatarm %}
-{# Lot 11 : vrai total (count(*)), plus de troncature silencieuse à 200
-   lignes ; pages de 50, liens Précédent / Suivant (filtres conservés). #}
-<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
-  <span data-compte style="font-size:12.5px; color:var(--text-muted);">{{ total }} projet{{ 's' if total > 1 else '' }}{% if nb_pages > 1 %} · {{ premier }}–{{ dernier }} affichés{% endif %}</span>
-</div>
-{% if chef_ignore %}
-  <p role="note" style="margin:0 0 10px; font-size:12.5px; color:var(--text-secondary);">Recherche dans tous les projets visibles : le filtre « Chef de projet : vous » est ignoré tant qu’un texte est saisi.</p>
-{% endif %}
-
-<div class="card table-scroll" style="padding:8px 18px;">
-  {# Lot 11 (audit front M7/M13) : pas de ligne d'en-têtes au-dessus de l'état vide. #}
-  {% if projets %}
-  <div class="ptable-head" style="padding:10px 4px; font-size:12px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.03em; border-bottom:1px solid var(--border-soft);">
-    <span>Projet</span><span>Phase</span><span>Lots</span><span>Chef de projet</span><span title="Heures intervenants / heures chef de projet">Heures interv./chef</span><span title="Prochain rendu client (tri de la liste)">Prochain rendu</span><span>État</span>
+<div id="projets-resultats" class="projets-resultats" data-page="{{ page }}" data-nb-pages="{{ nb_pages }}">
+  <div class="projets-compte-ligne">
+    {# Lot 11 : vrai total (count(*)), pages de 50, filtres conservés. Lot
+       13 : reçoit le focus après un changement de page. #}
+    <span id="projets-compte" data-compte class="projets-compte" tabindex="-1">{{ total }} projet{{ 's' if total > 1 else '' }}{% if nb_pages > 1 %} · {{ premier }}–{{ dernier }} affichés{% endif %}</span>
   </div>
+  {% if chef_ignore %}
+    <p role="note" class="projets-note">Recherche dans tous les projets visibles : le filtre « Chef de projet : vous » est ignoré tant qu’un texte est saisi.</p>
   {% endif %}
-  {% for p in projets %}
-    {% set st = projet_etat_style(p.etat) %}
-    <a href="{{ url_for('projets.detail', projet_id=p.id) }}" class="ptable-row" style="padding:12px 4px; border-bottom:1px solid var(--border-soft); color:inherit;">
-      <span style="display:flex; align-items:center; gap:8px; min-width:0;">
-        <span aria-hidden="true" style="width:8px; height:8px; border-radius:999px; background:{{ st.dot }}; flex-shrink:0;"></span>
-        <span style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="{{ p.code }}_{{ p.nom }}">{{ p.code }}_{{ p.nom }}</span>
-      </span>
-      <span class="pill" style="background:var(--hover-bg); color:var(--text-secondary); width:fit-content;">{{ p.phase }}</span>
-      <span style="font-size:12.5px; color:var(--text-secondary);">{{ p.lots }}</span>
-      <span style="display:flex; align-items:center; gap:6px; font-size:12.5px;">
-        {{ avatarm.avatar(p.chef_id, p.chef_prenom, p.chef_nom, p.chef_avatar_chemin, css_class='avatar avatar-sm') }}
-        {{ p.chef_prenom }} {{ p.chef_nom }}
-      </span>
-      {# "8/5 h" = heures intervenants / heures chef de projet (PR4). #}
-      <span style="font-size:12.5px; color:var(--text-muted); white-space:nowrap;" title="{{ p.heures_intervenant|heures }} intervenants / {{ p.heures_chef|heures }} chef de projet">{{ heures_interv_chef(p.heures_intervenant, p.heures_chef) }}</span>
-      {# Prochain rendu client (sinon prochaine échéance interne, en gris) ;
-         le nom de la tâche en infobulle (retour Fadhel, 2026-09-29). La
-         liste est triée par cette date (projets.list_projets). #}
-      {% if p.prochain_rendu %}
-        <span style="font-size:12px; color:var(--text-secondary); font-weight:600;" title="Rendu : {{ p.prochain_rendu_titre }}">{{ p.prochain_rendu|date_courte }}</span>
-      {% elif p.prochaine_deadline %}
-        <span style="font-size:12px; color:var(--text-faint);" title="Échéance interne : {{ p.prochaine_deadline_titre }}">{{ p.prochaine_deadline|date_courte }} <span style="font-size:10.5px;">(interne)</span></span>
-      {% else %}
-        <span></span>
-      {% endif %}
-      <span class="pill" style="background:{{ st.bg }}; color:{{ st.fg }}; width:fit-content;">{{ st.label }}</span>
-    </a>
-  {% else %}
-    {# Les filtres s'appliquent toujours (valeurs par défaut comprises) : une
-       liste vide vient donc d'eux — lot 10, audit front I2. #}
-    <div style="padding:20px 4px; font-size:13px; color:var(--text-muted);">Aucun projet ne correspond à ces filtres. <a href="{{ url_for('projets.liste', filtres_actifs=1) }}" style="font-weight:600;">Afficher tous les projets</a></div>
-  {% endfor %}
+
+  <div class="card ptable-carte">
+    {% if projets %}
+    {# Lot 13 (audit a11y I6) : vrai tableau pour les lecteurs d'écran
+       (rôles table / row / columnheader / cell) ; le lien porte seulement
+       le nom du projet, le reste de la ligne reste cliquable à la souris
+       (projets-liste.js). Sous 600 px : une carte par projet. #}
+    <div role="table" aria-label="Projets" aria-describedby="projets-compte" class="ptable">
+      <div role="rowgroup" class="ptable-entetes">
+        <div role="row" class="ptable-head">
+          <span role="columnheader">Projet</span><span role="columnheader">Phase</span><span role="columnheader">Lots</span><span role="columnheader">Chef de projet</span><span role="columnheader" title="Heures intervenants / heures chef de projet">Heures</span><span role="columnheader" title="Prochain rendu client (tri de la liste)">Rendu</span><span role="columnheader">État</span>
+        </div>
+      </div>
+      <div role="rowgroup">
+      {% for p in projets %}
+        {% set st = projet_etat_style(p.etat) %}
+        <div role="row" class="ptable-row" data-lien-ligne>
+          <span role="cell" class="ptable-projet">
+            <span class="point-etat point-etat-{{ p.etat }}" aria-hidden="true"></span>
+            <a href="{{ url_for('projets.detail', projet_id=p.id) }}" class="ptable-lien" title="{{ p.code }}_{{ p.nom }}">{{ p.code }}_{{ p.nom }}</a>
+          </span>
+          <span role="cell" class="ptable-phase"><span class="pill pill-neutre">{{ p.phase }}</span></span>
+          <span role="cell" class="ptable-lots">{{ p.lots }}</span>
+          <span role="cell" class="ptable-chef">
+            {{ avatarm.avatar(p.chef_id, p.chef_prenom, p.chef_nom, p.chef_avatar_chemin, css_class='avatar avatar-sm') }}
+            <span class="ptable-chef-nom">{{ p.chef_prenom }} {{ p.chef_nom }}</span>
+          </span>
+          {# « 8/5 h » = heures intervenants / heures chef de projet (PR4). #}
+          <span role="cell" class="ptable-heures" title="{{ p.heures_intervenant|heures }} intervenants / {{ p.heures_chef|heures }} chef de projet">{{ heures_interv_chef(p.heures_intervenant, p.heures_chef) }}</span>
+          {# Prochain rendu client (sinon prochaine échéance interne, en
+             gris) ; le nom de la tâche en infobulle (retour Fadhel). #}
+          {% if p.prochain_rendu %}
+            <span role="cell" class="ptable-rendu" title="Rendu : {{ p.prochain_rendu_titre }}"><span class="ptable-mobile-libelle">Rendu </span>{{ p.prochain_rendu|date_courte }}</span>
+          {% elif p.prochaine_deadline %}
+            <span role="cell" class="ptable-rendu ptable-rendu-interne" title="Échéance interne : {{ p.prochaine_deadline_titre }}"><span class="ptable-mobile-libelle">Échéance </span>{{ p.prochaine_deadline|date_courte }} <span class="ptable-interne">(interne)</span></span>
+          {% else %}
+            <span role="cell" class="ptable-rendu"></span>
+          {% endif %}
+          <span role="cell" class="ptable-etat"><span class="pill {{ st.classe }}">{{ st.label }}</span></span>
+        </div>
+      {% endfor %}
+      </div>
+    </div>
+    {% else %}
+      {# Les filtres s'appliquent toujours (valeurs par défaut comprises) :
+         une liste vide vient donc d'eux — lot 10, audit front I2. #}
+      <div class="k-vide">
+        <p class="k-vide-titre">Aucun projet ne correspond à ces filtres</p>
+        <p class="k-vide-texte">Élargissez la recherche ou affichez tous les projets visibles.</p>
+        <a href="{{ url_for('projets.liste', filtres_actifs=1) }}" class="btn" data-partiel="#projets-resultats" data-focus-apres="#projets-compte">Afficher tous les projets</a>
+      </div>
+    {% endif %}
+  </div>
+  {% if nb_pages > 1 %}
+    <nav aria-label="Pages de la liste des projets" class="pagination">
+      {% if url_precedente %}<a href="{{ url_precedente }}" rel="prev" class="pagination-lien" data-partiel="#projets-resultats" data-partiel-defiler="haut" data-focus-apres="#projets-compte">← Précédent</a>{% else %}<span aria-hidden="true" class="pagination-inactif">← Précédent</span>{% endif %}
+      <span class="pagination-position">Page {{ page }} sur {{ nb_pages }}</span>
+      {% if url_suivante %}<a href="{{ url_suivante }}" rel="next" class="pagination-lien" data-partiel="#projets-resultats" data-partiel-defiler="haut" data-focus-apres="#projets-compte">Suivant →</a>{% else %}<span aria-hidden="true" class="pagination-inactif">Suivant →</span>{% endif %}
+    </nav>
+  {% endif %}
 </div>
-{% if nb_pages > 1 %}
-  <nav aria-label="Pages de la liste des projets" style="display:flex; align-items:center; justify-content:center; gap:14px; margin-top:12px; font-size:13px;">
-    {% if url_precedente %}<a href="{{ url_precedente }}" rel="prev" style="font-weight:600;">← Précédent</a>{% else %}<span aria-hidden="true" style="color:var(--text-faint);">← Précédent</span>{% endif %}
-    <span style="color:var(--text-muted);">Page {{ page }} sur {{ nb_pages }}</span>
-    {% if url_suivante %}<a href="{{ url_suivante }}" rel="next" style="font-weight:600;">Suivant →</a>{% else %}<span aria-hidden="true" style="color:var(--text-faint);">Suivant →</span>{% endif %}
-  </nav>
+{% if partiel %}
+{# Hors cible : nombre annoncé (région live) et lien d'export aux filtres. #}
+<p id="projets-statut" class="sr-only" role="status" data-partiel-oob>{{ total }} projet{{ 's' if total > 1 else '' }}{% if nb_pages > 1 %}, page {{ page }} sur {{ nb_pages }}{% endif %}</p>
+{% include "partials/projets_export.html" %}
 {% endif %}

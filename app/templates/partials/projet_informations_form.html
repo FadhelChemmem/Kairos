@@ -1,0 +1,96 @@
+{# Formulaire de la fenêtre « Informations » du projet (lot 13 : extrait de
+   projet_informations_dialog.html). Envoyé en partiel : succès = fenêtre
+   fermée, en-tête, carte Informations, tâches, intervenants et fil mis à
+   jour sans recharger ; clôture d'un projet qui a des tâches ouvertes =
+   la confirmation remplace le formulaire (#informations-form) ; erreur =
+   champs signalés (422). Repli sans JavaScript : POST puis redirection.
+   Contexte : projet, lots, projets_phase_liee, chefs_possibles,
+   chef_modifiable ; facultatif : oob. #}
+<form method="post" action="{{ url_for('projets.editer_informations', projet_id=projet.id) }}" id="informations-form" class="informations-form" data-partiel="#informations-form"{% if enregistre_informations %} data-enregistre{% endif %}{% if oob %} data-partiel-oob{% endif %}>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-row">
+    <label for="dialog-info-nom">Nom du projet</label>
+    <input type="text" id="dialog-info-nom" name="nom" maxlength="200" value="{{ projet.nom }}" required>
+  </div>
+  <div class="form-row-2 form-row-serre">
+    <div class="form-row">
+      <span class="label">Code <span class="label-note">— fixe</span></span>
+      <div class="champ-fixe">{{ projet.code }}</div>
+    </div>
+    <div class="form-row">
+      <span class="label">Phase <span class="label-note">— fixe</span></span>
+      <div class="champ-fixe">{{ projet.phase }}</div>
+    </div>
+  </div>
+  <div class="form-row-2 form-row-serre">
+    <div class="form-row">
+      <label for="dialog-info-client">Client</label>
+      <input type="text" id="dialog-info-client" name="client" value="{{ projet.client or 'IPCO' }}" maxlength="150">
+    </div>
+    <div class="form-row">
+      <label for="dialog-info-honoraires">Honoraires</label>
+      <input type="text" id="dialog-info-honoraires" name="honoraires" inputmode="decimal" placeholder="12 500,00" value="{{ montant_fr(projet.honoraires) }}">
+    </div>
+  </div>
+  <div class="form-row">
+    {% if chef_modifiable %}
+    <label for="dialog-info-chef">Chef de projet</label>
+    <select id="dialog-info-chef" name="chef_projet_id" data-search-combobox data-search-riche data-search-placeholder="Rechercher un chef de projet…" data-search-vide="Aucun chef de projet trouvé" aria-describedby="dialog-info-chef-aide">
+      {% for u in chefs_possibles %}
+        {% set rs = role_style(u.role) if u.role else none %}
+        <option value="{{ u.id }}" {{ 'selected' if u.id == projet.chef_projet_id }} data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}" data-couleur="{{ avatar_color(u.id) }}"{% if u.avatar_chemin %} data-photo="{{ avatar_url(u.id, u.avatar_chemin) }}"{% endif %} data-sous-titre="{% if u.inactif %}Compte désactivé · chef actuel{% elif u.id == projet.chef_projet_id %}Chef actuel{% if rs %} · {{ rs.label }}{% endif %}{% else %}{{ rs.label if rs }}{% if u.poste and (not rs or u.poste|lower != rs.label|lower) %} · {{ u.poste }}{% endif %}{% endif %}">{{ u.prenom }} {{ u.nom }}{{ ' (désactivé)' if u.inactif }}</option>
+      {% endfor %}
+    </select>
+    <p id="dialog-info-chef-aide" class="aide-champ">Chef de projet ou administrateur, compte actif. L'ancien chef devient co-chef.</p>
+    {% else %}
+    <span class="label">Chef de projet</span>
+    <div class="champ-fixe">{{ projet.chef_prenom }} {{ projet.chef_nom }}</div>
+    <p class="aide-champ">Projet clos : rouvrez-le d'abord pour changer de chef.</p>
+    {% endif %}
+  </div>
+  <div class="form-row">
+    {# Lot 13 (décision 1) : En cours / Terminé / Abandonné ; « Bloqué »
+       découle des tâches (une tâche bloquée bloque le projet ouvert). Clore
+       un projet qui a des tâches ouvertes demande une confirmation. #}
+    <label for="dialog-info-etat">État</label>
+    <select id="dialog-info-etat" name="etat" aria-describedby="dialog-info-etat-aide">
+      <option value="en_cours" {{ 'selected' if projet.etat in ('en_cours', 'bloque') }}>{{ 'En cours (bloqué : une tâche est bloquée)' if projet.etat == 'bloque' else 'En cours' }}</option>
+      <option value="termine" {{ 'selected' if projet.etat == 'termine' }}>Terminé</option>
+      <option value="abandonne" {{ 'selected' if projet.etat == 'abandonne' }}>Abandonné</option>
+    </select>
+    <p id="dialog-info-etat-aide" class="aide-champ">Un projet ouvert est Bloqué dès qu'une de ses tâches l'est. Le clore ferme aussi ses tâches ouvertes, après confirmation.</p>
+  </div>
+  <div class="form-row">
+    <input type="hidden" name="lots_envoyes" value="1">
+    <label for="dialog-info-lots">Lots</label>
+    <select id="dialog-info-lots" name="lots" multiple data-chip-select>
+      <option value="CM" {{ 'selected' if 'CM' in lots|map(attribute='code')|list }}>CM — Charpente métallique</option>
+      <option value="GO" {{ 'selected' if 'GO' in lots|map(attribute='code')|list }}>GO — Gros œuvre</option>
+    </select>
+  </div>
+  <div class="form-row-2 form-row-serre">
+    <div class="form-row">
+      <label for="dialog-info-debut">Date de début</label>
+      <input type="date" id="dialog-info-debut" name="date_debut" value="{{ projet.date_debut.isoformat() if projet.date_debut else '' }}">
+    </div>
+    <div class="form-row">
+      <label for="dialog-info-fin">Date de fin</label>
+      <input type="date" id="dialog-info-fin" name="date_fin" value="{{ projet.date_fin.isoformat() if projet.date_fin else '' }}"{% if projet.date_debut and (not projet.date_fin or projet.date_fin >= projet.date_debut) %} min="{{ projet.date_debut.isoformat() }}"{% endif %}>
+    </div>
+  </div>
+  <div class="form-row form-row-serre">
+    <label for="dialog-info-phase-liee">Phase liée <span class="label-note">— facultatif</span></label>
+    <select id="dialog-info-phase-liee" name="phase_liee_id" data-search-combobox data-search-placeholder="Rechercher un projet…"
+            data-search-url="{{ url_for('projets.api_phase_liee_candidats', exclure=projet.id) }}">
+      <option value="" data-vide>— Aucune —</option>
+      {% for p in projets_phase_liee %}
+        <option value="{{ p.id }}" {{ 'selected' if p.id == projet.phase_liee_id }}>{{ p.code }}_{{ p.nom }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="fenetre-actions">
+    <button type="button" data-close-informations-dialog class="btn">Annuler</button>
+    <button type="submit" id="informations-enregistrer" class="btn-primaire">Enregistrer</button>
+  </div>
+</form>

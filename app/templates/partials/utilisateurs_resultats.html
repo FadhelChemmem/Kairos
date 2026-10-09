@@ -1,0 +1,35 @@
+{# Résultats de la page Utilisateurs (lot 13 : fragment rendu seul quand
+   les filtres changent — #utilisateurs-resultats ; le compteur suit, hors
+   cible). Contexte : utilisateurs, compte, peut_gerer, filtres, oob_compte. #}
+<div id="utilisateurs-resultats">
+  {# Lot 11 (audit front M1) : vrai tableau pour les lecteurs d'écran ; le
+     lien de la fiche ne porte que le nom. #}
+  <div class="card table-scroll carte-tableau" role="table" aria-label="Utilisateurs">
+    {% if utilisateurs %}
+    {# Contre-expertise rôles N3 : un chef de projet n'a ni la colonne
+       E-mail ni la colonne Embauche (en-tête comme lignes). #}
+    <div class="uhead" role="row"{% if g.user.role == 'chef_de_projet' %} style="grid-template-columns: minmax(180px, 1.5fr) 90px 130px 110px 56px"{% endif %}>
+      <span role="columnheader">Utilisateur</span>
+      <span role="columnheader">Équipe</span>
+      <span role="columnheader">Rôle</span>
+      <span role="columnheader">Téléphone</span>
+      {% if g.user.role != 'chef_de_projet' %}
+      <span role="columnheader">E-mail</span>
+      <span role="columnheader" title="Embauché(e) le">Embauche</span>
+      {% endif %}
+      <span role="columnheader">Actif</span>
+    </div>
+    {% endif %}
+    {% for u in utilisateurs %}
+      {% with oob_compte=False %}{% include "partials/utilisateur_ligne.html" %}{% endwith %}
+    {% else %}
+      <div role="row"><div role="cell" class="k-vide">
+        <span class="k-vide-icone" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <p class="k-vide-titre">Aucun utilisateur ne correspond à ces filtres.</p>
+        <p class="k-vide-texte">Essayez un autre nom, ou retirez un filtre.</p>
+        <a href="{{ url_for('utilisateurs.liste') }}" class="btn" data-partiel="#utilisateurs-resultats" data-focus-apres="#filtre-utilisateurs-q">Effacer les filtres</a>
+      </div></div>
+    {% endfor %}
+  </div>
+</div>
+{% if oob_compte %}{% include "partials/utilisateurs_compte.html" %}{% endif %}

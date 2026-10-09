@@ -138,11 +138,21 @@
   'use strict';
   if (typeof document === 'undefined') return;
 
+  // Instance en cours : arrêtée (écouteurs du document et de la fenêtre)
+  // quand la page est remplacée par celle d'une autre personne (#dl9).
+  var arreter = null;
+
   function demarrer() {
     var N = window.KairosDailyLog;
     var $ = function (id) { return document.getElementById(id); };
     var racine = $('dl9');
-    if (!racine || !$('dl-amorce')) return;
+    if (!racine || !$('dl-amorce') || racine.dataset.dlInit) return;
+    racine.dataset.dlInit = '1';
+    if (arreter) arreter();
+    var ctrl = window.AbortController ? new window.AbortController() : null;
+    var sig = ctrl ? { signal: ctrl.signal } : false;
+    var aRetirer = [];
+    arreter = function () { if (ctrl) ctrl.abort(); aRetirer.forEach(function (fn) { fn(); }); };
     var A = JSON.parse($('dl-amorce').textContent);
     var T = JSON.parse($('dl-textes').textContent);
     var C = A.constantes, PAS = C.pas, MAXJ = C.maxJour;
@@ -154,7 +164,12 @@
     function tr(texte, x, y) { return String(texte).split('{x}').join(x == null ? '' : x).split('{y}').join(y == null ? '' : y); }
     function jourNum(d) { return d === 1 ? '1er' : String(d); }
     // espaces insécables : « ven. 2 oct. » ne se coupe pas dans un toast ou une puce
-    function dateCourte(k) { var d = N.versDate(k); return T.jours_courts[N.jourSemaine(k)] + ' ' + d.getUTCDate() + ' ' + T.mois_courts[d.getUTCMonth()]; }
+    // L'année dès qu'elle n'est pas celle d'aujourd'hui (lot 13, audit temps T-M2).
+    function dateCourte(k) {
+      var d = N.versDate(k);
+      var texte = T.jours_courts[N.jourSemaine(k)] + ' ' + d.getUTCDate() + ' ' + T.mois_courts[d.getUTCMonth()];
+      return String(k).slice(0, 4) !== String(TODAY).slice(0, 4) ? texte + ' ' + d.getUTCFullYear() : texte;
+    }
     function dateLongue(k) { var d = N.versDate(k); return T.jours_longs[N.jourSemaine(k)] + ' ' + jourNum(d.getUTCDate()) + ' ' + T.mois[d.getUTCMonth()]; }
     function url(modele, valeur) { return modele.replace(/AAAA-MM(-JJ)?/, valeur); }
     function avecParam(u, cleParam, valeur) { return u + (u.indexOf('?') >= 0 ? '&' : '?') + cleParam + '=' + encodeURIComponent(valeur); }
@@ -168,7 +183,7 @@
         ajoutBtn = $('dl-ajouter'), ajoutWrap = $('dl-ajout'), panneau = $('dl-catalogue'), rechercheEl = $('dl-recherche'),
         catCorps = $('dl-catalogue-corps'), copierBtn = $('dl-copier'), absentBtn = $('dl-absent'),
         outilsEl = $('dl-outils'), aideEl = $('dl-aide'), lectureEl = $('dl-lecture'), liveEl = $('dl-live'),
-        toastEl = $('dl-toast'), barreEl = $('dl-barre'), quiDate = $('dl-qui-date');
+        barreEl = $('dl-barre'), quiDate = $('dl-qui-date'), catStatut = $('dl-catalogue-statut');
 
     // --- état -------------------------------------------------------------
     var jour = null;            // état serveur du jour affiché (format `Jour`)
@@ -193,42 +208,60 @@
     var resultatsRecherche = null, rechercheMotif = '', tachesOuvertes = {}, tachesChargees = {};
     var cleBrouillon = 'kairos-dl-brouillon-' + A.acteur.id + '-' + A.proprietaire.id + '-';
 
-    // --- messages : toast visuel + annonce (UNE seule zone live) ---------
-    var toastT, sayT, clearT;
+    // « Voir comme » (lecture seule, lot 13) : aucune commande d'écriture
+    // proposée — le serveur refuse de toute façon (403).
+    var VOIR = document.documentElement.hasAttribute('data-lecture-seule');
+    var K = window.Kairos;
+
+    // --- messages : toasts du socle (lot 13) + annonces -------------------
+    // Un seul message du Daily log à la fois (le suivant remplace le
+    // précédent) ; ses actions (« Annuler », « Garder ma saisie »…) sont
+    // des boutons du toast, qui garde l'id dl-toast. Correctif du lot 13
+    // (verif-a11y-perf R2) : un toast créé déjà rempli n'est pas lu de façon
+    // sûre ; le message part aussi dans une région persistante —
+    // Kairos.annoncer (socle) s'il existe, sinon #dl-live — avec les actions
+    // disponibles (« bouton Annuler disponible »).
+    var toastCourant = null, sayT;
     function say(msg) { clearTimeout(sayT); liveEl.textContent = ''; sayT = setTimeout(function () { liveEl.textContent = msg; }, 30); }
+    function annoncer(msg) {
+      if (K && typeof K.annoncer === 'function') K.annoncer(msg);
+      else say(msg);
+    }
     function hideToast() {
-      clearTimeout(toastT);
-      toastEl.className = 'dl-toast';
-      toastEl.setAttribute('aria-hidden', 'true');
-      Array.prototype.forEach.call(toastEl.querySelectorAll('.dl-undo'), function (b) { b.remove(); });
-      clearTimeout(clearT);
-      clearT = setTimeout(function () { if (!toastEl.classList.contains('dl-show')) toastEl.textContent = ''; }, 260);
+      if (toastCourant) { var t = toastCourant; toastCourant = null; t.removeAttribute('id'); if (K) K.fermerToast(t, false); }
     }
     /** opt : {warn, actions:[{texte, fn}], duree (0 = jusqu'à action), back} */
     function toast(msg, opt) {
       opt = opt || {};
       var actions = opt.actions || (opt.undo ? [{ texte: T.annuler, fn: opt.undo }] : []);
-      clearTimeout(clearT);
-      toastEl.className = 'dl-toast dl-show' + (opt.warn ? ' dl-warn' : '') + (actions.length ? ' dl-has-undo' : '');
-      toastEl.textContent = '';
-      var span = document.createElement('span');
-      span.textContent = msg;
-      toastEl.appendChild(span);
-      toastEl.setAttribute('aria-hidden', actions.length ? 'false' : 'true');
+      hideToast();
+      if (!K || !K.toast) { say(msg); return; }
+      var duree = opt.duree != null ? opt.duree : (actions.length ? 8000 : opt.warn ? 5500 : 2200);
+      var el = K.toast(msg, { type: opt.warn ? 'avertissement' : 'succes', duree: duree, annonce: false });
+      annoncer(msg + (actions.length ? (actions[0].texte === T.annuler ? T.annuler_dispo
+        : ' — ' + actions.map(function (a) { return a.texte; }).join(', ')) : ''));
+      el.id = 'dl-toast';
+      el.classList.add('dl-toast-k');
+      if (actions.length) el.classList.add('dl-has-undo');
+      var zone = el.querySelector('.k-toast-actions'), fermer = el.querySelector('.k-toast-fermer');
       actions.forEach(function (a) {
         var b = document.createElement('button');
         b.type = 'button';
-        b.className = 'dl-undo';
+        b.className = 'k-toast-action dl-undo';
         b.textContent = a.texte;
         b.addEventListener('click', function () { hideToast(); a.fn(); if (opt.back && document.body.contains(opt.back)) opt.back.focus(); });
-        toastEl.appendChild(b);
+        zone.insertBefore(b, fermer);
       });
-      say(msg + (actions.length === 1 && opt.undo ? T.annuler_dispo : ''));
-      clearTimeout(toastT);
-      var duree = opt.duree != null ? opt.duree : (actions.length ? 8000 : opt.warn ? 5500 : 2200);
-      if (duree > 0) toastT = setTimeout(hideToast, duree);
+      toastCourant = el;
+      if (fermer) fermer.addEventListener('click', function () { if (toastCourant === el) { toastCourant = null; el.removeAttribute('id'); } });
     }
-    function hideToastIfStale() { if (toastEl.classList.contains('dl-has-undo')) hideToast(); }
+    function hideToastIfStale() { if (toastCourant && toastCourant.classList.contains('dl-has-undo')) hideToast(); }
+    /** Bouton indisponible sans perdre le focus (bug UX I3) : aria-disabled
+     *  au lieu de disabled ; les gestionnaires vérifient estInactif(). */
+    function inactif(btn, flag) {
+      if (flag) btn.setAttribute('aria-disabled', 'true'); else btn.removeAttribute('aria-disabled');
+    }
+    function estInactif(btn) { return btn.getAttribute('aria-disabled') === 'true'; }
 
     // --- requêtes ----------------------------------------------------------
     /** fetch JSON ; résout toujours {status, data} (status 0 = réseau). */
@@ -257,12 +290,12 @@
       }
       return { cle: N.cle(l.projet_id, l.tache_id), projet_id: l.projet_id, tache_id: l.tache_id || null,
                code: l.code, nom: l.nom, tache_titre: l.tache_titre, m: l.minutes,
-               prev: l.minutes > 0 ? l.minutes : PAS, modifiable: !!l.modifiable, masquee: false,
+               prev: l.minutes > 0 ? l.minutes : PAS, modifiable: !VOIR && !!l.modifiable, masquee: false,
                couleur: N.couleur(l.code) };
     }
     function proposes(j) {
       // Nouveau jour : mes projets proposés à 0 h, grisés, jamais stockés (décision maquette n°7).
-      if (j.statut !== 'vide' || !j.droits.saisie_libre || j.droits.mode !== 'saisie') return [];
+      if (VOIR || j.statut !== 'vide' || !j.droits.saisie_libre || j.droits.mode !== 'saisie') return [];
       return (catalogue.mine || []).filter(function (c) { return !c.tache_id && (!c.date_debut || c.date_debut <= j.date); })
         .slice(0, 8).map(function (c) {
           return { cle: N.cle(c.projet_id, null), projet_id: c.projet_id, tache_id: null, code: c.code, nom: c.nom,
@@ -290,7 +323,11 @@
     function total() { return rows.reduce(function (s, r) { return s + Math.max(0, r.m); }, 0); }
     function sumOthers(i) { return rows.reduce(function (s, r, j) { return s + (j === i ? 0 : Math.max(0, r.m)); }, 0); }
     function isAbsent() { return !!jour && jour.statut === 'absent'; }
-    function droits() { return jour ? jour.droits : A.jour.droits; }
+    function droits() {
+      var d = jour ? jour.droits : A.jour.droits;
+      if (!VOIR) return d;
+      return Object.assign({}, d, { saisie_libre: false, lignes_de_ses_projets: false, absence: false, copie: false });
+    }
     function editable() { return !chargement && !isAbsent() && rows.some(function (r) { return r.modifiable; }); }
     function peutAjouter() { var d = droits(); return !chargement && !isAbsent() && (d.saisie_libre || d.lignes_de_ses_projets); }
 
@@ -395,7 +432,8 @@
       info.querySelector('.dl-pname').textContent = r.nom;
       if (row.dataset.fixe === '1') {
         row.querySelector('.dl-fixtexte').textContent = f(r.m);
-        var titre = r.masquee ? T.ligne_masquee : (droits().lecture_seule || droits().mode === 'saisie' ? T.ligne_verrouillee_fenetre : T.ligne_verrouillee);
+        var titre = r.masquee ? T.ligne_masquee : (droits().futur_reel ? T.ligne_futur_reel
+          : (droits().lecture_seule || droits().mode === 'saisie' ? T.ligne_verrouillee_fenetre : T.ligne_verrouillee));
         row.title = titre;
         row.querySelector('.dl-fixval').setAttribute('aria-label', f(r.m) + ' — ' + titre);
         return;
@@ -432,6 +470,9 @@
       }
       if (listeEl.querySelector('.dl-absentcard')) listeEl.textContent = '';
       ajoutWrap.hidden = !peutAjouter();
+      // État vide sans invitation à saisir quand rien n'est saisissable
+      // (jour du futur réel sous date simulée, lecture seule).
+      listeEl.setAttribute('data-vide', peutAjouter() ? T.aucun_projet : (d.futur_reel ? T.aucun_projet_futur : T.aucun_projet_lecture));
       copierBtn.hidden = !d.copie;
       aideEl.hidden = !editable() && !peutAjouter();
       listeEl.setAttribute('aria-busy', chargement ? 'true' : 'false');
@@ -481,16 +522,16 @@
       var d = droits();
       saveBtn.hidden = !abs && !editable() && !peutAjouter();
       saveBtn.classList.remove('dl-done', 'dl-danger');
-      if (abs) { saveBtn.disabled = true; saveBtn.textContent = T.absent_bouton; return; }
-      if (saved === 'envoi') { saveBtn.disabled = true; saveBtn.textContent = T.enregistrement; return; }
+      if (abs) { inactif(saveBtn, true); saveBtn.textContent = T.absent_bouton; return; }
+      if (saved === 'envoi') { inactif(saveBtn, true); saveBtn.textContent = T.enregistrement; return; }
       if (tot <= 0) {
         var vider = jour && jour.statut === 'rempli' && saved === 'modifie' && rows.every(function (r) { return r.modifiable || r.m <= 0; });
-        saveBtn.disabled = !vider;
+        inactif(saveBtn, !vider);
         saveBtn.textContent = vider ? T.vider_journee : T.enregistrer;
         if (vider) saveBtn.classList.add('dl-danger');
         return;
       }
-      saveBtn.disabled = chargement || (!d.saisie_libre && !d.lignes_de_ses_projets);
+      inactif(saveBtn, chargement || (!d.saisie_libre && !d.lignes_de_ses_projets));
       saveBtn.classList.toggle('dl-done', saved === 'enregistre');
       saveBtn.textContent = saved === 'enregistre' ? T.enregistre_ok : T.enregistrer;
     }
@@ -520,7 +561,7 @@
       if (N.estNombreNu(brut) && v > MAXJ) { retour(T.max_10h_nombre); return; }
       var qv = N.q(v);
       if (v > 0 && qv === 0) { retour(T.minimum_30); return; }
-      if (toastEl.classList.contains('dl-warn')) hideToast();
+      if (toastCourant && toastCourant.classList.contains('k-toast-avertissement')) hideToast();
       setH(i, qv);
       if (Math.abs(qv - v) > 1e-9 && rows[i].m === qv) toast(tr(T.arrondi, f(qv)));
     }
@@ -551,6 +592,7 @@
       var dot = document.createElement('span'); dot.className = 'dl-cdot'; dot.style.background = N.couleur(c.code);
       var code = document.createElement('span'); code.className = 'dl-ccode'; code.textContent = c.code;
       var nom = document.createElement('span'); nom.className = 'dl-cname'; nom.textContent = c.tache_id ? c.tache_titre : (indent ? T.projet_seul : c.nom);
+      b.title = c.code + ' — ' + (c.tache_id ? c.tache_titre + ' (' + c.nom + ')' : c.nom);
       b.appendChild(dot); b.appendChild(code); b.appendChild(nom);
       if (c.tache_id && !indent) { var sous = document.createElement('span'); sous.className = 'dl-csous'; sous.textContent = c.nom; nom.appendChild(document.createTextNode(' ')); nom.appendChild(sous); }
       var fin = document.createElement('span');
@@ -637,6 +679,22 @@
         if (!frags.length) { var v2 = document.createElement('div'); v2.className = 'dl-catempty'; v2.textContent = T.tous_dans_liste; frags.push(v2); }
       }
       frags.forEach(function (fr) { catCorps.appendChild(fr); });
+      annoncerCatalogue(motif);
+    }
+    // Une annonce courte du nombre de résultats (audit a11y I8) : la liste
+    // elle-même n'est plus une région live.
+    var annonceCat = '';
+    function annoncerCatalogue(motif) {
+      if (!catStatut) return;
+      var texte = '';
+      if (motif) {
+        var n = catCorps.querySelectorAll('.dl-catrow').length;
+        var attente = !n && motif.length >= 2 && rechercheMotif !== motif;
+        texte = attente ? '' : (n ? n + (n > 1 ? ' projets ou tâches trouvés' : ' projet ou tâche trouvé') : T.aucun_trouve);
+      }
+      if (texte === annonceCat) return;
+      annonceCat = texte;
+      catStatut.textContent = texte;
     }
     var rechT;
     function rechercher() {
@@ -723,6 +781,9 @@
     var objectifEnAttente = null, objectifEnVol = false;
     function syncObj() {
       objVal.textContent = f(objectif);
+      // Objectif non modifiable en lecture seule ni sur un jour du futur réel.
+      var figer = VOIR || !A.objectifModifiable || !!droits().futur_reel;
+      objMoins.hidden = figer; objPlus.hidden = figer;
       setDisabled(objMoins, objectif <= C.objMin, objPlus);
       setDisabled(objPlus, objectif >= C.objMax, objMoins);
       renderTotal();
@@ -739,7 +800,7 @@
       });
     }
     function changerObjectif(delta) {
-      if (!A.objectifModifiable) return;
+      if (!A.objectifModifiable || VOIR || droits().futur_reel) return;
       objectif = Math.min(C.objMax, Math.max(C.objMin, objectif + delta));
       syncObj();
       objectifEnAttente = objectif;
@@ -779,7 +840,7 @@
       absentBtn.textContent = ab ? T.annuler_absence : T.marquer_absent;
       absentBtn.classList.toggle('dl-on', ab);
       absentBtn.setAttribute('aria-pressed', String(ab));
-      absentBtn.disabled = chargement;
+      inactif(absentBtn, chargement);
     }
     function lignesRestaurees(k) {
       var avant = avantAbsent[k];
@@ -798,11 +859,12 @@
       } else {
         corps = { absent: true };
       }
-      absentBtn.disabled = true;
+      if (estInactif(absentBtn)) return Promise.resolve();
+      inactif(absentBtn, true);
       return ecrire(function () {
         corps.version = versions[k] || 0;
         return requete('POST', urlAbsence(k), corps).then(function (r) {
-          absentBtn.disabled = false;
+          inactif(absentBtn, chargement);
           if (r.status !== 200) { traiterEchec(k, r, corps); return; }
           majApresEcriture(r.data);
           if (sel !== k) return;
@@ -897,6 +959,16 @@
         ] });
         return;
       }
+      // Mode changé dans un autre onglet (409 mode_change) : rien n'est
+      // écrit et mode-onglets.js le dit (barre « Recharger »). La saisie
+      // envoyée reste à l'écran et en brouillon, sans second message.
+      if (r.status === 409 && r.data && r.data.erreur === 'mode_change') {
+        if (snap) {
+          garder();
+          if (courant) { saved = 'erreur'; renderStatus(); render(); }
+        }
+        return;
+      }
       if (r.status === 401 || (r.status === 400 && r.data && r.data.erreur === 'csrf')) {
         // Un GET (chargement d'un jour) n'a rien à garder : ne pas écraser un
         // brouillon existant par une liste vide.
@@ -974,15 +1046,30 @@
       return opts.keepalive ? envoyer() : ecrire(envoyer);
     }
     saveBtn.addEventListener('click', function () {
-      if (saveBtn.disabled) return;
+      if (estInactif(saveBtn)) return;
       flush();
       if (total() <= 0) {
-        if (window.confirm(tr(T.confirmer_vider, dateCourte(sel)))) persist({ vider: true });
+        // Lot 13 : confirmation en ligne (plus de boîte native).
+        var k0 = sel;
+        if (K && K.confirmer) {
+          K.confirmer(saveBtn, tr(T.confirmer_vider, dateCourte(sel)), { libelleOk: T.vider_journee, danger: true })
+            .then(function (oui) { if (oui && sel === k0) persist({ vider: true }); });
+        } else if (window.confirm(tr(T.confirmer_vider, dateCourte(sel)))) persist({ vider: true });
         return;
       }
       persist({});
     });
     function enAttente() { return saved === 'modifie' || saved === 'erreur'; }
+    // Autre onglet qui change de mode : pas de rechargement pendant une
+    // saisie, envoi en cours compris (contre-expertise temps R1). Retiré
+    // quand la page est remplacée (« Daily log de », Retour) : l'ancienne
+    // instance ne retient plus une saisie qui n'est plus à l'écran.
+    if (window.KairosModes) {
+      var retirerSurveillant = window.KairosModes.surveiller(function () {
+        return document.contains(racine) && (enAttente() || saved === 'envoi');
+      });
+      if (typeof retirerSurveillant === 'function') aRetirer.push(retirerSurveillant);
+    }
     // filet de sécurité : onglet en arrière-plan (téléphone verrouillé…) ou page quittée
     // Filet supplémentaire : le brouillon est aussi gardé sur l'appareil
     // (sessionStorage) ; il est retiré dès qu'une réponse confirme
@@ -994,12 +1081,12 @@
       sauverBrouillon(sel, aEnvoyer());
       persist({ silencieux: true, keepalive: true });
     }
-    document.addEventListener('visibilitychange', function () { if (document.hidden) enregistrerEnPartant(); });
-    window.addEventListener('pagehide', enregistrerEnPartant);
+    document.addEventListener('visibilitychange', function () { if (document.hidden) enregistrerEnPartant(); }, sig);
+    window.addEventListener('pagehide', enregistrerEnPartant, sig);
     window.addEventListener('beforeunload', function (e) {
       // seulement si la dernière écriture a échoué : l'autosave couvre le reste
       if (dernierEchec || saved === 'erreur') { e.preventDefault(); e.returnValue = T.quitter; return T.quitter; }
-    });
+    }, sig);
 
     // --- jours ---------------------------------------------------------------
     function autosaveSiBesoin() {
@@ -1018,7 +1105,9 @@
     }
     function renderLecture() {
       var d = droits(), textes = [];
-      if (!isAbsent()) {
+      if (VOIR) textes.push(K && K.MESSAGE_LECTURE_SEULE ? K.MESSAGE_LECTURE_SEULE : T.lecture_seule);
+      else if (d.futur_reel) textes.push(T.futur_reel);
+      else if (!isAbsent()) {
         if (d.mode === 'saisie' && d.lecture_seule) textes.push(T.lecture_seule);
         else if (d.mode === 'saisie' && d.lignes_de_ses_projets) textes.push(T.lecture_seule_chef);
       }
@@ -1067,7 +1156,9 @@
       jour = Object.assign({}, jour, { date: k, statut: 'vide', lignes: [], copie: null, version: versions[k] || 0 });
       renderEntete(); syncMark(); renderStatus(); render();
       openAdd(false);
-      try { history.replaceState(null, '', urlPage(k)); } catch (e) { /* rien */ }
+      // L'état d'historique est gardé : Retour après « Daily log de » revient
+      // à la personne précédente en partiel (kairos-partiel.js).
+      try { history.replaceState(history.state, '', urlPage(k)); } catch (e) { /* rien */ }
       requete('GET', urlJour(k)).then(function (r) {
         if (s !== seqJour) return;   // l'utilisateur est déjà ailleurs : réponse ignorée
         if (r.status === 200 && r.data) {
@@ -1092,7 +1183,9 @@
 
     // --- bannière des jours manqués -------------------------------------------
     function renderBanner() {
-      var manques = (jour && jour.manques ? jour.manques : []).filter(function (k) { return k <= TODAY; }).sort();
+      // Jours après la vraie date (date simulée) : pas saisissables, donc pas « à compléter ».
+      var reel = jour && jour.aujourdhui_reel && jour.aujourdhui_reel < TODAY ? jour.aujourdhui_reel : TODAY;
+      var manques = (jour && jour.manques ? jour.manques : []).filter(function (k) { return k <= reel; }).sort();
       if (!manques.length || !A.proprietaire.soi) { banniere.hidden = true; return; }
       banniere.hidden = false;
       var affiches = manques.slice(-5), autres = manques.length - affiches.length;
@@ -1164,7 +1257,8 @@
       }
       calEl.appendChild(grille);
       var leg = document.createElement('div'); leg.className = 'dl-cal-legend';
-      [['dl-ldot', T.legende.rempli], ['dl-lbar', T.legende.absent], ['dl-lring', T.legende.vide]].forEach(function (x) {
+      [['dl-ldot', T.legende.rempli], ['dl-lbar', T.legende.absent], ['dl-lring', T.legende.vide],
+       ['dl-lring-gris', T.legende.verrouille]].forEach(function (x) {
         var s = document.createElement('span'); var ic = document.createElement('i'); ic.className = x[0]; s.appendChild(ic); s.appendChild(document.createTextNode(x[1])); leg.appendChild(s);
       });
       calEl.appendChild(leg);
@@ -1223,21 +1317,57 @@
     document.addEventListener('click', function (e) {
       if (!calEl.hidden && !$('dl-datenav').contains(e.target)) toggleCal(false);
       if (!panneau.hidden && !ajoutWrap.contains(e.target)) openAdd(false);
-    });
+    }, sig);
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;
       if (!calEl.hidden) { toggleCal(false); dateBtn.focus(); }
       else if (!panneau.hidden) { openAdd(false); ajoutBtn.focus(); }
-    });
+    }, sig);
+
+    // --- « Daily log de » (chef, Admin) ---------------------------------------
+    // Lot 13 (correctifs, verif-ux) : champ à recherche ; au choix, la saisie
+    // en attente est enregistrée, puis la page de la personne remplace
+    // celle-ci (fragment #dl9, adresse poussée : Retour revient).
+    var quiSelect = $('dl-qui-select'), quiForm = quiSelect && quiSelect.form;
+    function ouvrirPersonne() {
+      var id = quiSelect.value || '';
+      var actuel = A.proprietaire.soi ? '' : String(A.proprietaire.id);
+      if (id === actuel || !K || !K.requete) return;
+      flush();
+      envoyerObjectif(true);
+      autosaveSiBesoin();
+      var u = avecParam(A.urls.page, 'date', sel);
+      if (id) u = avecParam(u, 'utilisateur', id);
+      fileEcriture.then(function () {
+        if (!document.contains(racine)) return;
+        K.requete({ url: u, methode: 'GET', cible: '#dl9', historique: 'push', transition: false,
+                    focusApres: '#dl-qui-select ~ .search-combobox-wrap .search-combobox-input' });
+      });
+    }
+    if (quiForm) {
+      quiSelect.addEventListener('change', ouvrirPersonne);
+      quiForm.addEventListener('submit', function (e) {
+        if (!K || !K.requete) return;
+        e.preventDefault();
+        ouvrirPersonne();
+      });
+    }
 
     // --- démarrage -----------------------------------------------------------
-    racine.classList.add('dl-pret');
     appliquerJour(A.jour);
+    // Lot 13 (audit a11y I1, CLS 0,14) : la page se montre une fois la liste,
+    // la bannière et les outils construits (dailylog.css).
+    racine.classList.add('dl-pret');
     window.KairosDailyLogPage = {   // accès de test (Playwright) : lecture seule de l'état
       etat: function () { return { sel: sel, saved: saved, total: total(), version: versions[sel], chargement: chargement, rows: cloneRows() }; }
     };
   }
 
+  // Page d'une autre personne insérée (« Daily log de », Retour) : nouveau départ.
+  document.addEventListener('kairos:fragment', function (e) {
+    var r = e.detail && e.detail.racine;
+    if (r && r.id === 'dl9') demarrer();
+  });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', demarrer);
   else demarrer();
 })();

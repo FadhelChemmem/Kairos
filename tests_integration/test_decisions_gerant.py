@@ -91,12 +91,13 @@ class TestEtatsReserves(BaseIntegration):
         self.login(inter)
         # Lot 11 : la fenêtre de la tâche est un fragment chargé à la demande.
         dialogue = self.client.get(f"/projets/{p}/taches/{t}/fenetre").data.decode()
-        self.assertIn('<option value="bloque"', dialogue)
-        self.assertNotIn('<option value="verifie"', dialogue)
-        self.assertNotIn('<option value="abandonne"', dialogue)
+        # Lot 13 : un bouton par état proposé (liste de choix sans « Appliquer »).
+        self.assertIn('name="etat" value="bloque"', dialogue)
+        self.assertNotIn('name="etat" value="verifie"', dialogue)
+        self.assertNotIn('name="etat" value="abandonne"', dialogue)
         self.login(chef)
         dialogue = self.client.get(f"/projets/{p}/taches/{t}/fenetre").data.decode()
-        self.assertIn('<option value="abandonne"', dialogue)
+        self.assertIn('name="etat" value="abandonne"', dialogue)
 
 
 class TestClientVoitHeuresHonorairesPiecesJointes(BaseIntegration):

@@ -1,0 +1,60 @@
+{# Ligne de la liste Utilisateurs (lot 13 : fragment rendu aussi seul après
+   l'interrupteur « Actif », remplacé en place — id u-<id>). Contexte : u,
+   peut_gerer, q, equipe_code, role, actif_param, g.user. #}
+{% import "partials/avatar.html" as avatarm %}
+{% set rs = role_style(u.role) %}
+<div class="urow {{ 'inactif' if not u.actif }}" role="row" id="u-{{ u.id }}"{% if g.user.role == 'chef_de_projet' %} style="grid-template-columns: minmax(180px, 1.5fr) 90px 130px 110px 56px"{% endif %}>
+  {# Lot 10 (audit front §3.6) : compte inactif repéré par un fond et une
+     pastille « Inactif », plus par une opacité illisible. #}
+  <div role="cell" class="ucell-nom">
+  <a href="{{ url_for('utilisateurs.fiche', user_id=u.id) }}" class="urow-lien">
+    {{ avatarm.avatar(u.id, u.prenom, u.nom, u.avatar_chemin, css_class='avatar avatar-md', couleur=(none if u.actif else '#6c766f')) }}
+    <div class="ucell-nom">
+      <div class="urow-nom">{{ u.prenom }} {{ u.nom }}</div>
+      <div class="urow-sous"><span class="urow-poste"{% if u.poste %} title="{{ u.poste }}"{% endif %}>{{ u.poste or '—' }}</span>{% if not u.actif %}<span class="pill pill-sm pill-neutre urow-inactif">Inactif</span>{% endif %}</div>
+    </div>
+  </a>
+  </div>
+  <span role="cell" class="ucell-texte">{{ equipe_libelle(u.equipe_code) }}</span>
+  <span role="cell" class="ucell-pill"><span class="pill pill-sm {{ rs.classe }}">{{ rs.label }}</span></span>
+  {# Lot 11 (audit front M6) : téléphone et e-mail cliquables. #}
+  <span role="cell" class="ucell-texte ucell-petit">{% if u.telephone %}<a href="tel:{{ u.telephone|replace(' ', '') }}" class="lien-discret">{{ u.telephone }}</a>{% else %}—{% endif %}</span>
+  {# Lot 13 (audit rôles M1, contre-expertise N3) : un chef de projet n'a
+     ni la colonne E-mail ni la colonne Embauche. #}
+  {% if g.user.role != 'chef_de_projet' %}
+  <div role="cell" class="ucell-email">
+    <a href="mailto:{{ u.email }}" class="lien-discret ucell-texte urow-email" title="{{ u.email }}">{{ u.email }}</a>
+    {% if u.actif %}
+      {% if u.verifie %}
+        <svg role="img" aria-label="Adresse vérifiée" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1f7a55" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="urow-verifie"><title>Adresse vérifiée</title><path d="M20 6 9 17l-5-5"/></svg>
+      {% else %}
+        <span class="pill pill-warn pill-xs" title="En attente de vérification">Non vérifié</span>
+      {% endif %}
+    {% endif %}
+  </div>
+  <span role="cell" class="urow-date">{{ u.date_embauche|date_courte(true) if u.date_embauche else '—' }}</span>
+  {% endif %}
+  {% if peut_gerer %}
+    {# Lot 13 (pilote du socle partiel) : interrupteur optimiste — la ligne
+       seule est remplacée, défilement et focus conservés, toast « Annuler ».
+       Sans JavaScript : POST puis redirection, filtres conservés. #}
+    <form method="post" action="{{ url_for('utilisateurs.toggle_actif', user_id=u.id) }}" role="cell" data-partiel="#u-{{ u.id }}" data-optimiste="bascule">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="q" value="{{ q }}">
+      <input type="hidden" name="equipe_code" value="{{ equipe_code or '' }}">
+      <input type="hidden" name="role" value="{{ role or '' }}">
+      <input type="hidden" name="actif" value="{{ actif_param }}">
+      <input type="hidden" name="actif_cible" value="{{ '0' if u.actif else '1' }}">
+      {# Lot 10 (audit front I8) : interrupteur nommé et à état
+         (role=switch), désactivé sur son propre compte (le serveur refuse
+         de toute façon). #}
+      <button type="submit" id="actif-{{ u.id }}" class="toggle toggle-liste" role="switch" aria-checked="{{ 'true' if u.actif else 'false' }}" aria-label="Compte actif : {{ u.prenom }} {{ u.nom }}"
+              {% if u.id == g.user.id %}disabled title="Vous ne pouvez pas désactiver votre propre compte"{% else %}title="{{ 'Désactiver' if u.actif else 'Réactiver' }} ce compte"{% endif %}>
+        <span class="toggle-knob"></span>
+      </button>
+    </form>
+  {% else %}
+    <span role="cell" class="ucell-pill"><span class="pill pill-sm {{ 'pill-vert' if u.actif else 'pill-neutre' }}">{{ 'Actif' if u.actif else 'Inactif' }}</span></span>
+  {% endif %}
+</div>
+{% if oob_compte %}{% include "partials/utilisateurs_compte.html" %}{% endif %}

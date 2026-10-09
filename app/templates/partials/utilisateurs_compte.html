@@ -1,0 +1,5 @@
+{# Compteur de la page Utilisateurs (lot 13 : aussi renvoyé hors cible,
+   data-partiel-oob, après un filtre ou l'interrupteur « Actif »). Contexte :
+   utilisateurs, compte, q, equipe_code, role, actif_param, oob_compte. #}
+{% set filtre_actif = q or equipe_code or role or actif_param %}
+<span id="utilisateurs-compte" class="utilisateurs-compte" role="status"{% if oob_compte %} data-partiel-oob{% endif %}>{% if filtre_actif %}{{ utilisateurs|length }} résultat{{ 's' if utilisateurs|length > 1 }} sur {{ compte.total }} compte{{ 's' if compte.total > 1 }}{% else %}{{ compte.total }} compte{{ 's' if compte.total > 1 else '' }} · {{ compte.actifs }} actif{{ 's' if compte.actifs > 1 else '' }}{% endif %}</span>

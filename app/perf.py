@@ -16,6 +16,7 @@ réponses textuelles et cache long des fichiers statiques versionnés.
   change d'empreinte, donc d'URL : pas de cache périmé après un
   déploiement. Les pages HTML gardent leur propre politique (no-store).
 """
+import datetime
 import gzip
 import hashlib
 import os
@@ -30,7 +31,8 @@ TYPES_COMPRESSIBLES = {
 }
 TAILLE_MIN = 1024
 NIVEAU = 6
-CACHE_STATIQUE = "public, max-age=31536000, immutable"
+DUREE_CACHE_STATIQUE = 31536000
+CACHE_STATIQUE = f"public, max-age={DUREE_CACHE_STATIQUE}, immutable"
 
 _verrou = threading.Lock()
 # chemin absolu -> (mtime_ns, taille, empreinte)
@@ -161,7 +163,10 @@ def installer(app) -> None:
             v = request.args.get("v")
             if v and v == empreinte(app, filename):
                 response.headers["Cache-Control"] = CACHE_STATIQUE
-                response.expires = None
+                # Expires aligné sur max-age (audit a11y-perf M14) : affecter
+                # None le posait à l'instant présent (déjà expiré).
+                response.expires = (datetime.datetime.now(datetime.timezone.utc)
+                                    + datetime.timedelta(seconds=DUREE_CACHE_STATIQUE))
         if app.config.get("COMPRESSION_GZIP", True):
             response = _compresser(app, response)
         return response

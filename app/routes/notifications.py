@@ -5,20 +5,92 @@ en a un."""
 import datetime
 import re
 
-from flask import Blueprint, abort, redirect, g, render_template, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, g, render_template, request, url_for
 
+from .. import horloge, modes_admin, partiel
 from ..auth import login_required
 from ..repositories import dailylog as dailylog_repo
 from ..repositories import notifications as notifications_repo
+from ..repositories import projets as projets_repo
+from ..utils import date_fr
 
 bp = Blueprint("notifications", __name__, url_prefix="/notifications")
+
+
+NB_APERCU = 10
+
+
+def grouper_par_jour(notifs: list[dict]) -> list[dict]:
+    """Notifications groupées par jour (lot 13, audit UX §3.2) : « Aujourd'hui »,
+    « Hier », puis la date — jour de l'horodatage RÉEL au fuseau de la
+    personne (jamais la date simulée)."""
+    fuseau = horloge.maintenant_reel().tzinfo
+    aujourdhui = horloge.aujourdhui_reel()
+    groupes: list[dict] = []
+    for n in notifs:
+        cree = n.get("created_at")
+        jour = (cree.astimezone(fuseau) if cree and cree.tzinfo else cree).date() if cree else aujourdhui
+        if not groupes or groupes[-1]["jour"] != jour:
+            if jour == aujourdhui:
+                titre = "Aujourd’hui"
+            elif jour == aujourdhui - datetime.timedelta(days=1):
+                titre = "Hier"
+            else:
+                titre = date_fr(jour)
+            groupes.append({"jour": jour, "titre": titre, "notifications": []})
+        groupes[-1]["notifications"].append(n)
+    return groupes
+
+
+def _contexte_liste(apercu: bool = False) -> dict:
+    simulees = modes_admin.voit_rappels_simules()
+    notifs = notifications_repo.list_notifications(g.user["id"], limit=NB_APERCU if apercu else 50,
+                                                   avec_simulees=simulees)
+    nb_non_lues = notifications_repo.compter_non_lues(g.user["id"], avec_simulees=simulees)
+    return {"notifications": notifs, "groupes": grouper_par_jour(notifs), "nb_non_lues": nb_non_lues}
+
+
+def _fragment(cible: str | None, toasts=None):
+    """Fragment demandé : l'aperçu de la cloche (#notifs-apercu) ou la liste
+    de la page (#notifications-liste) ; le badge suit (#notifs-nb, hors cible)."""
+    if cible == "#notifs-apercu":
+        return partiel.repondre("partials/notifications_apercu.html", toasts=toasts, oob_nb=True, **_contexte_liste(apercu=True))
+    return partiel.repondre("partials/notifications_liste.html", toasts=toasts, oob_nb=True, oob_compte=True, **_contexte_liste())
 
 
 @bp.route("")
 @login_required
 def liste():
-    notifs = notifications_repo.list_notifications(g.user["id"])
-    return render_template("notifications_liste.html", notifications=notifs)
+    if partiel.est_partiel():
+        return _fragment(partiel.est_partiel())
+    return render_template("notifications_liste.html", **_contexte_liste())
+
+
+@bp.route("/compte")
+@login_required
+def compte():
+    """Badge de la cloche tenu à jour sans recharger (lot 13) : nombre de
+    notifications non lues, en JSON."""
+    reponse = jsonify({"non_lues": notifications_repo.compter_non_lues(g.user["id"], avec_simulees=modes_admin.voit_rappels_simules())})
+    reponse.headers["Cache-Control"] = "no-store"
+    return reponse
+
+
+@bp.route("/<int:notification_id>/lue", methods=["POST"])
+@login_required
+def marquer_lue(notification_id: int):
+    """« Marquer comme lue » sans ouvrir (lot 13, lecture optimiste dans la
+    liste et dans l'aperçu de la cloche). Restreint à SA notification."""
+    notif = notifications_repo.get_notification(notification_id, g.user["id"])
+    if notif is None:
+        if partiel.est_partiel():
+            return partiel.refuser("Notification introuvable.", 404)
+        abort(404)
+    notifications_repo.marquer_lu(notification_id, g.user["id"])
+    if partiel.est_partiel():
+        return partiel.repondre("partials/notification_item.html", n={**notif, "lu": True}, oob_item=True,
+                                nb_non_lues=notifications_repo.compter_non_lues(g.user["id"], avec_simulees=modes_admin.voit_rappels_simules()))
+    return redirect(url_for("notifications.liste"))
 
 
 @bp.route("/<int:notification_id>/ouvrir", methods=["POST"])
@@ -45,11 +117,24 @@ def ouvrir(notification_id: int):
     if jour is not None and g.user["role"] in ("admin", "chef_de_projet", "intervenant"):
         return redirect(url_for("dailylog.formulaire", date=jour.isoformat()))
 
+    # Projet devenu invisible (retiré du projet, autre équipe : contre-expertise
+    # rôles N1) : retour à la liste avec un message plutôt qu'une page 404.
+    projet_vise = notif["post_projet_id"] or notif["tache_projet_id"] or notif.get("projet_id")
+    if projet_vise and not projets_repo.user_can_view(projet_vise, g.user["id"]):
+        flash("Vous n'avez plus accès à ce projet.", "error")
+        return redirect(url_for("notifications.liste"))
+
     # Notification d'une tâche (affectation…) : la fiche du projet ouvre la
     # fenêtre de cette tâche (lot 11 b, ?tache=<id>).
     if notif.get("tache_id") and notif["tache_projet_id"] and not notif["post_projet_id"]:
         return redirect(url_for("projets.detail", projet_id=notif["tache_projet_id"], tache=notif["tache_id"]))
-    projet_id = notif["post_projet_id"] or notif["tache_projet_id"]
+    # Post d'un projet (mention, commentaire…) : la fiche, sur ce post
+    # (lot 13, audit rôles M8).
+    if notif["post_projet_id"]:
+        return redirect(url_for("projets.detail", projet_id=notif["post_projet_id"]) + f"#post-{notif['post_id']}")
+    # « Ajouté au projet », « a rejoint votre projet » (notification.projet_id,
+    # migration 0019, audit rôles I8).
+    projet_id = notif["tache_projet_id"] or notif.get("projet_id")
     if projet_id:
         return redirect(url_for("projets.detail", projet_id=projet_id))
     # Information d'équipe sans projet (migration 0009) : le post est dans
@@ -63,6 +148,8 @@ def ouvrir(notification_id: int):
 @login_required
 def marquer_toutes_lues():
     notifications_repo.marquer_toutes_lues(g.user["id"])
+    if partiel.est_partiel():
+        return _fragment(partiel.est_partiel(), toasts=[partiel.toast("Toutes vos notifications sont marquées comme lues.")])
     return redirect(url_for("notifications.liste"))
 
 

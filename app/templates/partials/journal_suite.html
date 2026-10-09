@@ -1,0 +1,8 @@
+{# Bas du journal : « Charger 100 de plus » (curseur) ou fin de la liste. #}
+<div id="journal-suite" class="journal-suite"{% if oob_suite %} data-partiel-oob{% endif %}>
+  {% if suite_url %}
+    <a href="{{ suite_url }}" class="btn" data-partiel="#journal-table" data-partiel-mode="apres" data-partiel-historique="aucun" data-focus-apres="#journal-apres-{{ suite_id }}">Charger 100 de plus</a>
+  {% elif groupes %}
+    <p class="k-muet">Début du journal atteint{{ ' pour ces filtres' if filtre_actif }}.</p>
+  {% endif %}
+</div>

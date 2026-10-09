@@ -86,7 +86,8 @@ class TestChangementDeChef(_BaseChef):
         self.assertEqual(n["message"], "Ali Chef vous a confié le projet « 26101X_Projet » : vous en êtes le chef de projet.")
         self.login(self.autre)
         o = self.client.post(f"/notifications/{n['id']}/ouvrir")
-        self.assertTrue(o.headers["Location"].endswith(f"/projets/{self.p}"), o.headers["Location"])
+        # Lot 13 (audit rôles M8) : sur le post, dans la fiche.
+        self.assertTrue(o.headers["Location"].endswith(f"/projets/{self.p}#post-{post['id']}"), o.headers["Location"])
         # Journal d'audit : la ligne du changement, avec son auteur.
         lignes = self.sql("""SELECT utilisateur_id, donnees_avant->>'chef_projet_id' AS avant,
                                     donnees_apres->>'chef_projet_id' AS apres
@@ -323,6 +324,7 @@ class TestRappelDailyLogLot11b(BaseIntegration):
         for _ in range(2):  # 0017 rejouable
             with self.db.get_cursor() as cur:
                 cur.execute(MIGRATION_0017.read_text(encoding="utf-8"))
+            self.rejouer_migrations_suivantes("0017_chef_projet_et_rappels_dailylog")
         anciens = self.rappels()
         self.assertEqual([a["rappel_jours"] for a in anciens], [[datetime.date(2026, 10, 7)], None])
         self.verifier()

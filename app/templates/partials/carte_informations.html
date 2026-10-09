@@ -1,0 +1,22 @@
+{# Panneau Informations de la fiche projet (retour Fadhel, 2026-09-28/29) :
+   pour le chef de projet / co-chef, un clic ouvre la fenêtre de
+   modification ; un vrai bouton « Modifier » sert au clavier (lot 10).
+   Lot 13 : fragment remplacé hors cible après l'enregistrement. #}
+{% set petat = projet_etat_style(projet.etat) %}
+<div id="carte-informations" class="card{% if peut_gerer %} carte-cliquable{% endif %}"{% if peut_gerer %} data-open-informations-dialog title="Modifier les informations du projet"{% endif %}{% if oob %} data-partiel-oob{% endif %}>
+  <div class="carte-entete">
+    <h2 class="carte-titre">Informations</h2>
+    {% if peut_gerer %}<button type="button" class="bouton-texte bouton-texte-cible" data-open-informations-dialog aria-haspopup="dialog" aria-label="Modifier les informations du projet">Modifier</button>{% endif %}
+  </div>
+  <dl class="info-liste">
+    <div><dt>Client</dt><dd>{{ projet.client or 'IPCO' }}</dd></div>
+    <div><dt>Honoraires</dt><dd>{{ montant_fr(projet.honoraires) or '—' }}</dd></div>
+    <div><dt>Heures intervenants</dt><dd>{{ projet.heures_intervenant|heures }}</dd></div>
+    <div><dt>Heures chef de projet</dt><dd>{{ projet.heures_chef|heures }}</dd></div>
+    <div><dt>Phase</dt><dd>{{ projet.phase }}</dd></div>
+    <div><dt>Lot{{ 's' if lots|length > 1 }}</dt><dd>{{ lots|map(attribute='code')|join(' · ') }}</dd></div>
+    <div><dt>État</dt><dd><span class="point-etat point-etat-{{ projet.etat }}" aria-hidden="true"></span>{{ petat.label }}</dd></div>
+    {% if projet.date_debut %}<div><dt>Début</dt><dd>{{ projet.date_debut|date_courte(true) }}</dd></div>{% endif %}
+    {% if projet.date_fin %}<div><dt>Échéance</dt><dd>{{ projet.date_fin|date_courte(true) }}</dd></div>{% endif %}
+  </dl>
+</div>

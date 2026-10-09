@@ -1,0 +1,10 @@
+{# Posts récents de la fiche projet, insérés en tête du fil s'ils n'y sont
+   pas encore (data-partiel-oob="avant", lot 13) : posts automatiques d'une
+   action sur une tâche ou sur le projet. Contexte : fil_recent, projet. #}
+<div id="fil-posts" data-partiel-oob="avant">
+{% for post in fil_recent %}
+  {% with post=post, show_projet=false, next_url=url_for('projets.detail', projet_id=projet.id), oob=false %}
+    {% include "partials/fil_item.html" %}
+  {% endwith %}
+{% endfor %}
+</div>

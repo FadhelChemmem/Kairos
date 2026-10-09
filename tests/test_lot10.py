@@ -53,7 +53,7 @@ class TestFlaskMigrer(unittest.TestCase):
     """Audits données (M4) et QA (I5) : verrou, délai de verrouillage,
     empreintes des migrations publiées."""
 
-    def _migrer(self, deja):
+    def _migrer(self, deja, mode_test=False):
         journal = []
         verrou = MagicMock()
         verrou.cursor.side_effect = lambda: _FauxCurseur(journal, deja)
@@ -65,6 +65,7 @@ class TestFlaskMigrer(unittest.TestCase):
             yield _FauxCurseur(journal, deja)
 
         app = create_app(smoke.TestConfig)
+        app.config["MODE_TEST"] = mode_test
         with patch.object(db, "_pool", pool), patch.object(db, "get_cursor", faux_get_cursor):
             res = app.test_cli_runner().invoke(args=["migrer"])
         return res, [sql for sql, _ in journal], pool
@@ -100,6 +101,19 @@ class TestFlaskMigrer(unittest.TestCase):
         self.assertEqual(res.exit_code, 0)
         self.assertIn("ATTENTION : 0011_roles_et_projets_clos.sql a été modifiée", res.output)
 
+    def test_rappels_simules_purges_quand_le_mode_test_est_coupe(self):
+        """Recette finale du lot 13 (F3) : au démarrage sans KAIROS_MODE_TEST,
+        aucun rappel « [Simulation] » ne reste en base ; avec, ils restent."""
+        purge = "DELETE FROM notification WHERE simulee"
+        res, sqls, _ = self._migrer(self._toutes())
+        self.assertEqual(res.exit_code, 0, res.output)
+        self.assertIn(purge, sqls)
+        deja = self._toutes(sauf=("0013_rattrapage_et_integrite",))
+        res, sqls, _ = self._migrer(deja)
+        self.assertIn(purge, sqls)
+        res, sqls, _ = self._migrer(self._toutes(), mode_test=True)
+        self.assertNotIn(purge, sqls)
+
     def test_empreinte_manquante_enregistree(self):
         deja = self._toutes()
         deja["0001_equipe_urbs_ipco"] = None
@@ -112,7 +126,7 @@ RH = {**smoke.USER, "id": 7, "role": "rh", "prenom": "Rym", "nom": "Hadj", "equi
 ADMIN = smoke.USER  # id 1, rôle admin
 ADMIN_CIBLE = {**smoke.AUTRE_UTILISATEUR, "id": 9, "role": "admin"}
 INTERVENANT_CIBLE = {**smoke.AUTRE_UTILISATEUR, "id": 10, "role": "intervenant"}
-FICHE = {"prenom": "Ali", "nom": "Ben", "email": "ali@midgard.tn", "role": "intervenant"}
+FICHE = {"prenom": "Ali", "nom": "Ben", "email": "ali@midgard.tn", "role": "intervenant", "equipe_code": "MIDGARD"}
 
 
 class _BaseLot10(smoke.SmokeBase):

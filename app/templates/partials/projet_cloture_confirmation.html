@@ -1,0 +1,43 @@
+{# Confirmation de clôture d'un projet qui a des tâches ouvertes (lot 13,
+   décision 2) : rendue par projets.editer_informations (_confirmer_cloture),
+   en page complète (projet_cloture_confirmer.html, sans JavaScript) ou dans
+   la fenêtre Informations (`dans_fenetre`, requête partielle : elle prend
+   la place du formulaire, #informations-form). Le formulaire renvoie les
+   champs de la fenêtre Informations tels quels, plus la liste des tâches
+   vues : si elle a changé entre-temps, la confirmation est redemandée.
+   Contexte : projet, etat_demande, taches_ouvertes, champs, liste_changee. #}
+{% set n = taches_ouvertes|length %}
+{% set clos_en = 'Terminées' if etat_demande == 'termine' else 'Abandonnées' %}
+<section class="{{ 'projet-cloture-confirmation' if dans_fenetre else 'card projet-cloture-confirmation' }}" id="{{ 'informations-form' if dans_fenetre else 'projet-' ~ projet.id ~ '-cloture-confirmation' }}" aria-labelledby="projet-{{ projet.id }}-cloture-titre">
+  {% set balise = 'h2' if dans_fenetre else 'h1' %}
+  <{{ balise }} id="projet-{{ projet.id }}-cloture-titre" class="page-titre cloture-titre" data-partiel-titre tabindex="-1">
+    {{ 'Clore' if etat_demande == 'termine' else 'Abandonner' }} le projet {{ projet.code }}_{{ projet.nom }}&nbsp;?
+  </{{ balise }}>
+  {% if liste_changee %}
+  <p role="alert" class="aide-champ champ-erreur">La liste des tâches ouvertes a changé depuis votre demande : vérifiez-la avant de confirmer.</p>
+  {% endif %}
+  <p class="cloture-texte">
+    Ce projet a encore {{ n }} tâche{{ 's' if n > 1 }} ouverte{{ 's' if n > 1 }}. En confirmant, {{ 'elles passent' if n > 1 else 'elle passe' }}
+    <strong>{{ clos_en|lower if n > 1 else clos_en[:-1]|lower }}</strong> avec le projet (même enregistrement, post automatique dans le fil).
+  </p>
+  <ul class="projet-cloture-taches">
+    {% for t in taches_ouvertes %}
+      {% set st = tache_etat_style(t.etat) %}
+      <li id="cloture-tache-{{ t.id }}">{{ t.titre }} — <span class="pill {{ st.classe }}">{{ st.libelle }}</span>{% if t.date_echeance %} · échéance {{ t.date_echeance|date_courte }}{% endif %}</li>
+    {% endfor %}
+  </ul>
+  <form method="post" action="{{ url_for('projets.editer_informations', projet_id=projet.id) }}" class="cloture-actions"{% if dans_fenetre %} data-partiel="#informations-form"{% endif %}>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for nom, valeur in champs %}<input type="hidden" name="{{ nom }}" value="{{ valeur }}">
+    {% endfor %}
+    <input type="hidden" name="confirmer_cloture" value="1">
+    {% for t in taches_ouvertes %}<input type="hidden" name="taches_a_clore" value="{{ t.id }}">
+    {% endfor %}
+    {% if dans_fenetre %}
+    <button type="button" class="btn" data-informations-retour>Revenir au formulaire</button>
+    {% else %}
+    <a href="{{ url_for('projets.detail', projet_id=projet.id) }}" class="btn">Annuler</a>
+    {% endif %}
+    <button type="submit" id="cloture-confirmer" class="btn-primaire{{ ' k-bouton-danger' if etat_demande == 'abandonne' }}">Clore le projet et ses {{ n }} tâche{{ 's' if n > 1 }}</button>
+  </form>
+</section>

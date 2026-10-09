@@ -1,0 +1,24 @@
+{# Aperçu de la cloche (lot 13, audit UX §4.5) : les 10 dernières
+   notifications, chargées à la demande — #notifs-apercu. « Tout marquer
+   comme lu » optimiste, lien « Tout voir ». Contexte : notifications,
+   nb_non_lues, oob_nb. #}
+<div id="notifs-apercu" class="notifs-apercu">
+  <div class="notifs-apercu-tete">
+    <h2 class="notifs-apercu-titre" id="notifs-apercu-titre" tabindex="-1" data-partiel-titre>Notifications{% if nb_non_lues %} <span class="k-muet">· {{ nb_non_lues }} non lue{{ 's' if nb_non_lues > 1 }}</span>{% endif %}</h2>
+    {% if nb_non_lues %}
+    <form method="post" action="{{ url_for('notifications.marquer_toutes_lues') }}" data-partiel="#notifs-apercu" data-optimiste="notifs-toutes-lues" data-focus-apres="#notifs-apercu-titre">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-fantome btn-petit">Tout marquer comme lu</button>
+    </form>
+    {% endif %}
+  </div>
+  {% if notifications %}
+  <ul class="notif-list notifs-apercu-liste">
+    {% for n in notifications %}{% include "partials/notification_item.html" %}{% endfor %}
+  </ul>
+  {% else %}
+  <p class="notifs-apercu-vide">Aucune notification pour l’instant.</p>
+  {% endif %}
+  <a href="{{ url_for('notifications.liste') }}" class="notifs-apercu-tout">Tout voir</a>
+</div>
+{% if oob_nb %}{% include "partials/notifs_nb.html" %}{% endif %}

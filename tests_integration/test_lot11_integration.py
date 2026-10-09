@@ -85,7 +85,8 @@ class TestFenetreTache(BaseIntegration):
             self.assertEqual(len(taches.list_taches_projet(p)), 2)
         self.login(chef)
         html = self.client.get(f"/projets/{p}/taches/{t}/fenetre").data.decode()
-        self.assertIn(f"Échéance 17 nov. {echeance.year}", html)
+        # Lot 13 : le chef modifie l'échéance dans un champ date (année comprise).
+        self.assertIn(f'value="{echeance.isoformat()}"', html)
         self.assertIn("1\u00a0h\u00a030 intervenants / 0\u00a0h\u00a030 chef de projet", html)
 
 

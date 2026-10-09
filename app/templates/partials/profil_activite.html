@@ -1,0 +1,38 @@
+{# Activité d'une personne : Daily log et posts des N dernières semaines
+   (lot 13 : rendu aussi seul pour « Voir la semaine précédente » et « Voir
+   des posts plus anciens » — #profil-activite, l'adresse suit). Contexte :
+   utilisateur, jours, peut_corriger, semaines, posts_recents,
+   posts_plus_anciens, utilisateurs_actifs. #}
+{% set plus = url_for('utilisateurs.profil_personne', user_id=utilisateur.id, semaines=semaines + 1) %}
+<div class="col-center" id="profil-activite">
+  {% if jours is not none %}
+  <div class="card">
+    <h2 class="carte-titre carte-titre-form" id="dailylog">Daily log — {{ 'dernière semaine' if semaines == 1 else semaines ~ ' dernières semaines' }}</h2>
+    <div class="dl-semaine">
+      {% for jour in jours %}
+        {% with ancre=True %}{% include "partials/dailylog_jour_lecture.html" %}{% endwith %}
+      {% endfor %}
+    </div>
+    {% if semaines < 12 %}
+      <a href="{{ plus }}#dailylog" class="bouton-texte bouton-texte-cible k-marge-haut" data-partiel="#profil-activite"{% if jour_suivant %} data-focus-apres="#profil-jour-{{ jour_suivant.isoformat() }}"{% endif %}>Voir la semaine précédente</a>
+    {% endif %}
+    <p class="k-note k-marge-haut">Seules les entrées sur des projets que vous pouvez voir sont affichées ici.</p>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2 class="carte-titre carte-titre-form" id="posts">Posts — {{ 'dernière semaine' if semaines == 1 else semaines ~ ' dernières semaines' }}</h2>
+    {% for post in posts_recents %}
+      <div class="profil-post">
+        {% with post=post, show_projet=true, next_url=url_for('utilisateurs.profil_personne', user_id=utilisateur.id, semaines=(semaines if semaines > 1 else none)) %}
+          {% include "partials/post_card.html" %}
+        {% endwith %}
+      </div>
+    {% else %}
+      <p class="k-muet">Aucun post {{ 'la semaine dernière' if semaines == 1 else 'sur cette période' }} (parmi ceux que vous pouvez voir).</p>
+    {% endfor %}
+    {% if posts_plus_anciens and semaines < 12 %}
+      <a href="{{ plus }}#posts" class="bouton-texte bouton-texte-cible" data-partiel="#profil-activite" data-focus-apres="#posts">Voir des posts plus anciens</a>
+    {% endif %}
+  </div>
+</div>

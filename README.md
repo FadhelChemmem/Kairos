@@ -57,6 +57,22 @@ Notifications et fil de posts (étape 1, complète). Flask + PostgreSQL
   peut toujours réaffecter). Garde en base : migration 0017. L'encart Admin
   « Projets ouverts dont le chef est désactivé » (liste Utilisateurs) a un
   lien « Changer le chef » qui ouvre directement la fenêtre.
+- **État du projet et clôture** (lot 13, décisions 1 et 2 du gérant) : un
+  projet ouvert est Bloqué si et seulement si une de ses tâches l'est,
+  recalculé après chaque écriture de tâche ou de projet
+  (`fn_etat_projet_recalcule`, migration 0019) ; la fenêtre Informations
+  propose En cours, Terminé ou Abandonné. Clore un projet qui a des tâches
+  ouvertes passe par une confirmation (page complète, sans JavaScript) qui
+  les liste : confirmées, elles deviennent Terminées (ou Abandonnées) dans
+  le même enregistrement, citées par le post automatique.
+- **Tâche existante** (lot 13, décision 4) : le chef titulaire, un co-chef
+  ou l'Admin ajoutent ou retirent des intervenants (personnes qui voient le
+  projet, sélecteur à recherche) et changent l'échéance et son type depuis
+  la fenêtre de la tâche ; « Retirer » un intervenant du projet (carte
+  Intervenants : projet et tâches en cours, jamais le chef titulaire).
+  Notifications, posts automatiques, journal d'audit. À la création d'un
+  projet : chef de projet ou Admin actif seulement, au moins un lot ; un
+  créateur qui confie le projet à un autre chef en devient co-chef.
 - **Voir Kairos comme…** (lot 12, Admin seulement, toujours disponible) :
   page `/admin/voir-comme` (liens depuis Utilisateurs, le Journal d'audit et
   la fiche d'un compte), liste avec recherche des comptes actifs non admin.
@@ -247,6 +263,16 @@ Pendant la phase de test, `KAIROS_MODE_TEST=true` (dans `.env`) ouvre aux
   0018) ; les horodatages (création, journal d'audit) restent réels. Pas de
   rappel Daily log créé pendant une date simulée. Bandeau « Date simulée :
   jeudi 15 octobre 2026 — Revenir à aujourd'hui ».
+  Lot 13 : heure facultative (instant simulé à Tunis, lu au fuseau de
+  chacun — `kairos.instant_simule`, migration 0019) ; une date simulée
+  après la vraie date sert à **voir** le futur : aucune écriture datée
+  après la vraie date (Daily log, absence : refus clair, garde en base
+  comprise), et une clôture prend la plus petite des deux dates. Bouton
+  « Simuler le rappel du jour » (rappel marqué « [Simulation] », qui ne
+  bloque jamais un vrai rappel). Plusieurs onglets : chaque écriture porte
+  le mode affiché par l'onglet (`static/js/mode-onglets.js`) ; si la date
+  ou le compte ont changé dans un autre onglet, elle est refusée et la page
+  rechargée.
 
 Activer (sur le serveur, dans le dossier de Kairos) :
 
@@ -444,7 +470,7 @@ rechargement des projets et tâches sans toucher aux comptes) appliquent la
 même cohérence des états (lot 11) : une tâche En cours ou Bloquée d'un
 projet Terminé devient Terminée (Abandonnée si le projet est Abandonné), un
 projet ouvert est Bloqué si et seulement si une de ses tâches l'est. Le
-rechargement exige une base à jour (dernière migration : 0018) et signale
+rechargement exige une base à jour (dernière migration : 0019) et signale
 les projets ouverts sans tâche ouverte et ceux dont le chef est désactivé.
 
 Volontairement laissé hors périmètre (pas encore modélisé en étape 1) :
@@ -515,7 +541,7 @@ flask run
 | Intégration (vrai SQL, vrai psycopg2) | `KAIROS_TEST_DATABASE_URL=postgresql://kairos:kairos@127.0.0.1:5432/kairos_it python3 -m unittest discover -s tests_integration -t .` | oui : base chargée avec `schema.sql` + `migrations/` |
 | SQL | `psql -d <base> -v ON_ERROR_STOP=1 -f tests/sql/<fichier>.sql` | oui |
 | JavaScript | `node --test tests_js/*.test.mjs` | non |
-| Scénarios navigateur (Playwright) | `bash tests_e2e/lancer.sh` (Daily log), `KAIROS_E2E_SCENARIO=projet bash tests_e2e/lancer.sh` (fiche projet), `KAIROS_E2E_SCENARIO=modes bash tests_e2e/lancer.sh` (lot 12 : voir / agir comme, date simulée, liens, Deadlines Admin ; serveur lancé avec `KAIROS_MODE_TEST=true`) | oui (base jetable) ; non lancés par la CI |
+| Scénarios navigateur (Playwright) | `bash tests_e2e/lancer.sh` (Daily log), `KAIROS_E2E_SCENARIO=projet bash tests_e2e/lancer.sh` (fiche projet), `KAIROS_E2E_SCENARIO=modes bash tests_e2e/lancer.sh` (lot 12 : voir / agir comme, date simulée, liens, Deadlines Admin ; serveur lancé avec `KAIROS_MODE_TEST=true`), `KAIROS_E2E_SCENARIO=partiel bash tests_e2e/lancer.sh` (lot 13 : socle des mises à jour partielles, pilotes Utilisateurs — voir `docs/partiel.md`) | oui (base jetable) ; non lancés par la CI |
 
 Ne jamais lancer `tests_integration/` dans le même processus que `tests/`
 (qui installe un faux psycopg2). Sous Windows, les 8 tests de

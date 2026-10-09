@@ -82,6 +82,19 @@ class BaseIntegration(unittest.TestCase):
             self.sql("INSERT INTO tache_intervenant (tache_id, utilisateur_id) VALUES (%s, %s)", (tid, uid))
         return tid
 
+    def rejouer_migrations_suivantes(self, version: str) -> None:
+        """Après le rejeu d'une ANCIENNE migration (test de rejouabilité),
+        rejoue toutes les suivantes : sinon la base partagée par la suite
+        garde l'ancienne version d'une fonction ou d'une contrainte redéfinie
+        depuis (ex. 0018 rejouée après 0019 : fn_aujourdhui sans instant
+        simulé), et les tests qui suivent tournent sur un schéma périmé."""
+        from pathlib import Path
+
+        for fichier in sorted((Path(__file__).resolve().parent.parent / "migrations").glob("*.sql")):
+            if fichier.stem > version:
+                with self.db.get_cursor() as cur:
+                    cur.execute(fichier.read_text(encoding="utf-8"))
+
     def login(self, user_id):
         from app.auth import password_fingerprint
         with self.client.session_transaction() as s:

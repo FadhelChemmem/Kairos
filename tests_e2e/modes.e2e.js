@@ -10,7 +10,7 @@
  * Vérifie l'écran ET la base : sélecteur (recherche, clavier, ni Admin ni
  * compte inactif), voir comme une intervenante (menus, Mes tâches et
  * Deadlines qui ouvrent la fenêtre de la tâche, refus d'écriture — Daily
- * log, API keepalive, formulaire —, bandeau role=status, retour au
+ * log, API keepalive, formulaire —, bandeau en repère nommé, retour au
  * compte, journal d'audit), agir comme (post et ligne de Daily log au nom
  * de l'intervenante, Admin réel dans le journal), date simulée (Daily log
  * à J+3, fenêtre de 14 jours décalée, retard des échéances, retour à
@@ -136,7 +136,7 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
     // --- 2. Voir comme l'intervenante -------------------------------------
     etape('arrivée sur l’accueil', new URL(p.url()).pathname === '/accueil');
     const bandeau = p.locator('#bandeau-admin');
-    etape('bandeau orange role=status', await bandeau.getAttribute('role') === 'status'
+    etape('bandeau orange, repère nommé (region)', await bandeau.getAttribute('role') === 'region'
       && (await bandeau.getAttribute('class')).includes('bandeau-admin-voir'));
     etape('texte du bandeau', (await texteBandeau(p)).startsWith('Vous voyez Kairos comme Rim Inter (Intervenant) — Revenir à mon compte'), await texteBandeau(p));
     etape('menus de l’intervenante (ni Utilisateurs ni Journal)', await p.locator('nav.topbar-actions a[aria-label="Utilisateurs"]').count() === 0
@@ -168,11 +168,15 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
     const avantDl = sql('SELECT count(*) FROM dailylog_entree') + '/' + sql('SELECT count(*) FROM dailylog_jour');
     p = await ouvrir(adm, '/dailylog');
     await pretDailyLog(p);
-    await p.click('#dl-liste .dl-row[data-cle="1:0"] .dl-plus');
-    await p.click('#dl-enregistrer');
-    await attendre(async () => /lecture seule/.test(await p.textContent('#dl-toast')));
-    etape('Daily log : refus affiché (lecture seule)', /Vous voyez Kairos comme Rim Inter : lecture seule/.test(await p.textContent('#dl-toast')),
-      await p.textContent('#dl-toast'));
+    // Lot 13 : en lecture seule, le Daily log ne propose plus d'écriture
+    // (−/+, Enregistrer, Marquer absent, + Ajouter un projet) et le dit.
+    const ecritures = await p.evaluate(() => {
+      const visibles = (s) => Array.from(document.querySelectorAll(s)).filter((x) => x.offsetParent !== null).length;
+      return { plus: visibles('#dl-liste .dl-plus'), enregistrer: visibles('#dl-enregistrer'), absent: visibles('#dl-absent'),
+               ajouter: visibles('#dl-ajouter'), note: document.getElementById('dl-lecture').hidden ? '' : document.getElementById('dl-lecture').textContent };
+    });
+    etape('Daily log : aucune écriture proposée, « Lecture seule » affiché',
+      ecritures.plus === 0 && ecritures.enregistrer === 0 && ecritures.absent === 0 && ecritures.ajouter === 0 && /Lecture seule/.test(ecritures.note), ecritures);
     const keep = await p.evaluate(async (jour) => {
       const r = await fetch('/dailylog/api/jour/' + jour, { method: 'PUT', keepalive: true, credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -183,9 +187,14 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
     etape('rien en base (Daily log)', sql('SELECT count(*) FROM dailylog_entree') + '/' + sql('SELECT count(*) FROM dailylog_jour') === avantDl);
     p = await ouvrir(adm, '/notifications');
     const nonLues = sql(`SELECT count(*) FROM notification WHERE utilisateur_id=${RIM} AND NOT lu`);
-    await Promise.all([p.waitForNavigation(), p.click('button:has-text("Tout marquer comme lu")')]);
-    etape('formulaire : page 403 « Lecture seule »', (await p.textContent('h1')).trim() === 'Lecture seule'
-      && /Erreur 403/.test(await p.textContent('main')));
+    // Lot 13 (bug UX I1) : l'interface ne propose plus l'écriture (bouton
+    // désactivé, jamais de page « Lecture seule ») ; le serveur refuse
+    // toujours (403).
+    const toutLu = p.locator('button:has-text("Tout marquer comme lu")');
+    etape('formulaire désactivé en lecture seule', await toutLu.isDisabled()
+      && /Lecture seule/.test(await toutLu.getAttribute('title')));
+    const refusToutLu = await poster(p, '/notifications/marquer-toutes-lues', {});
+    etape('formulaire : refusé par le serveur (403)', refusToutLu.status === 403, refusToutLu);
     etape('notifications toujours non lues', sql(`SELECT count(*) FROM notification WHERE utilisateur_id=${RIM} AND NOT lu`) === nonLues && nonLues !== '0');
     etape('aucun rappel Daily log créé pour l’intervenante', sql(`SELECT count(*) FROM notification WHERE utilisateur_id=${RIM} AND rappel_jours IS NOT NULL`) === '0');
     // Revenir à mon compte (clavier).
@@ -211,7 +220,9 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
     await p.click('button[data-open-post-dialog]:has-text("Nouveau post")');
     await p.waitForSelector('#dialog-contenu-information', { state: 'visible' });
     await p.fill('#dialog-contenu-information', 'Post e2e au nom de Rim');
-    await Promise.all([p.waitForNavigation(), p.click('button:has-text("Publier l\'information")')]);
+    // Lot 13 : publication en partiel (post inséré en tête du fil, sans navigation).
+    await p.click('button:has-text("Publier l\'information")');
+    await p.waitForSelector('#fil-posts .fil-item:has-text("Post e2e au nom de Rim")');
     const post = sql("SELECT id || ':' || auteur_id FROM post WHERE contenu = 'Post e2e au nom de Rim'");
     etape('post créé au nom de l’intervenante', post.endsWith(':' + RIM), post);
     etape('journal : post (auteur Rim, Admin réel)', sql(`SELECT utilisateur_id || ':' || admin_reel_id FROM audit_log WHERE table_cible='post' AND action='INSERT' AND ligne_id=${post.split(':')[0]}`) === `${RIM}:${ADMIN}`);
@@ -235,18 +246,33 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
     p = await ouvrir(adm, '/accueil');
     await p.fill('#bandeau-date-simulee', J3);
     await Promise.all([p.waitForNavigation(), p.click('#bandeau-admin button:has-text("Appliquer")')]);
-    etape('bandeau « Date simulée : … — Revenir à aujourd’hui »', /^Date simulée : \S+ \S+ \S+ \d{4} — Revenir à aujourd’hui/.test(await texteBandeau(p)), await texteBandeau(p));
+    etape('bandeau « Date simulée : … Date simulée future : … — Revenir à aujourd’hui »',
+      /^Date simulée : \S+ \S+ \S+ \d{4} Date simulée future : les saisies datées \(Daily log\) sont en lecture seule ; les autres actions sont réelles — Revenir à aujourd’hui/.test(await texteBandeau(p)), await texteBandeau(p));
     await capture(p, 'e2e-12-date-simulee.png');
     await entrer(p, RIM, 'agir');
     p = await ouvrir(adm, '/dailylog?date=' + J3);
     await pretDailyLog(p);
     etape('Daily log de l’intervenante à J+3 (date simulée)', (await p.evaluate(() => window.KairosDailyLogPage.etat().sel)) === J3);
     await capture(p, 'e2e-12-agir-et-date.png');
+    // Lot 13 (décision 5) : J+3 se consulte mais ne s'écrit pas, même en mode test.
+    etape('J+3 en lecture seule (« après la vraie date du jour »)',
+      await p.isVisible('#dl-lecture') && /après la vraie date du jour/.test(await p.textContent('#dl-lecture')),
+      await p.textContent('#dl-lecture'));
+    const refusJ3 = await p.evaluate(async (j) => {
+      const r = await fetch('/dailylog/api/jour/' + j, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: 0, lignes: [{ projet_id: 1, tache_id: null, minutes: 30 }] }) });
+      return r.status + ':' + (await r.json()).erreur;
+    }, J3);
+    etape('écriture à J+3 refusée (422 futur_reel), rien en base', refusJ3 === '422:futur_reel' && heures(RIM, J3) === '0', refusJ3);
+    // Le passé reste saisissable sous date simulée, horodatage réel.
+    const J1 = isoTunis(-1);
+    p = await ouvrir(adm, '/dailylog?date=' + J1);
+    await pretDailyLog(p);
     await p.click('#dl-liste .dl-row[data-cle="1:0"] .dl-plus');
     await p.click('#dl-enregistrer');
     await attendre(async () => (await p.textContent('#dl-status-texte')) === 'Enregistré');
-    etape('ligne à J+3 enregistrée (garde en base comprise)', heures(RIM, J3) === '0.50', heures(RIM, J3));
-    etape('horodatage réel (créée aujourd’hui)', sql(`SELECT (created_at AT TIME ZONE 'Africa/Tunis')::date FROM dailylog_entree WHERE utilisateur_id=${RIM} AND date='${J3}'`) === T);
+    etape('ligne à J−1 enregistrée sous date simulée', heures(RIM, J1) !== '0', heures(RIM, J1));
+    etape('horodatage réel (créée aujourd’hui)', sql(`SELECT max((created_at AT TIME ZONE 'Africa/Tunis')::date) FROM dailylog_entree WHERE utilisateur_id=${RIM} AND date='${J1}'`) === T);
     p = await ouvrir(adm, '/dailylog?date=' + J11);
     await pretDailyLog(p);
     etape('fenêtre décalée : J−11 (= date simulée − 14) modifiable', await p.isHidden('#dl-lecture'));
@@ -277,8 +303,9 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
     etape('tâche de l’équipe URBS, lien vers sa fenêtre', await p.locator('a.g-bar[href="/projets/2?tache=4"]').count() === 1);
     etape('tâches sans échéance listées', await p.locator('.g-row-sans-echeance a[href="/projets/1?tache=3"]').count() === 1
       && await p.locator('.g-row-sans-echeance a[href="/projets/2?tache=5"]').count() === 1);
+    // Lot 13 : filtre appliqué au changement, sans rechargement.
     await p.selectOption('select[name=equipe]', 'URBS');
-    await Promise.all([p.waitForNavigation(), p.click('button:has-text("Filtrer")')]);
+    await p.waitForFunction(() => location.search.includes('equipe=URBS') && /1 tâche avec échéance/.test(document.querySelector('.subbar').textContent));
     etape('filtre équipe URBS : 1 tâche', /1 tâche avec échéance/.test(await p.textContent('.subbar')) && p.url().includes('equipe=URBS'));
     await capture(p, 'e2e-12-deadlines-admin.png');
 
@@ -333,6 +360,115 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
       await ctx.close();
     }
     await adm.close();
+
+    // --- Lot 13, contre-expertise : deux onglets (temps R1 et N2) ----------
+    {
+      const ctx = await contexte(navigateur, 'admin@x.tn');
+      const a = await ouvrir(ctx, '/accueil');
+      await entrer(a, 2, 'agir');
+      await a.goto(BASE + '/projets/1');
+      await a.click('#nouveau-post');
+      await a.click('label[for="intent-information"]');
+      await a.fill('#dialog-contenu-information', 'Saisie non envoyée');
+      await a.evaluate(() => { window.__pasRecharge = true; });
+      const b = await ouvrir(ctx, '/accueil');
+      await poster(b, '/admin/date-simulee', { date: isoTunis(-2) });
+      await b.goto(BASE + '/accueil');
+      await a.bringToFront();
+      const barre = await attendre(() => a.isVisible('#kairos-mode-change'));
+      etape('R1 : saisie en cours → barre « Recharger », pas de rechargement',
+        barre && await a.evaluate(() => window.__pasRecharge === true)
+        && await a.inputValue('#dialog-contenu-information') === 'Saisie non envoyée');
+      etape('R1 : texte de la barre', /Le mode a changé dans un autre onglet/.test(await a.textContent('#kairos-mode-change')));
+      await capture(a, 'e2e-13-onglets-barre.png');
+      await Promise.all([a.waitForNavigation(), a.click('#kairos-mode-change button')]);
+      etape('R1 : « Recharger » recharge la page', await a.evaluate(() => window.__pasRecharge === undefined));
+
+      // Onglet sans saisie : rechargé tout seul (comportement du lot 13).
+      await a.evaluate(() => { window.__pasRecharge = true; });
+      await b.bringToFront();
+      await poster(b, '/admin/date-simulee/effacer', {});
+      await b.goto(BASE + '/accueil');
+      await a.bringToFront();
+      etape('onglet sans saisie : rechargé', await attendre(() => a.evaluate(() => window.__pasRecharge === undefined).catch(() => false)));
+
+      // N2 : onglet « endormi » (sans BroadcastChannel) → 409, message après rechargement.
+      const c = await ctx.newPage();
+      c.on('pageerror', (e) => erreursJs.push(e.message));
+      await c.addInitScript(() => { delete window.BroadcastChannel; });
+      await c.goto(BASE + '/projets/1');
+      await b.bringToFront();
+      await poster(b, '/admin/date-simulee', { date: isoTunis(-1) });
+      await c.bringToFront();
+      const avant = sql('SELECT etat FROM tache WHERE id = 1');
+      await Promise.all([c.waitForNavigation(), c.evaluate(() => {
+        const fd = new FormData(); fd.append('etat', 'bloque');
+        fd.append('csrf_token', document.querySelector('meta[name="csrf-token"]').content);
+        fetch('/projets/1/taches/1/etat', { method: 'POST', body: fd, headers: { 'X-Kairos-Partiel': '#tache-ligne-1' } });
+      })]);
+      const toast = await attendre(() => c.evaluate(() => Array.from(document.querySelectorAll('.k-toast-texte')).map((t) => t.textContent).join(' | ')));
+      etape('N2 : 409 → message affiché après le rechargement', /Le mode a changé dans un autre onglet/.test(toast || ''), toast);
+      etape('N2 : rien n’a été écrit', sql('SELECT etat FROM tache WHERE id = 1') === avant);
+      await poster(c, '/admin/date-simulee/effacer', {});
+      await poster(c, '/admin/revenir', {});
+      await ctx.close();
+    }
+
+    // --- Recette finale F1 : Daily log, 409 « mode changé » ---------------
+    {
+      const ctx = await contexte(navigateur, 'admin@x.tn');
+      const b = await ouvrir(ctx, '/accueil');
+      await entrer(b, RIM, 'agir');
+      const d = await ctx.newPage();
+      d.on('pageerror', (e) => erreursJs.push(e.message));
+      await d.addInitScript(() => { delete window.BroadcastChannel; });   // onglet « endormi »
+      await d.goto(BASE + '/dailylog');
+      await pretDailyLog(d);
+      const avant = heures(RIM, T);
+      await d.click('#dl-liste .dl-row[data-cle="1:0"] .dl-plus');
+      await b.bringToFront();
+      await poster(b, '/admin/date-simulee', { date: isoTunis(-1) });
+      await d.bringToFront();
+      await d.click('#dl-enregistrer');
+      await attendre(() => d.isVisible('#kairos-mode-change'));
+      await pause(500);
+      const textes = await d.evaluate(() => Array.from(document.querySelectorAll('.k-toast')).map((t) => t.textContent).join(' | '));
+      const st = await d.evaluate(() => window.KairosDailyLogPage.etat().saved);
+      etape('F1 : Daily log, 409 « mode changé » → barre seule, pas de toast « erreur du serveur »',
+        await d.isVisible('#kairos-mode-change') && !/erreur du serveur/i.test(textes), textes);
+      etape('F1 : saisie gardée à l’écran, rien en base', st === 'erreur' && heures(RIM, T) === avant, [st, heures(RIM, T), avant]);
+      await poster(b, '/admin/date-simulee/effacer', {});
+      await poster(b, '/admin/revenir', {});
+      await ctx.close();
+    }
+
+    // --- Lot 13, contre-expertise rôles I7 : « Nouveau post » de l'accueil --
+    {
+      const ctx = await contexte(navigateur, 'ali@x.tn');
+      const pa = await ouvrir(ctx, '/accueil');
+      await pa.click('#nouveau-post');
+      await pa.click('label[for="intent-tache"]');
+      await pa.fill('.panel-tache .chip-select-filter', 'Omar');
+      const omar = await pa.evaluate(() => Array.from(document.querySelectorAll('.panel-tache .chip-opt'))
+        .filter((c) => /Omar/.test(c.textContent)).map((c) => !c.classList.contains('chip-hidden')));
+      await pa.fill('.panel-tache .chip-select-filter', 'Rim');
+      const rim = await pa.evaluate(() => Array.from(document.querySelectorAll('.panel-tache .chip-opt'))
+        .filter((c) => /Rim/.test(c.textContent)).map((c) => !c.classList.contains('chip-hidden')));
+      etape('I7 : Omar (URBS) non proposé pour une tâche du projet MIDGARD', omar.length === 1 && !omar[0], omar);
+      etape('I7 : Rim (intervenante du projet) proposée', rim.length === 1 && rim[0], rim);
+
+      // a11y-perf M11 : « Phase liée » chargée à la demande.
+      const pn = await ouvrir(ctx, '/projets/nouveau');
+      etape('M11 : aucune option de projet rendue avec la page',
+        await pn.evaluate(() => document.querySelectorAll('#phase_liee_id option[value]:not([value=""])').length) === 0);
+      await pn.click('#phase_liee_id + .search-combobox-wrap input');
+      await pn.keyboard.type('siem');
+      const item = await attendre(() => pn.evaluate(() => Array.from(document.querySelectorAll('.search-combobox-item')).map((i) => i.textContent).join('|')));
+      etape('M11 : recherche → « 21114X_Siemens »', item === '21114X_Siemens', item);
+      await pn.click('.search-combobox-item');
+      etape('M11 : choix posé dans le formulaire', await pn.inputValue('#phase_liee_id') === '1');
+      await ctx.close();
+    }
 
     etape('aucune erreur JavaScript', erreursJs.length === 0, erreursJs);
   } catch (e) {
