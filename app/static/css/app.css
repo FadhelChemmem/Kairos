@@ -1225,3 +1225,70 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
   .seg label svg { display: none; }
   .post-dialog { padding: 16px; }
 }
+
+/* Lot 12 : bandeau des modes de l'Admin (partials/bandeau_admin.html) —
+   « Voir comme » orange, « Agir comme » rouge, date simulée violette, mode
+   test seul en rappel discret. Texte blanc sur les fonds pleins : 6,0:1
+   (#a3480d), 5,7:1 (#b93a1a), 5,8:1 (#5f52d1), dans les deux thèmes ; les
+   boutons blancs reprennent la couleur du bandeau (mêmes rapports). */
+.bandeau-admin { color: #fff; font-size: 13px; line-height: 1.35; }
+.bandeau-admin-voir { background: #a3480d; --bandeau-fond: #a3480d; }
+.bandeau-admin-agir { background: #b93a1a; --bandeau-fond: #b93a1a; }
+.bandeau-admin-date { background: #5f52d1; --bandeau-fond: #5f52d1; }
+.bandeau-admin-test {
+  background: var(--warn-bg); color: var(--warn-text); border-bottom: 1px solid var(--warn-border);
+  --bandeau-fond: var(--warn-text);
+}
+.bandeau-admin-inner {
+  max-width: 1360px; margin: 0 auto; padding: 7px 32px; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.bandeau-admin-ligne { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 0; }
+.bandeau-admin-ligne > svg { flex-shrink: 0; }
+.bandeau-admin-ligne strong { font-weight: 800; }
+.bandeau-admin-form { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+.bandeau-admin-bouton {
+  min-height: 28px; padding: 4px 12px; border: 0; border-radius: 8px; cursor: pointer;
+  background: #fff; color: var(--bandeau-fond); font: inherit; font-size: 12.5px; font-weight: 700;
+}
+.bandeau-admin-bouton:hover { background: #f3f3f3; }
+.bandeau-admin-test .bandeau-admin-bouton { background: var(--surface); color: var(--text-strong); border: 1px solid var(--control-border); }
+.bandeau-admin :focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.bandeau-admin-voir :focus-visible, .bandeau-admin-agir :focus-visible, .bandeau-admin-date :focus-visible { outline-color: #fff; }
+.bandeau-admin-date label, .bandeau-admin-form label { display: inline; margin: 0; font-size: 12.5px; font-weight: 600; color: inherit; }
+.bandeau-admin-form input[type=date] {
+  width: auto; min-height: 28px; padding: 3px 8px; border-radius: 8px; font: inherit; font-size: 13px;
+  background: #fff; color: #23281f; border: 1px solid #8a958d; color-scheme: light;
+}
+.bandeau-admin-test .bandeau-admin-form input[type=date] { background: var(--surface); color: var(--text-strong); border-color: var(--control-border); color-scheme: inherit; }
+.bandeau-admin-etiquette { font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; font-size: 11.5px; }
+.bandeau-admin-lien { color: inherit; font-weight: 700; text-decoration: underline; min-height: 24px; display: inline-flex; align-items: center; }
+.bandeau-admin-voir .bandeau-admin-ligne + .bandeau-admin-ligne,
+.bandeau-admin-agir .bandeau-admin-ligne + .bandeau-admin-ligne { padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.35); }
+/* La barre du haut (collante) garde un liseré de la couleur du mode. */
+.topbar-mode-voir { border-bottom: 3px solid #a3480d; }
+.topbar-mode-agir { border-bottom: 3px solid #b93a1a; }
+@media (max-width: 860px) {
+  .bandeau-admin-inner { padding: 7px 16px; }
+  .bandeau-admin-form input[type=date] { font-size: 16px; }
+}
+@media print { .bandeau-admin { display: block !important; color: #000; background: none; border: 1px solid #000; } .bandeau-admin form { display: none; } }
+
+/* Lot 12 : page « Voir Kairos comme… » et bascule Mes projets / Tous les
+   projets des Deadlines (Admin). */
+.voir-comme-carte { max-width: 640px; }
+.voir-comme-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.voir-comme-actions button { width: auto; padding: 10px 16px; }
+.bascule-vue { display: inline-flex; background: var(--hover-bg); border-radius: 10px; padding: 3px; gap: 3px; }
+.bascule-vue a {
+  padding: 6px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 700; color: var(--text-secondary);
+  min-height: 24px; display: inline-flex; align-items: center;
+}
+.bascule-vue a[aria-current="page"] { background: var(--surface); color: var(--text-strong); box-shadow: 0 1px 3px rgba(20, 30, 25, 0.12); }
+.filtres-deadlines-admin { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.filtres-deadlines-admin select { width: auto; min-width: 150px; }
+@media (max-width: 860px) { .filtres-deadlines-admin select { flex: 1 1 140px; } }
+.journal-admin-reel { display: block; font-size: 11.5px; color: var(--text-muted); }
+.pill-action-entree, .pill-action-sortie { justify-self: start; }
+.pill-action-entree { background: var(--warn-bg); color: var(--warn-text); }
+.pill-action-sortie { background: var(--hover-bg); color: var(--text-secondary); }

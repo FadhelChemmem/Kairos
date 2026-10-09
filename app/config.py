@@ -132,3 +132,12 @@ class Config:
     # et/ou domaines (@domaine), séparés par des virgules, seuls autorisés à
     # recevoir un e-mail. Vide ou absente : aucun filtre. Voir app/mailer.py.
     MAIL_DESTINATAIRES_AUTORISES = os.environ.get("MAIL_DESTINATAIRES_AUTORISES", "")
+
+    # Mode test de Kairos (lot 12, décision du gérant) : true active, pour
+    # les Admins seulement, « Agir comme… » (modifier au nom d'un autre
+    # compte, tracé à son nom ET au nom de l'Admin dans le journal d'audit)
+    # et la date simulée. Toute autre valeur (absente, vide, « 1 », « oui »…)
+    # vaut false : ni bouton, ni route. « Voir comme… » (lecture seule)
+    # existe toujours. À couper avant la mise en service réelle — voir
+    # app/modes_admin.py et la section « Mode test » du README.
+    MODE_TEST = os.environ.get("KAIROS_MODE_TEST", "false").strip().lower() == "true"

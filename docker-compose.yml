@@ -135,6 +135,10 @@ services:
       # Mode test des e-mails : seules ces adresses / @domaines reçoivent
       # un e-mail ; vide = aucun filtre (voir .env.example, app/mailer.py).
       MAIL_DESTINATAIRES_AUTORISES: ${MAIL_DESTINATAIRES_AUTORISES:-}
+      # Mode test de Kairos (lot 12) : true = « Agir comme » et date
+      # simulée pour les Admins ; false par défaut (voir .env.example et la
+      # section « Mode test » du README). À couper avant la mise en service.
+      KAIROS_MODE_TEST: ${KAIROS_MODE_TEST:-false}
     ports:
       # WEB_BIND=127.0.0.1 quand le reverse proxy HTTPS tourne sur la même
       # machine HORS conteneur : sinon le port 8000 reste joignable en HTTP

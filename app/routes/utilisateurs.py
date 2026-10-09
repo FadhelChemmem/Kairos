@@ -13,7 +13,7 @@ from flask import (
     Blueprint, abort, current_app, flash, g, redirect, render_template, request, session, url_for,
 )
 
-from .. import mailer
+from .. import horloge, mailer
 from ..auth import (
     MOT_DE_PASSE_MIN_LEN, generer_lien_reset, hash_password, login_required,
     password_fingerprint, role_required, verify_password,
@@ -166,7 +166,7 @@ def _erreur_fiche(prenom, nom, email, telephone, poste, adresse, date_embauche, 
     import datetime
 
     embauche_future = None
-    if date_embauche and date_embauche > datetime.date.today() + datetime.timedelta(days=366):
+    if date_embauche and date_embauche > horloge.aujourdhui() + datetime.timedelta(days=366):
         embauche_future = "Date d'embauche invalide : plus d'un an dans le futur."
     return v.premiere_erreur(
         v.trop_long(prenom, v.MAX_PRENOM_NOM, "Prénom"),
@@ -285,7 +285,7 @@ def profil_personne(user_id: int):
     # (retour Fadhel, J.docx, T3) : daily log et posts de la dernière
     # semaine ; chaque "Voir +" ajoute une semaine (12 au plus).
     semaines = min(max(request.args.get("semaines", 1, type=int) or 1, 1), 12)
-    depuis = datetime.date.today() - datetime.timedelta(days=7 * semaines - 1)
+    depuis = dailylog_repo.aujourdhui_pour(g.user) - datetime.timedelta(days=7 * semaines - 1)
     posts_recents = posts_repo.list_feed_auteur(user_id, viewer_id, limit=100, depuis=depuis)
     posts_plus_anciens = bool(posts_repo.list_feed_auteur(user_id, viewer_id, limit=1, avant=depuis))
     # Daily log d'un collègue (audit sécurité I5, lot 10) : spec du 16/09

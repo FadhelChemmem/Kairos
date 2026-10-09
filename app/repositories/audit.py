@@ -24,7 +24,30 @@ TABLES_AUDITEES = [
     "post_commentaire_mention",
 ]
 
-ACTIONS_VALIDES = ["INSERT", "UPDATE", "DELETE"]
+# Lot 12 (migration 0018) : pas des tables, mais les entrées / sorties des
+# modes de l'Admin, écrites par journaliser_mode ci-dessous — proposées
+# elles aussi au filtre « Table » de la page.
+TABLES_MODES = ["mode_voir_comme", "mode_agir_comme", "date_simulee"]
+TABLES_FILTRABLES = TABLES_AUDITEES + TABLES_MODES
+
+ACTIONS_VALIDES = ["INSERT", "UPDATE", "DELETE", "ENTREE", "SORTIE"]
+
+
+def journaliser_mode(table_cible: str, action: str, admin_id: int, compte_vu_id: int | None,
+                     donnees: dict) -> None:
+    """Entrée ou sortie d'un mode de l'Admin (lot 12) : « Voir comme »,
+    « Agir comme » (ligne_id = compte vu) ou date simulée. Auteur et Admin
+    réel = l'Admin ; created_at réel (now()), jamais la date simulée."""
+    import json
+
+    with db.get_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO audit_log (table_cible, ligne_id, action, utilisateur_id, admin_reel_id, donnees_apres)
+            VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+            """,
+            (table_cible, compte_vu_id, action, admin_id, admin_id, json.dumps(donnees, ensure_ascii=False)),
+        )
 
 
 def list_entrees(
@@ -33,15 +56,20 @@ def list_entrees(
     limit: int = 300,
 ) -> list[dict]:
     """Journal filtré, le plus récent d'abord — avec le nom de l'auteur
-    (peut être NULL : action système, ou compte supprimé depuis)."""
+    (peut être NULL : action système, ou compte supprimé depuis) et, lot 12,
+    celui de l'Admin réel quand il « agissait comme » l'auteur (le filtre
+    « Auteur » retrouve aussi ces lignes pour cet Admin)."""
     sql = """
         SELECT a.id, a.table_cible, a.ligne_id, a.action, a.created_at,
                a.donnees_avant, a.donnees_apres,
-               u.id AS auteur_id, u.prenom AS auteur_prenom, u.nom AS auteur_nom
+               u.id AS auteur_id, u.prenom AS auteur_prenom, u.nom AS auteur_nom,
+               ar.id AS admin_reel_id, ar.prenom AS admin_reel_prenom, ar.nom AS admin_reel_nom
         FROM audit_log a
         LEFT JOIN utilisateur u ON u.id = a.utilisateur_id
+        LEFT JOIN utilisateur ar ON ar.id = a.admin_reel_id
         WHERE (%(table_cible)s IS NULL OR a.table_cible = %(table_cible)s)
-          AND (%(utilisateur_id)s IS NULL OR a.utilisateur_id = %(utilisateur_id)s)
+          AND (%(utilisateur_id)s IS NULL OR a.utilisateur_id = %(utilisateur_id)s
+               OR a.admin_reel_id = %(utilisateur_id)s)
           AND (%(action)s IS NULL OR a.action = %(action)s)
           -- ::date obligatoire (bug corrigé le 2026-09-29, "l'onglet Log ne
           -- marche pas") : sans filtre de date, psycopg2 envoie un NULL non
@@ -74,6 +102,7 @@ def list_auteurs() -> list[dict]:
         SELECT u.id, u.prenom, u.nom
         FROM utilisateur u
         WHERE EXISTS (SELECT 1 FROM audit_log a WHERE a.utilisateur_id = u.id)
+           OR EXISTS (SELECT 1 FROM audit_log a WHERE a.admin_reel_id = u.id)
         ORDER BY u.prenom, u.nom
     """
     with db.get_cursor() as cur:

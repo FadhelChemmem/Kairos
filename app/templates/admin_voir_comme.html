@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Voir Kairos comme… — Kairos{% endblock %}
+{% block scripts_fil %}{% endblock %}
+{% block body %}
+{# Lot 12 (demande du gérant) : choix du compte pour « Voir comme »
+   (toujours) et « Agir comme » (KAIROS_MODE_TEST=true seulement). Liste :
+   comptes actifs NON admin, avec recherche sans accents
+   (search-combobox.js, mode riche). Voir app/routes/modes_admin.py. #}
+<div class="subbar">
+  <div class="subbar-inner">
+    <h1 class="page-titre">Voir Kairos comme…</h1>
+    <span class="pill" style="background:var(--hover-bg); color:var(--text-muted); margin-left:auto;">Visible par&nbsp;: administrateur</span>
+  </div>
+</div>
+
+<div class="page-wrap" style="padding-top:20px; padding-bottom:60px;">
+  <div class="card voir-comme-carte">
+    <p style="margin:0 0 10px; font-size:13.5px; line-height:1.5; color:var(--text-secondary);">
+      Choisissez un compte actif (hors Admin)&nbsp;: vous verrez Kairos <strong>exactement comme cette personne</strong>
+      — menus, projets visibles, Mes tâches, Deadlines, Daily log, boutons autorisés.
+      <strong>Voir comme</strong> est en lecture seule&nbsp;: rien ne peut être modifié. Un bandeau orange le rappelle
+      sur chaque page, avec «&nbsp;Revenir à mon compte&nbsp;». L’entrée et la sortie sont notées dans le journal d’audit.
+    </p>
+    {% if mode_test %}
+    <p style="margin:0 0 10px; font-size:13.5px; line-height:1.5; color:var(--text-secondary);">
+      <span class="pill pill-sm pill-warn">Mode test</span>
+      <strong>Agir comme</strong> permet en plus de modifier au nom de ce compte (posts, tâches, Daily log, états…)&nbsp;;
+      chaque modification est tracée à son nom et au vôtre («&nbsp;par l’Admin&nbsp;») dans le journal d’audit, et les
+      e-mails restent limités aux adresses autorisées. La <strong>date simulée</strong> se choisit dans le bandeau du haut.
+    </p>
+    {% endif %}
+    {% if comptes %}
+    <form method="post" action="{{ url_for('modes_admin.voir_comme') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-row">
+        <label for="voir-comme-compte">Compte</label>
+        <select id="voir-comme-compte" name="utilisateur_id" data-search-combobox data-search-riche data-search-placeholder="Rechercher un compte (nom ou rôle)…" data-search-vide="Aucun compte trouvé">
+          <option value="" disabled selected>Choisir un compte…</option>
+          {% for u in comptes %}
+            {% set rs = role_style(u.role) %}
+            <option value="{{ u.id }}" data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}" data-couleur="{{ avatar_color(u.id) }}"{% if u.avatar_chemin %} data-photo="{{ avatar_url(u.id, u.avatar_chemin) }}"{% endif %} data-sous-titre="{{ rs.label }}{% if u.equipe_code %} · {{ equipe_libelle(u.equipe_code) }}{% endif %}{% if u.poste and u.poste|lower != rs.label|lower %} · {{ u.poste }}{% endif %}">{{ u.prenom }} {{ u.nom }} — {{ rs.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="voir-comme-actions">
+        <button type="submit" class="btn-primary btn-accent">Voir comme</button>
+        {% if mode_test %}
+        <button type="submit" class="btn-primary btn-danger" formaction="{{ url_for('mode_test.agir_comme') }}">Agir comme (mode test)</button>
+        {% endif %}
+      </div>
+    </form>
+    {% else %}
+    <p style="margin:0; font-size:13px; color:var(--text-muted);">Aucun compte actif hors Admin.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

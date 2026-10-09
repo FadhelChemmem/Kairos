@@ -495,7 +495,7 @@ def update_projet(
                 -- passage à Terminé/Abandonné (gardée de l'un à l'autre),
                 -- effacée à la réouverture.
                 date_cloture = CASE WHEN %s IN ('termine', 'abandonne')
-                                    THEN COALESCE(date_cloture, CURRENT_DATE) END
+                                    THEN COALESCE(date_cloture, fn_aujourdhui()) END
             WHERE id = %s
             """,
             (nom, etat, date_debut, date_fin, phase_liee_id, honoraires, client, etat, projet_id),
@@ -785,7 +785,9 @@ def propose_code(phase: str, annee: int | None = None, phase_liee_code: str | No
             if db.query_one("SELECT 1 AS pris FROM projet WHERE code = %s", (candidat,)) is None:
                 return candidat
 
-    annee = annee or datetime.date.today().year
+    from .. import horloge
+
+    annee = annee or horloge.aujourdhui().year
     prefixe = f"{annee % 100:02d}"
 
     rows = db.query_all("SELECT code FROM projet WHERE code LIKE %s", (f"{prefixe}%",))

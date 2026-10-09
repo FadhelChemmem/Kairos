@@ -65,7 +65,8 @@
       };
     })();
   </script>
-  <title>{% block title %}Kairos{% endblock %}</title>
+  {# Lot 12 : l'onglet rappelle le mode de l'Admin (« Voir / Agir comme »). #}
+  <title>{% if bandeau_admin and bandeau_admin.mode %}[{{ 'Vu' if bandeau_admin.mode == 'voir' else 'Agi' }} comme {{ g.user.prenom }} {{ g.user.nom }}] {% endif %}{% block title %}Kairos{% endblock %}</title>
   {# Icône d'onglet (favicon) tirée du logo Kairos (retour Fadhel,
      2026-09-29). SVG en priorité (déclaré après le .ico, recette
      habituelle pour que Chrome/Firefox le choisissent) : son K passe en blanc quand le
@@ -110,7 +111,9 @@
 {% if g.user %}
 {# Lot 10 (audit front B9) : lien d'évitement, repères header/nav/main. #}
 <a class="lien-evitement" href="#contenu">Aller au contenu</a>
-<header class="topbar">
+{# Lot 12 : liseré orange (« Voir comme ») ou rouge (« Agir comme ») sous la
+   barre du haut, qui reste visible au défilement (barre collante). #}
+<header class="topbar{{ ' topbar-mode-' ~ bandeau_admin.mode if bandeau_admin and bandeau_admin.mode }}">
   <div class="topbar-inner">
   <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
     {# Logo en deux versions (retour Fadhel, 2026-09-27) : le PNG d'origine a
@@ -202,6 +205,7 @@
   </nav>
   </div>
 </header>
+{% if bandeau_admin %}{% include "partials/bandeau_admin.html" %}{% endif %}
 <script>
 // Recherche globale (topbar) — demandé par Fadhel (2026-09-19) : jusqu'ici
 // décorative. Cherche parmi les projets visibles par l'utilisateur (par

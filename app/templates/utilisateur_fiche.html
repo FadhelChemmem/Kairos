@@ -162,6 +162,20 @@
   </div>
   {% endif %}
 
+  {# Lot 12 : « Voir Kairos comme » ce compte (Admin, compte actif non
+     admin) ; « Agir comme » en mode test (KAIROS_MODE_TEST=true). #}
+  {% if g.user.role == 'admin' and utilisateur.actif and utilisateur.role != 'admin' %}
+  <form method="post" action="{{ url_for('modes_admin.voir_comme') }}" class="card" style="padding:18px 22px 20px; margin-top:16px; display:flex; flex-wrap:wrap; align-items:center; gap:10px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="utilisateur_id" value="{{ utilisateur.id }}">
+    <span style="font-size:12.5px; color:var(--text-muted); flex:1; min-width:200px;">Voir Kairos exactement comme {{ utilisateur.prenom }} {{ utilisateur.nom }}, en lecture seule.</span>
+    <button type="submit" class="btn-secondary" style="width:auto; padding:8px 14px;">Voir comme {{ utilisateur.prenom }}</button>
+    {% if config.MODE_TEST %}
+    <button type="submit" class="btn-primary btn-danger" style="width:auto; padding:8px 14px;" formaction="{{ url_for('mode_test.agir_comme') }}">Agir comme {{ utilisateur.prenom }} (mode test)</button>
+    {% endif %}
+  </form>
+  {% endif %}
+
   {% if not lecture_seule %}
   {# Formulaire séparé (pas de <form> imbriqué) : POST + jeton CSRF. Le
      lien part vers l'adresse ENREGISTRÉE du compte — aucune adresse n'est

@@ -17,7 +17,7 @@ chef et de l'Admin) sont validées par la route sur l'état VERROUILLÉ (voir
 import datetime
 from zoneinfo import ZoneInfo
 
-from .. import db
+from .. import db, horloge
 from ._like import motif_recherche
 
 PAS_MINUTES = 30
@@ -62,8 +62,11 @@ def _zone(user: dict) -> ZoneInfo:
 
 def maintenant_pour(user: dict, maintenant: datetime.datetime | None = None) -> datetime.datetime:
     """Heure locale du bureau de la personne. `maintenant` (injectable pour
-    les tests) : un datetime aware, ou naïf compris en UTC."""
-    maintenant = maintenant or datetime.datetime.now(datetime.timezone.utc)
+    les tests) : un datetime aware, ou naïf compris en UTC. Sans lui :
+    app/horloge.py (lot 12), qui porte l'heure réelle à la date simulée de
+    l'Admin en mode test."""
+    if maintenant is None:
+        return horloge.maintenant(_zone(user))
     if maintenant.tzinfo is None:
         maintenant = maintenant.replace(tzinfo=datetime.timezone.utc)
     return maintenant.astimezone(_zone(user))
@@ -71,7 +74,8 @@ def maintenant_pour(user: dict, maintenant: datetime.datetime | None = None) -> 
 
 def aujourdhui_pour(user: dict, maintenant: datetime.datetime | None = None) -> datetime.date:
     """« Aujourd'hui » au fuseau de la personne : de 20 h à minuit en
-    Guyane, Tunis est déjà au lendemain (4 h d'écart)."""
+    Guyane, Tunis est déjà au lendemain (4 h d'écart). Date simulée de
+    l'Admin en mode test (lot 12) : cette date, pour tout le monde."""
     return maintenant_pour(user, maintenant).date()
 
 

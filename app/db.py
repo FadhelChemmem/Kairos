@@ -37,6 +37,25 @@ logger = logging.getLogger(__name__)
 _pool: ThreadedConnectionPool | None = None
 
 
+class LectureSeule(Exception):
+    """Écriture tentée pendant « Voir comme » (lot 12) : la transaction est
+    READ ONLY (voir get_cursor) et PostgreSQL l'a refusée (25006). La page
+    répond 403 « lecture seule » (app/__init__.py), jamais une erreur 500."""
+
+
+def _reglages_requete() -> tuple[bool, int | None, "datetime.date | None"]:
+    """Réglages de la requête HTTP en cours, posés par
+    app/modes_admin.py:appliquer (lot 12) : (lecture seule, Admin réel qui
+    « agit comme », date simulée). Hors requête (CLI, scripts) : rien."""
+    try:
+        from flask import g, has_request_context
+    except ImportError:  # pragma: no cover - Flask est toujours là dans l'appli
+        return False, None, None
+    if not has_request_context():
+        return False, None, None
+    return bool(g.get("lecture_seule")), g.get("admin_reel_agit"), g.get("date_simulee")
+
+
 def init_pool(database_url: str, minconn: int = 1, maxconn: int = 10) -> None:
     """À appeler une fois au démarrage de l'appli (voir app/__init__.py)."""
     global _pool
@@ -61,6 +80,12 @@ def get_cursor(user_id: int | None = None, commit: bool = True):
       transaction : chaque INSERT/UPDATE/DELETE qui suit sera tracé avec
       cet auteur dans updated_by et audit_log, automatiquement, sans
       rien changer au SQL métier lui-même.
+    - Lot 12 (modes de l'Admin, app/modes_admin.py) : en « Voir comme »,
+      la transaction est READ ONLY (aucune écriture possible, même par un
+      chemin oublié) ; en « Agir comme », app.admin_reel_id porte l'Admin
+      réel (recopié par fn_audit_log, migration 0018) ; avec une date
+      simulée (mode test seulement), kairos.date_simulee la porte
+      (fn_aujourdhui, gardes du Daily log).
     - Commit automatique en sortie normale du bloc `with`, rollback
       automatique si une exception est levée à l'intérieur.
     - La connexion est toujours rendue au pool (bloc finally), même en
@@ -69,11 +94,15 @@ def get_cursor(user_id: int | None = None, commit: bool = True):
     if _pool is None:
         raise RuntimeError("db.init_pool() n'a pas été appelé — vérifier app/__init__.py")
 
+    lecture_seule, admin_reel_id, date_simulee = _reglages_requete()
     conn = _pool.getconn()
     conn.autocommit = False
     cur = None
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        if lecture_seule:
+            # Premier ordre de la transaction (exigé par PostgreSQL).
+            cur.execute("SET TRANSACTION READ ONLY")
         if user_id is not None:
             # SET LOCAL n'accepte pas les paramètres de requête classiques
             # (ce n'est pas une commande DML) ; psycopg2 réalise la
@@ -81,12 +110,16 @@ def get_cursor(user_id: int | None = None, commit: bool = True):
             # l'injection SQL. On force un int avant coup pour être
             # explicite sur le type attendu.
             cur.execute("SET LOCAL app.current_user_id = %s", (str(int(user_id)),))
+        if admin_reel_id is not None:
+            cur.execute("SET LOCAL app.admin_reel_id = %s", (str(int(admin_reel_id)),))
+        if date_simulee is not None:
+            cur.execute("SET LOCAL kairos.date_simulee = %s", (date_simulee.isoformat(),))
         yield cur
         if commit:
             conn.commit()
         else:
             conn.rollback()
-    except Exception:
+    except Exception as exc:
         # Après un redémarrage de PostgreSQL, la connexion du pool est morte :
         # rollback() lèverait alors sa propre InterfaceError et masquerait
         # l'erreur d'origine dans les journaux (audit n°2).
@@ -94,6 +127,8 @@ def get_cursor(user_id: int | None = None, commit: bool = True):
             conn.rollback()
         except Exception:
             pass
+        if lecture_seule and getattr(exc, "pgcode", None) == "25006":
+            raise LectureSeule() from exc
         raise
     finally:
         if cur is not None:

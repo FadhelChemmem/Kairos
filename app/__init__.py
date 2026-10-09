@@ -7,7 +7,7 @@ from flask.logging import default_handler as flask_default_handler
 from flask_wtf.csrf import CSRFError, CSRFProtect
 from werkzeug.exceptions import HTTPException
 
-from . import db, perf, proxy, utils
+from . import db, modes_admin, perf, proxy, utils
 from .config import Config
 
 # Valeurs d'exemple connues ("copié-collé du .env.example sans y toucher")
@@ -262,6 +262,20 @@ def create_app(config_class=Config) -> Flask:
     def _load_user():
         auth.load_logged_in_user()
 
+    # Lot 12 : « Voir comme » = lecture seule (403 clair, JSON pour l'API) ;
+    # avant le contrôle CSRF, pour que le refus dise pourquoi.
+    @app.before_request
+    def _modes_admin_ecriture():
+        return modes_admin.refuser_ecriture()
+
+    @app.errorhandler(db.LectureSeule)
+    def _lecture_seule(exc):
+        # Dernier rempart (transaction READ ONLY refusée par PostgreSQL) :
+        # jamais une erreur 500 pour une écriture tentée en « Voir comme ».
+        app.logger.warning("Écriture refusée en « Voir comme » : %s %s", request.method, request.path)
+        return modes_admin.reponse_refus("Vous voyez Kairos comme un autre compte : lecture seule, "
+                                         "rien n'a été modifié.")
+
     # Après _load_user (les before_request s'exécutent dans l'ordre
     # d'enregistrement) : ainsi g.user est déjà connu quand un jeton CSRF
     # est refusé, et _csrf_error renvoie vers la bonne page.
@@ -277,6 +291,7 @@ def create_app(config_class=Config) -> Flask:
     from .routes.notifications import bp as notifications_bp
     from .routes.admin import bp as admin_bp
     from .routes.taches_fenetre import bp as taches_fenetre_bp
+    from .routes.modes_admin import bp as modes_admin_bp, bp_test as mode_test_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(projets_bp)
@@ -288,6 +303,11 @@ def create_app(config_class=Config) -> Flask:
     app.register_blueprint(notifications_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(taches_fenetre_bp)
+    app.register_blueprint(modes_admin_bp)
+    # « Agir comme » et date simulée : routes inexistantes hors mode test.
+    if app.config.get("MODE_TEST") is True:
+        app.register_blueprint(mode_test_bp)
+    modes_admin.installer(app)
 
     @app.route("/")
     def index():

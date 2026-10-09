@@ -86,13 +86,27 @@ def est_configure() -> bool:
     return bool(current_app.config.get("SMTP_HOST"))
 
 
+def _bloque_par_voir_comme(destinataire: str, sujet: str) -> bool:
+    """« Voir comme » (lot 12) : lecture seule, aucun e-mail ne part —
+    défense en profondeur, les actions qui envoient sont déjà refusées."""
+    from flask import g, has_request_context
+
+    if has_request_context() and g.get("mode_admin") == "voir":
+        logger.warning("E-mail NON envoyé à %s (« Voir comme » : lecture seule) : %s", masquer(destinataire), sujet)
+        return True
+    return False
+
+
 def envoyer(destinataire: str, sujet: str, corps: str) -> bool:
     """Envoie un email texte simple. Retourne True si l'envoi a réussi,
     False sinon (et log la raison — jamais d'exception qui remonte).
 
     Mode test (MAIL_DESTINATAIRES_AUTORISES) : un destinataire hors liste
     n'est JAMAIS contacté — c'est vérifié ici, pour tous les chemins
-    d'envoi ; journalisé sans le contenu, adresse masquée."""
+    d'envoi ; journalisé sans le contenu, adresse masquée. « Agir comme »
+    (lot 12) y reste soumis ; « Voir comme » n'envoie rien."""
+    if _bloque_par_voir_comme(destinataire, sujet):
+        return False
     if not destinataire_autorise(destinataire):
         logger.warning(
             "E-mail NON envoyé à %s (mode test : adresse hors de MAIL_DESTINATAIRES_AUTORISES) : %s",
@@ -138,6 +152,8 @@ def envoyer_en_arriere_plan(destinataire: str, sujet: str, corps: str) -> None:
     quand le temps de réponse ne doit rien révéler (mot de passe oublié —
     un envoi SMTP de plusieurs secondes trahissait qu'un compte existe).
     En mode test, l'envoi reste synchrone pour rester vérifiable."""
+    if _bloque_par_voir_comme(destinataire, sujet):
+        return
     app = current_app._get_current_object()
     if app.testing:
         envoyer(destinataire, sujet, corps)

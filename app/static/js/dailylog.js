@@ -917,7 +917,8 @@
       }
       if (r.status === 403 && r.data) {
         if (courant) { saved = 'erreur'; renderStatus(); render(); }
-        toast(T.erreurs.interdit, { warn: true });
+        // Lot 12 : « Voir comme » (lecture seule) dit pourquoi.
+        toast(r.data.erreur === 'lecture_seule' && r.data.message ? r.data.message : T.erreurs.interdit, { warn: true, duree: 6000 });
         return;
       }
       dernierEchec = true;

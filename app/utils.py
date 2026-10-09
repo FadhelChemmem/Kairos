@@ -246,6 +246,13 @@ def date_fr(d) -> str:
     return f"{_JOURS_COMPLETS[d.weekday()]} {jour} {_MOIS_COMPLETS[d.month - 1]} {d.year}"
 
 
+def date_longue(d) -> str:
+    """« jeudi 15 octobre 2026 » (date_fr sans majuscule, au fil d'une
+    phrase : bandeau de la date simulée, lot 12)."""
+    texte = date_fr(d)
+    return texte[:1].lower() + texte[1:]
+
+
 def date_courte(d, avec_annee: bool | None = None) -> str:
     """Date courte en français ("20 sept.", "20 sept. 2026") — remplace
     strftime('%d %b'), qui donnait des mois en anglais ("20 Sep") sur un
@@ -258,7 +265,8 @@ def date_courte(d, avec_annee: bool | None = None) -> str:
     if d is None:
         return ""
     if avec_annee is None:
-        avec_annee = d.year != datetime.date.today().year
+        from .horloge import aujourdhui
+        avec_annee = d.year != aujourdhui().year
     # « 5 oct. », « 1er juin » : jour sans zéro initial, « 1er » pour le
     # premier du mois (lot 10, audit front §7 — c'était « 05 oct. »).
     jour = "1er" if d.day == 1 else str(d.day)
@@ -455,6 +463,12 @@ def heures_interv_chef(interv, chef) -> str:
     return f"{heures(interv)} / {heures(chef)}"
 
 
+def _aujourdhui():
+    from .horloge import aujourdhui
+
+    return aujourdhui()
+
+
 def register(app):
     """Rend ces helpers disponibles directement dans les templates Jinja2."""
     app.jinja_env.globals.update(
@@ -481,10 +495,12 @@ def register(app):
         # Date du jour côté serveur (retour Fadhel, 2026-09-28) — appelée
         # dans les templates comme today() pour préremplir l'échéance de
         # "nouveau poste" ; une fonction (pas une valeur figée au démarrage
-        # de l'appli) pour rester juste après minuit.
-        today=datetime.date.today,
+        # de l'appli) pour rester juste après minuit. Lot 12 : app/horloge.py
+        # (date simulée de l'Admin en mode test).
+        today=_aujourdhui,
     )
     app.jinja_env.filters["personne_mentionnable"] = lambda u: {"id": u["id"], "prenom": u["prenom"], "nom": u["nom"]}
     app.jinja_env.filters["il_y_a"] = il_y_a
     app.jinja_env.filters["date_courte"] = date_courte
+    app.jinja_env.filters["date_longue"] = date_longue
     app.jinja_env.filters["heures"] = heures

@@ -9,6 +9,7 @@ from flask import Blueprint, abort, current_app, flash, g, redirect, render_temp
 from ..auth import login_required
 from ..repositories import notifications as notifications_repo
 from ..repositories import posts, projets, taches, utilisateurs
+from .. import horloge
 from .. import validation as v
 from ..utils import parser_montant
 
@@ -212,7 +213,7 @@ def liste():
         contexte["phases_creation"] = PHASES
         contexte["phase_initiale_dialog"] = "EXE"
         contexte["code_propose_dialog"] = projets.propose_code("EXE")
-        contexte["date_du_jour"] = datetime.date.today().isoformat()
+        contexte["date_du_jour"] = horloge.aujourdhui().isoformat()
         # « Phase liée » dès la création (retour Fadhel, lot 7) : mêmes
         # candidats que dans la fenêtre Informations (projets visibles).
         contexte["projets_phase_liee"] = projets.search(g.user["id"], "", limit=200)
@@ -277,7 +278,7 @@ def export_excel():
 
     tampon = io.BytesIO()
     classeur.save(tampon)
-    nom = f"projets-kairos-{datetime.date.today().isoformat()}.xlsx"
+    nom = f"projets-kairos-{horloge.aujourdhui().isoformat()}.xlsx"
     return tampon.getvalue(), 200, {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition": f'attachment; filename="{nom}"',
@@ -393,7 +394,7 @@ def creer():
         projets_phase_liee=projets.search(g.user["id"], "", limit=200),
         # Pré-rempli avec la date du jour, modifiable — demandé par Fadhel
         # (2026-09-19), le champ apparaissait vide (jj/mm/aaaa).
-        date_du_jour=datetime.date.today().isoformat(),
+        date_du_jour=horloge.aujourdhui().isoformat(),
     )
 
 

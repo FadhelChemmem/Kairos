@@ -1,0 +1,54 @@
+{# Lot 12 : bandeau des modes de l'Admin (app/modes_admin.py:contexte_gabarits),
+   sous la barre du haut, sur toutes les pages :
+   - orange : « Vous voyez Kairos comme Prénom Nom (rôle) — Revenir à mon compte » ;
+   - rouge : « Vous agissez comme … (mode test) » ;
+   - date simulée (mode test) : « Date simulée : jeudi 15 octobre 2026 —
+     Revenir à aujourd'hui », et le champ pour la choisir ;
+   - mode test sans rien d'actif : rappel discret, champ de date et lien
+     « Voir / agir comme… ».
+   role=status : annoncé par les lecteurs d'écran. Formulaires POST + CSRF ;
+   `next` ramène sur la page en cours. #}
+{% set b = bandeau_admin %}
+{% set variante = 'voir' if b.mode == 'voir' else ('agir' if b.mode == 'agir' else ('date' if b.date_simulee else 'test')) %}
+<div class="bandeau-admin bandeau-admin-{{ variante }}" role="status" id="bandeau-admin">
+  <div class="bandeau-admin-inner">
+    {% if b.mode %}
+    <div class="bandeau-admin-ligne">
+      <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+      <span>{{ 'Vous voyez Kairos comme' if b.mode == 'voir' else 'Vous agissez comme' }} <strong>{{ b.cible.prenom }} {{ b.cible.nom }}</strong> ({{ b.role_cible }}){{ ' (mode test)' if b.mode == 'agir' }}</span>
+      <span aria-hidden="true">—</span>
+      <form method="post" action="{{ url_for('modes_admin.revenir') }}" class="bandeau-admin-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if b.retour %}<input type="hidden" name="next" value="{{ b.retour }}">{% endif %}
+        <button type="submit" class="bandeau-admin-bouton">Revenir à mon compte</button>
+      </form>
+    </div>
+    {% endif %}
+    {% if b.mode_test %}
+    <div class="bandeau-admin-ligne">
+      {% if b.date_simulee %}
+        <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>
+        <span>Date simulée&nbsp;: <strong>{{ b.date_simulee|date_longue }}</strong></span>
+        <span aria-hidden="true">—</span>
+        <form method="post" action="{{ url_for('mode_test.date_simulee_effacer') }}" class="bandeau-admin-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if b.retour %}<input type="hidden" name="next" value="{{ b.retour }}">{% endif %}
+          <button type="submit" class="bandeau-admin-bouton">Revenir à aujourd’hui</button>
+        </form>
+      {% elif not b.mode %}
+        <span class="bandeau-admin-etiquette">Mode test</span>
+      {% endif %}
+      <form method="post" action="{{ url_for('mode_test.date_simulee') }}" class="bandeau-admin-form bandeau-admin-date">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if b.retour %}<input type="hidden" name="next" value="{{ b.retour }}">{% endif %}
+        <label for="bandeau-date-simulee">{{ 'Autre date' if b.date_simulee else 'Date simulée' }}</label>
+        <input type="date" id="bandeau-date-simulee" name="date" required min="2000-01-01" max="2099-12-31" value="{{ (b.date_simulee or today()).isoformat() }}">
+        <button type="submit" class="bandeau-admin-bouton bandeau-admin-bouton-secondaire">Appliquer</button>
+      </form>
+      {% if not b.mode %}
+        <a href="{{ url_for('modes_admin.page') }}" class="bandeau-admin-lien">Voir ou agir comme…</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>

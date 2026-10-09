@@ -247,6 +247,33 @@ def list_deadlines(user_id: int, limit: int = 20) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def list_deadlines_tous(chef_id: int | None = None, equipe_code: str | None = None,
+                        sans_echeance: bool = False, limit: int = 500) -> list[dict]:
+    """Vue Admin des Deadlines (lot 12) : les tâches en cours de TOUS les
+    projets ouverts (en cours ou bloqués), avec échéance (triées par date)
+    ou sans (`sans_echeance`, triées par projet) — mêmes règles que
+    list_deadlines (décision 5 du lot 10), sans le filtre « mes projets ».
+    Filtres facultatifs : chef de projet titulaire, équipe du projet."""
+    sql = f"""
+        SELECT t.id, t.titre, t.etat, t.date_echeance, t.type_deadline,
+               p.id AS projet_id, p.code AS projet_code, p.nom AS projet_nom, p.equipe_code,
+               u.id AS chef_id, u.prenom AS chef_prenom, u.nom AS chef_nom
+        FROM tache t
+        JOIN projet p ON p.id = t.projet_id
+        JOIN utilisateur u ON u.id = p.chef_projet_id
+        WHERE t.etat = 'en_cours'
+          AND p.etat IN ('en_cours', 'bloque')
+          AND t.date_echeance IS {'NULL' if sans_echeance else 'NOT NULL'}
+          AND (%(chef)s::bigint IS NULL OR p.chef_projet_id = %(chef)s::bigint)
+          AND (%(equipe)s::text IS NULL OR p.equipe_code = %(equipe)s::text)
+        ORDER BY {'p.code, t.titre, t.id' if sans_echeance else 't.date_echeance, p.code, t.id'}
+        LIMIT %(limit)s
+    """
+    with db.get_cursor() as cur:
+        cur.execute(sql, {"chef": chef_id, "equipe": equipe_code, "limit": limit})
+        return [dict(r) for r in cur.fetchall()]
+
+
 def search(user_id: int, q: str, limit: int = 6) -> list[dict]:
     """Recherche globale de la topbar (lot 11) : tâches dont le titre
     contient `q`, sans accents ni casse, sur les seuls projets visibles par
@@ -559,7 +586,7 @@ def close_tache(
         cur.execute(
             """
             WITH avant AS (SELECT etat FROM tache WHERE id = %s)
-            UPDATE tache SET etat = 'termine', date_fin = CURRENT_DATE
+            UPDATE tache SET etat = 'termine', date_fin = fn_aujourdhui()
             WHERE id = %s AND projet_id = %s AND etat NOT IN ('termine', 'verifie')
               AND (%s OR etat::text <> ALL (%s))
             RETURNING id, projet_id, titre, (SELECT etat FROM avant) AS ancien_etat

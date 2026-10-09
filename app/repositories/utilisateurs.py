@@ -29,6 +29,19 @@ def list_actifs() -> list[dict]:
     )
 
 
+def list_cibles_voir_comme() -> list[dict]:
+    """Comptes que l'Admin peut « voir comme » / « agir comme » (lot 12) :
+    actifs et NON admin — RH et Client compris."""
+    return db.query_all(
+        """
+        SELECT id, prenom, nom, poste, role, equipe_code, avatar_chemin
+        FROM utilisateur
+        WHERE actif = true AND role <> 'admin'
+        ORDER BY nom, prenom
+        """
+    )
+
+
 def list_affectables() -> list[dict]:
     """Personnes pouvant être chef de projet, co-chef ou intervenant :
     list_actifs sans les Clients (décision Fadhel, lot 7 — un Client voit

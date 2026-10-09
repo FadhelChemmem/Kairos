@@ -26,7 +26,7 @@ def _parser_date(date_str: str | None):
 @role_required("admin")
 def journal():
     table_cible = request.args.get("table") or None
-    if table_cible not in audit_repo.TABLES_AUDITEES:
+    if table_cible not in audit_repo.TABLES_FILTRABLES:
         table_cible = None
 
     action = request.args.get("action") or None
@@ -55,7 +55,7 @@ def journal():
     return render_template(
         "admin_journal.html",
         entrees=entrees,
-        tables=audit_repo.TABLES_AUDITEES,
+        tables=audit_repo.TABLES_FILTRABLES,
         actions=audit_repo.ACTIONS_VALIDES,
         auteurs=audit_repo.list_auteurs(),
         table_cible=table_cible or "", action=action or "",

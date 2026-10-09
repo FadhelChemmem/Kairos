@@ -12,7 +12,7 @@ import time
 from flask import Blueprint, current_app, g, redirect, render_template, request, session, url_for, flash
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from . import db, mailer
+from . import db, mailer, modes_admin
 from .repositories import dailylog as dailylog_repo
 from .repositories import notifications as notifications_repo
 from .repositories import securite as securite_repo
@@ -144,7 +144,15 @@ def load_logged_in_user() -> None:
         g.user = None
         flash("Votre session a expiré, veuillez vous reconnecter.", "error")
 
-    if g.user is not None:
+    # Lot 12 : « Voir / Agir comme » et date simulée, une fois la session
+    # RÉELLE (celle de l'Admin) validée ci-dessus — g.user devient le compte
+    # vu, g.admin_reel garde l'Admin. Voir app/modes_admin.py.
+    modes_admin.appliquer()
+
+    # Pas de rappel Daily log pendant un mode de l'Admin (aucun effet de
+    # bord en « Voir comme » ; en « Agir comme » ou avec une date simulée,
+    # il viserait des jours qui ne sont pas réellement manqués).
+    if g.user is not None and g.admin_reel is None and g.date_simulee is None:
         _rappel_dailylog_du_jour()
 
     g.notifications_non_lues = notifications_repo.compter_non_lues(g.user["id"]) if g.user else 0
@@ -389,6 +397,15 @@ def logout():
     du compte est incrémentée : toutes ses sessions sont fermées (cet
     appareil et les autres)."""
     user_id = session.get("user_id")
+    # Lot 12 : la déconnexion termine aussi « Voir / Agir comme » et la date
+    # simulée (session vidée ci-dessous) — sortie tracée au journal.
+    admin = g.get("admin_reel")
+    if admin is not None and g.get("mode_admin"):
+        modes_admin.journaliser(modes_admin.TABLES_JOURNAL[g.mode_admin], "SORTIE", admin["id"], g.user,
+                                raison="deconnexion")
+    if g.get("date_simulee") is not None and user_id:
+        modes_admin.journaliser(modes_admin.TABLE_DATE, "SORTIE", user_id, date=g.date_simulee.isoformat(),
+                                raison="deconnexion")
     if user_id:
         try:
             utilisateurs_repo.revoquer_sessions(user_id)

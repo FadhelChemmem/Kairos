@@ -5405,7 +5405,8 @@ class TestDecisionsLot7(SmokeBase):
         from app.repositories import projets as projets_repo
         src = inspect.getsource(projets_repo.update_projet)
         self.assertIn("date_cloture = CASE WHEN %s IN ('termine', 'abandonne')", src)
-        self.assertIn("THEN COALESCE(date_cloture, CURRENT_DATE) END", src)
+        # Lot 12 : « aujourd'hui » de la base, date simulée comprise (0018).
+        self.assertIn("THEN COALESCE(date_cloture, fn_aujourdhui()) END", src)
         self.assertIn("honoraires, client, etat, projet_id)", src)
 
     def test_rejoindre_comme_co_chef_previent_le_chef(self):

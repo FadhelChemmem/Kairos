@@ -13,7 +13,8 @@
     {# Lot 11 (audit front M6) : avec un filtre, le nombre de résultats. #}
     {% set filtre_actif = q or equipe_code or role or actif_param %}
     <span style="font-size:12.5px; color:var(--text-muted);" role="status">{% if filtre_actif %}{{ utilisateurs|length }} résultat{{ 's' if utilisateurs|length > 1 }} sur {{ compte.total }} compte{{ 's' if compte.total > 1 }}{% else %}{{ compte.total }} compte{{ 's' if compte.total > 1 else '' }} · {{ compte.actifs }} actif{{ 's' if compte.actifs > 1 else '' }}{% endif %}</span>
-    <span class="pill" style="background:var(--hover-bg); color:var(--text-muted); margin-left:auto;">Visible par&nbsp;: administrateur, RH, chef de projet</span>
+    {% if g.user.role == 'admin' %}<a href="{{ url_for('modes_admin.page') }}" class="lien-carte" style="margin-left:auto; font-size:12.5px; font-weight:700;">Voir Kairos comme…</a>{% endif %}
+    <span class="pill" style="background:var(--hover-bg); color:var(--text-muted);{{ '' if g.user.role == 'admin' else ' margin-left:auto;' }}">Visible par&nbsp;: administrateur, RH, chef de projet</span>
   </div>
 </div>
 

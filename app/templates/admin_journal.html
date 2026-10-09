@@ -5,14 +5,15 @@
 {% block body %}
 {# Lot 10 (audit front I13, §7) : libellés français des actions et des
    tables, données en JSON lisible, filtres validés par un bouton. #}
-{% set libelles_action = {'INSERT': 'Création', 'UPDATE': 'Modification', 'DELETE': 'Suppression'} %}
-{% set libelles_table = {'utilisateur': 'Utilisateur', 'projet': 'Projet', 'projet_lot': 'Lot de projet', 'projet_co_chef': 'Co-chef de projet', 'projet_intervenant': 'Intervenant de projet', 'tache': 'Tâche', 'tache_intervenant': 'Intervenant de tâche', 'tache_piece_jointe': 'Pièce jointe de tâche', 'dailylog_entree': 'Daily log (ligne)', 'dailylog_jour': 'Daily log (jour)', 'post': 'Post', 'post_piece_jointe': 'Pièce jointe de post', 'post_mention': 'Mention dans un post', 'post_commentaire': 'Commentaire', 'post_commentaire_piece_jointe': 'Pièce jointe de commentaire', 'post_equipe': 'Équipe destinataire', 'post_commentaire_mention': 'Mention dans un commentaire'} %}
+{% set libelles_action = {'INSERT': 'Création', 'UPDATE': 'Modification', 'DELETE': 'Suppression', 'ENTREE': 'Entrée', 'SORTIE': 'Sortie'} %}
+{% set libelles_table = {'utilisateur': 'Utilisateur', 'projet': 'Projet', 'projet_lot': 'Lot de projet', 'projet_co_chef': 'Co-chef de projet', 'projet_intervenant': 'Intervenant de projet', 'tache': 'Tâche', 'tache_intervenant': 'Intervenant de tâche', 'tache_piece_jointe': 'Pièce jointe de tâche', 'dailylog_entree': 'Daily log (ligne)', 'dailylog_jour': 'Daily log (jour)', 'post': 'Post', 'post_piece_jointe': 'Pièce jointe de post', 'post_mention': 'Mention dans un post', 'post_commentaire': 'Commentaire', 'post_commentaire_piece_jointe': 'Pièce jointe de commentaire', 'post_equipe': 'Équipe destinataire', 'post_commentaire_mention': 'Mention dans un commentaire', 'mode_voir_comme': 'Voir comme (Admin)', 'mode_agir_comme': 'Agir comme (mode test)', 'date_simulee': 'Date simulée (mode test)'} %}
 
 <div class="subbar">
   <div class="subbar-inner">
     <h1 class="page-titre">Journal d'audit</h1>
     <span style="font-size:12.5px; color:var(--text-muted);">{{ entrees|length }} entrée{{ 's' if entrees|length > 1 else '' }} affichée{{ 's' if entrees|length > 1 else '' }} (300 au maximum)</span>
-    <span class="pill" style="background:var(--hover-bg); color:var(--text-muted); margin-left:auto;">Visible par&nbsp;: administrateur</span>
+    <a href="{{ url_for('modes_admin.page') }}" class="lien-carte" style="margin-left:auto; font-size:12.5px; font-weight:700;">Voir Kairos comme…</a>
+    <span class="pill" style="background:var(--hover-bg); color:var(--text-muted);">Visible par&nbsp;: administrateur</span>
   </div>
 </div>
 
@@ -76,6 +77,9 @@
         </details>
         <span style="font-size:12.5px; color:var(--text-secondary);">
           {% if e.auteur_id %}{{ e.auteur_prenom }} {{ e.auteur_nom }}{% else %}<span style="color:var(--text-muted);">—</span>{% endif %}
+          {# Lot 12 : « Agir comme » (mode test) — l'Admin réel en plus de l'auteur. #}
+          {% if e.admin_reel_id and e.admin_reel_id != e.auteur_id %}<span class="journal-admin-reel">(par l’Admin {{ e.admin_reel_prenom }} {{ e.admin_reel_nom }})</span>{% endif %}
+          {% if e.table_cible in ('mode_voir_comme', 'mode_agir_comme') and e.donnees_apres and e.donnees_apres is mapping and e.donnees_apres.compte_vu %}<span class="journal-admin-reel">compte vu&nbsp;: {{ e.donnees_apres.compte_vu }}</span>{% endif %}
         </span>
       </div>
     {% else %}

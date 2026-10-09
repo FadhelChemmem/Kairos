@@ -57,6 +57,26 @@ Notifications et fil de posts (étape 1, complète). Flask + PostgreSQL
   peut toujours réaffecter). Garde en base : migration 0017. L'encart Admin
   « Projets ouverts dont le chef est désactivé » (liste Utilisateurs) a un
   lien « Changer le chef » qui ouvre directement la fenêtre.
+- **Voir Kairos comme…** (lot 12, Admin seulement, toujours disponible) :
+  page `/admin/voir-comme` (liens depuis Utilisateurs, le Journal d'audit et
+  la fiche d'un compte), liste avec recherche des comptes actifs non admin.
+  L'Admin voit alors Kairos exactement comme ce compte (menus, projets
+  visibles, Mes tâches, Deadlines, Daily log, boutons et états autorisés),
+  en **lecture seule** : toute modification est refusée (403 et message
+  clair, en JSON pour les API), sauf « Revenir à mon compte » et la
+  déconnexion, et chaque requête lit la base dans une transaction READ
+  ONLY (aucun rappel Daily log, aucune notification marquée lue, aucun
+  e-mail). Bandeau orange sur toutes les pages ; entrée et sortie dans le
+  journal d'audit. Jamais un autre Admin ni un compte inactif ; un compte
+  désactivé pendant la visite ramène automatiquement à son compte ; la
+  session réelle reste celle de l'Admin (révocation, durée absolue). Voir
+  aussi « Mode test » plus bas (« Agir comme », date simulée).
+- **Liens vers les tâches** (lot 12) : dans « Mes tâches » (accueil) et
+  Deadlines, une tâche ouvre la fiche projet ET sa fenêtre
+  (`/projets/<id>?tache=<id>`). **Deadlines, vue Admin** : bascule « Mes
+  projets / Tous les projets » (toutes les tâches en cours de tous les
+  projets ouverts, avec et sans échéance, filtres chef de projet et
+  équipe) ; les autres rôles ne changent pas.
 - **Utilisateurs** (`/utilisateurs`, admin/RH, et en lecture seule pour
   les chefs de projet — voir plus bas) : liste avec filtres, bascule
   actif/inactif (admin/RH), création de compte (`/utilisateurs/nouveau`)
@@ -203,6 +223,44 @@ l'écran le dit — « Envoyer un lien de réinitialisation » et création de
 compte (« mode test : cette adresse n'est pas dans la liste… »), « Mot de
 passe oublié » (message qui ne dépend que de l'adresse saisie, pas de
 l'existence d'un compte). Vide ou absente : comportement normal.
+
+### Mode test (« Agir comme », date simulée)
+
+Pendant la phase de test, `KAIROS_MODE_TEST=true` (dans `.env`) ouvre aux
+**Admins** deux outils de plus :
+
+- **Agir comme…** (page « Voir Kairos comme… » ou fiche d'un compte) :
+  comme « Voir comme », mais les modifications sont permises au nom du
+  compte choisi (posts, tâches, Daily log, états…). Bandeau rouge « Vous
+  agissez comme … (mode test) ». Le journal d'audit garde les deux noms :
+  « Rim Inter (par l'Admin Fadhel Chemmem) » (colonne
+  `audit_log.admin_reel_id`, migration 0018) ; le filtre « Auteur » de
+  l'Admin retrouve aussi ces lignes. Les e-mails restent soumis à
+  `MAIL_DESTINATAIRES_AUTORISES`. Le mot de passe du compte ne se change
+  pas dans ce mode.
+- **Date simulée** (champ du bandeau, en haut de chaque page) : pour la
+  session de cet Admin seulement (et le compte vu ou agi), « aujourd'hui »
+  devient la date choisie — fenêtre de 14 jours et jour futur du Daily log,
+  jours manqués, retards « en retard de N j », Deadlines, calendrier,
+  carte Daily log, clôture d'une tâche ou d'un projet. Les gardes en base
+  suivent (réglage `kairos.date_simulee` lu par `fn_aujourdhui`, migration
+  0018) ; les horodatages (création, journal d'audit) restent réels. Pas de
+  rappel Daily log créé pendant une date simulée. Bandeau « Date simulée :
+  jeudi 15 octobre 2026 — Revenir à aujourd'hui ».
+
+Activer (sur le serveur, dans le dossier de Kairos) :
+
+```bash
+sudo nano .env            # KAIROS_MODE_TEST=true
+sudo docker compose up -d
+sudo docker compose logs web --tail 20   # « KAIROS_MODE_TEST=true : … À couper … »
+```
+
+Couper : `KAIROS_MODE_TEST=false` (ou ligne supprimée), puis
+`sudo docker compose up -d`. Les routes « Agir comme » et « date simulée »
+n'existent alors plus (404), un Admin encore en « Agir comme » revient à
+son compte au prochain clic et la vraie date reprend. **À couper avant la
+mise en service réelle.** « Voir comme » (lecture seule) reste disponible.
 
 ## Mettre à jour (après un `git pull`)
 
@@ -445,7 +503,7 @@ flask run
 | Intégration (vrai SQL, vrai psycopg2) | `KAIROS_TEST_DATABASE_URL=postgresql://kairos:kairos@127.0.0.1:5432/kairos_it python3 -m unittest discover -s tests_integration -t .` | oui : base chargée avec `schema.sql` + `migrations/` |
 | SQL | `psql -d <base> -v ON_ERROR_STOP=1 -f tests/sql/<fichier>.sql` | oui |
 | JavaScript | `node --test tests_js/*.test.mjs` | non |
-| Scénarios navigateur (Playwright) | `bash tests_e2e/lancer.sh` (Daily log), `KAIROS_E2E_SCENARIO=projet bash tests_e2e/lancer.sh` (fiche projet) | oui (base jetable) ; non lancés par la CI |
+| Scénarios navigateur (Playwright) | `bash tests_e2e/lancer.sh` (Daily log), `KAIROS_E2E_SCENARIO=projet bash tests_e2e/lancer.sh` (fiche projet), `KAIROS_E2E_SCENARIO=modes bash tests_e2e/lancer.sh` (lot 12 : voir / agir comme, date simulée, liens, Deadlines Admin ; serveur lancé avec `KAIROS_MODE_TEST=true`) | oui (base jetable) ; non lancés par la CI |
 
 Ne jamais lancer `tests_integration/` dans le même processus que `tests/`
 (qui installe un faux psycopg2). Sous Windows, les 8 tests de
@@ -465,6 +523,8 @@ app/
   __init__.py       point d'entrée (create_app), commande CLI create-user
   config.py         configuration (variables d'environnement)
   db.py             pool de connexions + mécanisme app.current_user_id
+  horloge.py        « aujourd'hui » centralisé (fuseau, date simulée du mode test)
+  modes_admin.py    « Voir comme », « Agir comme », date simulée (lot 12)
   auth.py           connexion/déconnexion (POST, protégée CSRF), hachage mot de passe
   utils.py          helpers d'affichage (avatars, pills, dates relatives, calcul du Gantt Deadlines)
   storage.py        stockage des pièces jointes sur disque (UPLOAD_DIR)

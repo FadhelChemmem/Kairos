@@ -860,10 +860,13 @@ class TestRepriseChronos(unittest.TestCase):
             with self.subTest(objet=objet):
                 self.assertIn(objet, mig)
                 self.assertIn(objet, schema)
-        # Les fonctions sont recopiées à l'identique (catalogue neuf = migré).
+        # Les fonctions sont recopiées à l'identique (catalogue neuf = migré),
+        # dans leur DERNIÈRE version (fn_dailylog_garde : 0018, date simulée).
+        migrations = sorted((RACINE / "migrations").glob("*.sql"))
         for fonction in ("fn_dailylog_entree_controle", "fn_dailylog_jour_coherent", "fn_dailylog_garde", "fn_sans_accents"):
             debut = f"CREATE OR REPLACE FUNCTION {fonction}("
-            corps_mig = mig[mig.index(debut):mig.index("$$ LANGUAGE", mig.index(debut))]
+            derniere = [m.read_text(encoding="utf-8") for m in migrations if debut in m.read_text(encoding="utf-8")][-1]
+            corps_mig = derniere[derniere.index(debut):derniere.index("$$ LANGUAGE", derniere.index(debut))]
             corps_schema = schema[schema.index(debut):schema.index("$$ LANGUAGE", schema.index(debut))]
             self.assertEqual(corps_mig, corps_schema, fonction)
         self.assertIn("kairos.reprise_historique", mig)
