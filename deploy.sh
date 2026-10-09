@@ -9,6 +9,15 @@
 # migrations et des journaux. S'arrête au premier problème avec un message
 # clair ; rien n'est redémarré tant que la sauvegarde n'a pas réussi.
 #
+# Deux façons d'amener la nouvelle version (lot 12) :
+#   - poussée sur GitHub depuis un autre poste : le script la récupère ;
+#   - patch appliqué SUR CE SERVEUR (git am) puis poussé : le dépôt est déjà
+#     à jour, mais l'appli n'a pas été reconstruite — le script la déploie
+#     quand même. Le tag `deploye` retient la dernière version réellement
+#     déployée (« rien à déployer » seulement si c'est déjà elle) ; la
+#     version de retour arrière est ce tag, à défaut l'état d'avant git am
+#     (ORIG_HEAD).
+#
 # Retour arrière (affiché à la fin) :
 #   sudo bash scripts/restore_db.sh <sauvegarde>.sql.gz
 #   git switch --detach avant-deploiement
@@ -34,12 +43,28 @@ echo "Version actuelle : $avant $(git log -1 --format=%s)"
 
 etape "2/6 Récupération de la nouvelle version (GitHub)"
 git fetch origin master || stop "impossible de joindre GitHub (réessayer dans quelques minutes)."
+deploye="$(git rev-parse -q --verify 'refs/tags/deploye^{commit}' 2>/dev/null || true)"
 if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)" ]; then
-  vert "Déjà à jour : rien à déployer."
-  exit 0
+  if [ "$deploye" = "$(git rev-parse HEAD)" ]; then
+    vert "Déjà à jour : rien à déployer."
+    exit 0
+  fi
+  # Patch appliqué ici (git am) puis poussé : à déployer. Version en
+  # service : le dernier déploiement, sinon l'état d'avant git am.
+  echo "Dépôt déjà à jour (patch appliqué sur ce serveur) : déploiement de $(git log -1 --format='%h %s')."
+  orig="$(git rev-parse -q --verify 'ORIG_HEAD^{commit}' 2>/dev/null || true)"
+  if [ -n "$deploye" ]; then
+    avant="$(git rev-parse --short "$deploye")"
+  elif [ -n "$orig" ] && [ "$orig" != "$(git rev-parse HEAD)" ] && git merge-base --is-ancestor "$orig" HEAD; then
+    avant="$(git rev-parse --short "$orig")"
+  else
+    rouge "Version précédente introuvable : le repère de retour arrière sera la version actuelle."
+  fi
+  git log --oneline "$avant..HEAD"
+else
+  git log --oneline HEAD..origin/master
+  git merge --ff-only origin/master || stop "master local a divergé de GitHub (ne pas forcer : m'envoyer « git log --oneline -5 »)."
 fi
-git log --oneline HEAD..origin/master
-git merge --ff-only origin/master || stop "master local a divergé de GitHub (ne pas forcer : m'envoyer « git log --oneline -5 »)."
 apres="$(git rev-parse --short HEAD)"
 
 etape "3/6 Sauvegarde"
@@ -78,6 +103,7 @@ fi
 docker compose exec -T db sh -c 'psql -X -At -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
   <<< "SELECT 'Dernière migration : ' || max(version) FROM schema_migrations;" || true
 
+git tag -f deploye HEAD >/dev/null
 vert ""
 vert "OK : Kairos déployé ($avant -> $apres)."
 echo "Retour arrière si besoin :"

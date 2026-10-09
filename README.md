@@ -264,6 +264,18 @@ mise en service réelle.** « Voir comme » (lecture seule) reste disponible.
 
 ## Mettre à jour (après un `git pull`)
 
+Sur le serveur, en une commande (contrôle du dépôt, récupération de
+`master`, sauvegarde, repères de retour arrière, reconstruction, attente de
+« healthy », contrôle des migrations et des journaux) :
+
+```bash
+cd /mnt/Pool/Kairos && sudo bash deploy.sh
+```
+
+Il déploie aussi un patch appliqué directement sur le serveur (`git am`)
+puis poussé : le tag `deploye` retient la dernière version réellement
+déployée. À la main, l'équivalent :
+
 ```bash
 git pull
 sudo docker compose up -d --build
@@ -507,7 +519,8 @@ flask run
 
 Ne jamais lancer `tests_integration/` dans le même processus que `tests/`
 (qui installe un faux psycopg2). Sous Windows, les 8 tests de
-`test_backup_db` exigent `bash` et échouent : c'est attendu.
+`test_backup_db` (et ceux de `test_deploy`) exigent `bash` et échouent :
+c'est attendu.
 
 La CI (`.github/workflows/tests.yml`, à chaque push sur `master` et à
 chaque pull request) joue : unitaires ; migrations publiées inchangées ;
