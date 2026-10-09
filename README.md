@@ -374,7 +374,7 @@ rechargement des projets et tâches sans toucher aux comptes) appliquent la
 même cohérence des états (lot 11) : une tâche En cours ou Bloquée d'un
 projet Terminé devient Terminée (Abandonnée si le projet est Abandonné), un
 projet ouvert est Bloqué si et seulement si une de ses tâches l'est. Le
-rechargement exige une base à jour (dernière migration : 0017) et signale
+rechargement exige une base à jour (dernière migration : 0018) et signale
 les projets ouverts sans tâche ouverte et ceux dont le chef est désactivé.
 
 Volontairement laissé hors périmètre (pas encore modélisé en étape 1) :

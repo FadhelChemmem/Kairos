@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Rechargement des projets et tâches Chronos dans une base Kairos DÉJÀ en
-service (lot 11 b : migrations jusqu'à 0017), sans toucher aux comptes.
+service (lot 12 : migrations jusqu'à 0018), sans toucher aux comptes.
 
 Cas d'usage : la base a été chargée une première fois par
 scripts/migrate_from_chronos.py (reprise COMPLÈTE, id Chronos conservés),
@@ -11,7 +11,7 @@ devenus (rôles, e-mails, mots de passe, fuseaux, équipes, sessions).
 Le script lit un dump mysqldump et écrit UN fichier SQL, une seule
 transaction (BEGIN … COMMIT, ON_ERROR_STOP), qui :
   1. vérifie que la base est à jour (dernière migration :
-     0017_chef_projet_et_rappels_dailylog) et que toutes ses tables sont
+     0018_modes_admin_et_date_simulee) et que toutes ses tables sont
      connues ;
   2. vérifie que chaque utilisateur Chronos référencé (chef, créateur,
      intervenant) existe dans Kairos avec le même id et les mêmes
@@ -63,7 +63,7 @@ from migrate_from_chronos import (  # noqa: E402
 )
 from mysqldump_parser import load_dump  # noqa: E402
 
-MIGRATION_ATTENDUE = "0017_chef_projet_et_rappels_dailylog"
+MIGRATION_ATTENDUE = "0018_modes_admin_et_date_simulee"
 
 # Données métier effacées puis rechargées (ou laissées vides) — ordre
 # indifférent pour TRUNCATE. Toute table de la base doit figurer ici ou
@@ -212,7 +212,7 @@ def generer_sql(prep: dict, nom_dump: str) -> str:
     normalise = "regexp_replace(btrim(fn_sans_accents({0})), '\\s+', ' ', 'g')"
 
     w("-- =====================================================================")
-    w("-- Rechargement des projets et tâches Chronos dans une base Kairos à jour (lot 11 b)")
+    w("-- Rechargement des projets et tâches Chronos dans une base Kairos à jour (lot 12)")
     w(f"-- Source : {nom_dump} ; généré le {datetime.now().isoformat(timespec='seconds')}")
     w("-- par scripts/recharger_projets_chronos.py. CONTIENT DES DONNÉES RÉELLES.")
     w("-- Conserve utilisateurs, sessions, préférences, tables de référence et")
@@ -241,10 +241,10 @@ DECLARE
 BEGIN
   IF to_regclass('public.schema_migrations') IS NULL
      OR NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '{MIGRATION_ATTENDUE}') THEN
-    RAISE EXCEPTION 'Rechargement annulé : la base n''est pas à jour (migration {MIGRATION_ATTENDUE} absente). Déployer le lot 11 b (flask migrer) avant de recharger.';
+    RAISE EXCEPTION 'Rechargement annulé : la base n''est pas à jour (migration {MIGRATION_ATTENDUE} absente). Déployer le lot 12 (flask migrer) avant de recharger.';
   END IF;
   IF EXISTS (SELECT 1 FROM schema_migrations WHERE version > '{MIGRATION_ATTENDUE}') THEN
-    RAISE EXCEPTION 'Rechargement annulé : la base contient des migrations postérieures à {MIGRATION_ATTENDUE} (%). Ce fichier a été préparé pour le lot 11 b : régénérer avec un script à jour.',
+    RAISE EXCEPTION 'Rechargement annulé : la base contient des migrations postérieures à {MIGRATION_ATTENDUE} (%). Ce fichier a été préparé pour le lot 12 : régénérer avec un script à jour.',
       (SELECT string_agg(version, ', ' ORDER BY version) FROM schema_migrations WHERE version > '{MIGRATION_ATTENDUE}');
   END IF;
   SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO v_inconnues
@@ -535,7 +535,7 @@ def generer_rapport(prep: dict, nom_dump: str, nom_sql: str) -> str:
     v = prep["volumes_dump"]
     lignes = []
     a = lignes.append
-    a("# Rechargement des projets Chronos dans Kairos (base du lot 11 b)\n")
+    a("# Rechargement des projets Chronos dans Kairos (base du lot 12)\n")
     a(f"Généré le {datetime.now().isoformat(timespec='seconds')} à partir de `{nom_dump}` "
       f"par `scripts/recharger_projets_chronos.py` → `{nom_sql}`. **Contient des données réelles : "
       "hors dépôt git.**\n")

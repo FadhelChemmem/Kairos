@@ -57,6 +57,14 @@ RETURNS BIGINT AS $$
   FROM (SELECT current_setting('app.current_user_id', true) AS s) x
 $$ LANGUAGE sql STABLE;
 
+-- Id de l'Admin réel quand il « agit comme » un autre compte (SET LOCAL
+-- app.admin_reel_id, mode test du lot 12, migration 0018), NULL sinon.
+CREATE OR REPLACE FUNCTION fn_app_admin_reel_id()
+RETURNS BIGINT AS $$
+  SELECT CASE WHEN s ~ '^[0-9]{1,18}$' THEN s::BIGINT END
+  FROM (SELECT current_setting('app.admin_reel_id', true) AS s) x
+$$ LANGUAGE sql STABLE;
+
 -- updated_by n'est jamais écrasé par NULL quand aucune variable de session
 -- n'est posée (script, migration) : la valeur explicite de la requête, ou
 -- l'auteur précédent, est conservée (migration 0013).
@@ -633,8 +641,13 @@ CREATE TABLE audit_log (
   utilisateur_id BIGINT REFERENCES utilisateur(id), -- qui a fait le changement (via app.current_user_id)
   donnees_avant  JSONB,                  -- ligne complète avant (UPDATE/DELETE)
   donnees_apres  JSONB,                  -- ligne complète après (INSERT/UPDATE)
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Admin réel quand il « agit comme » utilisateur_id (migration 0018,
+  -- mode test) ; NULL sinon.
+  admin_reel_id  BIGINT REFERENCES utilisateur(id)
 );
+COMMENT ON COLUMN audit_log.admin_reel_id IS
+  'Admin réel quand il agit comme un autre compte (0018, mode test) ; NULL sinon.';
 CREATE INDEX idx_audit_table_ligne ON audit_log(table_cible, ligne_id);
 CREATE INDEX idx_audit_user ON audit_log(utilisateur_id);
 CREATE INDEX idx_audit_date ON audit_log(created_at DESC);
@@ -659,6 +672,7 @@ CREATE OR REPLACE FUNCTION fn_audit_log()
 RETURNS TRIGGER AS $$
 DECLARE
   v_user_id BIGINT := fn_app_user_id();
+  v_admin_reel BIGINT := fn_app_admin_reel_id();
 BEGIN
   -- Le "-" retire une clé du JSON si elle existe (ne fait rien sinon) :
   -- on retire systématiquement mot_de_passe_hash pour ne JAMAIS stocker
@@ -666,17 +680,18 @@ BEGIN
   -- reset_token_hash (2026-09-20) suit la même règle : même si ce n'est
   -- qu'une empreinte d'un jeton à usage unique et de courte durée de vie,
   -- pas de raison de la garder dans un historique.
+  -- admin_reel_id (0018) : l'Admin qui « agit comme » utilisateur_id.
   IF (TG_OP = 'DELETE') THEN
-    INSERT INTO audit_log(table_cible, ligne_id, action, utilisateur_id, donnees_avant)
-    VALUES (TG_TABLE_NAME, (to_jsonb(OLD)->>'id')::BIGINT, TG_OP, v_user_id, to_jsonb(OLD) - 'mot_de_passe_hash' - 'reset_token_hash');
+    INSERT INTO audit_log(table_cible, ligne_id, action, utilisateur_id, donnees_avant, admin_reel_id)
+    VALUES (TG_TABLE_NAME, (to_jsonb(OLD)->>'id')::BIGINT, TG_OP, v_user_id, to_jsonb(OLD) - 'mot_de_passe_hash' - 'reset_token_hash', v_admin_reel);
     RETURN OLD;
   ELSIF (TG_OP = 'UPDATE') THEN
-    INSERT INTO audit_log(table_cible, ligne_id, action, utilisateur_id, donnees_avant, donnees_apres)
-    VALUES (TG_TABLE_NAME, (to_jsonb(NEW)->>'id')::BIGINT, TG_OP, v_user_id, to_jsonb(OLD) - 'mot_de_passe_hash' - 'reset_token_hash', to_jsonb(NEW) - 'mot_de_passe_hash' - 'reset_token_hash');
+    INSERT INTO audit_log(table_cible, ligne_id, action, utilisateur_id, donnees_avant, donnees_apres, admin_reel_id)
+    VALUES (TG_TABLE_NAME, (to_jsonb(NEW)->>'id')::BIGINT, TG_OP, v_user_id, to_jsonb(OLD) - 'mot_de_passe_hash' - 'reset_token_hash', to_jsonb(NEW) - 'mot_de_passe_hash' - 'reset_token_hash', v_admin_reel);
     RETURN NEW;
   ELSIF (TG_OP = 'INSERT') THEN
-    INSERT INTO audit_log(table_cible, ligne_id, action, utilisateur_id, donnees_apres)
-    VALUES (TG_TABLE_NAME, (to_jsonb(NEW)->>'id')::BIGINT, TG_OP, v_user_id, to_jsonb(NEW) - 'mot_de_passe_hash' - 'reset_token_hash');
+    INSERT INTO audit_log(table_cible, ligne_id, action, utilisateur_id, donnees_apres, admin_reel_id)
+    VALUES (TG_TABLE_NAME, (to_jsonb(NEW)->>'id')::BIGINT, TG_OP, v_user_id, to_jsonb(NEW) - 'mot_de_passe_hash' - 'reset_token_hash', v_admin_reel);
     RETURN NEW;
   END IF;
   RETURN NULL;
@@ -928,8 +943,9 @@ ALTER TABLE notification ADD CONSTRAINT notification_categorie_valide
   CHECK (categorie IN ('projet', 'rh_info'));
 ALTER TABLE tentative_securite ADD CONSTRAINT tentative_securite_type_valide
   CHECK (type IN ('connexion', 'connexion_ip', 'mot_de_passe_oublie'));
+-- ENTREE / SORTIE : modes « Voir comme », « Agir comme », date simulée (0018).
 ALTER TABLE audit_log ADD CONSTRAINT audit_log_action_valide
-  CHECK (action IN ('INSERT', 'UPDATE', 'DELETE'));
+  CHECK (action IN ('INSERT', 'UPDATE', 'DELETE', 'ENTREE', 'SORTIE'));
 -- Email : ni vide, ni espaces autour.
 ALTER TABLE utilisateur ADD CONSTRAINT utilisateur_email_forme
   CHECK (email = btrim(email) AND position('@' IN email) > 1);
@@ -1203,7 +1219,8 @@ BEGIN
   v_date    := (v_ligne->>'date')::DATE;
   v_projet  := (v_ligne->>'projet_id')::BIGINT;
   SELECT role, fuseau INTO v_role_proprio, v_fuseau FROM utilisateur WHERE id = v_proprio;
-  v_aujourdhui := (now() AT TIME ZONE COALESCE(v_fuseau, 'Africa/Tunis'))::DATE;
+  -- Date simulée (0018, mode test) ou aujourd'hui au fuseau du titulaire.
+  v_aujourdhui := fn_aujourdhui(v_fuseau);
 
   IF TG_OP <> 'DELETE' THEN
     IF v_date < DATE '2000-01-01' OR v_date > v_aujourdhui THEN
@@ -1386,6 +1403,36 @@ CREATE TRIGGER trg_garde_chef_projet
 
 
 -- ---------------------------------------------------------------------
+-- Migration 0018 (lot 12) : modes « Voir comme » / « Agir comme » et date
+-- simulée — mêmes définitions que migrations/0018_modes_admin_et_date_simulee.sql
+-- (audit_log.admin_reel_id et fn_audit_log : voir plus haut ;
+-- fn_dailylog_garde : section 0014). fn_aujourdhui rend la date du réglage
+-- kairos.date_simulee (posé par l'appli seulement si KAIROS_MODE_TEST=true)
+-- ou « aujourd'hui » au fuseau donné.
+-- ---------------------------------------------------------------------
+CREATE INDEX IF NOT EXISTS idx_audit_admin_reel ON audit_log (admin_reel_id) WHERE admin_reel_id IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION fn_date_simulee()
+RETURNS DATE AS $$
+DECLARE
+  v TEXT := current_setting('kairos.date_simulee', true);
+BEGIN
+  IF v IS NULL OR v !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN
+    RETURN NULL;
+  END IF;
+  RETURN v::DATE;
+EXCEPTION WHEN others THEN
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+CREATE OR REPLACE FUNCTION fn_aujourdhui(p_fuseau TEXT DEFAULT 'Africa/Tunis')
+RETURNS DATE AS $$
+  SELECT COALESCE(fn_date_simulee(), (now() AT TIME ZONE COALESCE(p_fuseau, 'Africa/Tunis'))::DATE)
+$$ LANGUAGE sql STABLE;
+
+
+-- ---------------------------------------------------------------------
 -- Migrations déjà intégrées à ce fichier : une base créée depuis
 -- schema.sql les marque comme appliquées, pour que le premier
 -- `flask migrer` ne les rejoue pas (voir app/__init__.py). À compléter à
@@ -1415,5 +1462,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0014_dailylog_v9'),
   ('0015_etats_taches_reserves'),
   ('0016_equipe_projets_et_recherche'),
-  ('0017_chef_projet_et_rappels_dailylog')
+  ('0017_chef_projet_et_rappels_dailylog'),
+  ('0018_modes_admin_et_date_simulee')
 ON CONFLICT (version) DO NOTHING;
