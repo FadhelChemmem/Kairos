@@ -1,0 +1,35 @@
+{# Vue d'ensemble de l'Admin (lot 14, revue produit P0-3) : 4 tuiles sur
+   tout le bureau ; une tuile déplie sa liste juste en dessous, sans
+   recharger la page (fragment #vue-ensemble, routes/tableaux.py) ; la
+   rouvrir la replie. Contexte : ve (routes/tableaux.py:_bloc). #}
+{% import "partials/tableaux_macros.html" as tbm %}
+<section id="vue-ensemble" class="ve" aria-labelledby="ve-titre">
+  <div class="ve-entete">
+    <h2 class="ve-titre" id="ve-titre">Vue d’ensemble</h2>
+    <p class="ve-portee">Tout le bureau · {% if ve.compte.projets %}{{ ve.compte.projets }} projet{{ 's' if ve.compte.projets > 1 }} ouvert{{ 's' if ve.compte.projets > 1 }}{% else %}aucun projet ouvert{% endif %}</p>
+  </div>
+  <div class="ve-tuiles">
+    {% for cle in ve.cles %}
+      {% set n = ve.compte[cle] %}
+      {% set ouvert = ve.voir == cle %}
+      <a href="{{ ve.liens[cle] }}" id="tuile-{{ cle }}" class="ve-tuile {{ tbm.teinte(cle, n) }}"
+         data-partiel="#vue-ensemble" data-optimiste="deplier" data-tableau-param="voir" data-tableau-valeur="{{ cle }}"
+         aria-expanded="{{ 'true' if ouvert else 'false' }}" aria-controls="ve-detail">
+        <span class="ve-tuile-tete">
+          <span class="tb-pastille-icone" aria-hidden="true">{{ tbm.icone('ok' if not n else cle, 16) }}</span>
+          <span class="ve-tuile-libelle">{% if cle == 'dailylog' %}Daily log manquants {{ ve.jour_libelle }}{% else %}{{ ve.libelles[cle][1][:1]|upper }}{{ ve.libelles[cle][1][1:] }}{% endif %}</span>
+        </span>
+        <span class="ve-tuile-nombre">{{ n }}{% if cle == 'dailylog' %}<span class="ve-tuile-unite"> {{ 'personnes' if n > 1 else 'personne' }}</span>{% endif %}</span>
+        <span class="ve-tuile-sous">
+          {%- if not n %}Rien à signaler
+          {%- elif cle == 'retard' %}jusqu’à {{ ve.compte.retard_max }}&nbsp;j de retard
+          {%- elif cle == 'bloquees' %}sur {{ ve.compte.projets_bloques }} projet{{ 's' if ve.compte.projets_bloques > 1 }}
+          {%- elif cle == 'projets_sans_tache' %}sur {{ ve.compte.projets }} projet{{ 's' if ve.compte.projets > 1 }} ouvert{{ 's' if ve.compte.projets > 1 }}
+          {%- else %}{{ ve.jour_texte }}{% endif -%}
+        </span>
+        <span class="ve-tuile-chevron" aria-hidden="true">{{ tbm.icone('chevron', 16) }}</span>
+      </a>
+    {% endfor %}
+  </div>
+  {{ tbm.detail(ve, 've-detail', '#vue-ensemble', 'tuile-', admin=true) }}
+</section>

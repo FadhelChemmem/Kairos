@@ -28,6 +28,7 @@
     <span class="k-carte-ligne-texte">Corrections tracées à votre nom dans le journal d’audit.</span>
     <a class="btn" href="{{ url_for('dailylog.formulaire', utilisateur=utilisateur.id) }}">Corriger son Daily log</a>
   </div>
+  {% if dix_jours %}{% include "partials/dailylog_dix_jours.html" %}{% endif %}
   {% endif %}
 
   {# Lot 12 : « Voir Kairos comme » ce compte (Admin, compte actif non

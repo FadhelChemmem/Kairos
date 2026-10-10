@@ -1,0 +1,18 @@
+{# Fiche d'une personne (Admin, chef de projet) — lot 14, revue produit
+   P1-9 : Daily log des 10 derniers jours ouvrés (aujourd'hui compris), du
+   plus récent au plus ancien, avec « Corriger » sur chaque jour.
+   Contexte : utilisateur, dix_jours, peut_corriger. #}
+<div class="card dlq-fiche">
+  <div class="dlq-fiche-tete">
+    <h2 class="carte-titre carte-titre-form" id="dailylog">Daily log — 10 derniers jours ouvrés</h2>
+    <a class="lien-cible dlq-fiche-equipe" href="{{ url_for('dailylog.equipe') }}">Daily log de l’équipe</a>
+  </div>
+  {% set manques = dix_jours|selectattr('etat', 'equalto', 'manquant')|list %}
+  <p class="k-note dlq-fiche-resume">{% if manques %}<b class="dl-jour-manquant">{{ manques|length }} jour{{ 's' if manques|length > 1 }} non renseigné{{ 's' if manques|length > 1 }}</b>{% else %}Aucun jour non renseigné{% endif %} sur les 10 derniers jours ouvrés.</p>
+  <div class="dl-semaine">
+    {% for jour in dix_jours %}
+      {% with ancre=False %}{% include "partials/dailylog_jour_lecture.html" %}{% endwith %}
+    {% endfor %}
+  </div>
+  {% if g.user.role != 'admin' %}<p class="k-note k-marge-haut">Seules les lignes des projets que vous pouvez voir sont détaillées ici.</p>{% endif %}
+</div>

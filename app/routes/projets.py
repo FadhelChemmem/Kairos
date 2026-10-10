@@ -10,9 +10,10 @@ from flask import Blueprint, abort, current_app, flash, g, jsonify, redirect, re
 from ..auth import login_required
 from ..repositories import notifications as notifications_repo
 from ..repositories import posts, projets, taches, utilisateurs
+from .. import fil as film
 from .. import horloge, partiel
 from .. import validation as v
-from ..utils import parser_montant, tache_etat_style
+from ..utils import parser_montant, post_type_style, tache_etat_style
 
 bp = Blueprint("projets", __name__, url_prefix="/projets")
 
@@ -523,14 +524,29 @@ def _phase_liee_choisie(phase_liee_id: int | None) -> list[dict]:
     return [lie] if lie else []
 
 
-def _contexte_fiche(projet: dict, *, fil_limite: int = 30) -> dict:
+def _contexte_fil(projet_id: int, fil_limite: int = film.TAILLE_PAGE) -> dict:
+    """Fil de la fiche (lot 14, revue produit P1-3) : catégorie (adresse, ou
+    page d'où part l'action en partiel), page à partir du curseur `avant`,
+    évènements automatiques regroupés, adresse de la page suivante."""
+    categorie = film.categorie_demandee()
+    fil_limite = film.taille_jusqua(
+        fil_limite, lambda post_id: posts.rang_dans_fil_projet(projet_id, g.user["id"], categorie, post_id))
+    lus = posts.list_feed_projet(projet_id, g.user["id"], limit=fil_limite + 1, categorie=categorie,
+                                 avant=film.curseur_demande())
+    fil, curseur = film.page(lus, fil_limite)
+    return dict(fil=fil, fil_entrees=film.regrouper(fil), fil_categorie=categorie,
+                fil_suite_id="fil-suite", fil_suite_cible="#fil-posts",
+                fil_suite_url=(url_for("projets.detail", projet_id=projet_id, fil=categorie, avant=curseur)
+                               if curseur else None))
+
+
+def _contexte_fiche(projet: dict, *, fil_limite: int = film.TAILLE_PAGE) -> dict:
     """Contexte de la fiche projet : page complète (detail) et fragments des
     réponses partielles (lot 13, _maj_fiche) — mêmes données, mêmes droits."""
     projet_id = projet["id"]
     lots = projets.list_lots(projet_id)
     intervenants = projets.list_intervenants(projet_id)
     liste_taches = taches.list_taches_projet(projet_id)
-    fil = posts.list_feed_projet(projet_id, g.user["id"], limit=fil_limite)
     peut_gerer = projets.user_can_manage(projet_id, g.user["id"])
 
     nb_taches = len(liste_taches)
@@ -552,7 +568,7 @@ def _contexte_fiche(projet: dict, *, fil_limite: int = 30) -> dict:
         lots=lots,
         intervenants=intervenants,
         taches=liste_taches,
-        fil=fil,
+        **_contexte_fil(projet_id, fil_limite),
         peut_gerer=peut_gerer,
         etats_reserves=taches.ETATS_RESERVES_GESTION,
         peut_rejoindre_projet=peut_rejoindre_projet,
@@ -603,6 +619,15 @@ def detail(projet_id: int):
     if not projets.user_can_view(projet_id, g.user["id"]):
         abort(404)
 
+    # Lot 14 : changement de catégorie du fil (liste remplacée) ou
+    # « Afficher plus » (page suivante ajoutée à la fin), en partiel.
+    if partiel.est_partiel() == "#fil-posts":
+        contexte = dict(projet=projet, **_contexte_fil(projet_id))
+        if film.curseur_demande():
+            return partiel.repondre("partials/fil_page.html", show_projet=False,
+                                    next_url=url_for("projets.detail", projet_id=projet_id,
+                                                     fil=contexte["fil_categorie"]), **contexte)
+        return partiel.repondre("partials/fil_maj.html", fil_gabarit="partials/fil_projet.html", **contexte)
     contexte = _contexte_fiche(projet)
     # Encart Admin « Projets ouverts dont le chef est désactivé » (liste
     # Utilisateurs) : fenêtre Informations ouverte, champ chef prêt.
@@ -631,7 +656,7 @@ FRAGMENTS_FICHE = {
                "partials/carte_informations.html"],
     "intervenants": ["partials/carte_intervenants.html"],
     "fil": ["partials/fil_nouveaux.html"],
-    "fil_complet": ["partials/fil_projet.html", "partials/fil_outils.html"],
+    "fil_complet": ["partials/fil_projet.html", "partials/fil_outils.html", "partials/fil_suite.html"],
     "informations": ["partials/projet_informations_form.html"],
     "post": ["partials/fil_item.html"],
 }
@@ -1054,9 +1079,93 @@ def creer_tache(projet_id: int):
         if partiel.est_partiel() != "#fil-posts" or post_id is None:
             return reponse_publication(post_id) if post_id else partiel.rien()
         post = posts.get_post_carte(post_id, g.user["id"])
-        return _maj_fiche(projet_id, "post", ["taches", "projet", "intervenants"], post=post, show_projet=False,
+        # Lot 14 : le post de création (Activité) n'arrive pas dans la vue
+        # « Échanges » du fil.
+        racine = None if film.categorie_demandee() == "echanges" else "post"
+        return _maj_fiche(projet_id, racine, ["taches", "projet", "intervenants"], post=post, show_projet=False,
                           next_url=url_for("projets.detail", projet_id=projet_id), surligner=tache_id)
     return redirect(url_for("projets.detail", projet_id=projet_id))
+
+
+MESSAGE_MOTIF_REQUIS = "Indiquez ce qui bloque la tâche."
+
+
+def _phrase(texte: str, maximum: int = 200) -> str:
+    """Texte saisi cité dans une notification : une ligne, coupé à
+    `maximum` caractères, terminé par un point s'il n'a pas de ponctuation."""
+    texte = " ".join((texte or "").split())
+    if len(texte) > maximum:
+        texte = texte[:maximum - 1].rstrip() + "…"
+    return texte if texte.endswith((".", "!", "?", "…")) else texte + "."
+
+
+def _acteur() -> str:
+    return f"{g.user['prenom']} {g.user['nom']}".strip()
+
+
+def _prevenir_gestion(projet: dict, tache_id: int, message: str) -> tuple[list[dict], list[int]]:
+    """Notification au chef titulaire et aux co-chefs du projet (lot 14,
+    revue produit P0-1 / P0-2 : un blocage ou une clôture arrivent jusqu'au
+    chef), jamais à l'acteur ; elle ouvre la tâche. Après coup, comme les
+    autres notifications : un échec ne défait pas l'action. Renvoie les
+    personnes prévenues (pour le toast) et les ids des notifications créées
+    (retirées par « Annuler », et seulement elles)."""
+    ids = [projet.get("chef_projet_id")] + sorted(projets.ids_co_chefs(projet["id"]))
+    destinataires = [uid for uid in dict.fromkeys(ids) if uid and uid != g.user["id"]]
+    try:
+        crees = notifications_repo.creer_pour_plusieurs(destinataires, "projet", message, tache_id=tache_id)
+    except Exception:
+        current_app.logger.exception("Notification au chef de projet impossible (tâche %s)", tache_id)
+        return [], []
+    return [u for u in (utilisateurs.get_utilisateur(uid) for uid in destinataires) if u], list(crees or [])
+
+
+# « Annuler » d'un changement d'état ou d'une clôture (recette du lot 14,
+# n° 2, 4 et 5) : l'action du toast porte un jeton signé — tâche, personne,
+# état à rendre (et son motif), version de la tâche produite par le geste,
+# notifications créées par lui. Sans jeton valide, « annulation » n'a aucun
+# effet (un blocage exige son motif, le chef est prévenu) ; un jeton dont
+# la tâche a changé depuis est refusé (409).
+SEL_ANNULER = "kairos-annuler-etat-tache"
+DUREE_JETON_ANNULER = 30 * 60
+MESSAGE_ANNULER_PERIME = ("La tâche a changé entre-temps (action d’une autre personne)\u00a0: "
+                          "«\u00a0Annuler\u00a0» n’est plus possible.")
+
+
+def _signeur_annuler():
+    from itsdangerous import URLSafeTimedSerializer
+
+    return URLSafeTimedSerializer(current_app.secret_key, salt=SEL_ANNULER)
+
+
+def _jeton_annuler(projet_id: int, tache_id: int, etat: str, motif: str | None, notifications: list[int]) -> str:
+    return _signeur_annuler().dumps({"p": projet_id, "t": tache_id, "u": g.user["id"], "e": etat, "m": motif,
+                                     "v": taches.version(tache_id), "n": [int(i) for i in notifications]})
+
+
+def _lire_jeton_annuler(projet_id: int, tache_id: int) -> dict | None:
+    """Contenu du jeton « Annuler » de la requête, s'il est valide pour
+    cette tâche et cette personne ; None sinon."""
+    from itsdangerous import BadData
+
+    brut = request.form.get("jeton") or ""
+    if not brut:
+        return None
+    try:
+        jeton = _signeur_annuler().loads(brut, max_age=DUREE_JETON_ANNULER)
+    except BadData:
+        return None
+    if not isinstance(jeton, dict) or (jeton.get("p"), jeton.get("t"), jeton.get("u")) != (projet_id, tache_id,
+                                                                                             g.user["id"]):
+        return None
+    return jeton
+
+
+def _noms_prevenus(personnes: list[dict]) -> str:
+    noms = [f"{p.get('prenom') or ''} {p.get('nom') or ''}".strip() for p in personnes]
+    if len(noms) > 1:
+        return ", ".join(noms[:-1]) + " et " + noms[-1]
+    return noms[0] if noms else ""
 
 
 @bp.route("/<int:projet_id>/taches/<int:tache_id>/etat", methods=["POST"])
@@ -1093,11 +1202,42 @@ def changer_etat_tache(projet_id: int, tache_id: int):
         return _refus("État invalide.", 422, projet_id)
     if etat in taches.ETATS_RESERVES_GESTION and not peut_gerer:
         return _refus(taches.MESSAGE_ETAT_RESERVE, 403, projet_id)
+    # « Annuler » (recette du lot 14, n° 2 et 5) : seulement avec le jeton
+    # de l'action, qui dit l'état exact à rendre ; un jeton périmé ou
+    # étranger est refusé, une demande sans jeton est un changement normal.
+    jeton = None
+    if request.form.get("annulation"):
+        jeton = _lire_jeton_annuler(projet_id, tache_id)
+        if jeton is None and request.form.get("jeton"):
+            return _refus(MESSAGE_ANNULER_PERIME, 409, projet_id, tache_id, vers_tache=True)
+        if jeton is not None:
+            etat = jeton["e"]
+            if etat not in etats_valides or (etat in taches.ETATS_RESERVES_GESTION and not peut_gerer):
+                return _refus(MESSAGE_ANNULER_PERIME, 409, projet_id, tache_id, vers_tache=True)
+    annulation = jeton is not None
+    # Lot 14 (revue produit P0-1) : « Qu'est-ce qui bloque ? » obligatoire
+    # (sauf « Annuler » d'une levée de blocage : le motif d'avant revient).
+    motif = None
+    if etat == "bloque":
+        if annulation:
+            motif = jeton.get("m")
+        else:
+            motif = taches.normaliser_motif(request.form.get("motif"))
+            erreur = MESSAGE_MOTIF_REQUIS if not motif else v.trop_long(motif, taches.MOTIF_BLOCAGE_MAX,
+                                                                        "Motif du blocage")
+            if erreur:
+                return _refus(erreur, 422, projet_id, tache_id, vers_tache=True, champs={"motif": erreur})
 
     avant = taches.get_tache(tache_id)
     try:
         trouvee = taches.set_etat(tache_id, projet_id, etat, g.user["id"], peut_gerer=peut_gerer,
-                                  annulation=bool(request.form.get("annulation")))
+                                  annulation=annulation, **({"motif": motif} if etat == "bloque" else {}),
+                                  **({"version_attendue": jeton.get("v")} if annulation else {}))
+    except taches.MotifBlocageRequis:
+        return _refus(MESSAGE_MOTIF_REQUIS, 422, projet_id, tache_id, vers_tache=True,
+                      champs={"motif": MESSAGE_MOTIF_REQUIS})
+    except taches.TacheModifiee:
+        return _refus(MESSAGE_ANNULER_PERIME, 409, projet_id, tache_id, vers_tache=True)
     except Exception as exc:
         if not taches.est_refus_etat_reserve(exc):
             raise
@@ -1105,21 +1245,49 @@ def changer_etat_tache(projet_id: int, tache_id: int):
     if not trouvee:
         return _refus("Tâche introuvable sur ce projet.", 404, projet_id)
 
+    avant = avant if isinstance(avant, dict) else {}
+    etat_avant = avant.get("etat")
+    texte = None
+    notifications_creees: list[int] = []
+    if etat == "bloque" and etat_avant != "bloque" and not annulation:
+        # Le chef et les co-chefs sont prévenus, avec le motif (P0-1).
+        projet = projets.get_projet(projet_id) or {"id": projet_id}
+        prevenus, notifications_creees = _prevenir_gestion(
+            projet, tache_id,
+            f"{_acteur()} a bloqué «\u00a0{avant.get('titre') or ''}\u00a0» ({projet.get('code') or ''})\u00a0: "
+            f"{_phrase(motif)}")
+        texte = f"Blocage signalé à {_noms_prevenus(prevenus)}." if prevenus else "Blocage signalé."
+    elif annulation and jeton.get("n"):
+        # « Annuler » d'un blocage ou d'une clôture : le chef n'est plus
+        # alerté d'un geste défait — seulement les notifications de CE
+        # geste (recette du lot 14, n° 4), encore non lues.
+        try:
+            notifications_repo.retirer(jeton["n"], tache_id)
+        except Exception:
+            current_app.logger.exception("Notifications non retirées (tâche %s)", tache_id)
+    if texte is None and etat_avant == "bloque" and etat == "en_cours" and not annulation:
+        texte = "Blocage levé."
+
     if partiel.est_partiel():
-        etat_avant = (avant or {}).get("etat")
         libelle = tache_etat_style(etat)["libelle"]
         action = None
         # « Annuler » : seulement vers un état que cette personne peut
         # redonner par la même route (pas « Terminée », qui passe par la
-        # clôture ; pas un état réservé pour un intervenant).
-        if (not request.form.get("annulation") and etat_avant and etat_avant != etat and etat_avant in etats_valides
+        # clôture ; pas un état réservé pour un intervenant). Retour au
+        # blocage : avec son motif.
+        if (not annulation and etat_avant and etat_avant != etat and etat_avant in etats_valides
                 and (peut_gerer or etat_avant not in taches.ETATS_RESERVES_GESTION)):
+            jeton_retour = _jeton_annuler(projet_id, tache_id, etat_avant,
+                                          avant.get("bloque_motif") if etat_avant == "bloque" else None,
+                                          notifications_creees)
+            donnees = {"etat": etat_avant, "jeton": jeton_retour}
             action = _action_annuler(url_for("projets.changer_etat_tache", projet_id=projet_id, tache_id=tache_id),
-                                     {"etat": etat_avant}, tache_id)
+                                     donnees, tache_id)
         deplacee = (etat_avant in taches.ETATS_CLOS) != (etat in taches.ETATS_CLOS)
-        return _reponse_tache(projet_id, tache_id, [partiel.toast(f"État de la tâche\u00a0: {libelle}.", action=action)],
+        return _reponse_tache(projet_id, tache_id,
+                              [partiel.toast(texte or f"État de la tâche\u00a0: {libelle}.", action=action)],
                               deplacee=deplacee)
-    flash("État de la tâche mis à jour.", "success")
+    flash(texte or "État de la tâche mis à jour.", "success")
     return redirect(url_for("projets.detail", projet_id=projet_id))
 
 
@@ -1198,11 +1366,29 @@ def cloturer_tache(projet_id: int, tache_id: int):
         return _refus("Impossible de clôturer cette tâche (introuvable sur ce projet, ou déjà clôturée).", 409,
                       projet_id)
 
+    # Lot 14 (revue produit P0-2) : quand un intervenant (ni chef ni
+    # co-chef) termine une tâche, le chef et les co-chefs sont prévenus,
+    # avec le type de post et le début du message.
+    texte = "Tâche terminée\u00a0: post publié dans le fil."
+    notifications_creees: list[int] = []
+    projet = projets.get_projet(projet_id) or {"id": projet_id}
+    if g.user["id"] != projet.get("chef_projet_id") and g.user["id"] not in projets.ids_co_chefs(projet_id):
+        tache = taches.get_tache(tache_id)
+        titre = tache.get("titre") if isinstance(tache, dict) else ""
+        message = (f"{_acteur()} a terminé «\u00a0{titre or ''}\u00a0» ({projet.get('code') or ''}) — "
+                   f"{post_type_style(type_code)['label']}")
+        prevenus, notifications_creees = _prevenir_gestion(
+            projet, tache_id, message + (f"\u00a0: {_phrase(contenu)}" if contenu else "."))
+        if prevenus:
+            texte = f"Tâche terminée\u00a0: post publié, {_noms_prevenus(prevenus)} prévenu{'s' if len(prevenus) > 1 else ''}."
+
     if partiel.est_partiel():
         action = _action_annuler(url_for("projets.changer_etat_tache", projet_id=projet_id, tache_id=tache_id),
-                                 {"etat": "en_cours"}, tache_id)
-        return _reponse_tache(projet_id, tache_id, [partiel.toast("Tâche clôturée.", action=action)], deplacee=True)
-    flash("Tâche clôturée.", "success")
+                                 {"etat": "en_cours",
+                                  "jeton": _jeton_annuler(projet_id, tache_id, "en_cours", None, notifications_creees)},
+                                 tache_id)
+        return _reponse_tache(projet_id, tache_id, [partiel.toast(texte, action=action)], deplacee=True)
+    flash(texte, "success")
     return redirect(url_for("projets.detail", projet_id=projet_id))
 
 

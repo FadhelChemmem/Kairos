@@ -44,7 +44,25 @@ def contexte_fenetre(projet: dict, tache_id: int, peut_gerer: bool) -> dict | No
         candidats = [u for u in utilisateurs.list_affectables() if u["id"] in voient and u["id"] not in deja]
     return dict(t=tache, candidats=candidats, peut_gerer=peut_gerer,
                 projet_clos=projet["etat"] in projets.ETATS_CLOS,
-                etats_reserves=taches.ETATS_RESERVES_GESTION)
+                etats_reserves=taches.ETATS_RESERVES_GESTION,
+                aide_blocage=aide_blocage(projet) if tache["etat"] != "bloque" else "")
+
+
+def aide_blocage(projet: dict) -> str:
+    """Qui sera prévenu d'un blocage signalé par la personne connectée
+    (recette du lot 14, n° 12) : le chef titulaire et les co-chefs, jamais
+    elle-même (routes/projets.py:_prevenir_gestion)."""
+    moi = g.user["id"]
+    co_chefs = [uid for uid in projets.ids_co_chefs(projet["id"]) if uid != moi]
+    chef = projet.get("chef_projet_id") not in (None, moi)
+    if chef and co_chefs:
+        return ("Le chef de projet et le co-chef sont prévenus." if len(co_chefs) == 1
+                else "Le chef de projet et les co-chefs sont prévenus.")
+    if chef:
+        return "Le chef de projet est prévenu."
+    if co_chefs:
+        return "Le co-chef est prévenu." if len(co_chefs) == 1 else "Les co-chefs sont prévenus."
+    return "Le motif s’affiche sur la tâche et dans le fil du projet."
 
 
 @bp.route("/<int:projet_id>/taches/<int:tache_id>/fenetre")

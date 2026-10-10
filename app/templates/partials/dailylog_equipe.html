@@ -1,0 +1,86 @@
+{# Contenu du Daily log de l'équipe (lot 14) : rendu dans la page et seul
+   (navigation de semaine en partiel, cible #dlq). Contexte : voir
+   routes/dailylog.contexte_equipe. Sous 600 px, le tableau devient une
+   liste par personne (dailylog-equipe : CSS seulement). #}
+{% set prec_url = url_for('dailylog.equipe', semaine=precedente.isoformat()) if precedente else none %}
+{% set suiv_url = url_for('dailylog.equipe', semaine=suivante.isoformat()) if suivante else none %}
+<section class="dlq" id="dlq" aria-labelledby="dlq-titre">
+  <div class="dlq-barre">
+    <nav class="dlq-nav" aria-label="Choisir la semaine">
+      <a class="btn btn-petit dlq-navbtn" id="dlq-prec"{% if prec_url %} href="{{ prec_url }}" data-partiel="#dlq"{% else %} aria-disabled="true" tabindex="0"{% endif %}><span aria-hidden="true">‹</span> <span class="dlq-long">Semaine </span>précédente</a>
+      <a class="btn btn-petit dlq-navbtn" id="dlq-suiv"{% if suiv_url %} href="{{ suiv_url }}" data-partiel="#dlq"{% else %} aria-disabled="true" tabindex="0"{% endif %}><span class="dlq-long">Semaine </span>suivante <span aria-hidden="true">›</span></a>
+      <a class="btn btn-petit btn-fantome dlq-navbtn" id="dlq-courante"{% if not est_courante %} href="{{ url_for('dailylog.equipe') }}" data-partiel="#dlq"{% else %} aria-disabled="true" tabindex="0" aria-current="date"{% endif %}>Cette semaine</a>
+    </nav>
+    <h2 class="dlq-titre" id="dlq-titre" tabindex="-1" data-partiel-titre>{{ titre_semaine }}</h2>
+  </div>
+
+  {% if lignes %}
+  <p class="dlq-resume">
+    {% if manquants %}<b>{{ manquants }} jour{{ 's' if manquants > 1 }} non renseigné{{ 's' if manquants > 1 }}</b> ({{ personnes_en_manque }} personne{{ 's' if personnes_en_manque > 1 }})&#8239;; cliquez sur une case pour ouvrir le Daily log de ce jour.{% else %}Aucun jour non renseigné cette semaine.{% endif %}
+  </p>
+  <div class="dlq-defile">
+  <table class="dlq-table">
+    <caption class="sr-only">Daily log de l’équipe, {{ titre_semaine|lower }}</caption>
+    <thead>
+      <tr>
+        <th scope="col" class="dlq-col-nom">Personne</th>
+        {% for j in jours %}
+        <th scope="col" class="dlq-col-jour"><abbr title="{{ date_fr(j) }}">{{ ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.'][loop.index0] }} {{ j.day }}</abbr></th>
+        {% endfor %}
+        <th scope="col" class="dlq-col-total">Semaine</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in lignes %}
+      <tr>
+        <th scope="row" class="dlq-nom">
+          <a href="{{ url_for('utilisateurs.fiche', user_id=l.personne.id) }}" class="dlq-personne">{{ l.nom }}</a>{% if l.soi %} <span class="dlq-vous">(vous)</span>{% endif %}
+        </th>
+        {% for c in l.cases %}
+        {% set jour_label = ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.'][loop.index0] ~ ' ' ~ c.date.day %}
+        {% set aria = l.nom ~ ', ' ~ date_fr(c.date)|lower ~ ' : ' ~ ((c.minutes / 60)|heures if c.etat == 'rempli' else c.libelle) %}
+        <td class="dlq-case dlq-{{ c.etat }}" data-jour="{{ jour_label }}">
+          {% if c.lien %}
+          <a href="{{ c.lien }}" class="dlq-lien" aria-label="{{ aria }} — ouvrir ce Daily log" title="{{ c.libelle|capitalize }} — ouvrir le Daily log de ce jour">
+          {% else %}
+          <span class="dlq-lien" role="img" aria-label="{{ aria }}" title="{{ c.libelle|capitalize }}">
+          {% endif %}
+            {%- if c.etat == 'rempli' %}{{ (c.minutes / 60)|heures }}
+            {%- elif c.etat == 'absent' %}Absent
+            {%- elif c.etat == 'manquant' %}<span class="dlq-ico" aria-hidden="true">!</span><span class="dlq-mot">Manquant</span>
+            {%- else %}<span aria-hidden="true">—</span>{% endif -%}
+          {% if c.lien %}</a>{% else %}</span>{% endif %}
+        </td>
+        {% endfor %}
+        <td class="dlq-total" data-jour="Semaine">{{ (l.total_minutes / 60)|heures if l.total_minutes else '—' }}{% if l.week_end_minutes %}<span class="dlq-we" aria-hidden="true" title="Dont {{ (l.week_end_minutes / 60)|heures }} le week-end">*</span><span class="sr-only">, dont {{ (l.week_end_minutes / 60)|heures }} le week-end</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th scope="row" class="dlq-nom">Total</th>
+        {% for t in totaux %}
+        <td class="dlq-pied" data-jour="{{ ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.'][loop.index0] }} {{ jours[loop.index0].day }}">
+          <span>{{ (t.minutes / 60)|heures }}</span>
+          {% if t.manquants %}<span class="dlq-pied-manque"><span class="dlq-ico dlq-ico-pied" aria-hidden="true">!</span>{{ t.manquants }}<span class="dlq-mot"> manquant{{ 's' if t.manquants > 1 }}</span></span>{% endif %}
+        </td>
+        {% endfor %}
+        <td class="dlq-total" data-jour="Semaine">{{ (total_minutes / 60)|heures }}</td>
+      </tr>
+    </tfoot>
+  </table>
+  </div>
+  <ul class="dlq-legende" aria-label="Légende">
+    <li><span class="dlq-pastille dlq-rempli" aria-hidden="true"></span>Rempli (heures du jour)</li>
+    <li><span class="dlq-pastille dlq-absent" aria-hidden="true"></span>Absent</li>
+    <li><span class="dlq-pastille dlq-manquant" aria-hidden="true"></span>Non renseigné</li>
+    <li><span class="dlq-pastille dlq-gris" aria-hidden="true"></span>À venir, avant l’arrivée, aujourd’hui avant 16&nbsp;h ou au-delà de 14&nbsp;jours</li>
+    <li><span class="dlq-we" aria-hidden="true">*</span>Total avec des heures le week-end</li>
+  </ul>
+  {% else %}
+  <div class="k-vide">
+    <p class="k-vide-titre">Personne à afficher</p>
+    <p class="k-vide-texte">{{ 'Aucun compte actif avec un Daily log.' if admin else 'Vos projets en cours n’ont pas encore d’intervenant.' }}</p>
+  </div>
+  {% endif %}
+</section>

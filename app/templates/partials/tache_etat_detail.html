@@ -1,0 +1,21 @@
+{# Ligne sous les états du panneau de tâche (lot 14, revue produit P0-1) :
+   tâche bloquée → pourquoi (le motif d'abord), depuis quand et par qui,
+   coupé en « … » sur une ligne, en entier au survol et pour les lecteurs
+   d'écran ; tâche close → date de clôture. Toujours rendue, à hauteur
+   fixe, même vide : passer de En cours à Bloquée (ou l'inverse) ne déplace
+   rien dessous. Contexte : t. #}
+{% if t.etat == 'bloque' %}
+  {% set motif = t.bloque_motif|default(none) %}
+  {% set par = ((t.bloque_par_prenom|default(none) or '') ~ ' ' ~ (t.bloque_par_nom|default(none) or ''))|trim %}
+  {% set depuis = depuis_blocage(t.bloque_le|default(none)) %}
+  {% set suite = ([depuis] if depuis else []) + (['par ' ~ par] if par else []) %}
+  <p class="tache-etat-detail tache-etat-detail-bloque" id="tache-{{ t.id }}-blocage-detail" title="{{ ('« ' ~ motif ~ ' »') if motif else 'Motif non renseigné' }}{% if suite %} — bloquée {{ suite|join(', ') }}{% endif %}">
+    <span class="sr-only">Motif du blocage&nbsp;: </span>
+    {% if motif %}<span class="tache-etat-detail-motif">«&nbsp;{{ motif }}&nbsp;»</span>{% else %}<span class="tache-etat-detail-motif k-muet">Motif non renseigné</span>{% endif %}
+    {% if suite %}<span class="tache-etat-detail-depuis"> · bloquée {{ suite|join(', ') }}</span>{% endif %}
+  </p>
+{% elif t.etat in ('termine', 'verifie') and t.date_fin %}
+  <p class="tache-etat-detail">Clôturée le {{ t.date_fin|date_courte(true) }}</p>
+{% else %}
+  <p class="tache-etat-detail" aria-hidden="true"></p>
+{% endif %}

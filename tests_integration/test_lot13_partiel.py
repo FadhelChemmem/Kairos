@@ -36,7 +36,7 @@ class _Partiel(_Base):
 class TestPanneauDeTache(_Partiel):
     def test_etat_en_partiel_panneau_ligne_projet_et_fil(self):
         self.login(self.inter)
-        r = self.client.post(f"/projets/{self.p1}/taches/{self.t1}/etat", data={"etat": "bloque"},
+        r = self.client.post(f"/projets/{self.p1}/taches/{self.t1}/etat", data={"etat": "bloque", "motif": "Attente des plans"},
                              headers=partiel(f"#tache-fenetre-{self.t1}"))
         self.assertEqual(r.status_code, 200)
         html = r.get_data(as_text=True)
@@ -49,8 +49,10 @@ class TestPanneauDeTache(_Partiel):
         self.assertIn('id="fil-posts" data-partiel-oob="avant"', html)
         self.assertEqual(self.etat("projet", self.p1), "bloque")
         t = toasts(r)[0]
-        self.assertEqual(t["texte"], "État de la tâche\u00a0: Bloquée.")
-        self.assertEqual(t["action"]["donnees"], {"etat": "en_cours", "annulation": "1"})
+        # Lot 14 (P0-1) : le chef de projet est prévenu, et nommé.
+        self.assertRegex(t["texte"], r"^Blocage signalé à .+\.$")
+        self.assertEqual({k: v for k, v in t["action"]["donnees"].items() if k != "jeton"},
+                         {"etat": "en_cours", "annulation": "1"})
         self.assertEqual(t["action"]["cible"], f"#tache-ligne-{self.t1}")
         # « Annuler » rejoué sur la ligne : la ligne est la racine, sans
         # nouveau « Annuler » ; le panneau suit hors cible.
@@ -76,13 +78,13 @@ class TestPanneauDeTache(_Partiel):
     def test_refus_en_json_memes_droits(self):
         autre = self.user("intervenant")
         self.login(autre)
-        r = self.client.post(f"/projets/{self.p1}/taches/{self.t1}/etat", data={"etat": "bloque"},
+        r = self.client.post(f"/projets/{self.p1}/taches/{self.t1}/etat", data={"etat": "bloque", "motif": "Attente des plans"},
                              headers=partiel(f"#tache-fenetre-{self.t1}"))
         self.assertEqual(r.status_code, 403)
         self.assertEqual(r.get_json()["erreur"], "interdit")
         self.assertEqual(self.etat("tache", self.t1), "en_cours")
         # Projet d'une autre équipe : 404 (JSON pour une requête partielle).
-        r = self.client.post(f"/projets/{self.p2}/taches/{self.t2}/etat", data={"etat": "bloque"},
+        r = self.client.post(f"/projets/{self.p2}/taches/{self.t2}/etat", data={"etat": "bloque", "motif": "Attente des plans"},
                              headers=partiel(f"#tache-fenetre-{self.t2}"))
         self.assertEqual(r.status_code, 404)
         # Intervenant : Vérifiée réservée au chef.
@@ -141,8 +143,10 @@ class TestPanneauDeTache(_Partiel):
 class TestFicheProjet(_Partiel):
     def test_creation_de_tache_sur_la_fiche_et_a_l_accueil(self):
         self.login(self.chef)
+        # Lot 14 : fil affiché sur « Tout » (adresse de la page, Referer).
+        tout = {"Referer": f"http://localhost/projets/{self.p1}?fil=tout"}
         r = self.client.post(f"/projets/{self.p1}/taches", data={"titre": "Tâche partielle", "type_deadline": "interne"},
-                             headers=partiel("#fil-posts"))
+                             headers={**partiel("#fil-posts"), **tout})
         self.assertEqual(r.status_code, 200)
         html = r.get_data(as_text=True)
         self.assertTrue(html.lstrip().startswith('<div class="fil-item"'))
@@ -153,7 +157,7 @@ class TestFicheProjet(_Partiel):
         self.assertEqual(r.status_code, 422)
         self.assertEqual(list(r.get_json()["champs"]), ["titre"])
         r = self.client.post(f"/projets/{self.p1}/taches", data={"titre": "Depuis l'accueil", "type_deadline": "interne"},
-                             headers=partiel("#fil-liste"))
+                             headers={**partiel("#fil-liste"), "Referer": "http://localhost/accueil?fil=activite"})
         self.assertTrue(r.get_data(as_text=True).lstrip().startswith('<div class="fil-item"'))
         self.assertNotIn("carte-taches", oob(r.get_data(as_text=True)))
 

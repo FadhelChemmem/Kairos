@@ -1,0 +1,13 @@
+{# Contrôle segmenté « Tout · Échanges · Activité » au-dessus d'un fil
+   (lot 14, revue produit P1-3). Liens GET (repli sans JavaScript) ;
+   filtre-fil.js les envoie en partiel sur `cible`, tient l'adresse
+   (?fil=, History API) et mémorise le choix de la page (`page`). La
+   position de chaque segment ne dépend pas du choix : rien ne bouge.
+   Appel : filtres(page, categorie, cible, endpoint, params). #}
+{% macro filtres(page, categorie, cible, endpoint, params) %}
+<nav class="k-segmente bascule-vue fil-filtres" aria-label="Posts affichés" data-fil-filtres="{{ page }}" data-fil-cible="{{ cible }}">
+  {% for code, libelle in (('tout', 'Tout'), ('echanges', 'Échanges'), ('activite', 'Activité')) %}
+  <a href="{{ url_for(endpoint, fil=code, **params) }}" id="fil-filtre-{{ page }}-{{ code }}" data-fil="{{ code }}" data-partiel="{{ cible }}"{% if code == categorie %} aria-current="page"{% endif %}{% if code == 'echanges' %} title="Informations, requêtes, questions, envois, réponses"{% elif code == 'activite' %} title="Créations, changements d’état, échéances, intervenants…"{% endif %}>{{ libelle }}</a>
+  {% endfor %}
+</nav>
+{% endmacro %}

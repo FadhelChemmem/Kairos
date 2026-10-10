@@ -47,10 +47,10 @@ class TestEtatDuProjet(_Projets):
     def test_reste_bloque_tant_qu_une_tache_l_est(self):
         t_bloquee = self.tache(self.p1, self.chef, intervenants=[self.inter])
         self.login(self.inter)
-        self.client.post(f"/projets/{self.p1}/taches/{t_bloquee}/etat", data={"etat": "bloque"})
+        self.client.post(f"/projets/{self.p1}/taches/{t_bloquee}/etat", data={"etat": "bloque", "motif": "Attente des plans"})
         self.assertEqual(self.etat(self.p1), "bloque")
         # Une autre tâche bloquée puis remise En cours : le projet reste Bloqué.
-        self.client.post(f"/projets/{self.p1}/taches/{self.t1}/etat", data={"etat": "bloque"})
+        self.client.post(f"/projets/{self.p1}/taches/{self.t1}/etat", data={"etat": "bloque", "motif": "Attente des plans"})
         self.client.post(f"/projets/{self.p1}/taches/{self.t1}/etat", data={"etat": "en_cours"})
         self.assertEqual(self.etat(self.p1), "bloque")
         # Création d'une tâche : le projet reste Bloqué (audit : il repassait En cours).

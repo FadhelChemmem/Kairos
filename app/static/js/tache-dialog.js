@@ -536,6 +536,13 @@
       bouton.title = bouton.textContent;
       return function () { if (document.contains(bouton)) { bouton.textContent = avant; bouton.title = avant; } };
     };
+    // Blocage (lot 14) : « Signaler le blocage » presse « Bloquée » tout de suite.
+    K.optimistes['blocage-tache'] = function (el) {
+      var form = el && (el.form || (el.closest && el.closest('form')));
+      var fenetre = form && form.closest ? form.closest('[data-tache-fenetre]') : null;
+      var bouton = fenetre ? fenetre.querySelector('.tache-etat-choix[value="bloque"]') : null;
+      return bouton ? K.optimistes['etat-tache'](bouton) : null;
+    };
     // « Rejoindre » de la ligne : bouton occupé tout de suite.
     K.optimistes.rejoindre = function (bouton) {
       if (!bouton || !bouton.classList) return null;
@@ -548,6 +555,83 @@
   document.addEventListener('click', function (e) {
     var b = e.target.closest && e.target.closest('.tache-etat-choix[aria-pressed="true"]');
     if (b) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+
+  /* ---------------------------------------------------------------- */
+  /* « Qu'est-ce qui bloque ? » (lot 14, revue produit P0-1)            */
+  /* ---------------------------------------------------------------- */
+  // « Bloquée » ouvre la question par-dessus le panneau (rien ne bouge) ;
+  // le motif est obligatoire. Annuler ou Échap la ferment (saisie vidée),
+  // le focus revient à « Bloquée » ; Entrée envoie, Maj+Entrée va à la ligne.
+  function questionBlocage(bouton) {
+    var id = bouton && bouton.getAttribute('data-blocage-ouvrir');
+    return id ? document.getElementById(id) : null;
+  }
+  function fermerBlocage(pop, rendreFocus) {
+    if (!pop || pop.hidden) return;
+    pop.hidden = true;
+    var champ = pop.querySelector('textarea');
+    if (champ) champ.value = '';
+    if (K && K.effacerErreurs) K.effacerErreurs(pop);
+    var bouton = document.querySelector('[data-blocage-ouvrir="' + pop.id + '"]');
+    if (bouton) {
+      bouton.setAttribute('aria-expanded', 'false');
+      if (rendreFocus) bouton.focus();
+    }
+  }
+  function ouvrirBlocage(bouton) {
+    var pop = questionBlocage(bouton);
+    if (!pop) return;
+    pop.hidden = false;
+    bouton.setAttribute('aria-expanded', 'true');
+    var champ = pop.querySelector('textarea');
+    if (champ) champ.focus();
+  }
+  document.addEventListener('click', function (e) {
+    var cible = e.target.closest ? e.target : null;
+    if (!cible) return;
+    var b = cible.closest('[data-blocage-ouvrir]');
+    if (b) {
+      if (b.getAttribute('aria-pressed') === 'true') return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (K && K.lectureSeule && K.lectureSeule()) { K.toast(K.MESSAGE_LECTURE_SEULE, { type: 'info' }); return; }
+      var pop = questionBlocage(b);
+      if (pop && !pop.hidden) fermerBlocage(pop, true); else ouvrirBlocage(b);
+      return;
+    }
+    var annuler = cible.closest('[data-blocage-annuler]');
+    if (annuler) {
+      e.preventDefault();
+      fermerBlocage(annuler.closest('.tache-blocage'), true);
+      return;
+    }
+    // Un autre état choisi : la question se ferme.
+    if (cible.closest('.tache-etat-choix')) {
+      document.querySelectorAll('.tache-blocage:not([hidden])').forEach(function (p) { fermerBlocage(p, false); });
+    }
+  }, true);
+  // Envoi : le focus passe sur « Bloquée » (pressé tout de suite) — il y
+  // revient après la réponse (data-focus-apres) et après « Annuler » du
+  // toast (contrôle d'origine). Refus (motif vide) : focus sur le champ.
+  document.addEventListener('submit', function (e) {
+    var pop = e.target;
+    if (!pop.classList || !pop.classList.contains('tache-blocage') || pop.hidden) return;
+    var bouton = document.querySelector('[data-blocage-ouvrir="' + pop.id + '"]');
+    var champ = pop.querySelector('textarea');
+    if (bouton && champ && champ.value.trim()) bouton.focus({ preventScroll: true });
+  }, true);
+  document.addEventListener('keydown', function (e) {
+    var pop = e.target && e.target.closest ? e.target.closest('.tache-blocage') : null;
+    if (!pop || pop.hidden) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      fermerBlocage(pop, true);
+    } else if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.target.tagName === 'TEXTAREA') {
+      e.preventDefault();
+      if (pop.requestSubmit) pop.requestSubmit();
+    }
   }, true);
 
   // Titre modifié en place : Entrée envoie (formulaire), la sortie du champ

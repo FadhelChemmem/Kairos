@@ -33,6 +33,17 @@ _POST_VISIBLE = """
     )
 """
 
+# Lot 14 (revue produit P1-3) : post automatique (« Activité ») — tout
+# évènement sauf « Donner suite » (repost) et la clôture d'une tâche
+# accompagnée d'un message écrit par la personne (« Échanges »). Voir app/fil.py.
+# Lot 14 (fusion) : le signalement d'un blocage porte le motif écrit par la
+# personne (« Échanges ») ; une clôture sans message (texte automatique
+# « Tâche terminée. », TEXTE_CLOTURE_SANS_MESSAGE) reste de l'« Activité ».
+_EST_ACTIVITE = """(p.evenement IS NOT NULL AND p.evenement NOT IN ('repost', 'blocage_tache')
+    AND NOT (p.evenement = 'cloture_tache'
+             AND COALESCE(btrim(p.contenu), '') NOT IN ('', 'Tâche terminée.')))"""
+_FILTRE_CATEGORIE = {"tout": "TRUE", "echanges": "NOT " + _EST_ACTIVITE, "activite": _EST_ACTIVITE}
+
 _FEED_SELECT = """
     SELECT p.id, p.type_code, p.contenu, p.lien, p.created_at, p.tache_id, p.parent_post_id,
            p.projet_id, proj.code AS projet_code, proj.nom AS projet_nom, proj.etat AS projet_etat,
@@ -62,6 +73,7 @@ _FEED_SELECT = """
            -- Posts automatiques (migration 0009) : creation_projet,
            -- etat_projet, etat_tache, titre_tache — voir post_card.html.
            p.evenement,
+           """ + _EST_ACTIVITE + """ AS est_activite,
            -- L'utilisateur gère-t-il le projet du post (chef ou co-chef) ?
            -- Sert à n'afficher "+ Tâche" (rebond) qu'à ceux qui pourront
            -- effectivement la créer (audit n°2 : le bouton était montré à
@@ -197,51 +209,98 @@ def _structurer_commentaires(rows: list[dict]) -> list[dict]:
     return rows
 
 
-def list_feed_projet(projet_id: int, current_user_id: int, limit: int = 30) -> list[dict]:
-    sql = _FEED_SELECT + """
-        WHERE p.projet_id = %(pid)s
-        ORDER BY p.created_at DESC
-        LIMIT %(limit)s
+def _lire_fil(condition: str, params: dict, limit: int, categorie: str = "tout", avant=None) -> list[dict]:
+    """Une page du fil (lot 14) : les ids d'abord — `condition`, catégorie
+    (Échanges / Activité) et curseur `avant` (created_at, id) dans le WHERE,
+    tri et LIMIT sur l'index des dates —, puis le détail de ces seuls posts
+    (réactions, commentaires, pièces jointes… : sous-requêtes de
+    _FEED_SELECT calculées pour la page, jamais pour tous les candidats)."""
+    filtre = _FILTRE_CATEGORIE.get(categorie, "TRUE")
+    sql = """
+        WITH page AS (
+            SELECT p.id, p.created_at FROM post p
+            WHERE (""" + condition + """)
+              AND """ + filtre + """
+              AND (%(avant_date)s::timestamptz IS NULL
+                   OR (p.created_at, p.id) < (%(avant_date)s::timestamptz, %(avant_id)s::bigint))
+            ORDER BY p.created_at DESC, p.id DESC
+            LIMIT %(limit)s
+        )
+    """ + _FEED_SELECT + """
+        WHERE p.id = ANY (ARRAY(SELECT id FROM page))
+        ORDER BY p.created_at DESC, p.id DESC
     """
+    avant_date, avant_id = avant if avant else (None, None)
     with db.get_cursor() as cur:
-        cur.execute(sql, {"uid": current_user_id, "pid": projet_id, "limit": limit})
+        cur.execute(sql, {**params, "limit": limit, "avant_date": avant_date, "avant_id": avant_id})
         return _structurer_commentaires([dict(r) for r in cur.fetchall()])
 
 
-def list_feed_mes_projets(current_user_id: int, limit: int = 30) -> list[dict]:
+_CONDITION_MES_PROJETS = """
+    p.projet_id IN (
+        SELECT pj.id FROM projet pj
+        WHERE (
+           -- Rattachements : jamais pour un Client (lot 7), même s'il en
+           -- reste d'avant la migration 0011.
+           NOT EXISTS (SELECT 1 FROM utilisateur ux WHERE ux.id = %(uid)s AND ux.role = 'client')
+           AND (pj.chef_projet_id = %(uid)s
+           OR EXISTS (SELECT 1 FROM projet_co_chef cc WHERE cc.projet_id = pj.id AND cc.utilisateur_id = %(uid)s)
+           OR EXISTS (SELECT 1 FROM projet_intervenant pi WHERE pi.projet_id = pj.id AND pi.utilisateur_id = %(uid)s)
+           OR EXISTS (SELECT 1 FROM tache tt JOIN tache_intervenant ti ON ti.tache_id = tt.id
+                      WHERE tt.projet_id = pj.id AND ti.utilisateur_id = %(uid)s))
+        )
+           -- Client (lot 7) : jamais rattaché, il suit les projets de son équipe.
+           OR EXISTS (SELECT 1 FROM utilisateur uc
+                      WHERE uc.id = %(uid)s AND uc.role = 'client' AND uc.equipe_code = pj.equipe_code)
+    )
+    OR """ + _POST_SANS_PROJET_VISIBLE
+
+
+def _rang_dans_fil(condition: str, params: dict, categorie: str, post_id: int) -> int:
+    """Rang du post `post_id` dans le fil (1 = le plus récent) : nombre de
+    posts du fil jusqu'à lui, lui compris ; 0 s'il n'est pas dans ce fil
+    (autre projet, invisible, autre catégorie). Sert à ouvrir le fil
+    jusqu'à un post ancien (lien d'une notification, recette du lot 14
+    n° 13)."""
+    filtre = _FILTRE_CATEGORIE.get(categorie, "TRUE")
+    sql = """
+        WITH ancre AS (
+            SELECT p.created_at, p.id FROM post p
+            WHERE p.id = %(ancre)s AND (""" + condition + """) AND """ + filtre + """
+        )
+        SELECT count(*) AS n FROM post p, ancre
+        WHERE (""" + condition + """) AND """ + filtre + """
+          AND (p.created_at, p.id) >= (ancre.created_at, ancre.id)
+    """
+    ligne = db.query_one(sql, {**params, "ancre": post_id})
+    return int(ligne["n"] or 0) if ligne else 0
+
+
+def rang_dans_fil_projet(projet_id: int, current_user_id: int, categorie: str, post_id: int) -> int:
+    return _rang_dans_fil("p.projet_id = %(pid)s", {"uid": current_user_id, "pid": projet_id}, categorie, post_id)
+
+
+def rang_dans_fil_mes_projets(current_user_id: int, categorie: str, post_id: int) -> int:
+    return _rang_dans_fil(_CONDITION_MES_PROJETS, {"uid": current_user_id}, categorie, post_id)
+
+
+def list_feed_projet(projet_id: int, current_user_id: int, limit: int = 30, categorie: str = "tout",
+                     avant=None) -> list[dict]:
+    return _lire_fil("p.projet_id = %(pid)s", {"uid": current_user_id, "pid": projet_id}, limit, categorie, avant)
+
+
+def list_feed_mes_projets(current_user_id: int, limit: int = 30, categorie: str = "tout", avant=None) -> list[dict]:
     """Fil d'activité de l'accueil : tous les posts des projets où
     l'utilisateur est chef, co-chef, intervenant — ou intervenant d'une
     tâche seulement (retour Fadhel, 2026-09-29, P1 : ces personnes ne
     voyaient rien du projet sur leur accueil) ; pour un Client, les projets
     de son équipe (lot 7) — plus les Informations d'équipe qui lui sont
     destinées (migration 0009). Le RH n'a que ces dernières."""
-    sql = _FEED_SELECT + """
-        WHERE p.projet_id IN (
-            SELECT pj.id FROM projet pj
-            WHERE (
-               -- Rattachements : jamais pour un Client (lot 7), même s'il en
-               -- reste d'avant la migration 0011.
-               NOT EXISTS (SELECT 1 FROM utilisateur ux WHERE ux.id = %(uid)s AND ux.role = 'client')
-               AND (pj.chef_projet_id = %(uid)s
-               OR EXISTS (SELECT 1 FROM projet_co_chef cc WHERE cc.projet_id = pj.id AND cc.utilisateur_id = %(uid)s)
-               OR EXISTS (SELECT 1 FROM projet_intervenant pi WHERE pi.projet_id = pj.id AND pi.utilisateur_id = %(uid)s)
-               OR EXISTS (SELECT 1 FROM tache tt JOIN tache_intervenant ti ON ti.tache_id = tt.id
-                          WHERE tt.projet_id = pj.id AND ti.utilisateur_id = %(uid)s))
-            )
-               -- Client (lot 7) : jamais rattaché, il suit les projets de son équipe.
-               OR EXISTS (SELECT 1 FROM utilisateur uc
-                          WHERE uc.id = %(uid)s AND uc.role = 'client' AND uc.equipe_code = pj.equipe_code)
-        )
-        OR """ + _POST_SANS_PROJET_VISIBLE + """
-        ORDER BY p.created_at DESC
-        LIMIT %(limit)s
-    """
-    with db.get_cursor() as cur:
-        cur.execute(sql, {"uid": current_user_id, "limit": limit})
-        return _structurer_commentaires([dict(r) for r in cur.fetchall()])
+    return _lire_fil(_CONDITION_MES_PROJETS, {"uid": current_user_id}, limit, categorie, avant)
 
 
-def list_feed_auteur(auteur_id: int, viewer_id: int, limit: int = 8, depuis=None, avant=None) -> list[dict]:
+def list_feed_auteur(auteur_id: int, viewer_id: int, limit: int = 8, depuis=None, avant=None,
+                     categorie: str = "tout") -> list[dict]:
     """Posts récents d'UNE personne (page de profil, Lot 5, retour Fadhel
     2026-09-28) — filtrés à ce que LE VISITEUR (`viewer_id`) peut voir
     (v_projet_visibilite), pas ce que l'auteur peut voir : un profil ne
@@ -253,18 +312,14 @@ def list_feed_auteur(auteur_id: int, viewer_id: int, limit: int = 8, depuis=None
     `depuis` / `avant` (dates, retour Fadhel, 2026-09-29, T3 : "ce qui est
     récent, sur une semaine, avec voir +") : posts publiés à partir de /
     avant ce jour-là."""
-    sql = _FEED_SELECT + """
-        WHERE p.auteur_id = %(auteur_id)s
+    condition = """
+        p.auteur_id = %(auteur_id)s
           AND """ + _POST_VISIBLE + """
           AND (%(depuis)s::date IS NULL OR p.created_at >= %(depuis)s::date)
-          AND (%(avant)s::date IS NULL OR p.created_at < %(avant)s::date)
-        ORDER BY p.created_at DESC
-        LIMIT %(limit)s
+          AND (%(avant_jour)s::date IS NULL OR p.created_at < %(avant_jour)s::date)
     """
-    with db.get_cursor() as cur:
-        cur.execute(sql, {"uid": viewer_id, "auteur_id": auteur_id, "limit": limit,
-                          "depuis": depuis, "avant": avant})
-        return _structurer_commentaires([dict(r) for r in cur.fetchall()])
+    return _lire_fil(condition, {"uid": viewer_id, "auteur_id": auteur_id, "depuis": depuis, "avant_jour": avant},
+                     limit, categorie)
 
 
 def get_post_carte(post_id: int, viewer_id: int) -> dict | None:

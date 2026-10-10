@@ -152,7 +152,7 @@ class TestDatesEtHeures(_Base):
         import datetime
         taches = [dict(smoke.DEADLINES[0], date_echeance=datetime.date(2026, 10, 6))]
         with patch("app.repositories.dailylog.aujourdhui_pour", return_value=datetime.date(2026, 10, 8)) as fuseau:
-            resp = self._avec(lambda: self.client.get("/deadlines"),
+            resp = self._avec(lambda: self.client.get("/deadlines?vue=mes"),
                               **{"app.repositories.taches.list_deadlines": taches})
         self.assertTrue(fuseau.called)
         self.assertIn("◀ en retard de 2 j", resp.get_data(as_text=True))
@@ -164,7 +164,10 @@ class TestDatesEtHeures(_Base):
         with patch("app.repositories.dailylog.aujourdhui_pour", return_value=datetime.date(2026, 10, 8)):
             resp = self._avec(lambda: self.client.get("/accueil"), **{
                 "app.repositories.taches.list_mes_taches": [tache],
-                "app.repositories.taches.list_deadlines": echeance})
+                "app.repositories.taches.list_deadlines": echeance,
+                # Lot 14 : l'Admin voit les échéances du bureau et « Tâches de mes projets ».
+                "app.repositories.taches.list_deadlines_tous": echeance,
+                "app.repositories.tableaux.taches_de_mes_projets": [dict(tache, mienne=True)]})
         body = resp.get_data(as_text=True)
         self.assertIn("en retard de 5 j", body)   # Mes tâches
         self.assertIn("· en retard de 3 j", body)  # bandeau des échéances

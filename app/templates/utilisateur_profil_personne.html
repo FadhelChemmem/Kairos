@@ -57,6 +57,8 @@
   {% include "partials/profil_activite.html" %}
 
 </div>
+{# Lot 14 : Tout · Échanges · Activité des posts (filtre-fil.js). #}
+<script src="{{ url_for('static', filename='js/filtre-fil.js') }}" defer></script>
 {# "Reposter" depuis le profil (2026-09-29) : même fenêtre que l'accueil. #}
 {% with projet_id=None, projets_choix=projets_postables, next_url=url_for('utilisateurs.profil_personne', user_id=utilisateur.id, semaines=(semaines if semaines > 1 else none)) %}
   {% include "partials/post_dialog.html" %}

@@ -22,8 +22,8 @@
   {% endif %}
 {% endmacro %}
 
-{# --- Champ de commentaire (retour Fadhel, 2026-09-29) : toujours
-   visible sous le post ; "@" propose les personnes (le tag s'écrit dans le
+{# --- Champ de commentaire (retour Fadhel, 2026-09-29) : sous le post,
+   déplié par « Commenter » (lot 14) ; "@" propose les personnes (le tag s'écrit dans le
    texte, le serveur retrouve les "@Prénom Nom" — routes/posts.py) ; un
    fichier se glisse directement sur le champ (ou se colle, ou se choisit
    avec le trombone du champ) ; Entrée envoie, Maj+Entrée va à la ligne.
@@ -83,7 +83,7 @@
         {% if g.user.role == 'admin' %}
           <details class="post-comment-supprimer">
             <summary class="post-comment-action">Supprimer</summary>
-            <form method="post" action="{{ url_for('posts.supprimer_commentaire', commentaire_id=c.id) }}" data-partiel="#post-{{ post.id }}-commentaires" data-focus-apres="#commentaire-post-{{ post.id }}">
+            <form method="post" action="{{ url_for('posts.supprimer_commentaire', commentaire_id=c.id) }}" data-partiel="#post-{{ post.id }}-commentaires" data-focus-apres="#post-{{ post.id }}-commenter">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
               <span>Supprimer{{ ' ce commentaire et ses réponses' if c.replies else ' ce commentaire' }}&#8239;?</span>

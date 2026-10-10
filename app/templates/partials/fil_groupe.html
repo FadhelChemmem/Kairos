@@ -1,0 +1,41 @@
+{# Évènements automatiques d'un même projet par la même personne dans la
+   même heure (lot 14, revue produit P1-3) : « Chef Test a créé 3 tâches
+   sur 26091D », dépliable (<details> : marche sans JavaScript). Les posts
+   gardent leur id (fil-item-<id>, post-<id>) : une mise à jour partielle ne
+   les insère pas une seconde fois, une ancre #post-<id> les retrouve.
+   Contexte : entree (app/fil.py, regrouper), show_projet, next_url. #}
+{% import "partials/post_filtre.html" as filtrem %}
+{% import "partials/avatar.html" as avatarm %}
+{% set t = entree.tete %}
+{% set auteur_url = url_for('utilisateurs.profil_personne', user_id=t.auteur_id) %}
+<div class="fil-item fil-groupe" id="fil-groupe-{{ t.id }}" data-categorie="activite" data-filtre="{{ t.auteur_prenom }} {{ t.auteur_nom }} {{ entree.phrase }} {% for p in entree.groupe %}{{ filtrem.texte_filtre(p) }} {% endfor %}">
+  <div class="card post-card fil-groupe-carte">
+    <div class="post-entete">
+      <a href="{{ auteur_url }}" aria-hidden="true" tabindex="-1">
+        {{ avatarm.avatar(t.auteur_id, t.auteur_prenom, t.auteur_nom, t.auteur_avatar_chemin, css_class='avatar avatar-lg') }}
+      </a>
+      <div class="post-entete-texte">
+        <div class="post-entete-ligne"><a href="{{ auteur_url }}" class="post-auteur-lien">{{ t.auteur_prenom }} {{ t.auteur_nom }}</a> {{ entree.phrase }}{% if show_projet %} sur <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" class="lien-discret fil-groupe-projet" title="{{ t.projet_code }}_{{ t.projet_nom }}">{{ t.projet_code }}</a>{% endif %}</div>
+        <div class="post-meta">
+          {% set dernier = entree.groupe[-1] %}
+          {% if t.created_at %}<time datetime="{{ t.created_at.isoformat() }}" title="{{ 'Horodatage réel : ' if g.date_simulee }}{{ date_fr(dernier.created_at) }}, de {{ dernier.created_at.strftime('%H:%M') }} à {{ t.created_at.strftime('%H:%M') }}">{{ t.created_at|il_y_a }}</time>{% endif %}
+        </div>
+      </div>
+      <span class="pill pill-neutre">Activité</span>
+    </div>
+    {% if entree.objets %}
+      <p class="post-texte post-corps post-corps-serre post-corps-second fil-groupe-objets">{{ entree.objets|join(' · ') }}{% if entree.objets_reste %} · {{ entree.objets_reste }} de plus{% endif %}</p>
+    {% endif %}
+    <details class="fil-groupe-details" id="fil-groupe-{{ t.id }}-details">
+      <summary class="post-action fil-groupe-bascule">
+        <svg class="fil-groupe-chevron" aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>
+        Détail des {{ entree.groupe|length }} événements
+      </summary>
+      <div class="fil-groupe-posts">
+        {% for post in entree.groupe %}
+          <div class="fil-groupe-post" id="fil-item-{{ post.id }}">{% include "partials/post_card.html" %}</div>
+        {% endfor %}
+      </div>
+    </details>
+  </div>
+</div>

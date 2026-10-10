@@ -67,7 +67,7 @@ class TestDeadlines(_Base):
         self.assertIn('data-partiel-oob>1 tâche avec échéance — tous les projets</span>', html)
 
     def test_admin_sans_projet_etat_vide(self):
-        html = self._appel("get", "/deadlines", **{"app.repositories.taches.list_deadlines": []}).get_data(as_text=True)
+        html = self._appel("get", "/deadlines?vue=mes", **{"app.repositories.taches.list_deadlines": []}).get_data(as_text=True)
         self.assertIn("Aucune échéance sur vos projets.", html)
         self.assertIn('href="/deadlines?vue=tous" class="btn btn-primaire" data-partiel="#deadlines-contenu"', html)
         self.assertNotIn('class="gantt"', html)

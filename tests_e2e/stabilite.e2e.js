@@ -156,7 +156,7 @@ const ampleur = (l) => l.reduce((m, x) => Math.max(m, Math.abs(x.dx), Math.abs(x
 
 const EXCLURE = ['#k-toasts', '.k-progression', '#recherche-globale-resultats', '.k-confirmation'];
 
-async function contexte(navigateur, largeur, theme) {
+async function contexte(navigateur, largeur, theme, compte) {
   const ctx = await navigateur.newContext({ viewport: { width: largeur, height: largeur < 600 ? 812 : 900 }, colorScheme: theme,
     locale: 'fr-FR', timezoneId: 'Africa/Tunis' });
   await ctx.addInitScript(SONDE);
@@ -169,7 +169,7 @@ async function contexte(navigateur, largeur, theme) {
   p.on('requestfailed', () => { enVol--; });
   p.enVol = () => enVol;
   await p.goto(BASE + '/connexion');
-  await p.fill('#email', 'admin@x.tn');
+  await p.fill('#email', compte || 'admin@x.tn');
   await p.fill('#password', MDP);
   await Promise.all([p.waitForNavigation(), p.click('button[type=submit]')]);
   return { ctx, p };
@@ -207,7 +207,8 @@ async function bascule(p, page, largeur, b) {
     await neutre(p);
     await pause(150);
     const apres = await p.evaluate((e) => window.__st.releve(e), exclure);
-    const r1 = await p.locator(sel).first().evaluate((el) => window.__st.rect(el)).catch(() => null);
+    // Contrôle retiré par l'action (ex. « Signaler le blocage ») : pas d'attente.
+    const r1 = (await p.locator(sel).count()) ? await p.locator(sel).first().evaluate((el) => window.__st.rect(el)).catch(() => null) : null;
     const bougent = comparer(avant, apres, b.divulgation ? r0 : null);
     const dLarg = r0 && r1 ? Math.abs(r1.w - r0.w) : 0;
     ecarts.push({ clic: i + 1, bougent: bougent.slice(0, 6), largeur: +dLarg.toFixed(1) });
@@ -270,11 +271,38 @@ async function focus(p, page, largeur, exclure) {
   etape(`${page} ${largeur} : focus clavier (Tab ×${NB_TAB}) — rien ne bouge`, mauvais.length === 0, mauvais.slice(0, 3));
 }
 
+/** Un jour ouvré vierge de l'Admin (le jeu de données remplit les 3
+ *  derniers jours) : 7 jours en arrière, ramené au vendredi si besoin. */
+function jourOuvreVierge(recul = 7) {
+  const d = new Date(Date.now() - recul * 86400000);
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
 // Bascules par page (sélecteurs stables du jeu de données).
 const PAGES = [
   { nom: 'accueil', chemin: '/accueil', bascules: [
     { nom: 'Thème', sel: '#theme-toggle' },
     { nom: 'Mode test (bandeau)', sel: '#bandeau-admin-outils > summary', divulgation: true },
+    // Lot 14 (P0-1) : section repliable « Bloquées (n) » sous Mes tâches.
+    { nom: 'Bloquées (détail)', sel: '#taches-bloquees > summary', divulgation: true },
+    // Lot 14 : tuiles de la Vue d'ensemble (la liste se déplie sous les
+    // tuiles) et bascule « Les miennes | Toutes ».
+    { nom: 'Tuile « Tâches en retard » (dépliée / repliée)', sel: '#tuile-retard', divulgation: true },
+    { nom: 'Tuile « Projets sans tâche ouverte » puis « Tâches bloquées »', suite: ['#tuile-projets_sans_tache', '#tuile-bloquees', '#tuile-bloquees'], divulgation: true },
+    { nom: 'Les miennes / Toutes', suite: ['#tdp-miennes', '#tdp-toutes'], exclure: ['#accueil-taches'] },
+    // Lot 14 (revue produit P1-3) : fil filtrable, « Commenter » replié.
+    { nom: 'Fil : Tout · Échanges · Activité', suite: ['#fil-filtre-accueil-activite', '#fil-filtre-accueil-tout', '#fil-filtre-accueil-echanges'],
+      exclure: ['#fil-liste', '#fil-suite'] },
+    { nom: 'Fil : « Commenter » (déplier / replier)', sel: '#fil-liste .post-action-commenter', divulgation: true },
+  ] },
+  { nom: 'accueil-activite', chemin: '/accueil?fil=activite', bascules: [
+    { nom: 'Fil : regroupement (détail)', sel: '#fil-liste .fil-groupe-details > summary', divulgation: true },
+  ] },
+  // Lot 14 : carte « À traiter » du chef de projet (ali, chef du projet 1).
+  { nom: 'accueil-chef', chemin: '/accueil', compte: 'ali@x.tn', bascules: [
+    { nom: 'Ligne « À traiter » (dépliée / repliée)', sel: '.at-lignes .at-ligne >> nth=0', divulgation: true },
+    { nom: 'Les miennes / Toutes (chef)', suite: ['#tdp-miennes', '#tdp-toutes'], exclure: ['#accueil-taches'] },
   ] },
   { nom: 'projets', chemin: '/projets', exclure: ['#projets-resultats'], bascules: [
     { nom: 'puce État « Terminé »', sel: '.projets-filtres .chip-opt:has-text("Terminé")' },
@@ -286,15 +314,31 @@ const PAGES = [
   { nom: 'fiche', chemin: '/projets/1', exclure: ['#fil-posts .fil-liste', '#fil-posts > .fil-liste'], bascules: [
     { nom: 'Tâches closes (détail)', sel: '#taches-closes > summary', divulgation: true },
     { nom: 'Réaction ✓ d’un post', sel: '#fil-posts .post-action[aria-pressed]' },
+    { nom: 'Fil : Tout · Échanges · Activité', suite: ['#fil-filtre-projet-activite', '#fil-filtre-projet-tout', '#fil-filtre-projet-echanges'],
+      exclure: ['#fil-posts', '#fil-suite'] },
+    { nom: 'Fil : « Commenter » (déplier / replier)', sel: '#fil-posts .post-action-commenter', divulgation: true },
   ] },
   { nom: 'panneau', chemin: '/projets/1', exclure: ['#fil-posts'], ouvrir: async (p) => {
     await p.click('[data-open-tache="20"] [data-ouvrir-tache]');
     await p.waitForSelector('#tache-fenetre-20');
   }, bascules: [
-    { nom: 'États de la tâche (Bloquée ↔ En cours)', suite: ['#tache-20-etat-bloque', '#tache-20-etat-en_cours'] },
+    // Lot 14 (P0-1) : « Bloquée » ouvre « Qu’est-ce qui bloque ? » par-dessus
+    // le panneau, « Signaler le blocage » l’enregistre (motif sous les états,
+    // ligne réservée), « En cours » le lève : rien ne bouge à aucun clic.
+    { nom: 'États de la tâche (Bloquée + motif ↔ En cours)',
+      suite: ['#tache-20-etat-bloque', '#tache-20-blocage-valider', '#tache-20-etat-en_cours'],
+      apres: async (p) => {
+        const champ = p.locator('#tache-20-motif');
+        if (await champ.count() && await champ.isVisible()) await champ.fill('Attente des plans archi indice B');
+      } },
+    { nom: 'Question du blocage ouverte puis « Annuler »', suite: ['#tache-20-etat-bloque', '#tache-20-blocage [data-blocage-annuler]'] },
   ] },
   { nom: 'deadlines', chemin: '/deadlines', exclure: ['#deadlines-contenu'], bascules: [
     { nom: 'Mes projets / Tous les projets', suite: ['[data-deadlines-bascule] a[data-vue="tous"]', '[data-deadlines-bascule] a[data-vue=""]'] },
+  ] },
+  // Lot 14 (P0-1) : section « Bloquées (n) » sous le Gantt (sans exclure le contenu).
+  { nom: 'deadlines-bloquees', chemin: '/deadlines', bascules: [
+    { nom: 'Bloquées (détail)', sel: '#deadlines-bloquees > summary', divulgation: true },
   ] },
   { nom: 'dailylog', chemin: '/dailylog', bascules: [
     { nom: 'Marquer absent / Annuler l’absence', sel: '#dl-absent', exclure: ['#dl-liste', '#dl-ajout'] },
@@ -302,6 +346,21 @@ const PAGES = [
     { nom: 'Jour précédent (‹ ×2)', suite: ['#dl-prec', '#dl-prec'], exclure: ['#dl-liste', '#dl-ajout'] },
     { nom: 'Calendrier', sel: '#dl-date' },
     { nom: 'Journée type − / +', suite: ['#dl-obj-moins', '#dl-obj-plus'] },
+    // Lot 14 : le catalogue reste ouvert après un ajout ; « Terminé » le ferme.
+    { nom: '+ Ajouter un projet / Terminé', suite: ['#dl-ajouter', '#dl-catalogue-fini'], divulgation: true },
+  ] },
+  // Lot 14 (revue produit P0-4) : journée vierge, lignes proposées à 0 h.
+  { nom: 'dailylog-vierge', chemin: '/dailylog?date=' + jourOuvreVierge(), bascules: [
+    { nom: 'Ligne proposée + / −', suite: ['#dl-liste .dl-row .dl-plus', '#dl-liste .dl-row .dl-minus'] },
+    { nom: 'Ligne proposée activée / désactivée (nom)', sel: '#dl-liste .dl-pinfo' },
+    { nom: 'Catalogue : ajout (resté ouvert) puis Terminé', suite: ['#dl-ajouter', '#dl-catalogue-corps [data-add]', '#dl-catalogue-fini'], divulgation: true,
+      exclure: ['#dl-liste', '#dl-propositions'] },
+    { nom: '× retire une ligne proposée', suite: ['#dl-liste .dl-retirer:not(.dl-retirer-cache)'], divulgation: true },
+  ] },
+  // Lot 14 (revue produit P1-9) : Daily log de l'équipe, semaine en partiel.
+  { nom: 'dailylog-equipe', chemin: '/dailylog/equipe', exclure: ['.dlq-defile', '.dlq-resume', '.dlq-legende'], bascules: [
+    { nom: 'Semaine précédente / suivante', suite: ['#dlq-prec', '#dlq-suiv'] },
+    { nom: 'Semaine précédente / Cette semaine', suite: ['#dlq-prec', '#dlq-courante'] },
   ] },
   { nom: 'notifications', chemin: '/notifications', avant: () => sql("UPDATE notification SET lu = false WHERE utilisateur_id = 1 AND message <> 'Ancienne notification déjà lue.'"),
     bascules: [
@@ -320,8 +379,13 @@ const PAGES = [
   ] },
   { nom: 'profil', chemin: '/utilisateurs/3/profil', bascules: [
     { nom: 'Réaction ✓ d’un post', sel: '.post-action[aria-pressed]' },
+    { nom: 'Fil : Tout · Échanges · Activité', suite: ['#fil-filtre-profil-tout', '#fil-filtre-profil-activite', '#fil-filtre-profil-echanges'],
+      exclure: ['#profil-posts'] },
   ] },
-  { nom: 'mes-informations', chemin: '/utilisateurs/moi', bascules: [] },
+  { nom: 'mes-informations', chemin: '/utilisateurs/moi', bascules: [
+    // Lot 14 : « Proposer mes tâches en cours dans le Daily log ».
+    { nom: 'Réglage « Proposer mes tâches en cours »', sel: '#pref-dl-proposer' },
+  ] },
 ];
 
 // --- Interactions de la revue (P0 / P1) : un test par correctif ----------
@@ -370,6 +434,10 @@ async function interactions(navigateur) {
     await p.waitForSelector('#tache-22-etat-bloque');
     await apaiser(p);
     await p.focus('#tache-22-etat-bloque');
+    // Lot 14 : Entrée ouvre « Qu’est-ce qui bloque ? », le motif part par Entrée.
+    await p.keyboard.press('Enter');
+    await p.waitForSelector('#tache-22-motif:focus');
+    await p.keyboard.type('Attente des plans');
     await p.keyboard.press('Enter');
     await p.waitForSelector('#k-toasts .k-toast-action');
     await apaiser(p);
@@ -381,6 +449,110 @@ async function interactions(navigateur) {
     const f = await p.evaluate(() => { const a = document.activeElement; return { id: a.id, dansFenetre: !!a.closest('#dialog-tache') }; });
     etape('P1-5 : après « Annuler », focus sur le contrôle d’origine (dans la fenêtre)', f.id === 'tache-22-etat-bloque' && f.dansFenetre, f);
   });
+
+  // Recette du lot 14, n° 1 : sur téléphone, la tâche touchée dans le
+  // catalogue du Daily log (resté ouvert) ne bouge pas, même quand la même
+  // clé est affichée plus haut (« projet seul » sous « Tâches ▸ » et ligne
+  // du projet) ou que la liste du catalogue a défilé.
+  await cas('Recette lot 14 n° 1 : catalogue du Daily log à 375 px', 375, async (p) => {
+    // Un autre jour vierge que celui de la page « dailylog-vierge » (mesurée ensuite).
+    await p.goto(BASE + '/dailylog?date=' + jourOuvreVierge(10));
+    await p.waitForSelector('.dl9.dl-pret');
+    await apaiser(p);
+    await p.click('#dl-ajouter');
+    await p.fill('#dl-recherche', '21114');
+    await p.waitForSelector('#dl-catalogue-corps [data-taches]');
+    await p.click('#dl-catalogue-corps [data-taches]');
+    await p.waitForSelector('#dl-catalogue-corps .dl-catsous [data-add]:nth-child(8)');
+    await apaiser(p);
+    await p.evaluate(() => {
+      window.__annonces = [];
+      const a = window.Kairos.annoncer;
+      window.Kairos.annoncer = function (t, o) { window.__annonces.push(String(t)); return a.call(this, t, o); };
+      window.__marques = [];
+      new MutationObserver((ms) => ms.forEach((m) => {
+        if (m.target.classList && m.target.classList.contains('dl-catrow-ajoute')) window.__marques.push(m.target.dataset.add);
+      })).observe(document.getElementById('dl-catalogue-corps'), { subtree: true, attributes: true, attributeFilter: ['class'] });
+    });
+    const mesuresCat = [];
+    for (const sel of ['.dl-catsous [data-add="1:0"]', '.dl-catsous [data-add]:nth-child(6)', '.dl-catsous [data-add]:nth-child(9)']) {
+      const loc = p.locator('#dl-catalogue-corps ' + sel).first();
+      const cle = await loc.getAttribute('data-add');
+      // La liste du catalogue défile : le choix au milieu de la liste.
+      await loc.evaluate((el) => {
+        const l = el.closest('.dl-catlist');
+        l.scrollTop += el.getBoundingClientRect().top - l.getBoundingClientRect().top - l.clientHeight / 2;
+      });
+      await apaiser(p);
+      const b0 = await loc.boundingBox();
+      const pt = { x: b0.x + b0.width / 2, y: b0.y + b0.height / 2 };
+      await p.mouse.click(pt.x, pt.y);
+      await apaiser(p);
+      await pause(150);
+      const b1 = await p.locator(`#dl-catalogue-corps .dl-catsous [data-add="${cle}"]`).first().boundingBox();
+      const sous = await p.evaluate((q) => {
+        const e = document.elementFromPoint(q.x, q.y);
+        const r = e && e.closest('[data-add]');
+        return r ? r.dataset.add + (r.closest('.dl-catsous') ? ' (tâches)' : '') : null;
+      }, pt);
+      mesuresCat.push({ cle, dy: +(b1.y - b0.y).toFixed(1), dh: +(b1.height - b0.height).toFixed(1), sous });
+    }
+    etape('Recette lot 14 n° 1 : catalogue à 375 px — le choix touché reste sous le doigt (même place, même hauteur)',
+      mesuresCat.every((m) => Math.abs(m.dy) <= SEUIL && Math.abs(m.dh) <= SEUIL && m.sous === m.cle + ' (tâches)'), mesuresCat);
+    // Catalogue ouvert : l'ajout ne lance pas de toast (il couvrait le bas
+    // du catalogue), il est annoncé et marqué sur le choix touché.
+    const retour = await p.evaluate(() => ({
+      toasts: [...document.querySelectorAll('#k-toasts .k-toast')].filter((t) => t.getBoundingClientRect().height > 0).length,
+      annonces: window.__annonces.filter((t) => /ajouté/.test(t)).length,
+      marque: new Set(window.__marques).size,
+    }));
+    etape('Catalogue ouvert (375 px) : ajout sans toast, annoncé, retour visuel sur le choix',
+      retour.toasts === 0 && retour.annonces === 3 && retour.marque === 3, retour);
+    // Un toast (avertissement) par-dessus le catalogue : le toucher ne ferme pas le catalogue.
+    await p.evaluate(() => window.Kairos.toast('Journée pleine (essai)', { type: 'avertissement', duree: 0 }));
+    const t = await p.locator('#k-toasts .k-toast').last().boundingBox();
+    await p.mouse.click(t.x + 20, t.y + t.height / 2);
+    await p.locator('#k-toasts .k-toast').last().locator('.k-toast-fermer').click();
+    await apaiser(p);
+    etape('Toucher un toast (texte, ×) ne ferme pas le catalogue', await p.isVisible('#dl-catalogue'));
+  });
+
+  // Recette du lot 14, n° 15 : au premier « Enregistrer » d'un jour manqué
+  // (le dernier), la bannière garde sa place (« Journée du … enregistrée. »,
+  // même hauteur) : aucun contrôle ne remonte.
+  for (const largeur of [1440, 375]) {
+    await cas(`Recette lot 14 n° 15 : bannière du jour manqué (${largeur} px)`, largeur, async (p, ctx) => {
+      const jour = jourOuvreVierge();
+      sql(`DELETE FROM dailylog_entree WHERE utilisateur_id = 3; DELETE FROM dailylog_jour WHERE utilisateur_id = 3;
+           INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, tache_id, heures, updated_by)
+           SELECT 3, d::date, 1, NULL, 7, 3 FROM generate_series(CURRENT_DATE - 30, CURRENT_DATE, interval '1 day') AS d
+           WHERE extract(isodow FROM d) < 6 AND d::date <> '${jour}'`);
+      await ctx.clearCookies();
+      await p.goto(BASE + '/connexion');
+      await p.fill('#email', 'rim@x.tn');
+      await p.fill('#password', MDP);
+      await Promise.all([p.waitForNavigation(), p.click('button[type=submit]')]);
+      await p.goto(BASE + '/dailylog?date=' + jour);
+      await p.waitForSelector('.dl9.dl-pret');
+      await p.waitForSelector('#dl-banniere:not([hidden]) .dl-chip');
+      await p.click('#dl-liste .dl-row .dl-plus');
+      await apaiser(p);
+      await neutre(p);
+      const avant = await p.evaluate((e) => window.__st.releve(e), EXCLURE);
+      const h0 = (await rect(p, '#dl-banniere')).h;
+      await p.click('#dl-enregistrer');
+      await p.waitForSelector('#dl-banniere.dl-banner-ok');
+      await apaiser(p);
+      await neutre(p);
+      await pause(300);
+      const apres = await p.evaluate((e) => window.__st.releve(e), EXCLURE);
+      const bougent = comparer(avant, apres);
+      const ban = await p.evaluate(() => { const b = document.getElementById('dl-banniere'); return { cache: b.hidden, h: b.getBoundingClientRect().height, texte: b.innerText.trim() }; });
+      etape(`Recette lot 14 n° 15 (${largeur}) : premier « Enregistrer » du jour manqué — rien ne bouge, la bannière garde sa place`,
+        !bougent.length && !ban.cache && Math.abs(ban.h - h0) <= SEUIL && /^Journée du .+ enregistrée\./.test(ban.texte),
+        { bougent: bougent.slice(0, 4), h0, ban });
+    });
+  }
 
   await cas('P1-9 : surbrillance au toucher', 375, async (p) => {
     await p.goto(BASE + '/accueil');
@@ -527,9 +699,12 @@ async function attendreQue(fn, delai = 8000) {
     for (const theme of THEMES) {
       for (const largeur of LARGEURS) {
         console.log(`\n=== ${largeur} px, thème ${theme}`);
-        const { ctx, p } = await contexte(navigateur, largeur, theme);
+        const { ctx, p: pAdmin } = await contexte(navigateur, largeur, theme);
         for (const page of PAGES) {
           if (FILTRE_PAGES && !FILTRE_PAGES.includes(page.nom)) continue;
+          // Page vue par un autre compte (lot 14) : son propre contexte.
+          const autre = page.compte ? await contexte(navigateur, largeur, theme, page.compte) : null;
+          const p = autre ? autre.p : pAdmin;
           try {
             if (page.avant) page.avant();
             await p.goto(BASE + page.chemin);
@@ -542,6 +717,8 @@ async function attendreQue(fn, delai = 8000) {
             }
           } catch (e) {
             etape(`${page.nom} ${largeur} : page mesurée jusqu’au bout`, false, String(e.message).split('\n')[0]);
+          } finally {
+            if (autre) await autre.ctx.close();
           }
         }
         await ctx.close();

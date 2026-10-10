@@ -16,6 +16,7 @@ from . import db, mailer, modes_admin
 from .repositories import dailylog as dailylog_repo
 from .repositories import notifications as notifications_repo
 from .repositories import securite as securite_repo
+from .repositories import tableaux as tableaux_repo
 from .repositories import utilisateurs as utilisateurs_repo
 from .utils import is_safe_next, texte_rappel_daily_log
 
@@ -228,6 +229,11 @@ def _verifier_rappel_dailylog(user: dict, aujourdhui: "datetime.date | None" = N
 
     Lot 13 (« Simuler le rappel du jour », mode test) : `simulee` marque la
     notification (notification.simulee) ; renvoie les jours rappelés."""
+    # Recette du lot 14, n° 11 : un Admin qui ne saisit pas d'heures (sa
+    # carte Daily log est masquée, il n'est compté nulle part) n'a pas de
+    # rappel — ni à la connexion, ni une fois par jour.
+    if user.get("role") == "admin" and not tableaux_repo.saisit_des_heures(user["id"]):
+        return []
     aujourdhui = aujourdhui or dailylog_repo.aujourdhui_pour(user)
     # Heures saisies OU journée marquée absente : pas d'oubli.
     manques = [j for j in dailylog_repo.jours_manques_recents(user, aujourdhui=aujourdhui) if j < aujourdhui]

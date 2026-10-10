@@ -1,10 +1,11 @@
 {# Un jour de Daily log en lecture (profil d'une personne, vue du chef de
    projet) — lot 13 : lien « Corriger » à cible de 24 px (audit UX M15).
-   Contexte : jour, utilisateur, peut_corriger, (ancre). #}
-<div class="dl-semaine-jour"{% if ancre %} id="profil-jour-{{ jour.date.isoformat() }}" tabindex="-1"{% endif %}>
+   Lot 14 : `jour.etat` (fiche, 10 derniers jours ouvrés) dit aussi un jour
+   non renseigné. Contexte : jour, utilisateur, peut_corriger, (ancre). #}
+<div class="dl-semaine-jour{% if jour.etat == 'manquant' %} dl-semaine-manquant{% endif %}"{% if ancre %} id="profil-jour-{{ jour.date.isoformat() }}" tabindex="-1"{% endif %}>
   <div class="dl-semaine-tete">
     <span class="dl-semaine-date">{{ date_fr(jour.date) }}</span>
-    <span class="dl-semaine-total">{% if jour.absent %}Absent{% else %}{{ jour.total_heures|heures }}{% endif %}{% if peut_corriger %} · <a href="{{ url_for('dailylog.formulaire', date=jour.date.isoformat(), utilisateur=utilisateur.id) }}" class="lien-cible" aria-label="Corriger le Daily log du {{ date_fr(jour.date)|lower }}">Corriger</a>{% endif %}</span>
+    <span class="dl-semaine-total">{% if jour.absent %}Absent{% elif jour.etat == 'manquant' %}<span class="dl-jour-manquant">Non renseigné</span>{% elif jour.etat == 'attente' %}<span class="k-muet">Pas encore saisi</span>{% elif jour.etat == 'verrouille' %}<span class="k-muet">Non renseigné</span>{% elif jour.etat == 'avant' %}<span class="k-muet">Avant son arrivée</span>{% else %}{{ jour.total_heures|heures }}{% endif %}{% if peut_corriger %} · <a href="{{ url_for('dailylog.formulaire', date=jour.date.isoformat(), utilisateur=utilisateur.id) }}" class="lien-cible" aria-label="Corriger le Daily log du {{ date_fr(jour.date)|lower }}">Corriger</a>{% endif %}</span>
   </div>
   {% for e in jour.entrees %}
     <div class="dl-semaine-ligne">

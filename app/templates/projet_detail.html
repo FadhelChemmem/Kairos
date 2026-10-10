@@ -36,7 +36,12 @@
         </label>
         {% include "partials/fil_outils.html" %}
       </div>
+      {# Lot 14 (revue produit P1-3) : Tout · Échanges · Activité, regroupements
+         et « Afficher plus » (au-delà de 30 posts). #}
+      {% import "partials/fil_filtres.html" as film %}
+      <div class="fil-barre">{{ film.filtres('projet', fil_categorie, '#fil-posts', 'projets.detail', {'projet_id': projet.id}) }}</div>
       {% include "partials/fil_projet.html" %}
+      {% include "partials/fil_suite.html" %}
       <div id="filtre-posts-vide" class="fil-filtre-vide" role="status"></div>
     </section>
   </div>

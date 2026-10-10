@@ -18,7 +18,7 @@
        suit et Retour revient à la vue précédente). #}
     {% if vue_admin %}
     <nav class="bascule-vue k-segmente deadlines-bascule" aria-label="Projets affichés" data-deadlines-bascule>
-      <a href="{{ url_for('deadlines.liste') }}" data-partiel="#deadlines-contenu" data-vue=""{% if not tous %} aria-current="page"{% endif %}>Mes projets</a>
+      <a href="{{ url_for('deadlines.liste', vue='mes') }}" data-partiel="#deadlines-contenu" data-vue=""{% if not tous %} aria-current="page"{% endif %}>Mes projets</a>
       <a href="{{ url_for('deadlines.liste', vue='tous') }}" data-partiel="#deadlines-contenu" data-vue="tous"{% if tous %} aria-current="page"{% endif %}>Tous les projets</a>
     </nav>
     {% endif %}

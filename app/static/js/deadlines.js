@@ -64,7 +64,7 @@
     var input = document.getElementById('filtre-deadlines');
     if (!input) return;
     var q = norm(input.value.trim()), visibles = 0, total = 0;
-    document.querySelectorAll('.g-row, .g-row-mobile, .g-row-sans-echeance').forEach(function (el) {
+    document.querySelectorAll('.g-row, .g-row-mobile, .g-row-sans-echeance, .tache-bloquee[data-filtre]').forEach(function (el) {
       if (el._filtre === undefined) el._filtre = norm(el.getAttribute('data-filtre'));
       var ok = !q || el._filtre.indexOf(q) !== -1;
       el.hidden = !ok;
@@ -91,7 +91,8 @@
 
   // Contrôle segmenté : l'élément « courant » suit la vue demandée.
   function vueDe(href) {
-    try { return new URL(href, window.location.href).searchParams.get('vue') === 'tous' ? 'tous' : ''; } catch (e) { return ''; }
+    // Lot 14 : sans « vue », l'Admin voit tous les projets (?vue=mes : les siens).
+    try { return new URL(href, window.location.href).searchParams.get('vue') === 'mes' ? '' : 'tous'; } catch (e) { return 'tous'; }
   }
   function marquerVue(vue) {
     document.querySelectorAll('[data-deadlines-bascule] > a').forEach(function (a) {
@@ -111,9 +112,17 @@
     if (!a || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
     marquerVue(vueDe(a.getAttribute('href')));
   });
+  // Section « Bloquées (n) » (lot 14) : dépliée, elle le reste quand le
+  // contenu est remplacé (action dans le panneau, bascule, filtres).
+  var bloqueesOuvertes = false;
+  document.addEventListener('toggle', function (e) {
+    if (e.target && e.target.id === 'deadlines-bloquees') bloqueesOuvertes = e.target.open;
+  }, true);
   document.addEventListener('kairos:fragment', function (e) {
     var r = e.detail && e.detail.racine;
     if (!r || r === document || !(r.id === 'deadlines-contenu' || (r.closest && r.closest('#deadlines-contenu')))) return;
+    var bloquees = document.getElementById('deadlines-bloquees');
+    if (bloquees && bloqueesOuvertes && !bloquees.open) bloquees.open = true;
     marquerVue(vueDe(window.location.href));
     document.querySelectorAll('[data-deadlines-bascule]').forEach(function (n) {
       document.dispatchEvent(new CustomEvent('kairos:fragment', { detail: { racine: n.parentNode } }));

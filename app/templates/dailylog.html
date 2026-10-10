@@ -20,6 +20,13 @@
 <div class="subbar">
   <div class="subbar-inner dl-subbar-inner">
     <h1 class="page-titre">Daily log</h1>
+    {# Lot 14 (revue produit P1-9) : qui a rempli, qui manque (Admin, chef). #}
+    {% if g.user.role in ('admin', 'chef_de_projet') %}
+    <a class="btn btn-petit subbar-fin dl-lien-equipe" id="dl-equipe" href="{{ url_for('dailylog.equipe') }}">
+      <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Daily log de l’équipe
+    </a>
+    {% endif %}
   </div>
 </div>
 {% include "partials/dailylog_page.html" %}

@@ -1,0 +1,51 @@
+/* Lot 14 — A4 : fil filtrable (revue produit P1-3).
+   Contrôle segmenté « Tout · Échanges · Activité », regroupement des
+   évènements automatiques, « Commenter » replié, « Afficher plus ». */
+
+/* --- Contrôle segmenté au-dessus du fil : segments de largeur fixe (le
+   choix ne change ni leur taille ni leur place). --- */
+.fil-barre { display: flex; align-items: center; margin: 2px 0 -2px; }
+.fil-filtres a { justify-content: center; min-width: 84px; }
+.fil-filtres a:focus-visible { outline-offset: 1px; }
+.profil-posts-entete { flex-wrap: wrap; gap: 8px 12px; }
+.profil-posts { gap: 14px; }
+.profil-posts > .fil-item > .post-card { box-shadow: none; border: 1px solid var(--border); }
+
+/* --- Regroupement : « Chef Test a créé 3 tâches sur 26091D ». --- */
+.fil-groupe-projet { font-weight: 700; }
+.fil-groupe-objets { margin-bottom: 4px; }
+.fil-groupe-details { margin-left: 46px; }
+.fil-groupe-bascule { list-style: none; display: inline-flex; margin-left: -10px; }
+.fil-groupe-bascule::-webkit-details-marker { display: none; }
+.fil-groupe-chevron { transition: transform var(--duree-base) var(--courbe-std); }
+.fil-groupe-details[open] > .fil-groupe-bascule .fil-groupe-chevron { transform: rotate(90deg); }
+.fil-groupe-posts { display: flex; flex-direction: column; gap: 10px; margin: 8px 0 0 -46px; }
+.fil-groupe-posts .post-card { box-shadow: none; border: 1px solid var(--border); margin: 0; }
+.fil-item.k-nouveau > .fil-groupe-carte { animation: k-surligne 1.2s var(--courbe-std); }
+
+/* --- « Commenter » : le champ est replié tant qu'on ne l'ouvre pas (avec
+   JavaScript seulement ; sans, il reste affiché). Le compteur a des
+   chiffres de largeur fixe. --- */
+html.k-js .post-commenter[data-replie] { display: none; }
+.post-action-commenter[aria-expanded="true"] { background: var(--hover-bg); color: var(--text-strong); }
+.post-commenter-nb { font-variant-numeric: tabular-nums; min-width: 2ch; text-align: start; color: var(--text-muted); }
+.post-commenter-nb:empty { min-width: 0; }
+
+/* --- « Afficher plus » et états vides par catégorie. --- */
+.fil-suite:empty { display: none; }
+.fil-suite { margin-top: 14px; }
+.fil-vide-carte { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.fil-vide-texte { margin: 0; }
+
+@media (max-width: 400px) {
+  .fil-barre .fil-filtres { display: flex; width: 100%; }
+  .fil-filtres a { flex: 1 1 0; min-width: 0; }
+  .fil-groupe-details { margin-left: 0; }
+  .fil-groupe-posts { margin-left: 0; }
+  .fil-groupe-bascule { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fil-groupe-chevron { transition: none; }
+}
+.fil-fin { margin: 0; text-align: center; font-size: var(--texte-s); color: var(--text-muted); padding: 8px 0; }
+.fil-fin:focus-visible { border-radius: var(--rayon-s); }

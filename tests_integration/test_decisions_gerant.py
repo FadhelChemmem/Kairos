@@ -26,7 +26,7 @@ class TestEtatsReserves(BaseIntegration):
         for etat in ("verifie", "arret", "abandonne"):
             self.client.post(f"/projets/{p}/taches/{t}/etat", data={"etat": etat})
             self.assertEqual(self._etat(t), "en_cours")
-        self.client.post(f"/projets/{p}/taches/{t}/etat", data={"etat": "bloque"})
+        self.client.post(f"/projets/{p}/taches/{t}/etat", data={"etat": "bloque", "motif": "Attente des plans"})
         self.assertEqual(self._etat(t), "bloque")
         for reserve in ("verifie", "arret", "abandonne"):
             self.sql("UPDATE tache SET etat=%s WHERE id=%s", (reserve, t))  # sans acteur : libre
@@ -36,7 +36,7 @@ class TestEtatsReserves(BaseIntegration):
             self.assertEqual(self._etat(t), reserve)
         # Aucun post « changement d'état » ni de clôture créé par ces refus.
         self.assertEqual(self.sql("SELECT count(*) AS n FROM post WHERE tache_id=%s AND auteur_id=%s "
-                                  "AND evenement IN ('etat_tache', 'cloture_tache')", (t, inter))[0]["n"], 1)
+                                  "AND evenement IN ('etat_tache', 'blocage_tache', 'deblocage_tache', 'cloture_tache')", (t, inter))[0]["n"], 1)
 
     def test_intervenant_garde_terminee_et_rouvre_une_tache_terminee(self):
         _, _, _, inter, p, t = self._contexte()
@@ -51,7 +51,7 @@ class TestEtatsReserves(BaseIntegration):
         for qui in (chef, co_chef, admin):
             self.login(qui)
             for etat in ("verifie", "en_cours", "arret", "bloque", "abandonne", "en_cours"):
-                self.client.post(f"/projets/{p}/taches/{t}/etat", data={"etat": etat})
+                self.client.post(f"/projets/{p}/taches/{t}/etat", data={"etat": etat, "motif": "Attente des plans"})
                 self.assertEqual(self._etat(t), etat)
             self.client.post(f"/projets/{p}/taches/{t}/etat", data={"etat": "arret"})
             self.client.post(f"/projets/{p}/taches/{t}/cloturer", data={"type_code": "envoi"})

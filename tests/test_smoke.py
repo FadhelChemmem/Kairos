@@ -126,6 +126,11 @@ MES_TACHES = [
      "projet_id": 1, "projet_nom": "Tour Meridian"},
 ]
 
+# Lot 14 : tableaux de bord de l'accueil (repositories/tableaux.py).
+COMPTEURS_TABLEAUX = {"projets": 3, "retard": 1, "retard_max": 2, "bloquees": 1, "projets_bloques": 1,
+                      "sans_intervenant": 0, "sans_echeance": 0, "projets_sans_tache": 0, "dailylog": 0}
+TACHES_DE_MES_PROJETS = [{**t, "projet_code": "26099X", "mienne": True} for t in MES_TACHES]
+
 FEED_POST_MANUEL = {
     "id": 1, "type_code": "envoi", "contenu": "Envoi du dossier EXE lot GO.", "created_at": datetime.datetime(2026, 9, 15, 10, 0),
     "tache_id": None, "parent_post_id": None, "projet_id": 1, "projet_code": "26099X", "projet_nom": "Tour Meridian",
@@ -395,6 +400,14 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.projets.ids_co_chefs": set(),
             "app.repositories.taches.list_deadlines": DEADLINES,
             "app.repositories.taches.list_mes_taches": MES_TACHES,
+            "app.repositories.taches.list_deadlines_tous": DEADLINES,
+            "app.repositories.tableaux.compteurs": COMPTEURS_TABLEAUX,
+            "app.repositories.tableaux.liste": [],
+            "app.repositories.tableaux.par_chef": [],
+            "app.repositories.tableaux.gere_des_projets": False,
+            "app.repositories.tableaux.saisit_des_heures": True,
+            "app.repositories.tableaux.pastilles_projets": {},
+            "app.repositories.tableaux.taches_de_mes_projets": TACHES_DE_MES_PROJETS,
             "app.repositories.taches.list_taches_projet": TACHES_PROJET,
             "app.repositories.taches.get_tache": TACHE_POUR_FICHIERS,
             "app.repositories.taches.get_piece_jointe": PIECE_JOINTE_TACHE,
@@ -402,6 +415,10 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.taches.set_etat": True,
             "app.repositories.taches.close_tache": 100,
             "app.repositories.taches.premiere_date": None,
+            # Lot 14 : section « Bloquées (n) », notifications retirées par « Annuler ».
+            "app.repositories.taches.list_bloquees": [],
+            "app.repositories.notifications.retirer": 0,
+            "app.repositories.taches.version": "1",
             "app.repositories.posts.list_feed_mes_projets": FEED,
             "app.repositories.posts.list_feed_projet": FEED,
             "app.repositories.posts.get_post": POST_POUR_ACCES,
@@ -423,6 +440,9 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.dailylog.jours_absents": set(),
             "app.repositories.dailylog.jour_renseigne": True,
             "app.repositories.dailylog.jours_renseignes": set(),
+            "app.repositories.dailylog.lignes_proposees": [],
+            "app.repositories.dailylog.synthese_periode": {},
+            "app.repositories.dailylog.membres_equipe": [],
             "app.repositories.utilisateurs.list_tous": UTILISATEURS_TOUS,
             "app.repositories.utilisateurs.compter": COMPTE_UTILISATEURS,
             "app.repositories.utilisateurs.rh_deja_attribue": None,
@@ -1158,13 +1178,14 @@ class SmokeTestCase(SmokeBase):
             p.start()
         try:
             with patch("app.repositories.taches.set_etat", return_value=True) as set_etat:
-                resp = self.client.post("/projets/1/taches/5/etat", data={"etat": "bloque"}, follow_redirects=False)
+                resp = self.client.post("/projets/1/taches/5/etat", data={"etat": "bloque", "motif": "Plans archi"},
+                                        follow_redirects=False)
         finally:
             for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         self.assertIn("/projets/1", resp.headers["Location"])
-        set_etat.assert_called_once_with(5, 1, "bloque", 1, peut_gerer=False, annulation=False)
+        set_etat.assert_called_once_with(5, 1, "bloque", 1, peut_gerer=False, annulation=False, motif="Plans archi")
 
     def test_changer_etat_tache_introuvable_ne_plante_pas(self):
         """set_etat() renvoie False quand la tâche n'appartient pas à ce
@@ -4688,12 +4709,34 @@ class TestPostsAutomatiquesEtProjet(SmokeBase):
     def test_changement_d_etat_de_tache_cree_un_post(self):
         from app.repositories import taches as taches_repo
         # 2e fetchone : le projet n'était pas « En cours » (pas de bascule).
-        cur = self._cur([{"etat": "en_cours"}, None])
-        self.assertTrue(taches_repo.set_etat(5, 1, "bloque", 1))
+        cur = self._cur([{"etat": "bloque"}, None])
+        self.assertTrue(taches_repo.set_etat(5, 1, "en_cours", 1))
         posts_ = self._inserts_post(cur)
         self.assertEqual(len(posts_), 1)
+        # Lot 14 (P0-1) : sortir du blocage, c'est « a levé le blocage ».
+        self.assertIn("'deblocage_tache'", posts_[0].args[0])
+        self.assertEqual(posts_[0].args[1], (1, 5, 1, "Bloqué → En cours"))
+        cur = self._cur([{"etat": "en_cours"}, None])
+        self.assertTrue(taches_repo.set_etat(5, 1, "arret", 1, peut_gerer=True))
+        posts_ = self._inserts_post(cur)
         self.assertIn("'etat_tache'", posts_[0].args[0])
-        self.assertEqual(posts_[0].args[1], (1, 5, 1, "En cours → Bloqué"))
+        self.assertEqual(posts_[0].args[1], (1, 5, 1, "En cours → Arrêt"))
+
+    def test_blocage_exige_un_motif_et_le_porte_dans_le_post(self):
+        """Lot 14 (revue produit P0-1) : « Qu'est-ce qui bloque ? »
+        obligatoire ; le motif est gardé sur la tâche et porté par le post
+        automatique 'blocage_tache'."""
+        from app.repositories import taches as taches_repo
+        self._cur([{"etat": "en_cours"}, None])
+        with self.assertRaises(taches_repo.MotifBlocageRequis):
+            taches_repo.set_etat(5, 1, "bloque", 1)
+        cur = self._cur([{"etat": "en_cours"}, None])
+        self.assertTrue(taches_repo.set_etat(5, 1, "bloque", 1, motif="  Attente des plans archi  "))
+        maj = [c for c in cur.execute.call_args_list if c.args[0].lstrip().startswith("UPDATE tache")][0]
+        self.assertEqual(maj.args[1]["motif"], "Attente des plans archi")
+        posts_ = self._inserts_post(cur)
+        self.assertIn("'blocage_tache'", posts_[0].args[0])
+        self.assertEqual(posts_[0].args[1], (1, 5, 1, "Attente des plans archi"))
 
     def test_projet_suit_ses_taches_bloque_puis_en_cours(self):
         """Lot 8 (décision Fadhel), lot 13 (décision 1) : après chaque
@@ -4706,7 +4749,7 @@ class TestPostsAutomatiquesEtProjet(SmokeBase):
             return [c for c in cur.execute.call_args_list if c.args[0].lstrip().startswith("UPDATE projet p SET etat")]
 
         cur = self._cur([{"etat": "en_cours"}, {"ancien": "en_cours", "etat": "bloque"}])
-        taches_repo.set_etat(5, 1, "bloque", 1)
+        taches_repo.set_etat(5, 1, "bloque", 1, motif="Attente des plans")
         self.assertEqual(len(recalculs(cur)), 1)
         self.assertIn("fn_etat_projet_recalcule(p.etat, p.id)", recalculs(cur)[0].args[0])
         self.assertEqual(self._inserts_post(cur)[-1].args[1], (1, 1, "En cours → Bloqué"))

@@ -49,7 +49,9 @@ def grouper_par_semaine(rows: list[dict], aujourdhui: datetime.date) -> list[dic
 @role_required("admin", "chef_de_projet", "intervenant")
 def liste():
     admin = g.user["role"] == "admin"
-    tous = admin and request.args.get("vue") == "tous"
+    # Lot 14 (revue produit P0-3) : l'Admin arrive sur « Tous les projets » ;
+    # « Mes projets » = ?vue=mes.
+    tous = admin and request.args.get("vue") != "mes"
     filtres = {"chef": None, "equipe": None}
     sans_echeance, chefs = [], []
     if tous:
@@ -59,8 +61,10 @@ def liste():
         mes_taches = taches.list_deadlines_tous(filtres["chef"], filtres["equipe"], limit=500)
         sans_echeance = taches.list_deadlines_tous(filtres["chef"], filtres["equipe"], sans_echeance=True, limit=300)
         chefs = projets.list_chefs_de_projet(g.user["id"])
+        bloquees = taches.list_bloquees(tous=True, chef_id=filtres["chef"], equipe_code=filtres["equipe"])
     else:
         mes_taches = taches.list_deadlines(g.user["id"], limit=200)
+        bloquees = taches.list_bloquees(g.user["id"])
     # « Aujourd'hui » au fuseau de la personne (lot 11 : Guyane / Tunis),
     # comme le Daily log — et non la date du serveur ; date simulée de
     # l'Admin en mode test (lot 12, app/horloge.py).
@@ -69,6 +73,9 @@ def liste():
     contexte = dict(
         gantt=gantt, nb_taches=len(mes_taches), vue_admin=admin, tous=tous,
         filtres=filtres, chefs=chefs, sans_echeance=sans_echeance,
+        # Lot 14 (revue produit P0-1) : section « Bloquées (n) » sous le
+        # Gantt, même portée que la vue affichée (filtres compris).
+        taches_bloquees=bloquees,
         semaines=grouper_par_semaine(gantt["rows"], aujourdhui),
         q=(request.args.get("q") or "")[:100],
     )

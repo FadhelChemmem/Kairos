@@ -1,0 +1,88 @@
+/* Lot 14 — A3 : Daily log de l'équipe (revue produit P1-9), fiche d'une
+   personne (10 derniers jours ouvrés), lien « Daily log de l'équipe » du
+   Daily log. Couleurs : jetons d'état d'app.css (contraste ≥ 4,5:1 en
+   clair et en sombre) ; jamais la couleur seule (texte dans chaque case). */
+.dl-lien-equipe { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.dl-lien-equipe svg { color: var(--brand-text); flex: none; }
+
+.dlq-subbar { flex-wrap: wrap; }
+.dlq-portee { font-size: var(--texte-s); color: var(--text-muted); }
+.dlq-page { max-width: 1040px; }
+.dlq-barre { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 4px 0 10px; }
+.dlq-nav { display: flex; flex-wrap: wrap; gap: 6px; }
+.dlq-navbtn { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; text-decoration: none; }
+.dlq-navbtn[aria-disabled="true"] { opacity: .5; cursor: default; pointer-events: none; }
+.dlq-titre { margin: 0; font-size: var(--texte-l); font-weight: 700; color: var(--text-strong); }
+.dlq-titre:focus { outline: none; }
+.dlq-titre:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.dlq-resume { margin: 0 0 12px; font-size: var(--texte-s); color: var(--text-secondary); }
+.dlq-resume b { color: var(--etat-bloque-texte); }
+
+.dlq-defile { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--rayon-l); background: var(--surface); box-shadow: var(--ombre-1); }
+.dlq-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--texte-s); font-variant-numeric: tabular-nums; }
+.dlq-table th, .dlq-table td { padding: 6px; border-bottom: 1px solid var(--border-soft); text-align: center; vertical-align: middle; }
+.dlq-table thead th { font-size: var(--texte-xs); font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; background: var(--bg-subtle-1); }
+.dlq-table thead abbr { text-decoration: none; }
+.dlq-table .dlq-col-nom, .dlq-table .dlq-nom { text-align: left; padding-left: 14px; }
+.dlq-nom { font-weight: 600; min-width: 160px; }
+.dlq-personne { color: var(--text-strong); text-decoration: none; }
+.dlq-personne:hover { text-decoration: underline; }
+.dlq-vous { font-weight: 500; color: var(--text-muted); }
+.dlq-col-jour { width: 13%; }
+.dlq-col-total, .dlq-total { width: 10%; font-weight: 700; color: var(--text-strong); white-space: nowrap; }
+.dlq-we { color: var(--text-muted); margin-left: 2px; }
+.dlq-lien { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 36px; padding: 0 6px; border-radius: var(--rayon-m);
+  font-weight: 600; text-decoration: none; white-space: nowrap; border: 1px solid transparent; }
+a.dlq-lien { cursor: pointer; }
+a.dlq-lien:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.dlq-rempli .dlq-lien { background: var(--etat-termine-fond); color: var(--etat-termine-texte); }
+.dlq-absent .dlq-lien { background: var(--etat-cours-fond); color: var(--etat-cours-texte); }
+.dlq-manquant .dlq-lien { background: var(--etat-bloque-fond); color: var(--etat-bloque-texte); border-color: color-mix(in srgb, var(--etat-bloque-texte) 35%, transparent); }
+.dlq-attente .dlq-lien, .dlq-verrouille .dlq-lien, .dlq-futur .dlq-lien, .dlq-avant .dlq-lien, .dlq-week_end .dlq-lien {
+  background: var(--etat-neutre-fond); color: var(--etat-neutre-texte); font-weight: 500; }
+.dlq-ico { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: var(--etat-bloque-texte); color: var(--surface);
+  font-size: 10px; font-weight: 800; line-height: 1; }
+@media (hover: hover) {
+  a.dlq-lien:hover { border-color: currentColor; }
+}
+a.dlq-lien { transition: border-color var(--duree-rapide) var(--courbe-std); }
+.dlq-table tfoot th, .dlq-table tfoot td { border-bottom: none; background: var(--bg-subtle-1); font-weight: 700; color: var(--text-strong); }
+.dlq-pied > span { display: block; }
+.dlq-pied-manque { font-size: var(--texte-xs); font-weight: 600; color: var(--etat-bloque-texte); }
+.dlq-pied .dlq-ico-pied { display: none; }
+.dlq-legende { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 0 0; padding: 0; font-size: var(--texte-xs); color: var(--text-muted); }
+.dlq-legende li { display: inline-flex; align-items: center; gap: 6px; }
+.dlq-pastille { display: inline-block; width: 14px; height: 14px; border-radius: 4px; }
+.dlq-pastille.dlq-rempli { background: var(--etat-termine-texte); }
+.dlq-pastille.dlq-absent { background: var(--etat-cours-texte); }
+.dlq-pastille.dlq-manquant { background: var(--etat-bloque-texte); }
+.dlq-pastille.dlq-gris { background: var(--etat-neutre-fond); border: 1px solid var(--border-3); }
+
+/* Téléphone : une carte par personne (nom et total, puis les 5 jours). */
+@media (max-width: 600px) {
+  .dlq-defile { border: none; background: none; box-shadow: none; overflow: visible; }
+  .dlq-table, .dlq-table tbody, .dlq-table tfoot { display: block; }
+  .dlq-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .dlq-table tr { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; padding: 10px; margin-bottom: 8px;
+    border: 1px solid var(--border); border-radius: var(--rayon-l); background: var(--surface); box-shadow: var(--ombre-1); }
+  .dlq-table th, .dlq-table td { border: none; padding: 0; }
+  .dlq-table .dlq-nom { grid-column: 1 / 5; padding-left: 0; min-width: 0; align-self: center; }
+  .dlq-table .dlq-total { grid-column: 5; grid-row: 1; text-align: right; width: auto; align-self: center; }
+  .dlq-table td.dlq-case, .dlq-table td.dlq-pied { grid-row: 2; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .dlq-table td.dlq-case::before, .dlq-table td.dlq-pied::before { content: attr(data-jour); font-size: 10.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
+  .dlq-lien { min-height: 40px; padding: 0 2px; font-size: 11.5px; white-space: normal; text-align: center; line-height: 1.2; }
+  .dlq-mot, .dlq-long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .dlq-ico { width: 18px; height: 18px; font-size: 11px; }
+  .dlq-pied-manque { display: inline-flex !important; align-items: center; justify-content: center; gap: 3px; }
+  .dlq-pied .dlq-ico-pied { display: inline-grid; width: 14px; height: 14px; font-size: 9px; }
+  .dlq-table tfoot tr { background: var(--bg-subtle-1); }
+  .dlq-table tfoot th, .dlq-table tfoot td { background: none; }
+  .dlq-pied { font-size: 11.5px; }
+}
+
+/* Fiche d'une personne : Daily log des 10 derniers jours ouvrés. */
+.dlq-fiche-tete { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.dlq-fiche-equipe { font-size: var(--texte-s); font-weight: 600; }
+.dlq-fiche-resume { margin: 0 0 8px; }
+.dl-jour-manquant { color: var(--etat-bloque-texte); font-weight: 700; }
+.dl-semaine-jour.dl-semaine-manquant { border-left: 3px solid var(--etat-bloque-texte); padding-left: 8px; }

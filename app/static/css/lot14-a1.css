@@ -1,0 +1,90 @@
+/* Lot 14 — A1 : tâche bloquée avec raison (revue produit P0-1) et message
+   de clôture (P0-2). Jetons de app.css seulement (clair et sombre). */
+
+/* --- Panneau de tâche : ligne sous les états (hauteur réservée) --------- */
+.tache-etat-zone { position: relative; }
+.tache-etat-detail {
+  margin: 6px 0 0; min-height: calc(var(--texte-s) * var(--interligne)); line-height: var(--interligne);
+  font-size: var(--texte-s); color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tache-etat-detail-bloque { color: var(--text-muted); }
+.tache-etat-detail-motif { color: var(--etat-bloque-texte); font-weight: var(--graisse-forte); }
+.tache-etat-detail-motif.k-muet { color: var(--text-muted); font-weight: var(--graisse-normale); }
+
+/* « Qu’est-ce qui bloque ? » : par-dessus la suite du panneau (rien ne
+   bouge), sous la ligne des états. */
+.tache-blocage {
+  position: absolute; z-index: 6; top: calc(100% + 4px); left: 0;
+  width: min(100%, 380px); box-sizing: border-box;
+  display: flex; flex-direction: column; gap: var(--esp-2);
+  padding: var(--esp-3); border-radius: var(--rayon-m);
+  background: var(--surface); border: 1px solid var(--border-3); border-top: 3px solid var(--etat-bloque-texte);
+  box-shadow: var(--ombre-2);
+}
+.tache-blocage[hidden] { display: none; }
+.tache-blocage-titre { font-size: var(--texte-m); font-weight: var(--graisse-titre); color: var(--text-strong); }
+.tache-blocage textarea {
+  width: 100%; box-sizing: border-box; min-height: 56px; resize: vertical;
+  font: inherit; font-size: var(--texte-m);
+}
+.tache-blocage-aide { margin: 0; font-size: var(--texte-xs); color: var(--text-muted); }
+.tache-blocage-actions { display: flex; justify-content: flex-end; gap: var(--esp-2); flex-wrap: wrap; }
+
+/* Ligne du tableau : la pastille « Bloquée » porte le motif au survol. */
+.taskrow-pastille-bloquee { cursor: help; }
+
+/* --- Bloc « Terminer la tâche » (message facultatif) ------------------- */
+.tache-cloture { align-items: flex-end; }
+.tache-cloture-titre { flex-basis: 100%; margin: 0; }
+.tache-cloture-message { flex-basis: 100%; display: flex; flex-direction: column; gap: 4px; }
+.tache-cloture-message label { font-size: 12px; }
+.tache-cloture-message textarea {
+  width: 100%; box-sizing: border-box; min-height: 52px; resize: vertical;
+  font: inherit; font-size: var(--texte-m);
+}
+
+/* --- Fil : motif d'un blocage --------------------------------------------- */
+.post-blocage-motif { color: var(--text); }
+
+/* --- Section repliable « Bloquées (n) » (accueil, Deadlines) ------------ */
+.taches-bloquees { padding-top: 0; padding-bottom: 0; }
+.taches-bloquees-resume {
+  display: flex; align-items: center; gap: var(--esp-2); list-style: none; cursor: pointer;
+  min-height: 44px; padding: 10px 0; margin: 0;
+}
+.taches-bloquees-resume::-webkit-details-marker { display: none; }
+.taches-bloquees-resume:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--rayon-s); }
+.taches-bloquees-titre { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.taches-bloquees-titre svg { color: var(--etat-bloque-texte); flex-shrink: 0; }
+.taches-bloquees-nb { color: var(--etat-bloque-texte); font-variant-numeric: var(--chiffres); }
+.taches-bloquees-chevron { width: 8px; height: 8px; flex-shrink: 0; margin-right: 4px;
+  border-right: 2px solid var(--text-muted); border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg) translate(-2px, -2px); transition: transform var(--duree-rapide) var(--courbe-std); }
+.taches-bloquees[open] .taches-bloquees-chevron { transform: rotate(-135deg) translate(-2px, -2px); }
+.taches-bloquees-liste { list-style: none; margin: 0; padding: 0 0 var(--esp-2); }
+.tache-bloquee-lien {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px;
+  padding: 10px 2px; min-height: 44px; box-sizing: border-box;
+  border-top: 1px solid var(--border-soft); color: inherit; text-decoration: none;
+}
+.tache-bloquee-lien:hover .tache-bloquee-titre { color: var(--brand-text-strong); text-decoration: underline; }
+.tache-bloquee-lien:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; border-radius: var(--rayon-s); }
+.tache-bloquee-titre { grid-column: 1; font-size: 13px; font-weight: var(--graisse-forte); line-height: var(--interligne-serre); overflow-wrap: anywhere; }
+.tache-bloquee-motif { grid-column: 1; font-size: var(--texte-s); color: var(--text); overflow-wrap: anywhere; }
+.tache-bloquee-sous { grid-column: 1; font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
+.tache-bloquee-depuis { grid-column: 2; grid-row: 1 / span 3; align-self: start; text-align: right;
+  font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.tache-bloquee-par { display: block; }
+.tache-bloquee-jours { display: block; font-weight: var(--graisse-titre); color: var(--etat-bloque-texte); font-variant-numeric: var(--chiffres); }
+.deadlines-bloquees { margin-top: 16px; }
+
+@media (max-width: 600px) {
+  .tache-bloquee-lien { grid-template-columns: minmax(0, 1fr); }
+  .tache-bloquee-depuis { grid-column: 1; grid-row: auto; text-align: left; white-space: normal; }
+  .tache-bloquee-jours, .tache-bloquee-par { display: inline; }
+  .tache-bloquee-jours + .tache-bloquee-par::before { content: " · "; content: " · " / ""; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .taches-bloquees-chevron { transition: none; }
+}

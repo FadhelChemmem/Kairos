@@ -11,6 +11,7 @@ from ..repositories import notifications as notifications_repo
 from ..repositories import posts as posts_repo
 from ..repositories import projets as projets_repo
 from ..repositories import utilisateurs as utilisateurs_repo
+from .. import fil as film
 from .. import partiel
 from .. import validation as v
 from ..storage import delete_upload, save_upload
@@ -63,10 +64,15 @@ def reponse_publication(post_id: int, **fiche):
     « avant »), les messages en toasts ; ailleurs (profil), toasts seuls."""
     cible = partiel.est_partiel()
     post = posts_repo.get_post_carte(post_id, g.user["id"]) if cible in FILS_PARTIELS else None
-    if post is None:
+    # Lot 14 : seulement si la catégorie affichée par le fil l'accepte
+    # (un post écrit n'arrive pas dans la vue « Activité », un post de
+    # création de tâche pas dans « Échanges »).
+    categorie = film.categorie_demandee()
+    if post is None or (categorie != "tout" and (categorie == "activite") != bool(post.get("est_activite"))):
         return partiel.rien()
     show_projet = FILS_PARTIELS[cible]
-    next_url = url_for("main.accueil") if show_projet else url_for("projets.detail", projet_id=post["projet_id"])
+    next_url = (url_for("main.accueil", fil=categorie) if show_projet
+                else url_for("projets.detail", projet_id=post["projet_id"], fil=categorie))
     return partiel.repondre("partials/fil_item.html", post=post, show_projet=show_projet, next_url=next_url)
 
 
@@ -383,7 +389,10 @@ def commenter(post_id: int):
     _notifier_tags(sorted(a_notifier), post_id, contenu)
     _notifier_auteur(post, parent_commentaire, deja=a_notifier)
     if partiel.est_partiel():
-        return _reponse_commentaires(post_id, nouveau_commentaire_id=commentaire_id)
+        # Lot 14 : le champ principal reste ouvert après l'envoi (le focus y
+        # revient) ; après une réponse, son état est gardé par la page.
+        return _reponse_commentaires(post_id, nouveau_commentaire_id=commentaire_id,
+                                     composer_ouvert=parent_commentaire_id is None)
     return _safe_redirect()
 
 

@@ -64,19 +64,39 @@
         <span class="tache-prop-texte">{{ tst.libelle }} — {% if peut_gerer %}projet clos&nbsp;: rouvrez-le (panneau Informations) pour agir sur ses tâches.{% else %}projet clos&nbsp;: seul son chef de projet ou un co-chef peut le rouvrir.{% endif %}</span>
       {% elif not peut_agir_tache %}
         <span class="tache-prop-texte">{{ tst.libelle }} — seuls le chef de projet, un co-chef ou un intervenant de la tâche peuvent changer son état.</span>
+        {% if t.etat == 'bloque' %}{% include "partials/tache_etat_detail.html" %}{% endif %}
       {% elif etat_reserve_verrouille %}
         <span class="tache-prop-texte">Tâche {{ tst.libelle|lower }}&nbsp;: seuls le chef de projet, un co-chef ou un Admin peuvent changer son état.</span>
       {% else %}
         {# Liste de choix sans « Appliquer » (audit UX §2.4) : un clic change
            l'état, tout de suite à l'écran (optimiste), « Annuler » dans le toast. #}
+        {# Lot 14 (revue produit P0-1) : « Bloquée » ouvre « Qu’est-ce qui
+           bloque ? » par-dessus le panneau (rien ne bouge), le motif est
+           obligatoire ; la ligne sous les états (réservée, même hauteur
+           qu’il y ait un texte ou non) dit depuis quand et pourquoi. #}
+        <div class="tache-etat-zone">
         <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" class="tache-etats" data-partiel="{{ cible }}" data-optimiste="etat-tache" role="group" aria-labelledby="tache-{{ t.id }}-etat-libelle">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           {% for code in ordre if code == t.etat or code in suivants %}
             {% set st = tache_etat_style(code) %}
-            <button type="submit" name="etat" value="{{ code }}" id="tache-{{ t.id }}-etat-{{ code }}" class="tache-etat-choix tache-etat-{{ code }}" aria-pressed="{{ 'true' if code == t.etat else 'false' }}" data-classe="{{ st.classe }}" data-libelle="{{ st.libelle }}">{{ 'Rouvrir' if code == 'en_cours' and t.etat in ('termine', 'verifie') else st.libelle }}</button>
+            <button type="submit" name="etat" value="{{ code }}" id="tache-{{ t.id }}-etat-{{ code }}" class="tache-etat-choix tache-etat-{{ code }}" aria-pressed="{{ 'true' if code == t.etat else 'false' }}" data-classe="{{ st.classe }}" data-libelle="{{ st.libelle }}"{% if code == 'bloque' and t.etat != 'bloque' %} data-blocage-ouvrir="tache-{{ t.id }}-blocage" aria-haspopup="dialog" aria-expanded="false" aria-controls="tache-{{ t.id }}-blocage"{% endif %}>{{ 'Rouvrir' if code == 'en_cours' and t.etat in ('termine', 'verifie') else st.libelle }}</button>
           {% endfor %}
         </form>
-        {% if t.etat in ('termine', 'verifie') and t.date_fin %}<p class="tache-prop-aide">Clôturée le {{ t.date_fin|date_courte(true) }}</p>{% endif %}
+        {% include "partials/tache_etat_detail.html" %}
+        {% if 'bloque' in suivants and t.etat != 'bloque' %}
+        <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" id="tache-{{ t.id }}-blocage" class="tache-blocage" data-partiel="{{ cible }}" data-optimiste="blocage-tache" data-focus-apres="#tache-{{ t.id }}-etat-bloque" role="dialog" aria-modal="false" aria-labelledby="tache-{{ t.id }}-blocage-titre" hidden>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="etat" value="bloque">
+          <label for="tache-{{ t.id }}-motif" id="tache-{{ t.id }}-blocage-titre" class="tache-blocage-titre">Qu’est-ce qui bloque&#8239;?</label>
+          <textarea id="tache-{{ t.id }}-motif" name="motif" rows="2" maxlength="500" required autocomplete="off" placeholder="Ex. attente des plans archi indice B" aria-describedby="tache-{{ t.id }}-blocage-aide"></textarea>
+          <p id="tache-{{ t.id }}-blocage-aide" class="tache-blocage-aide">{{ aide_blocage }}</p>
+          <div class="tache-blocage-actions">
+            <button type="button" class="btn btn-petit" data-blocage-annuler>Annuler</button>
+            <button type="submit" id="tache-{{ t.id }}-blocage-valider" class="btn-primaire btn-petit">Signaler le blocage</button>
+          </div>
+        </form>
+        {% endif %}
+        </div>
       {% endif %}
       </dd>
     </div>
@@ -173,8 +193,16 @@
   {% endif %}
 
   {% if peut_agir_tache and not etat_reserve_verrouille and t.etat not in ('termine', 'verifie') %}
-  <form method="post" action="{{ url_for('projets.cloturer_tache', projet_id=projet.id, tache_id=t.id) }}" class="tache-cloture" data-partiel="{{ cible }}">
+  {# Lot 14 (revue produit P0-2) : le message du post de clôture se tape
+     ici (facultatif : sans message, « Tâche terminée. ») ; le chef et les
+     co-chefs sont prévenus quand un intervenant termine la tâche. #}
+  <form method="post" action="{{ url_for('projets.cloturer_tache', projet_id=projet.id, tache_id=t.id) }}" class="tache-cloture" data-partiel="{{ cible }}" aria-labelledby="tache-{{ t.id }}-cloture-titre">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h3 class="tache-fenetre-sous-titre tache-cloture-titre" id="tache-{{ t.id }}-cloture-titre">Terminer la tâche</h3>
+    <div class="tache-cloture-message">
+      <label for="cloture-message-{{ t.id }}">Message <span class="k-muet">(facultatif)</span></label>
+      <textarea name="contenu" id="cloture-message-{{ t.id }}" rows="2" maxlength="10000" autocomplete="off" placeholder="Ex. Dossier EXE indice B envoyé au BET"></textarea>
+    </div>
     <div class="tache-cloture-type">
       <label for="cloture-tag-{{ t.id }}">Type de post</label>
       <select name="type_code" id="cloture-tag-{{ t.id }}">

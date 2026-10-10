@@ -368,8 +368,11 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
       && sql('SELECT string_agg(utilisateur_id::text, \',\' ORDER BY utilisateur_id) FROM projet_co_chef WHERE projet_id=1') === '2'
       && sql('SELECT count(*) FROM projet_intervenant WHERE projet_id=1 AND utilisateur_id=5') === '0');
     etape('équipe du projet inchangée', sql('SELECT equipe_code FROM projet WHERE id=1') === 'MIDGARD');
+    // Lot 14 : post automatique, dans la vue « Activité » du fil.
+    await pg.click('#fil-filtre-projet-activite');
+    await pg.waitForSelector('#fil-posts[data-fil-categorie="activite"]');
     etape('post « Ali Chef a confié le projet à Sami Chérif » dans le fil',
-      (await pg.locator('#fil-posts').innerText()).includes('Ali Chef a confié le projet à Sami Chérif.'));
+      (await pg.locator('#fil-posts').textContent()).includes('Ali Chef a confié le projet à Sami Chérif.'));
     etape('notification au nouveau chef, journal d’audit',
       sql("SELECT count(*) FROM notification WHERE utilisateur_id=5 AND message LIKE 'Ali Chef vous a confié le projet «\u00a021114X_Siemens\u00a0»%' AND post_id IS NOT NULL") === '1'
       && sql("SELECT count(*) FROM audit_log WHERE table_cible='projet' AND ligne_id=1 AND utilisateur_id=2 AND donnees_avant->>'chef_projet_id'='2' AND donnees_apres->>'chef_projet_id'='5'") === '1');

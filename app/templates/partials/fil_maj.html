@@ -1,0 +1,5 @@
+{# Réponse partielle d'un changement de catégorie du fil (lot 14) : la liste
+   (gabarit `fil_gabarit`, cible) puis « Afficher plus » hors cible.
+   Contexte : celui de la liste, fil_suite_id, fil_suite_url, fil_suite_cible. #}
+{% include fil_gabarit %}
+{% with oob=true %}{% include "partials/fil_suite.html" %}{% endwith %}

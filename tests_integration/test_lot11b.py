@@ -77,7 +77,8 @@ class TestChangementDeChef(_BaseChef):
                            "AND evenement = 'chef_projet'", (self.p,))
         self.assertEqual((post["auteur_id"], post["type_code"]), (self.chef, "information"))
         self.assertEqual(post["contenu"], "Ali Chef a confié le projet à Sami Chérif. Ali Chef, chef précédent, devient co-chef.")
-        fiche = _texte(self.client.get(f"/projets/{self.p}"))
+        # Lot 14 : un post automatique est dans la vue « Activité » du fil.
+        fiche = _texte(self.client.get(f"/projets/{self.p}?fil=activite"))
         self.assertIn("a changé le chef de projet", fiche)
         self.assertIn("Ali Chef a confié le projet à Sami Chérif.", fiche)
         # Notification au nouveau chef, reliée au post (ouvre la fiche).

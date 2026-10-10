@@ -33,15 +33,33 @@ def creer(
 
 def creer_pour_plusieurs(utilisateur_ids: list[int], categorie: str, message: str,
                           post_id: int | None = None, tache_id: int | None = None,
-                          exclure_id: int | None = None, projet_id: int | None = None) -> None:
+                          exclure_id: int | None = None, projet_id: int | None = None) -> list[int]:
     """Même notification pour plusieurs personnes (ex. tous les intervenants
     ajoutés à une tâche) — `exclure_id` sert à ne jamais notifier l'auteur
     de l'action lui-même. Chaque personne n'est notifiée qu'une fois, même
-    si son id est répété (audit sécurité I12)."""
+    si son id est répété (audit sécurité I12). Renvoie les ids créés (lot
+    14 : « Annuler » ne retire que les notifications de son geste)."""
+    ids = []
     for uid in dict.fromkeys(utilisateur_ids):
         if uid == exclure_id:
             continue
-        creer(uid, categorie, message, post_id=post_id, tache_id=tache_id, projet_id=projet_id)
+        ids.append(creer(uid, categorie, message, post_id=post_id, tache_id=tache_id, projet_id=projet_id))
+    return ids
+
+
+def retirer(ids: list[int], tache_id: int) -> int:
+    """« Annuler » d'un blocage ou d'une clôture (lot 14) : les
+    notifications créées par CE geste (ids gardés dans l'action « Annuler »,
+    recette du lot 14 n° 4), sur cette tâche et encore non lues, sont
+    retirées — le chef n'est pas alerté d'un geste défait. Une notification
+    déjà lue reste ; celles d'un autre geste ne sont jamais touchées.
+    Renvoie le nombre retiré."""
+    ids = [int(i) for i in ids or []]
+    if not ids:
+        return 0
+    with db.get_cursor() as cur:
+        cur.execute("DELETE FROM notification WHERE id = ANY(%s) AND tache_id = %s AND NOT lu", (ids, tache_id))
+        return cur.rowcount
 
 
 def list_notifications(user_id: int, limit: int = 50, avec_simulees: bool = False) -> list[dict]:

@@ -1,0 +1,14 @@
+{# Fil de l'accueil (#fil-liste) : remplacé en partiel quand on change de
+   catégorie (lot 14) ; un post publié depuis « + Nouveau post » arrive en
+   tête (lot 13, posts.reponse_publication). Contexte : fil_entrees,
+   fil_categorie. #}
+<div id="fil-liste" class="fil-liste" data-fil-categorie="{{ fil_categorie }}">
+  {% with show_projet=true, next_url=url_for('main.accueil', fil=fil_categorie) %}
+    {% include "partials/fil_entrees.html" %}
+  {% endwith %}
+  {% if not fil_entrees %}
+    {% with texte_tout='Aucune activité sur vos projets pour l’instant.', fil_cible='#fil-liste', fil_lien_activite=url_for('main.accueil', fil='activite') %}
+      {% include "partials/fil_vide.html" %}
+    {% endwith %}
+  {% endif %}
+</div>

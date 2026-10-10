@@ -14,15 +14,22 @@
    (titre, "Voir tout", chaque ligne) mène toujours à /deadlines — un <a>
    ne peut pas en contenir un autre, il fallait donc arrêter d'envelopper
    toute la bannière dans un unique lien. #}
+{# Lot 14 : en tête, la Vue d'ensemble de l'Admin (tuiles, puis échéances
+   du bureau et tableau « Par chef de projet » côte à côte) ou la carte
+   « À traiter » du chef de projet (routes/tableaux.py). #}
+{% if ve or at %}<div class="accueil-tableaux">
+  {% if ve %}{% include "partials/vue_ensemble.html" %}{% else %}{% include "partials/a_traiter.html" %}{% endif %}
+  {% if par_chef %}<div class="accueil-haut-admin">{% endif %}
+{% endif %}
 {# Ni RH ni Client : pas d'échéances (lot 7). #}
 {% if not sans_projets and g.user.role != 'client' %}
 <section class="deadline-banner" aria-labelledby="accueil-deadlines-titre">
   {# Lot 13 (audit a11y M8) : bloc titré, barres vers la tâche elle-même. #}
-  <h2 class="sr-only" id="accueil-deadlines-titre">Deadlines</h2>
+  <h2 class="sr-only" id="accueil-deadlines-titre">{{ 'Toutes les échéances du bureau' if ve else 'Deadlines' }}</h2>
   <a href="{{ url_for('deadlines.liste') }}" class="deadline-banner-head lien-discret-bloc">
     <span class="deadline-banner-title">
       <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>
-      Deadlines
+      {{ 'Toutes les échéances du bureau' if ve else 'Deadlines' }}
     </span>
     <span class="deadline-banner-tout">Tout voir<span class="sr-only"> les deadlines</span> <span aria-hidden="true">→</span></span>
   </a>
@@ -50,10 +57,13 @@
   {% else %}
     {# Revue produit (§ 3) : « à venir » était faux à l'échelle du bureau
        pour un Admin rattaché à aucun projet. #}
-    <p class="deadline-banner-vide">Aucune échéance sur vos projets.{% if g.user.role == 'admin' %} <a href="{{ url_for('deadlines.liste', vue='tous') }}" class="lien-fort">Voir celles du bureau <span aria-hidden="true">→</span></a>{% endif %}</p>
+    <p class="deadline-banner-vide">{% if ve %}Aucune échéance en cours dans le bureau.{% else %}Aucune échéance sur vos projets.{% if g.user.role == 'admin' %} <a href="{{ url_for('deadlines.liste', vue='tous') }}" class="lien-fort">Voir celles du bureau <span aria-hidden="true">→</span></a>{% endif %}{% endif %}</p>
   {% endif %}
 </section>
 {% endif %}
+{% if ve or at %}
+  {% if par_chef %}{% include "partials/par_chef.html" %}</div>{% endif %}
+</div>{% endif %}
 
 <h1 class="sr-only">Accueil</h1>
 <div class="page-body page-body-accueil">
@@ -77,6 +87,15 @@
             <div class="accueil-texte">
               <div class="accueil-projet-nom" title="{{ p.code }}_{{ p.nom }}">{{ p.code }}_{{ p.nom }}</div>
               <div class="accueil-sous">{{ p.phase }}{% if role_label %} · {{ role_label }}{% endif %}</div>
+              {# Lot 14 (revue produit P1-2) : retards, blocage, prochaine échéance. #}
+              {% set pa = (pastilles or {}).get(p.id) %}
+              {% if (pa and (pa.retard or pa.prochaine)) or p.etat == 'bloque' %}
+              <div class="mp-pastilles">
+                {% if pa and pa.retard %}<span class="pill pill-sm pill-rouge">{{ pa.retard }} en retard</span>{% endif %}
+                {% if p.etat == 'bloque' %}<span class="pill pill-sm pill-rouge">Bloqué</span>{% endif %}
+                {% if pa and pa.prochaine %}<span class="pill pill-sm pill-neutre mp-echeance"><span class="sr-only">Prochaine échéance&nbsp;: </span><svg aria-hidden="true" focusable="false" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>{{ pa.prochaine|date_courte }}</span>{% endif %}
+              </div>
+              {% endif %}
             </div>
           </a>
         {% else %}
@@ -99,7 +118,8 @@
        en alerte, au lieu de l'ancien dégradé rouge plein — donc texte/bouton
        sombres sur fond blanc en alerte, plutôt que blancs sur fond coloré. #}
     {# Pas de Daily log pour un Client (lot 7). #}
-    {% if g.user.role != 'client' %}
+    {# Lot 14 (revue produit P2-1) : masquée pour un Admin qui ne saisit pas d'heures. #}
+    {% if g.user.role != 'client' and not masquer_dailylog %}
     {# Lot 13 (verif-temps N5) : sous une date simulée après la vraie date
        du compte, la journée se consulte seulement — ni « Remplir », ni jours
        à venir comptés comme manquants. #}
@@ -144,18 +164,16 @@
       {% endif %}
     </div>
 
+    {% import "partials/fil_filtres.html" as film %}
+    <div class="fil-barre">{{ film.filtres('accueil', fil_categorie, '#fil-liste', 'main.accueil', {}) }}</div>
+
     {# Lot 13 : un post publié depuis « + Nouveau post » arrive en tête de
-       cette liste, sans recharger la page (posts.reponse_publication). #}
-    <div id="fil-liste" class="fil-liste">
-      {% for post in fil %}
-        {% with post=post, show_projet=true, next_url=url_for('main.accueil') %}
-          {% include "partials/fil_item.html" %}
-        {% endwith %}
-      {% else %}
-        <div class="card fil-vide-carte" data-partiel-vide>Aucune activité sur vos projets pour l’instant.</div>
-      {% endfor %}
-      <div id="fil-vide" class="fil-filtre-vide" role="status"></div>
-    </div>
+       cette liste, sans recharger la page (posts.reponse_publication).
+       Lot 14 : catégorie (Tout · Échanges · Activité), regroupements et
+       « Afficher plus ». #}
+    {% include "partials/fil_accueil.html" %}
+    {% include "partials/fil_suite.html" %}
+    <div id="fil-vide" class="fil-filtre-vide" role="status"></div>
   </div>
 
   <!-- Colonne droite -->
@@ -164,11 +182,18 @@
     {% if not sans_projets and g.user.role != 'client' %}
     <div class="card">
       <div class="carte-entete carte-entete-souple">
-        {# Revue produit P1-2 : pour un chef ou l'Admin, la carte liste aussi
-           les tâches qu'il a créées pour d'autres. #}
-        <h2 class="carte-titre">{{ 'Tâches de mes projets' if g.user.role in ('admin', 'chef_de_projet') else 'Mes tâches' }}</h2>
-        <a href="{{ url_for('deadlines.liste') }}" class="lien-carte lien-carte-petit">Tout voir<span class="sr-only"> les échéances</span></a>
+        {# Revue produit P1-2 : pour un chef, un co-chef ou l'Admin, les tâches
+           de ses projets, « Les miennes | Toutes » (lot 14). #}
+        <h2 class="carte-titre" id="accueil-taches-titre">{{ 'Tâches de mes projets' if tdp else 'Mes tâches' }}</h2>
+        <a href="{{ url_for('deadlines.liste', vue='mes') if g.user.role == 'admin' else url_for('deadlines.liste') }}" class="lien-carte lien-carte-petit">Tout voir<span class="sr-only"> les échéances</span></a>
       </div>
+      {% if tdp %}
+      <nav class="k-segmente tdp-bascule" aria-label="Tâches affichées" data-tdp-bascule>
+        <a href="{{ tdp.liens.miennes }}" id="tdp-miennes" data-partiel="#accueil-taches" data-partiel-historique="replace" data-optimiste="courant" data-tableau-param="taches" data-tableau-valeur="miennes"{% if tdp.mode == 'miennes' %} aria-current="page"{% endif %}>Les miennes</a>
+        <a href="{{ tdp.liens.toutes }}" id="tdp-toutes" data-partiel="#accueil-taches" data-partiel-historique="replace" data-optimiste="courant" data-tableau-param="taches" data-tableau-valeur=""{% if tdp.mode == 'toutes' %} aria-current="page"{% endif %}>Toutes</a>
+      </nav>
+      {% include "partials/accueil_taches.html" %}
+      {% else %}
       <div class="accueil-liste accueil-liste-large">
         {% for t in mes_taches %}
           {% set st = tache_etat_style(t.etat) %}
@@ -188,12 +213,16 @@
           </div>
         {% endfor %}
       </div>
+      {% endif %}
     </div>
+    {# Lot 14 (revue produit P0-1) : les tâches bloquées, avec leur motif. #}
+    {% include "partials/taches_bloquees.html" %}
     {% endif %}
   </div>
 
 </div>
 <script src="{{ url_for('static', filename='js/filtre-fil.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/accueil-tableaux.js') }}" defer></script>
 
 {% with projet_id=None, projets_choix=projets_postables, next_url=url_for('main.accueil'), fil_cible='#fil-liste' %}
   {% include "partials/post_dialog.html" %}

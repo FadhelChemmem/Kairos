@@ -1,12 +1,15 @@
 {# Liste des posts de la fiche projet (#fil-posts). Lot 13 : remplacée hors
    cible quand l'état du projet change (commentaires et publication
-   fermés ou rouverts). Contexte : fil, projet ; facultatif : oob. #}
-<div id="fil-posts" class="fil-liste"{% if oob %} data-partiel-oob{% endif %}>
-{% for post in fil %}
-  {% with post=post, show_projet=false, next_url=url_for('projets.detail', projet_id=projet.id), oob=false %}
-    {% include "partials/fil_item.html" %}
+   fermés ou rouverts). Lot 14 : remplacée quand on change de catégorie
+   (Tout · Échanges · Activité), évènements automatiques regroupés.
+   Contexte : fil_entrees, fil_categorie, projet ; facultatif : oob. #}
+<div id="fil-posts" class="fil-liste" data-fil-categorie="{{ fil_categorie }}"{% if oob %} data-partiel-oob{% endif %}>
+  {% with show_projet=false, next_url=url_for('projets.detail', projet_id=projet.id, fil=fil_categorie), oob=false %}
+    {% include "partials/fil_entrees.html" %}
   {% endwith %}
-{% else %}
-  <div class="card fil-vide-carte" data-partiel-vide>Aucun post pour l’instant.</div>
-{% endfor %}
+  {% if not fil_entrees %}
+    {% with texte_tout='Aucun post pour l’instant.', fil_cible='#fil-posts', fil_lien_activite=url_for('projets.detail', projet_id=projet.id, fil='activite') %}
+      {% include "partials/fil_vide.html" %}
+    {% endwith %}
+  {% endif %}
 </div>

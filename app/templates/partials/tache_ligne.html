@@ -28,7 +28,14 @@
     <button type="submit" form="form-rejoindre-tache" formaction="{{ url_for('projets.rejoindre_tache', projet_id=projet.id, tache_id=t.id) }}" data-partiel="#tache-ligne-{{ t.id }}" data-optimiste="rejoindre" class="task-join-btn" tabindex="-1" title="Rejoindre cette tâche" aria-label="Rejoindre la tâche «&nbsp;{{ t.titre }}&nbsp;»"></button>
     {%- endif %}
   </div>
+  {# Lot 14 (revue produit P0-1) : tâche bloquée — depuis quand et pourquoi
+     au survol de la pastille, et lu par les lecteurs d'écran. #}
+  {% if t.etat == 'bloque' %}
+    {% set blocage = ('Bloquée ' ~ depuis_blocage(t.bloque_le|default(none)))|trim ~ ' : ' ~ (('« ' ~ t.bloque_motif|default(none) ~ ' »') if t.bloque_motif|default(none) else 'motif non renseigné') %}
+  <div role="cell" class="taskrow-etat"><span class="pill {{ tst.classe }} taskrow-pastille-bloquee" data-tache-pastille title="{{ blocage }}">{{ tst.libelle }}</span><span class="sr-only" id="tache-ligne-{{ t.id }}-blocage">, {{ blocage }}</span></div>
+  {% else %}
   <div role="cell" class="taskrow-etat"><span class="pill {{ tst.classe }}" data-tache-pastille>{{ tst.libelle }}</span></div>
+  {% endif %}
   <div role="cell" class="taskrow-date{{ ' taskrow-close' if tache_close }}{{ ' taskrow-retard' if retard }}">
     {% if t.date_echeance %}{{ t.date_echeance|date_courte }}{% endif %}{% if t.type_deadline == 'interne' %} <span class="taskrow-interne">(interne)</span>{% endif %}
     {% if retard %}<span class="texte-retard taskrow-retard-jours" title="{{ retard|capitalize }}"><span aria-hidden="true">+{{ retard.split(' ')[-2] }} j</span><span class="sr-only">, {{ retard }}</span></span>{% endif %}

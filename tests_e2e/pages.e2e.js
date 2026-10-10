@@ -137,7 +137,11 @@ async function maxAnimation(p, ms = 600) {
     // Tâches en cours avec échéance sur les projets ouverts (le jeu de
     // données du socle s'enrichit d'une phase à l'autre : compté en base).
     const nbTous = Number(sql("SELECT count(*) FROM tache t JOIN projet p ON p.id = t.projet_id WHERE t.etat = 'en_cours' AND p.etat IN ('en_cours', 'bloque') AND t.date_echeance IS NOT NULL"));
+    // Lot 14 : l'Admin arrive sur « Tous les projets » ; « Mes projets » = ?vue=mes.
     let p = await ouvrir(adm, '/deadlines');
+    etape('Deadlines : l’Admin arrive sur « Tous les projets »', await p.locator('.g-row').count() === nbTous
+      && await p.getAttribute('[data-deadlines-bascule] a[data-vue="tous"]', 'aria-current') === 'page');
+    p = await ouvrir(adm, '/deadlines?vue=mes');
     await latence(p, 800);
     etape('Deadlines : Admin sans projet, état vide avec « Voir tous les projets »',
       await p.locator('#deadlines-contenu .k-vide a:has-text("Voir tous les projets")').count() === 1);
@@ -158,7 +162,7 @@ async function maxAnimation(p, ms = 600) {
     await p.focus('[data-deadlines-bascule] a[data-vue=""]');
     await interaction(p, 'Deadlines : bascule « Mes projets »',
       () => p.keyboard.press('Enter'),
-      async () => (await etat(p)).url === '/deadlines' && await p.locator('#deadlines-contenu .k-vide').count() === 1,
+      async () => (await etat(p)).url === '/deadlines?vue=mes' && await p.locator('#deadlines-contenu .k-vide').count() === 1,
       { focus: '[data-deadlines-bascule] a[data-vue=""]' });
     await retour(p, 'Deadlines : bascule', async () => (await etat(p)).url === '/deadlines?vue=tous' && await p.locator('.g-row').count() === nbTous
       && await p.getAttribute('[data-deadlines-bascule] a[data-vue="tous"]', 'aria-current') === 'page');
@@ -354,7 +358,8 @@ async function maxAnimation(p, ms = 600) {
     const rim = await contexte(navigateur, 'rim@x.tn');
     p = await ouvrir(rim, '/dailylog');
     await p.waitForFunction(() => window.KairosDailyLogPage && !window.KairosDailyLogPage.etat().chargement);
-    await p.click('#dl-liste .dl-row[data-cle="1:0"] .dl-plus');
+    // Lot 14 : sa tâche 1 proposée (pas le projet 1 seul : elle y a des tâches).
+    await p.click('#dl-liste .dl-row[data-cle="1:1"] .dl-plus');
     await p.focus('#dl-enregistrer');
     await p.keyboard.press('Enter');
     await attendre(async () => (await p.evaluate(() => window.KairosDailyLogPage.etat().saved)) === 'enregistre');
@@ -435,8 +440,11 @@ async function maxAnimation(p, ms = 600) {
       () => p.click('.g-row[data-open-tache="1"] a.g-bar'),
       async () => (await etat(p)).url === '/deadlines?tache=1' && await p.locator('#tache-titre-1').count() === 1,
       { focus: '#tache-fenetre-1 [data-tache-entete]', sansLatence: true });
-    await interaction(p, 'Deadlines (panneau) : état « Bloquée »',
-      () => p.click('#tache-1-etat-bloque'),
+    // Lot 14 (P0-1) : « Bloquée » demande d'abord « Qu’est-ce qui bloque ? ».
+    await p.click('#tache-1-etat-bloque');
+    await p.fill('#tache-1-motif', 'Attente des plans archi indice B');
+    await interaction(p, 'Deadlines (panneau) : état « Bloquée » avec son motif',
+      () => p.click('#tache-1-blocage-valider'),
       async () => sql('SELECT etat FROM tache WHERE id=1') === 'bloque' && await p.locator('#k-toasts .k-toast-action:has-text("Annuler")').count() === 1,
       { focus: '#tache-1-etat-bloque' });
     await interaction(p, 'Deadlines (panneau) : « Annuler » du toast (sans ligne de tableau)',
@@ -673,6 +681,8 @@ async function maxAnimation(p, ms = 600) {
       p = await ouvrir(aliTel, '/projets/1?tache=1');
       await p.waitForSelector('#tache-1-etat-bloque');
       await p.click('#tache-1-etat-bloque');
+      await p.fill('#tache-1-motif', 'Attente des plans');
+      await p.click('#tache-1-blocage-valider');
       await attendre(async () => await p.locator('#k-toasts .k-toast-action:has-text("Annuler")').count() === 1);
       const place = await p.evaluate(() => {
         const t = document.querySelector('#k-toasts .k-toast').getBoundingClientRect(), d = document.getElementById('dialog-tache').getBoundingClientRect();

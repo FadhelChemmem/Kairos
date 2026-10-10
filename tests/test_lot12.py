@@ -428,7 +428,7 @@ class TestModeTestRoutes(_Base):
     def test_date_simulee_sert_aux_echeances(self):
         self.session(date_simulee={"admin": 1, "date": "2026-10-15"})
         taches = [{**smoke.DEADLINES[0], "id": 7, "date_echeance": datetime.date(2026, 10, 12)}]
-        resp, _ = self.requete("get", "/deadlines", espions=[("app.repositories.taches.list_deadlines", taches)])
+        resp, _ = self.requete("get", "/deadlines?vue=mes", espions=[("app.repositories.taches.list_deadlines", taches)])
         page = self.texte(resp)
         self.assertIn("en retard de 3 j", page)
         self.assertIn('href="/projets/1?tache=7"', page)

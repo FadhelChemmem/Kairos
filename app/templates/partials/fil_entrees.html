@@ -1,0 +1,10 @@
+{# Entrées d'un fil (lot 14) : posts et regroupements d'évènements
+   automatiques (app/fil.py, regrouper). Contexte : fil_entrees,
+   show_projet, next_url. #}
+{% for entree in fil_entrees %}
+  {% if entree.groupe %}
+    {% with entree=entree %}{% include "partials/fil_groupe.html" %}{% endwith %}
+  {% else %}
+    {% with post=entree.post %}{% include "partials/fil_item.html" %}{% endwith %}
+  {% endif %}
+{% endfor %}

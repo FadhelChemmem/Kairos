@@ -25,6 +25,19 @@ TABLES_METIER = (
 )
 
 
+def fermer_pool() -> None:
+    """Ferme les connexions du pool de l'appli (recette lot 14, n° 14) :
+    chaque classe de tests crée sa propre appli et son pool ; sans cette
+    fermeture, les connexions des classes précédentes restaient ouvertes
+    jusqu'à la fin du processus (pic de 99 connexions pour 100 permises :
+    « too many clients » dès qu'une autre base du serveur travaillait)."""
+    from app import db
+
+    if db._pool is not None:
+        db._pool.closeall()
+    db._pool = None
+
+
 class BaseIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -41,9 +54,14 @@ class BaseIntegration(unittest.TestCase):
             WTF_CSRF_ENABLED = False
             UPLOAD_DIR = tempfile.mkdtemp(prefix="kairos-it-")
 
-        db._pool = None
+        fermer_pool()
         cls.app = create_app(ConfigIT)
         cls.db = db
+
+    @classmethod
+    def tearDownClass(cls):
+        fermer_pool()
+        super().tearDownClass()
 
     def setUp(self):
         with self.db.get_cursor() as cur:

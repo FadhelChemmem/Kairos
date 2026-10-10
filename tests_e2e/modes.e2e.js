@@ -229,7 +229,7 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
     // Ligne de Daily log au nom de l'intervenante.
     p = await ouvrir(adm, '/dailylog');
     await pretDailyLog(p);
-    await p.click('#dl-liste .dl-row[data-cle="1:0"] .dl-plus');
+    await p.click('#dl-liste .dl-row[data-cle="1:1"] .dl-plus');
     await p.click('#dl-enregistrer');
     await attendre(async () => (await p.textContent('#dl-status-texte')) === 'Enregistré');
     etape('Daily log enregistré au nom de l’intervenante', heures(RIM, T) === '0.50'
@@ -268,7 +268,7 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
     const J1 = isoTunis(-1);
     p = await ouvrir(adm, '/dailylog?date=' + J1);
     await pretDailyLog(p);
-    await p.click('#dl-liste .dl-row[data-cle="1:0"] .dl-plus');
+    await p.click('#dl-liste .dl-row[data-cle="1:1"] .dl-plus');
     await p.click('#dl-enregistrer');
     await attendre(async () => (await p.textContent('#dl-status-texte')) === 'Enregistré');
     etape('ligne à J−1 enregistrée sous date simulée', heures(RIM, J1) !== '0', heures(RIM, J1));
@@ -296,7 +296,8 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
     etape('aucun rappel Daily log créé pendant les modes', sql(`SELECT count(*) FROM notification WHERE utilisateur_id=${RIM} AND rappel_jours IS NOT NULL`) === '0');
 
     // --- 5. Deadlines : vue Admin -------------------------------------------
-    p = await ouvrir(adm, '/deadlines');
+    // Lot 14 : l'Admin arrive sur « Tous les projets » ; « Mes projets » = ?vue=mes.
+    p = await ouvrir(adm, '/deadlines?vue=mes');
     etape('Mes projets : aucune tâche de l’Admin', /0 tâche avec échéance/.test(await p.textContent('.subbar')));
     await Promise.all([p.waitForNavigation(), p.click('.bascule-vue a:has-text("Tous les projets")')]);
     etape('Tous les projets : 3 tâches avec échéance', /3 tâches avec échéance — tous les projets/.test(await p.textContent('.subbar')));
@@ -425,7 +426,7 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
       await d.goto(BASE + '/dailylog');
       await pretDailyLog(d);
       const avant = heures(RIM, T);
-      await d.click('#dl-liste .dl-row[data-cle="1:0"] .dl-plus');
+      await d.click('#dl-liste .dl-row[data-cle="1:1"] .dl-plus');
       await b.bringToFront();
       await poster(b, '/admin/date-simulee', { date: isoTunis(-1) });
       await d.bringToFront();

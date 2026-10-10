@@ -1,0 +1,57 @@
+{# Vue d'ensemble de l'Admin (lot 14, P0-3) : « Par chef de projet ».
+   Contexte : par_chef (routes/tableaux.py:contexte_par_chef). Le nom mène
+   aux échéances du chef, le nombre de projets à ses projets ouverts. #}
+{% from "partials/avatar.html" import avatar %}
+{% import "partials/icones.html" as ic %}
+<section class="card pc" aria-labelledby="pc-titre">
+  <div class="carte-entete carte-entete-souple">
+    <h2 class="carte-titre" id="pc-titre">Par chef de projet</h2>
+    <span class="pc-aide">Heures saisies sur ses projets depuis le {{ par_chef.lundi|date_courte }}</span>
+  </div>
+  {% if par_chef.lignes %}
+  <div class="pc-defile">
+    <table class="pc-table">
+      <thead>
+        <tr>
+          {# Téléphone : en-têtes courts (le libellé complet reste lu). #}
+          <th scope="col" class="pc-col-chef"><span class="pc-long">Chef de projet</span><span class="pc-court" aria-hidden="true">Chef</span></th>
+          <th scope="col" class="pc-num" title="Projets ouverts (en cours ou bloqués)"><span class="pc-long">Projets</span><span class="pc-court" aria-hidden="true">Proj.</span></th>
+          <th scope="col" class="pc-num"><span class="pc-long">En retard</span><span class="pc-court" aria-hidden="true">Retard</span></th>
+          <th scope="col" class="pc-num"><span class="pc-long">Bloquées</span><span class="pc-court" aria-hidden="true">Bloq.</span></th>
+          <th scope="col" class="pc-num"><span class="pc-long">Heures</span><span class="pc-court" aria-hidden="true">Heures</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in par_chef.lignes %}
+        <tr>
+          <th scope="row" class="pc-col-chef">
+            <a href="{{ url_for('deadlines.liste', vue='tous', chef=c.id) }}" class="pc-chef" title="Échéances de {{ c.prenom }} {{ c.nom }}">
+              {{ avatar(c.id, c.prenom, c.nom, c.avatar_chemin, 'avatar avatar-sm pc-avatar') }}
+              <span class="pc-nom">{{ c.prenom }} {{ c.nom }}</span>
+            </a>
+          </th>
+          <td class="pc-num"><a href="{{ url_for('projets.liste', filtres_actifs=1, etat=['en_cours', 'bloque'], chef_id=c.id) }}" class="pc-lien" aria-label="{{ c.projets }} projet{{ 's' if c.projets > 1 }} ouvert{{ 's' if c.projets > 1 }} de {{ c.prenom }} {{ c.nom }}">{{ c.projets }}</a></td>
+          <td class="pc-num">{% if c.retard %}<span class="pc-valeur pc-retard">{{ c.retard }}</span>{% else %}<span class="pc-zero" aria-label="aucune">0</span>{% endif %}</td>
+          <td class="pc-num">{% if c.bloquees %}<span class="pc-valeur pc-bloque">{{ c.bloquees }}</span>{% else %}<span class="pc-zero" aria-label="aucune">0</span>{% endif %}</td>
+          <td class="pc-num">{% if c.heures %}{{ c.heures|heures }}{% else %}<span class="pc-zero">0&nbsp;h</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th scope="row" class="pc-col-chef">Total</th>
+          <td class="pc-num">{{ par_chef.total.projets }}</td>
+          <td class="pc-num">{{ par_chef.total.retard }}</td>
+          <td class="pc-num">{{ par_chef.total.bloquees }}</td>
+          <td class="pc-num">{{ par_chef.total.heures|heures }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% else %}
+  <div class="k-vide k-vide-compact">
+    <span class="k-vide-icone" aria-hidden="true">{{ ic.icone('projets', 16) }}</span>
+    <p class="k-vide-texte">Aucun projet ouvert.</p>
+  </div>
+  {% endif %}
+</section>

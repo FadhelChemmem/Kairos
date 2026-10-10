@@ -1,0 +1,32 @@
+{# Carte « À traiter » du chef de projet et du co-chef (lot 14, revue
+   produit P1-2), en tête de l'accueil : une ligne par compteur non nul de
+   ses projets ouverts ; chaque ligne déplie sa liste dans la carte, sans
+   recharger la page (fragment #a-traiter) ; « Rien à traiter » sinon.
+   Contexte : at (routes/tableaux.py:_bloc). #}
+{% import "partials/tableaux_macros.html" as tbm %}
+<section id="a-traiter" class="card at{{ ' at-rien' if not at.total }}" aria-labelledby="at-titre">
+  <div class="at-entete">
+    <h2 class="carte-titre" id="at-titre">À traiter</h2>
+    <p class="at-portee">{% if at.compte.projets > 1 %}Vos {{ at.compte.projets }} projets ouverts{% elif at.compte.projets == 1 %}Votre projet ouvert{% else %}Aucun projet ouvert à gérer{% endif %}</p>
+  </div>
+  {% if at.total %}
+  <ul class="at-lignes" role="list">
+    {% for cle in at.cles if at.compte[cle] %}
+      {% set n = at.compte[cle] %}
+      <li>
+        <a href="{{ at.liens[cle] }}" id="at-{{ cle }}" class="at-ligne {{ tbm.teinte(cle, n) }}"
+           data-partiel="#a-traiter" data-optimiste="deplier" data-tableau-param="voir" data-tableau-valeur="{{ cle }}"
+           aria-expanded="{{ 'true' if at.voir == cle else 'false' }}" aria-controls="at-detail">
+          <span class="tb-pastille-icone" aria-hidden="true">{{ tbm.icone(cle, 15) }}</span>
+          <span class="at-nombre">{{ n }}</span>
+          <span class="at-libelle">{{ tbm.libelle(at, cle) }}{% if cle == 'dailylog' %}<span class="at-precision"> · votre équipe</span>{% endif %}</span>
+          <span class="at-chevron" aria-hidden="true">{{ tbm.icone('chevron', 15) }}</span>
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+  {{ tbm.detail(at, 'at-detail', '#a-traiter', 'at-') }}
+  {% else %}
+  <p class="at-vide"><span class="tb-pastille-icone tb-t-zero" aria-hidden="true">{{ tbm.icone('ok', 15) }}</span><span><strong>Rien à traiter.</strong> Aucune tâche en retard, bloquée, sans intervenant ou sans échéance{% if at.compte.projets %}, et chaque projet a une tâche ouverte{% endif %}.</span></p>
+  {% endif %}
+</section>

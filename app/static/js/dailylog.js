@@ -183,7 +183,8 @@
         ajoutBtn = $('dl-ajouter'), ajoutWrap = $('dl-ajout'), panneau = $('dl-catalogue'), rechercheEl = $('dl-recherche'),
         catCorps = $('dl-catalogue-corps'), copierBtn = $('dl-copier'), absentBtn = $('dl-absent'),
         outilsEl = $('dl-outils'), aideEl = $('dl-aide'), lectureEl = $('dl-lecture'), liveEl = $('dl-live'),
-        barreEl = $('dl-barre'), quiDate = $('dl-qui-date'), catStatut = $('dl-catalogue-statut');
+        barreEl = $('dl-barre'), quiDate = $('dl-qui-date'), catStatut = $('dl-catalogue-statut'),
+        propNote = $('dl-propositions'), catFini = $('dl-catalogue-fini');
 
     // --- état -------------------------------------------------------------
     var jour = null;            // état serveur du jour affiché (format `Jour`)
@@ -207,6 +208,14 @@
     var lastState = '';
     var resultatsRecherche = null, rechercheMotif = '', tachesOuvertes = {}, tachesChargees = {};
     var cleBrouillon = 'kairos-dl-brouillon-' + A.acteur.id + '-' + A.proprietaire.id + '-';
+    // Lot 14 (revue produit P0-4) : tâches en cours proposées sur une
+    // journée vierge, sauf si la personne l'a désactivé (« Mes informations »,
+    // préférence de ce navigateur : dailylog-preferences.js).
+    var clePropositions = 'kairos-dl-proposer-' + A.proprietaire.id;
+    function proposerActif() {
+      try { return localStorage.getItem(clePropositions) !== 'non'; } catch (e) { return true; }
+    }
+    var ajoutsCatalogue = [];   // clés ajoutées depuis l'ouverture du catalogue (« Terminé » : focus sur la dernière)
 
     // « Voir comme » (lecture seule, lot 13) : aucune commande d'écriture
     // proposée — le serveur refuse de toute façon (403).
@@ -294,14 +303,22 @@
                couleur: N.couleur(l.code) };
     }
     function proposes(j) {
-      // Nouveau jour : mes projets proposés à 0 h, grisés, jamais stockés (décision maquette n°7).
-      if (VOIR || j.statut !== 'vide' || !j.droits.saisie_libre || j.droits.mode !== 'saisie') return [];
-      return (catalogue.mine || []).filter(function (c) { return !c.tache_id && (!c.date_debut || c.date_debut <= j.date); })
-        .slice(0, 8).map(function (c) {
-          return { cle: N.cle(c.projet_id, null), projet_id: c.projet_id, tache_id: null, code: c.code, nom: c.nom,
-                   tache_titre: null, m: 0, prev: PAS, modifiable: true, masquee: false, couleur: N.couleur(c.code) };
-        });
+      // Journée vierge : lignes proposées à 0 h, jamais stockées (décision
+      // maquette n°7). Lot 14 (P0-4) : une par tâche en cours où la personne
+      // intervient, « projet seul » pour ses projets gérés ou suivis sans
+      // tâche (routes/dailylog.py, lignes_proposees) ; désactivable.
+      if (VOIR || j.statut !== 'vide' || !j.droits.saisie_libre || j.droits.mode !== 'saisie' || !proposerActif()) return [];
+      return (j.proposees || []).map(function (c) {
+        return { cle: N.cle(c.projet_id, c.tache_id), projet_id: c.projet_id, tache_id: c.tache_id || null, code: c.code, nom: c.nom,
+                 tache_titre: c.tache_titre || null, m: 0, prev: PAS, modifiable: true, masquee: false, couleur: N.couleur(c.code),
+                 propose: true };
+      });
     }
+    /** Ligne pas encore enregistrée (proposée ou ajoutée) : × la retire. */
+    function retirable(r) {
+      return !VOIR && r.modifiable && !r.masquee && !(jour && jour.lignes.some(function (l) { return !l.masquee && N.cle(l.projet_id, l.tache_id) === r.cle; }));
+    }
+    function valeurAffichee(m) { return m > 0 ? f(m) : ''; }
     function lignesServeur(j) {
       var out = {};
       (j ? j.lignes : []).forEach(function (l) { if (!l.masquee) out[N.cle(l.projet_id, l.tache_id)] = l.minutes; });
@@ -389,10 +406,20 @@
       var info = document.createElement(fixe ? 'div' : 'button');
       info.className = 'dl-pinfo';
       if (!fixe) info.type = 'button';
-      var code = document.createElement('span'); code.className = 'dl-pcode';
+      // Lot 14 (P0-4) : ce qu'on impute en gras (titre de la tâche, ou nom
+      // du projet), « code · projet » en dessous.
       var nom = document.createElement('span'); nom.className = 'dl-pname';
-      info.appendChild(code); info.appendChild(nom);
+      var code = document.createElement('span'); code.className = 'dl-pcode';
+      info.appendChild(nom); info.appendChild(code);
       row.appendChild(info);
+      if (!fixe) {
+        // Emplacement toujours réservé (rien ne bouge quand × apparaît) ;
+        // visible seulement sur une ligne pas encore enregistrée.
+        var x = document.createElement('button');
+        x.type = 'button'; x.className = 'dl-retirer';
+        x.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+        row.appendChild(x);
+      }
       if (fixe) {
         var v = document.createElement('span');
         v.className = 'dl-fixval';
@@ -408,6 +435,7 @@
         var val = document.createElement('input');
         val.className = 'dl-val'; val.type = 'text'; val.setAttribute('inputmode', 'text'); val.setAttribute('enterkeyhint', 'done');
         val.autocomplete = 'off'; val.setAttribute('role', 'spinbutton'); val.setAttribute('aria-valuemin', '0');
+        val.placeholder = f(0); val.title = T.astuce_saisie;
         var plus = document.createElement('button'); plus.type = 'button'; plus.className = 'dl-step dl-plus'; plus.tabIndex = -1; plus.textContent = '+';
         st.appendChild(moins); st.appendChild(val); st.appendChild(plus);
         row.appendChild(st);
@@ -421,7 +449,8 @@
       }
       btn.disabled = flag;
     }
-    function libelleCode(r) { return r.code + (r.tache_titre ? ' · ' + r.tache_titre : ''); }
+    function libelleCode(r) { return r.code + ' · ' + (r.tache_titre ? r.nom : T.sans_tache); }
+    function libelleLigne(r) { return r.tache_titre ? r.tache_titre + ' (' + r.code + ' · ' + r.nom + ')' : r.nom; }
     function patchRow(row, r, i, tot) {
       var off = r.m <= 0, plein = tot >= MAXJ;
       row.className = 'dl-row' + (off ? ' dl-off' : '') + (row.dataset.fixe === '1' ? ' dl-fixe' : '') + (row.classList.contains('dl-row-err') ? ' dl-row-err' : '');
@@ -429,7 +458,8 @@
       row.querySelector('.dl-pdot').style.background = /^#[0-9a-f]{6}$/i.test(r.couleur) ? r.couleur : '#6f8278';
       var info = row.querySelector('.dl-pinfo');
       info.querySelector('.dl-pcode').textContent = r.masquee ? '' : libelleCode(r);
-      info.querySelector('.dl-pname').textContent = r.nom;
+      info.querySelector('.dl-pname').textContent = r.masquee ? r.nom : (r.tache_titre || r.nom);
+      info.title = r.masquee ? '' : libelleLigne(r);
       if (row.dataset.fixe === '1') {
         row.querySelector('.dl-fixtexte').textContent = f(r.m);
         var titre = r.masquee ? T.ligne_masquee : (droits().futur_reel ? T.ligne_futur_reel
@@ -441,8 +471,15 @@
       info.dataset.t = i;
       info.setAttribute('aria-pressed', String(!off));
       var val = row.querySelector('.dl-val'), moins = row.querySelector('.dl-minus'), plus = row.querySelector('.dl-plus');
+      var x = row.querySelector('.dl-retirer'), peutRetirer = retirable(r);
+      x.dataset.x = i;
+      x.classList.toggle('dl-retirer-cache', !peutRetirer);
+      x.tabIndex = peutRetirer ? 0 : -1;
+      x.setAttribute('aria-label', tr(T.retirer, libelleLigne(r)));
+      x.title = peutRetirer ? T.retirer_titre : '';
+      if (!peutRetirer && document.activeElement === x) val.focus();
       val.dataset.v = i;
-      if (document.activeElement !== val || val.value === f(r.m) || !val.dataset.saisie) val.value = f(r.m);
+      if (document.activeElement !== val || val.value === valeurAffichee(r.m) || !val.dataset.saisie) val.value = valeurAffichee(r.m);
       val.setAttribute('aria-label', tr(T.heures_sur, r.nom + (r.tache_titre ? ' · ' + r.tache_titre : '')));
       val.setAttribute('aria-valuenow', String(r.m / 60));
       val.setAttribute('aria-valuetext', f(r.m));
@@ -539,7 +576,28 @@
     }
 
     // --- interactions de la liste ---------------------------------------
+    function retirerLigne(i) {
+      var r = rows[i];
+      if (!r || !retirable(r)) return;
+      flush();
+      var k0 = sel, copie = Object.assign({}, r);
+      rows.splice(i, 1);
+      touched(); render();
+      var suivant = listeEl.querySelector('[data-v="' + Math.min(i, rows.length - 1) + '"]');
+      if (suivant) { suivant.focus(); suivant.select(); }
+      else if (!ajoutWrap.hidden) ajoutBtn.focus();
+      toast(tr(T.ligne_retiree, r.tache_titre || r.nom), {
+        back: ajoutBtn,
+        undo: function () {
+          if (sel !== k0 || rows.some(function (x) { return x.cle === copie.cle; })) return;
+          rows.splice(Math.min(i, rows.length), 0, copie);
+          touched(); render(); focusRow(Math.min(i, rows.length - 1));
+        }
+      });
+    }
     listeEl.addEventListener('click', function (e) {
+      var rx = e.target.closest('[data-x]');
+      if (rx) { if (!rx.classList.contains('dl-retirer-cache')) retirerLigne(+rx.dataset.x); return; }
       var t = e.target.closest('[data-m],[data-p],[data-t]');
       if (!t || t.disabled) return;
       var actif = document.activeElement;
@@ -555,8 +613,8 @@
       delete inp.dataset.saisie;
       if (!r) return;
       var brut = inp.value.trim(), cur = r.m;
-      if (brut === f(cur)) return;
-      function retour(msg) { inp.value = f(cur); toast(msg, { warn: true }); }
+      if (brut === f(cur) || (brut === '' && cur <= 0)) { inp.value = valeurAffichee(cur); return; }
+      function retour(msg) { inp.value = valeurAffichee(cur); toast(msg, { warn: true }); }
       if (brut === '') { retour(T.saisie_vide); return; }
       var v = N.parse(brut);
       if (isNaN(v) || v < 0) { retour(T.format_inconnu); return; }
@@ -571,7 +629,7 @@
       if (e.target.dataset.v == null) return;
       var i = +e.target.dataset.v;
       if (e.key === 'Enter') { e.preventDefault(); commitInput(e.target); e.target.select(); }
-      else if (e.key === 'Escape') { e.preventDefault(); delete e.target.dataset.saisie; e.target.value = f(rows[i].m); e.target.select(); }
+      else if (e.key === 'Escape') { e.preventDefault(); delete e.target.dataset.saisie; e.target.value = valeurAffichee(rows[i].m); e.target.select(); }
       else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         e.preventDefault();
         var v = N.parse(e.target.value), base = isNaN(v) ? rows[i].m : Math.min(v, MAXJ);
@@ -653,6 +711,9 @@
     function renderCat() {
       var motif = N.norm((rechercheEl.value || '').trim());
       var plein = total() >= MAXJ;
+      // Lot 14 : le catalogue reste ouvert après un ajout ; ses listes
+      // gardent leur défilement d'un rendu à l'autre.
+      var defil = Array.prototype.map.call(catCorps.querySelectorAll('.dl-catlist'), function (l) { return l.scrollTop; });
       catCorps.textContent = '';
       var frags = [];
       if (motif) {
@@ -671,7 +732,10 @@
           frags.push(vide);
         }
       } else {
-        var libres = function (c) { return !dansLaListe(c); };
+        // Un choix ajouté pendant cette ouverture du catalogue reste à sa
+        // place (« déjà dans la liste ») : la ligne suivante ne remonte pas
+        // sous le doigt (recette du lot 14, n° 1).
+        var libres = function (c) { return !dansLaListe(c) || ajoutsCatalogue.indexOf(N.cle(c.projet_id, c.tache_id)) >= 0; };
         // un projet déjà dans la liste reste proposé s'il a des tâches : on peut imputer une tâche précise
         var projetsMine = (catalogue.mine || []).filter(function (c) { return !c.tache_id && (libres(c) || c.nb_taches > 0); });
         var tachesMine = (catalogue.mine || []).filter(function (c) { return c.tache_id; }).filter(libres);
@@ -681,6 +745,7 @@
         if (!frags.length) { var v2 = document.createElement('div'); v2.className = 'dl-catempty'; v2.textContent = T.tous_dans_liste; frags.push(v2); }
       }
       frags.forEach(function (fr) { catCorps.appendChild(fr); });
+      Array.prototype.forEach.call(catCorps.querySelectorAll('.dl-catlist'), function (l, i) { if (defil[i]) l.scrollTop = defil[i]; });
       annoncerCatalogue(motif);
     }
     // Une annonce courte du nombre de résultats (audit a11y I8) : la liste
@@ -744,12 +809,68 @@
       ajoutBtn.setAttribute('aria-expanded', String(ouvrir));
       if (ouvrir) {
         rechercheEl.value = ''; resultatsRecherche = null; rechercheMotif = '';
+        ajoutsCatalogue = [];
         renderCat();
         setTimeout(function () { rechercheEl.focus(); panneau.scrollIntoView({ block: 'nearest' }); }, 0);
       }
     }
     function focusRow(i) { var el = listeEl.querySelector('[data-v="' + i + '"]'); if (el) { el.focus(); el.select(); } }
     ajoutBtn.addEventListener('click', function (e) { e.stopPropagation(); toggleCal(false); openAdd(); });
+    /** Ajout depuis le catalogue resté ouvert : la liste grandit AU-DESSUS
+     *  du panneau ; la page défile d'autant pour que le panneau (et la ligne
+     *  cliquée) ne bouge pas sous le pointeur. Le focus revient sur le même
+     *  choix du catalogue.
+     *  Recette du lot 14, n° 1 (téléphone) : le choix touché est retrouvé
+     *  après le nouveau rendu (même clé, même rang parmi ses homonymes) et
+     *  remis exactement sous le doigt — la liste du catalogue défile
+     *  d'abord de l'écart, la page ensuite s'il en reste. */
+    function garderCatalogue(fn, cleChoix, choixEl) {
+      var sel_ = '[data-add="' + cleChoix + '"]';
+      var rang = choixEl ? Array.prototype.indexOf.call(catCorps.querySelectorAll(sel_), choixEl) : -1;
+      var haut = rang >= 0 ? choixEl.getBoundingClientRect().top : null;
+      var avant = panneau.getBoundingClientRect().top;
+      fn();
+      var delta = panneau.getBoundingClientRect().top - avant;
+      if (delta) window.scrollBy(0, delta);
+      renderCat();
+      var memes = catCorps.querySelectorAll(sel_);
+      var choix = memes[rang >= 0 && rang < memes.length ? rang : 0] || null;
+      if (choix && haut !== null) {
+        var ecart = choix.getBoundingClientRect().top - haut;
+        var liste = choix.closest('.dl-catlist');
+        if (Math.abs(ecart) >= 1 && liste) {
+          liste.scrollTop += ecart;
+          ecart = choix.getBoundingClientRect().top - haut;
+        }
+        if (Math.abs(ecart) >= 1) window.scrollBy(0, ecart);
+      }
+      if (choix) choix.focus({ preventScroll: true }); else rechercheEl.focus({ preventScroll: true });
+    }
+    /** Ajout depuis le catalogue ouvert : pas de toast (sur téléphone il
+     *  couvrait le bas du catalogue, et le toucher le fermait), une annonce
+     *  aux lecteurs d'écran et un retour visuel sur le choix touché, sans
+     *  rien déplacer (fond qui s'estompe). */
+    function ajouteAuCatalogue(cle, message) {
+      hideToast();
+      annoncer(message);
+      var choix = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.add === cle
+        ? document.activeElement : catCorps.querySelector('[data-add="' + cle + '"]');
+      if (!choix) return;
+      choix.classList.remove('dl-catrow-ajoute');
+      void choix.offsetWidth;
+      choix.classList.add('dl-catrow-ajoute');
+      choix.addEventListener('animationend', function fin() {
+        choix.classList.remove('dl-catrow-ajoute');
+        choix.removeEventListener('animationend', fin);
+      });
+    }
+    function fermerCatalogue() {
+      var derniere = ajoutsCatalogue.length ? ajoutsCatalogue[ajoutsCatalogue.length - 1] : null;
+      openAdd(false);
+      var idx = derniere ? rows.map(function (x) { return x.cle; }).indexOf(derniere) : -1;
+      if (idx >= 0) focusRow(idx); else ajoutBtn.focus();
+    }
+    if (catFini) catFini.addEventListener('click', function (e) { e.stopPropagation(); fermerCatalogue(); });
     panneau.addEventListener('click', function (e) {
       e.stopPropagation();
       var tb = e.target.closest('[data-taches]');
@@ -759,20 +880,30 @@
       flush();
       var k = r.dataset.add, idx = rows.map(function (x) { return x.cle; }).indexOf(k);
       if (idx >= 0) {
-        openAdd(false);
-        if (rows[idx].m <= 0) setH(idx, rows[idx].prev || PAS);
-        focusRow(idx);
+        if (rows[idx].m > 0) { openAdd(false); focusRow(idx); return; }   // déjà saisie : on y va
+        // Ligne proposée (ou désactivée) à 0 h : 30 min, catalogue gardé ouvert.
+        var proposee = rows[idx];
+        garderCatalogue(function () {
+          setH(idx, proposee.prev || PAS);
+          if (rows[idx].m > 0) ajoutsCatalogue.push(k);
+        }, k, r);
+        if (rows[idx].m > 0) {
+          ajouteAuCatalogue(k, tr(T.ajoute, proposee.tache_titre ? proposee.code + ' · ' + proposee.tache_titre : proposee.nom, f(rows[idx].m)));
+        }
         return;
       }
       var c = itemsCatalogue()[k];
       if (!c) return;
       var libre = Math.floor((MAXJ - total()) / PAS) * PAS;
       if (libre < PAS) { toast(T.journee_pleine, { warn: true }); return; }
-      rows.push({ cle: k, projet_id: c.projet_id, tache_id: c.tache_id || null, code: c.code, nom: c.nom,
-                  tache_titre: c.tache_titre || null, m: PAS, prev: PAS, modifiable: true, masquee: false,
-                  couleur: N.couleur(c.code) });
-      touched(); render(); openAdd(false); focusRow(rows.length - 1);
-      toast(tr(T.ajoute, c.tache_titre ? c.code + ' · ' + c.tache_titre : c.nom, f(PAS)));
+      garderCatalogue(function () {
+        rows.push({ cle: k, projet_id: c.projet_id, tache_id: c.tache_id || null, code: c.code, nom: c.nom,
+                    tache_titre: c.tache_titre || null, m: PAS, prev: PAS, modifiable: true, masquee: false,
+                    couleur: N.couleur(c.code) });
+        ajoutsCatalogue.push(k);
+        touched(); render();
+      }, k, r);
+      ajouteAuCatalogue(k, tr(T.ajoute, c.tache_titre ? c.code + ' · ' + c.tache_titre : c.nom, f(PAS)));
     });
     rechercheEl.addEventListener('input', rechercher);
     rechercheEl.addEventListener('click', function (e) { e.stopPropagation(); });
@@ -906,7 +1037,7 @@
       }
       dernierEchec = false;
       try { sessionStorage.removeItem(cleBrouillon + d.date); } catch (e) { /* stockage indisponible */ }
-      renderBanner();
+      renderBanner(d.date);
       renderCal();
     }
     function fusionnerApresEnregistrement(d) {
@@ -1139,6 +1270,8 @@
       versions[j.date] = j.version;
       chargement = false;
       rows = j.lignes.map(ligneVersRow).concat(j.statut === 'absent' ? [] : proposes(j));
+      var nbProposees = rows.filter(function (r) { return r.propose; }).length;
+      if (propNote) propNote.hidden = !nbProposees;
       recalcSaved();
       lastState = '';
       tachesOuvertes = {};
@@ -1155,7 +1288,7 @@
       sel = k;
       chargement = true;
       rows = [];
-      jour = Object.assign({}, jour, { date: k, statut: 'vide', lignes: [], copie: null, version: versions[k] || 0 });
+      jour = Object.assign({}, jour, { date: k, statut: 'vide', lignes: [], copie: null, proposees: [], version: versions[k] || 0 });
       renderEntete(); syncMark(); renderStatus(); render();
       openAdd(false);
       // L'état d'historique est gardé : Retour après « Daily log de » revient
@@ -1166,7 +1299,9 @@
         if (r.status === 200 && r.data) {
           appliquerJour(r.data);
           clearTimeout(dayT);
-          dayT = setTimeout(function () { say(titreEl.textContent + ', ' + statutTexte.textContent); }, 700);
+          var nbP = rows.filter(function (x) { return x.propose; }).length;
+          var annonceP = nbP ? ', ' + (nbP > 1 ? tr(T.propositions_annonce, nbP) : T.propositions_annonce_1) : '';
+          dayT = setTimeout(function () { say(titreEl.textContent + ', ' + statutTexte.textContent + annonceP); }, 700);
           return;
         }
         chargement = false;
@@ -1184,30 +1319,45 @@
     }
 
     // --- bannière des jours manqués -------------------------------------------
-    // Revue d'interaction P1-14 : la bannière qui n'a plus lieu d'être se
-    // replie en hauteur (180 ms) au lieu de disparaître d'un coup sous le doigt.
-    function replierBanniere() {
-      if (banniere.hidden || banniere._repli) return;
-      var reduit = false;
-      try { reduit = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { reduit = false; }
-      if (reduit || !banniere.offsetHeight) { banniere.hidden = true; return; }
-      banniere.style.height = banniere.offsetHeight + 'px';
-      void banniere.offsetHeight;
-      banniere.classList.add('dl-banner-repli');
-      banniere._repli = setTimeout(function () {
-        banniere._repli = 0;
-        banniere.hidden = true;
-        banniere.classList.remove('dl-banner-repli');
-        banniere.style.height = '';
-      }, 200);
+    // Recette du lot 14, n° 15 (le gérant : AUCUN élément ne bouge) : une
+    // bannière déjà affichée ne se replie plus quand le dernier jour manqué
+    // est rempli — elle garde sa place et sa hauteur et se transforme
+    // (« Journée du … enregistrée », ou les jours qui restent).
+    function figerHauteurBanniere() {
+      if (banniere.hidden || !banniere.offsetHeight) return;
+      var h = Math.max(banniere.offsetHeight, parseFloat(banniere.style.minHeight) || 0);
+      banniere.style.minHeight = h + 'px';
     }
-    function renderBanner() {
+    function banniereFaite(ecrit) {
+      var k = ecrit || banniere.dataset.fait || sel;
+      banniere.dataset.fait = k;
+      banniere.classList.add('dl-banner-ok');
+      banniereTexte.textContent = '';
+      var b = document.createElement('b');
+      b.textContent = tr(T.banniere_faite, dateCourte(k));
+      banniereTexte.appendChild(b);
+      // La suite se masque sur téléphone (une ligne, comme la bannière d'avant).
+      var suite = document.createElement('span');
+      suite.className = 'dl-bsuite';
+      suite.textContent = ' ' + T.banniere_faite_suite;
+      banniereTexte.appendChild(suite);
+    }
+    function renderBanner(ecrit) {
       // Jours après la vraie date (date simulée) : pas saisissables, donc pas « à compléter ».
       var reel = jour && jour.aujourdhui_reel && jour.aujourdhui_reel < TODAY ? jour.aujourdhui_reel : TODAY;
       var manques = (jour && jour.manques ? jour.manques : []).filter(function (k) { return k <= reel; }).sort();
-      if (!manques.length || !A.proprietaire.soi) { replierBanniere(); return; }
-      if (banniere._repli) { clearTimeout(banniere._repli); banniere._repli = 0; banniere.classList.remove('dl-banner-repli'); banniere.style.height = ''; }
+      if (!A.proprietaire.soi) { banniere.hidden = true; return; }
+      if (!manques.length) {
+        // Rien à compléter : cachée si elle ne l'était pas déjà affichée,
+        // sinon transformée sur place.
+        if (banniere.hidden) return;
+        figerHauteurBanniere();
+        banniereFaite(ecrit);
+        return;
+      }
+      figerHauteurBanniere();
       banniere.hidden = false;
+      banniere.classList.remove('dl-banner-ok');
       var affiches = manques.slice(-5), autres = manques.length - affiches.length;
       banniereTexte.textContent = '';
       var b = document.createElement('b');
@@ -1336,12 +1486,14 @@
     });
     document.addEventListener('click', function (e) {
       if (!calEl.hidden && !$('dl-datenav').contains(e.target)) toggleCal(false);
-      if (!panneau.hidden && !ajoutWrap.contains(e.target)) openAdd(false);
+      // Un toast (avertissement « journée pleine »…) ou la zone des toasts
+      // ne ferme pas le catalogue.
+      if (!panneau.hidden && !ajoutWrap.contains(e.target) && !(e.target.closest && e.target.closest('#k-toasts'))) openAdd(false);
     }, sig);
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;
       if (!calEl.hidden) { toggleCal(false); dateBtn.focus(); }
-      else if (!panneau.hidden) { openAdd(false); ajoutBtn.focus(); }
+      else if (!panneau.hidden) fermerCatalogue();
     }, sig);
 
     // --- « Daily log de » (chef, Admin) ---------------------------------------

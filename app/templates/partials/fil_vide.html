@@ -1,0 +1,12 @@
+{# État vide d'un fil selon sa catégorie (lot 14). Contexte : fil_categorie,
+   texte_tout, fil_lien_activite (adresse de la vue Activité), fil_cible. #}
+<div class="card fil-vide-carte" data-partiel-vide>
+  {% if fil_categorie == 'echanges' %}
+    <p class="fil-vide-texte">Aucun échange pour l’instant&nbsp;: ni information, ni requête, ni question.</p>
+    {% if fil_lien_activite %}<a href="{{ fil_lien_activite }}" class="btn-fantome btn-petit" data-partiel="{{ fil_cible }}" data-fil="activite">Voir l’activité</a>{% endif %}
+  {% elif fil_categorie == 'activite' %}
+    <p class="fil-vide-texte">Aucune activité automatique pour l’instant.</p>
+  {% else %}
+    <p class="fil-vide-texte">{{ texte_tout }}</p>
+  {% endif %}
+</div>

@@ -1,0 +1,37 @@
+{# Section repliable « Bloquées (n) » (lot 14, revue produit P0-1) : une
+   tâche bloquée sort de « Mes tâches » et du Gantt (décision 5 du lot 10),
+   elle reste visible ici avec son motif et le nombre de jours de blocage.
+   Rien si aucune tâche n'est bloquée.
+
+   Contexte : taches_bloquees (taches.list_bloquees) ; facultatifs :
+   bloquees_id (id du <details>, « taches-bloquees » par défaut),
+   bloquees_panneau (Deadlines : la ligne ouvre le panneau de la tâche sur
+   place, tache-dialog.js), bloquees_chef (nom du chef de projet affiché :
+   vue de tout le bureau), bloquees_classe (classes du conteneur, « card »
+   par défaut). Inclus par l'accueil et par partials/deadlines_contenu.html. #}
+{% set bloquees_id = bloquees_id|default('taches-bloquees') %}
+{% if taches_bloquees %}
+<details class="{{ bloquees_classe|default('card') }} taches-bloquees" id="{{ bloquees_id }}">
+  <summary class="taches-bloquees-resume">
+    <h2 class="carte-titre taches-bloquees-titre" id="{{ bloquees_id }}-titre">
+      <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.7 5.7l12.6 12.6"/></svg>
+      Bloquées <span class="taches-bloquees-nb">({{ taches_bloquees|length }}{{ '+' if taches_bloquees|length >= 50 }})</span>
+    </h2>
+    <span class="taches-bloquees-chevron" aria-hidden="true"></span>
+  </summary>
+  <ul class="taches-bloquees-liste" aria-labelledby="{{ bloquees_id }}-titre">
+    {% for t in taches_bloquees %}
+    {% set depuis = depuis_blocage(t.bloque_le|default(none)) %}
+    {% set par = ((t.bloque_par_prenom|default(none) or '') ~ ' ' ~ (t.bloque_par_nom|default(none) or ''))|trim %}
+    <li class="tache-bloquee"{% if bloquees_panneau|default(false) %} data-open-tache="{{ t.id }}" data-tache-url="{{ url_for('taches_fenetre.fenetre', projet_id=t.projet_id, tache_id=t.id) }}" data-filtre="{{ (t.projet_code ~ ' ' ~ t.projet_nom ~ ' ' ~ t.titre ~ ' ' ~ (t.bloque_motif|default(none) or ''))|lower }}"{% endif %}>
+      <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) }}" class="tache-bloquee-lien"{% if bloquees_panneau|default(false) %} data-ouvrir-tache data-titre="{{ t.titre }}" aria-haspopup="dialog"{% endif %}>
+        <span class="tache-bloquee-titre">{{ t.titre }}</span>
+        <span class="tache-bloquee-motif">{% if t.bloque_motif|default(none) %}«&nbsp;{{ t.bloque_motif|default(none) }}&nbsp;»{% else %}<span class="k-muet">Motif non renseigné</span>{% endif %}</span>
+        <span class="tache-bloquee-sous">{{ t.projet_code }}_{{ t.projet_nom }}{% if bloquees_chef|default(false) %} · {{ t.chef_prenom }} {{ t.chef_nom }}{% endif %}</span>
+        <span class="tache-bloquee-depuis">{% if depuis %}<span class="tache-bloquee-jours">{{ depuis|capitalize }}</span>{% endif %}{% if par %}<span class="tache-bloquee-par">par {{ par }}</span>{% endif %}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</details>
+{% endif %}

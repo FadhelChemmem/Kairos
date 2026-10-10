@@ -2,7 +2,8 @@
    toujours affichés, les 3 derniers, les plus anciens repliés au-delà).
    Lot 13 : cible des envois en partiel (#post-<id>-commentaires) —
    commentaire, réponse, modification, suppression. Contexte : post,
-   next_url ; facultatifs : nouveau_commentaire_id, commentaire_modifie_id. #}
+   next_url ; facultatifs : nouveau_commentaire_id, commentaire_modifie_id,
+   composer_ouvert. #}
 {% import "partials/commentaires_macros.html" as cm with context %}
 {% set commentaires = post.commentaires|default([]) %}
 <div class="post-commentaires" id="post-{{ post.id }}-commentaires">
@@ -20,7 +21,12 @@
     </div>
   {% endif %}
   {# Projet terminé ou abandonné : plus de commentaire (décision Fadhel, lot 7). #}
+  {# Lot 14 : replié tant qu'on n'a pas cliqué sur « Commenter » (avec
+     JavaScript seulement : html.k-js) ; ouvert après l'envoi d'un
+     commentaire (composer_ouvert), le focus y reste. #}
   {% if post.projet_etat not in ('termine', 'abandonne') %}
-  {{ cm.composer_commentaire(post, next_url) }}
+  <div class="post-commenter" id="post-{{ post.id }}-composer"{% if not composer_ouvert|default(false) %} data-replie{% endif %}>
+    {{ cm.composer_commentaire(post, next_url) }}
+  </div>
   {% endif %}
 </div>

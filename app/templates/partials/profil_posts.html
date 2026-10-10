@@ -1,0 +1,14 @@
+{# Posts d'une personne sur les N dernières semaines (carte du profil).
+   Lot 14 (revue produit P1-3) : Tout · Échanges · Activité — la liste
+   (#profil-posts) est remplacée en partiel, évènements automatiques
+   regroupés. Contexte : utilisateur, semaines, posts_recents,
+   posts_plus_anciens, fil_entrees, fil_categorie. #}
+{% import "partials/fil_filtres.html" as film %}
+{% set params = {'user_id': utilisateur.id, 'semaines': semaines if semaines > 1 else none} %}
+<div class="card">
+  <div class="carte-entete carte-entete-souple profil-posts-entete">
+    <h2 class="carte-titre carte-titre-form" id="posts">Posts — {{ 'dernière semaine' if semaines == 1 else semaines ~ ' dernières semaines' }}</h2>
+    {{ film.filtres('profil', fil_categorie, '#profil-posts', 'utilisateurs.profil_personne', params) }}
+  </div>
+  {% include "partials/profil_posts_liste.html" %}
+</div>

@@ -4,7 +4,8 @@
    les trois routes qui incluent ce partial).
 
    Fil façon réseau social (retours Fadhel, 2026-09-28/29) : commentaires
-   toujours affichés sous le post avec leur champ de saisie, "@Prénom Nom"
+   toujours affichés sous le post, leur champ déplié par « Commenter »
+   (lot 14), "@Prénom Nom"
    directement dans le texte, fichier glissé sur le champ, modification par
    l'auteur, suppression par un admin, images ouvertes dans une visionneuse
    (lightbox.js), et "Reposter" qui ouvre la fenêtre "Nouveau post" liée à
@@ -29,7 +30,7 @@
         <div class="post-entete-ligne"><a href="{{ auteur_url }}" class="post-auteur-lien">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a créé une tâche</div>
       {% elif post.est_cloture_tache %}
         <div class="post-entete-ligne"><a href="{{ auteur_url }}" class="post-auteur-lien">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> a terminé une tâche</div>
-      {% elif post.evenement|default(none) in ('creation_projet', 'etat_projet', 'etat_tache', 'titre_tache', 'chef_projet', 'intervenant_tache', 'echeance_tache', 'intervenant_projet') %}
+      {% elif post.evenement|default(none) in ('creation_projet', 'etat_projet', 'etat_tache', 'titre_tache', 'chef_projet', 'intervenant_tache', 'echeance_tache', 'intervenant_projet', 'blocage_tache', 'deblocage_tache') %}
         {# Posts automatiques (retour Fadhel, 2026-09-29, P1 ; changement de
            chef : lot 11 b ; intervenants et échéance d'une tâche, retrait
            du projet : lot 13). #}
@@ -38,7 +39,8 @@
                          'chef_projet': 'a changé le chef de projet',
                          'intervenant_tache': "a changé les intervenants d’une tâche",
                          'echeance_tache': "a changé l’échéance d’une tâche",
-                         'intervenant_projet': 'a retiré un intervenant du projet'}[post.evenement] %}
+                         'intervenant_projet': 'a retiré un intervenant du projet',
+                         'blocage_tache': 'a signalé un blocage', 'deblocage_tache': 'a levé le blocage'}[post.evenement] %}
         <div class="post-entete-ligne"><a href="{{ auteur_url }}" class="post-auteur-lien">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> {{ phrase }}</div>
       {% elif post.est_repost or post.parent_post_id %}
         {# "Reposter" (Lot 5, retour Fadhel, 2026-09-28) : distinct du rebond
@@ -55,7 +57,7 @@
         {% if post.projet_id is none %}<span>{{ 'Équipes' if post.equipes|default([])|length > 1 else 'Équipe' }}&nbsp;: {{ post.equipes|default([])|join(', ') }}</span> · {% elif show_projet %}<a href="{{ url_for('projets.detail', projet_id=post.projet_id) }}" class="lien-discret">{{ post.projet_code }}_{{ post.projet_nom }}</a> · {% endif %}{% if post.created_at %}<time datetime="{{ post.created_at.isoformat() }}" title="{{ 'Horodatage réel : ' if g.date_simulee }}{{ date_fr(post.created_at) }} à {{ post.created_at.strftime('%H:%M') }}">{{ post.created_at|il_y_a }}</time>{% endif %}
       </div>
     </div>
-    {% if post.est_creation_tache or post.evenement|default(none) in ('etat_tache', 'titre_tache', 'intervenant_tache', 'echeance_tache') %}
+    {% if post.est_creation_tache or post.evenement|default(none) in ('etat_tache', 'titre_tache', 'intervenant_tache', 'echeance_tache', 'blocage_tache', 'deblocage_tache') %}
       <span class="pill {{ post_tache_pill.classe }}">{{ post_tache_pill.label }}</span>
     {% elif post.evenement|default(none) in ('creation_projet', 'etat_projet', 'chef_projet', 'intervenant_projet') %}
       <span class="pill pill-neutre">Projet</span>
@@ -73,14 +75,27 @@
     {% endif %}
   </div>
 
-  {% if post.evenement|default(none) in ('etat_tache', 'titre_tache', 'intervenant_tache', 'echeance_tache') %}
+  {% if post.evenement|default(none) in ('etat_tache', 'titre_tache', 'intervenant_tache', 'echeance_tache', 'deblocage_tache') %}
     <div class="post-corps post-corps-serre">
       {% if post.evenement != 'titre_tache' %}<div class="post-corps-fort">{{ post.tache_titre }}</div>{% endif %}
       <div class="post-texte post-corps-second">{{ post.contenu }}</div>
     </div>
+  {% elif post.evenement|default(none) == 'blocage_tache' %}
+    {# Lot 14 (revue produit P0-1) : le motif du blocage, cité. #}
+    <div class="post-corps post-corps-serre">
+      <div class="post-corps-fort">{{ post.tache_titre }}</div>
+      <div class="post-texte post-corps-second post-blocage-motif">{% if post.contenu %}«&nbsp;{{ post.contenu }}&nbsp;»{% else %}Motif non renseigné.{% endif %}</div>
+    </div>
+  {% elif post.est_cloture_tache %}
+    {# Lot 14 (revue produit P0-2) : le titre de la tâche, puis le message
+       de clôture (« Tâche terminée. » sans message). #}
+    <div class="post-corps post-corps-serre">
+      <div class="post-corps-fort">{{ post.tache_titre }}</div>
+      {% if post.contenu %}<div class="post-texte post-corps-second">{{ post.contenu }}</div>{% endif %}
+    </div>
   {% elif post.evenement|default(none) in ('etat_projet', 'chef_projet', 'intervenant_projet') %}
     <div class="post-texte post-corps post-corps-serre post-corps-second">{{ post.contenu }}</div>
-  {% elif post.est_creation_tache or post.est_cloture_tache or post.evenement|default(none) == 'creation_projet' %}
+  {% elif post.est_creation_tache or post.evenement|default(none) == 'creation_projet' %}
     <div class="post-texte post-corps post-corps-serre post-corps-fort">{{ post.contenu or post.tache_titre }}</div>
   {% else %}
     <div class="post-texte post-corps">{{ post.contenu }}</div>
@@ -189,10 +204,19 @@
         <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> <span class="post-action-libelle-vu" aria-hidden="true">Vu</span><span class="sr-only">Marquer comme vu, déjà vu par</span> <span class="post-reaction-count">{{ post.nb_reactions }}</span>
       </button>
     </form>
-    {# Compteur : un <label> vers le champ de commentaire s'il existe (un
-       clic y place le curseur), un simple texte si le projet est clos (le
-       champ n'existe pas) — lot 10, audit front I17. #}
+    {# Lot 14 (revue produit P1-3) : « Commenter » déplie le champ (replié
+       par défaut : plus de 20 formulaires ouverts sur la page), avec le
+       nombre de commentaires ; un simple texte si le projet est clos.
+       Le champ est sous les commentaires : rien ne bouge au-dessus. #}
+    {% if projet_clos %}
     {% include "partials/post_compteur.html" %}
+    {% else %}
+    <button type="button" class="post-action post-action-commenter" id="post-{{ post.id }}-commenter" data-commenter="{{ post.id }}" aria-expanded="false" aria-controls="post-{{ post.id }}-composer">
+      <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="4"/><path d="M8.5 17 6.5 20v-3"/></svg>
+      <span class="post-action-libelle-commenter">Commenter</span>
+      {% include "partials/post_compteur.html" %}
+    </button>
+    {% endif %}
     {# "Reposter" (retour Fadhel, 2026-09-29, P2) : remplace le trombone et
        la flèche. Ouvre la fenêtre "Nouveau post" (Tâche / Information /
        Requête) liée à ce post, qui s'affichera "en réponse à" lui dans le

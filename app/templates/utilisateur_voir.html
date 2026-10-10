@@ -15,8 +15,8 @@
 
 <div class="page-body page-body-2col k-moyen">
 
-  <!-- Chef de projet : nom, téléphone et Daily log de la semaine dernière
-       uniquement, rien de modifiable (retour Fadhel, 2026-09-21). -->
+  <!-- Chef de projet : nom, téléphone et Daily log des 10 derniers jours
+       ouvrés uniquement, rien de modifiable (retour Fadhel, 2026-09-21). -->
   <div class="col">
     <div class="card">
       <div class="profil-entete">
@@ -29,21 +29,12 @@
       <dl class="k-cles">
         <div><dt>Téléphone</dt><dd>{% if utilisateur.telephone %}<a href="tel:{{ utilisateur.telephone|replace(' ', '') }}" class="lien-cible">{{ utilisateur.telephone }}</a>{% else %}—{% endif %}</dd></div>
       </dl>
-      <p class="k-note">{% if peut_corriger %}Vue restreinte (chef de projet)&nbsp;: nom, téléphone et Daily log de la semaine dernière&#8239;; vous pouvez corriger son Daily log.{% else %}Vue en lecture seule (chef de projet)&nbsp;: nom, téléphone et Daily log de la semaine dernière uniquement.{% endif %}</p>
+      <p class="k-note">{% if not dix_jours %}Vue en lecture seule (chef de projet)&nbsp;: nom et téléphone uniquement.{% elif peut_corriger %}Vue restreinte (chef de projet)&nbsp;: nom, téléphone et Daily log des 10 derniers jours ouvrés&#8239;; vous pouvez corriger son Daily log.{% else %}Vue en lecture seule (chef de projet)&nbsp;: nom, téléphone et Daily log des 10 derniers jours ouvrés uniquement.{% endif %}</p>
     </div>
   </div>
 
   <div class="col-center">
-    <div class="card">
-      <h2 class="carte-titre carte-titre-form">Daily log — semaine dernière</h2>
-      <div class="dl-semaine">
-        {% for jour in semaine_derniere %}
-          {% with ancre=False %}{% include "partials/dailylog_jour_lecture.html" %}{% endwith %}
-        {% else %}
-          <p class="k-muet">Aucune entrée la semaine dernière.</p>
-        {% endfor %}
-      </div>
-    </div>
+    {% if dix_jours %}{% include "partials/dailylog_dix_jours.html" %}{% endif %}
   </div>
 
 </div>

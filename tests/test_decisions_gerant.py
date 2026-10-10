@@ -173,10 +173,14 @@ class TestDecision3EtatsReserves(_Base):
     def test_intervenant_garde_en_cours_et_bloquee(self):
         for etat in ("en_cours", "bloque"):
             with self.subTest(etat=etat):
-                _, m = self._requete("post", "/projets/1/taches/5/etat", {"etat": etat},
+                # Lot 14 (P0-1) : « Bloquée » avec son motif.
+                donnees = {"etat": etat, **({"motif": "Attente des plans"} if etat == "bloque" else {})}
+                _, m = self._requete("post", "/projets/1/taches/5/etat", donnees,
                                      espions=[("app.repositories.taches.set_etat", True)],
                                      **self.INTERVENANT_DE_LA_TACHE)
-                m["app.repositories.taches.set_etat"].assert_called_once_with(5, 1, etat, 1, peut_gerer=False, annulation=False)
+                attendu = {"motif": "Attente des plans"} if etat == "bloque" else {}
+                m["app.repositories.taches.set_etat"].assert_called_once_with(5, 1, etat, 1, peut_gerer=False, annulation=False,
+                                                                             **attendu)
 
     def test_intervenant_ne_rouvre_pas_une_tache_reservee(self):
         """La tâche est Vérifiée (lu sous verrou par set_etat) : refus propre."""
@@ -201,7 +205,7 @@ class TestDecision3EtatsReserves(_Base):
         le nom de sa contrainte, jamais une erreur 500."""
         erreur = Exception("refus")
         erreur.diag = MagicMock(constraint_name="tache_etat_reserve")
-        resp, _ = self._requete("post", "/projets/1/taches/5/etat", {"etat": "bloque"},
+        resp, _ = self._requete("post", "/projets/1/taches/5/etat", {"etat": "bloque", "motif": "Plans"},
                                 espions=[("app.repositories.taches.set_etat", erreur)],
                                 **self.INTERVENANT_DE_LA_TACHE)
         self.assertEqual(resp.status_code, 302)

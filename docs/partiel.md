@@ -244,6 +244,16 @@ Le jeton CSRF est ajouté automatiquement (en-tête `X-CSRFToken`,
 `kairos-amorce.js`). L'annulation ne propose pas d'annuler l'annulation
 (champ `annulation`).
 
+Quand « Annuler » défait plus qu'un simple état (recette du lot 14, n° 2
+à 5 : état d'une tâche, clôture), l'action porte un **jeton signé**
+(`jeton`, `routes/projets.py:_jeton_annuler`) : personne, état exact à
+rendre, version de l'élément produite par le geste, ids des notifications
+créées par lui. Sans jeton valide, `annulation=1` n'a aucun effet (une
+requête forgée ne contourne ni une validation ni une notification) ; si
+l'élément a changé depuis (geste d'une autre personne), la réponse est
+409 avec un message clair et rien n'est défait ; seules les notifications
+du geste sont retirées.
+
 ## 5. Composants : ré-initialisation sur un fragment
 
 Tout composant qui s'attache à des éléments du DOM doit être **idempotent

@@ -13,6 +13,7 @@ from flask import (
     Blueprint, abort, current_app, flash, g, redirect, render_template, request, session, url_for,
 )
 
+from .. import fil as film
 from .. import horloge, mailer, partiel
 from ..auth import (
     MOT_DE_PASSE_MIN_LEN, generer_lien_reset, hash_password, login_required,
@@ -287,6 +288,21 @@ def _semaine_derniere(utilisateur: dict, projets_visibles_ids: set | None = None
     return _jours_daily_log(utilisateur, jours, projets_visibles_ids)
 
 
+def _dix_jours_ouvres(utilisateur: dict, projets_visibles_ids: set | None) -> list[dict]:
+    """Fiche d'une personne vue par l'Admin ou un chef (lot 14, revue
+    produit P1-9) : les 10 derniers jours ouvrés, aujourd'hui compris, du
+    plus récent au plus ancien, avec leur état (rempli, absent, non
+    renseigné…) calculé sur TOUTES les heures du jour ; les lignes
+    affichées restent limitées aux projets que le visiteur voit."""
+    jours = dailylog_repo.jours_ouvres_recents(dailylog_repo.aujourdhui_pour(utilisateur), 10)
+    synthese = dailylog_repo.synthese_periode([utilisateur["id"]], min(jours), max(jours))
+    sortie = _jours_daily_log(utilisateur, jours, projets_visibles_ids)
+    for jour in sortie:
+        case = synthese.get((utilisateur["id"], jour["date"]))
+        jour["etat"] = dailylog_repo.etat_case(utilisateur, jour["date"], case)
+    return sortie
+
+
 def _fenetre_7_jours(utilisateur: dict, projets_visibles_ids: set, nb_jours: int = 7) -> list[dict]:
     """Daily log glissant (aujourd'hui inclus, en remontant, au fuseau de la
     personne), pour la page de profil d'une personne (Lot 5, retour Fadhel,
@@ -328,8 +344,17 @@ def profil_personne(user_id: int):
     # semaine ; chaque "Voir +" ajoute une semaine (12 au plus).
     semaines = min(max(request.args.get("semaines", 1, type=int) or 1, 1), 12)
     depuis = dailylog_repo.aujourdhui_pour(g.user) - datetime.timedelta(days=7 * semaines - 1)
-    posts_recents = posts_repo.list_feed_auteur(user_id, viewer_id, limit=100, depuis=depuis)
-    posts_plus_anciens = bool(posts_repo.list_feed_auteur(user_id, viewer_id, limit=1, avant=depuis))
+    # Lot 14 (revue produit P1-3) : Tout · Échanges · Activité, évènements
+    # automatiques regroupés.
+    fil_categorie = film.categorie_demandee()
+    posts_recents = posts_repo.list_feed_auteur(user_id, viewer_id, limit=100, depuis=depuis, categorie=fil_categorie)
+    posts_plus_anciens = bool(posts_repo.list_feed_auteur(user_id, viewer_id, limit=1, avant=depuis,
+                                                          categorie=fil_categorie))
+    fil_posts = dict(posts_recents=posts_recents, posts_plus_anciens=posts_plus_anciens,
+                     fil_entrees=film.regrouper(posts_recents), fil_categorie=fil_categorie)
+    if partiel.est_partiel() == "#profil-posts":
+        return partiel.repondre("partials/profil_posts_liste.html", utilisateur=utilisateur, semaines=semaines,
+                                **fil_posts)
     # Daily log d'un collègue (audit sécurité I5, lot 10) : spec du 16/09
     # « intervenant = accès limité à ses tâches/Daily log », le chef voit
     # tout (18/09). Visible pour soi-même, l'Admin et le chef de projet ;
@@ -353,8 +378,7 @@ def profil_personne(user_id: int):
         return partiel.repondre(
             "partials/profil_activite.html", utilisateur=utilisateur, jours=jours, jour_suivant=jour_suivant,
             peut_corriger=voir_daily_log and _peut_corriger(utilisateur), semaines=semaines,
-            posts_plus_anciens=posts_plus_anciens, posts_recents=posts_recents,
-            utilisateurs_actifs=utilisateurs_repo.list_actifs(),
+            utilisateurs_actifs=utilisateurs_repo.list_actifs(), **fil_posts,
         )
     projets_postables = [p for p in projets_repo.list_mes_projets_recents(viewer_id, limit=500)
                          if p["etat"] in ("en_cours", "bloque")]
@@ -364,9 +388,8 @@ def profil_personne(user_id: int):
         jours=jours,
         peut_corriger=voir_daily_log and _peut_corriger(utilisateur),
         semaines=semaines,
-        posts_plus_anciens=posts_plus_anciens,
         taches_en_cours=taches_repo.list_en_cours_pour_profil(user_id, viewer_id, limit=8),
-        posts_recents=posts_recents,
+        **fil_posts,
         # Lot 5 (retour Fadhel, 2026-09-28) : "@ Taguer" dans le
         # composeur de commentaire de post_card.html a besoin de la même
         # liste que sur l'accueil/la page projet (voir main.accueil /
@@ -662,10 +685,12 @@ def fiche(user_id: int):
         return render_template(
             "utilisateur_voir.html",
             utilisateur=utilisateur,
-            semaine_derniere=_semaine_derniere(utilisateur, projets_repo.list_ids_visibles(g.user["id"])),
+            dix_jours=(_dix_jours_ouvres(utilisateur, projets_repo.list_ids_visibles(g.user["id"]))
+                       if utilisateur.get("role") in ("admin", "chef_de_projet", "intervenant") else []),
             peut_corriger=_peut_corriger(utilisateur),
         )
 
+    enregistre = utilisateur
     if request.method == "POST" and _cible_protegee(utilisateur):
         if partiel.est_partiel():
             return partiel.refuser("Seul un Admin peut modifier le compte d’un Admin.", 403)
@@ -826,6 +851,9 @@ def fiche(user_id: int):
         roles_creables=_roles_attribuables(),
         lecture_seule=_cible_protegee(utilisateur),
         fuseaux=dailylog_repo.FUSEAUX, erreurs=erreurs,
+        dix_jours=(_dix_jours_ouvres(enregistre, None) if g.user["role"] == "admin" and _peut_corriger(enregistre)
+                   else None),
+        peut_corriger=g.user["role"] == "admin" and _peut_corriger(enregistre),
     )
 
 

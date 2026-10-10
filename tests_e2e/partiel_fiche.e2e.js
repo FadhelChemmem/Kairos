@@ -137,9 +137,17 @@ module.exports = async function scenarioFiche(h) {
   await attendre(() => p.evaluate(() => !!document.querySelector('#dialog-tache[open] #tache-fenetre-20')));
 
   // --- État : optimiste, ligne, compteur, état du projet, fil ------------
+  // Lot 14 : le fil montre les Échanges par défaut ; les posts automatiques
+  // sont dans « Tout » (contrôle segmenté, en partiel, ?tache= gardé).
+  await p.click('#fil-filtre-projet-tout');
+  await attendre(() => p.evaluate(() => !!document.querySelector('#fil-posts[data-fil-categorie="tout"]')
+    && /fil=tout/.test(location.search) && /tache=20/.test(location.search)));
   const postsAvant = await p.locator('#fil-posts .fil-item').count();
-  await mesurer(p, c, 'état « Bloquée » (liste de choix, optimiste)',
-    () => p.click('#tache-20-etat-bloque'),
+  // Lot 14 (P0-1) : « Bloquée » demande d'abord « Qu’est-ce qui bloque ? ».
+  await p.click('#tache-20-etat-bloque');
+  await p.fill('#tache-20-motif', 'Attente des plans archi indice B');
+  await mesurer(p, c, 'état « Bloquée » avec son motif (optimiste)',
+    () => p.click('#tache-20-blocage-valider'),
     async () => sql('SELECT etat FROM tache WHERE id=20') === 'bloque'
       && await p.locator('#fil-posts .fil-item').count() > postsAvant
       && !(await p.locator('[aria-busy="true"]').count()),
@@ -151,10 +159,11 @@ module.exports = async function scenarioFiche(h) {
   etape('état : projet recalculé « Bloqué » (en-tête, topbar, Informations)',
     (await p.innerText('#projet-etat-pastille')) === 'Bloqué' && sql('SELECT etat FROM projet WHERE id=1') === 'bloque'
     && await p.locator('#topbar-projet .point-etat-bloque').count() === 1);
-  etape('état : post automatique inséré en tête du fil', /En cours → Bloqué/.test(await p.locator('#fil-posts .fil-item').first().innerText()));
-  etape('état : toast « État de la tâche : Bloquée. » avec « Annuler »',
-    await p.locator('#k-toasts .k-toast:has-text("État de la tâche : Bloquée.") .k-toast-action').count() === 1);
-  await p.click('#k-toasts .k-toast:has-text("État de la tâche : Bloquée.") .k-toast-action');
+  etape('état : post automatique « a signalé un blocage » inséré en tête du fil',
+    /a signalé un blocage[\s\S]*Attente des plans archi indice B/.test((await p.locator('#fil-posts .fil-item').allInnerTexts()).slice(0, 2).join('\n')));
+  etape('état : toast « Blocage signalé. » avec « Annuler »',
+    await p.locator('#k-toasts .k-toast:has-text("Blocage signalé.") .k-toast-action').count() === 1);
+  await p.click('#k-toasts .k-toast:has-text("Blocage signalé.") .k-toast-action');
   await attendre(() => sql('SELECT etat FROM tache WHERE id=20') === 'en_cours');
   await attendre(async () => (await p.innerText('#tache-ligne-20 [data-tache-pastille]')) === 'En cours');
   etape('« Annuler » : tâche et projet revenus à En cours, sans rechargement',
@@ -164,11 +173,14 @@ module.exports = async function scenarioFiche(h) {
   await p.route(/\/taches\/20\/etat$/, (r) => r.fulfill({ status: 403, contentType: 'application/json',
     body: JSON.stringify({ erreur: 'interdit', message: 'Refus simulé.' }) }));
   await p.click('#tache-20-etat-bloque');
+  await p.fill('#tache-20-motif', 'Attente des plans');
+  await p.click('#tache-20-blocage-valider');
   await attendre(() => p.locator('#k-toasts .k-toast-erreur:has-text("Refus simulé.")').count());
   etape('refus : état optimiste annulé (bouton et ligne), message en toast',
     await p.getAttribute('#tache-20-etat-en_cours', 'aria-pressed') === 'true'
     && (await p.innerText('#tache-ligne-20 [data-tache-pastille]')) === 'En cours');
   await p.unroute(/\/taches\/20\/etat$/);
+  await p.click('#tache-20-blocage [data-blocage-annuler]');
   await p.click('#k-toasts .k-toast-erreur .k-toast-fermer');
   await pause(250);   // le focus quitte le toast fermé
 
@@ -258,6 +270,12 @@ module.exports = async function scenarioFiche(h) {
   etape('Échap : panneau fermé', true);
 
   // --- « + Tâche » : ligne insérée et surlignée, post dans le fil ----------
+  // Lot 14 : fermer le panneau (Échap = Retour) a ramené l'adresse d'avant
+  // le choix « Tout » (Échanges, sans les posts automatiques) : on y revient.
+  if (await p.evaluate(() => !/fil=tout/.test(location.search))) {
+    await p.click('#fil-filtre-projet-tout');
+    await attendre(() => p.evaluate(() => !!document.querySelector('#fil-posts[data-fil-categorie="tout"]')));
+  }
   await p.click('#carte-taches [data-open-post-dialog]');
   await p.fill('#dialog-titre-tache', 'Tâche créée en partiel');
   await mesurer(p, c, '« + Tâche » publiée',
@@ -383,7 +401,10 @@ module.exports = async function scenarioFiche(h) {
   p = await ouvrir(ali2, '/accueil');
   c = compter(p);
   await p.evaluate(() => document.getElementById('post-50').scrollIntoView({ block: 'center' }));
-  await p.click('#commentaire-post-50');
+  // Lot 14 : « Commenter » déplie le champ et y place le focus.
+  await p.click('#post-50-commenter');
+  etape('« Commenter » : champ déplié, focus dedans, aria-expanded', await focusSur(p, '#commentaire-post-50')
+    && await p.getAttribute('#post-50-commenter', 'aria-expanded') === 'true');
   await p.keyboard.type('Commentaire en partiel');
   await mesurer(p, c, 'commentaire (Entrée)',
     () => p.keyboard.press('Enter'),
@@ -391,7 +412,7 @@ module.exports = async function scenarioFiche(h) {
       && /Commentaire en partiel/.test(await p.innerText('#post-50-commentaires')),
     '#commentaire-post-50');
   etape('commentaire : champ vidé, compteur à jour (hors cible)', (await p.inputValue('#commentaire-post-50')) === ''
-    && /3 commentaires/.test(await p.innerText('#post-50-compteur')));
+    && /3\s*commentaires/.test(await p.textContent('#post-50-compteur')));
   await p.click('#post-50 [data-repondre] >> nth=0');
   await p.keyboard.type('Réponse en partiel');
   await mesurer(p, c, 'réponse à un commentaire',
@@ -447,7 +468,7 @@ module.exports = async function scenarioFiche(h) {
     () => p.click(`#commentaire-${premier} [data-confirmer-suppression]`),
     async () => sql(`SELECT count(*) FROM post_commentaire WHERE id=${premier}`) === '0'
       && await p.locator(`#commentaire-${premier}`).count() === 0,
-    '#commentaire-post-50');
+    '#post-50-commenter');
 
   // --- « Voir comme » : aucune écriture active sur la fiche ----------------
   const voir = await adm.newPage();
@@ -550,6 +571,8 @@ module.exports = async function scenarioFiche(h) {
   p = await ouvrir(calme, '/projets/1?tache=21');
   await p.waitForSelector('#dialog-tache #tache-fenetre-21');
   await p.click('#tache-21-etat-bloque');
+  await p.fill('#tache-21-motif', 'Attente des plans');
+  await p.click('#tache-21-blocage-valider');
   let maxAnim = 0;
   for (let i = 0; i < 6; i++) {
     maxAnim = Math.max(maxAnim, await p.evaluate(() => Math.max(0, ...document.getAnimations()

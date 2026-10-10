@@ -333,6 +333,29 @@ def en_retard_de(echeance, aujourdhui) -> str:
     return f"en retard de {(aujourdhui - echeance).days} j"
 
 
+def jours_blocage(bloque_le) -> int | None:
+    """Jours depuis le début du blocage d'une tâche (lot 14, P0-1), au
+    fuseau de la personne et à sa date du jour (simulée comprise) ; jamais
+    négatif. None si la date est inconnue."""
+    if bloque_le is None:
+        return None
+    from . import horloge
+
+    maintenant = horloge.maintenant()
+    jour = bloque_le.astimezone(maintenant.tzinfo).date() if getattr(bloque_le, "tzinfo", None) else bloque_le
+    if hasattr(jour, "date"):
+        jour = jour.date()
+    return max(0, (maintenant.date() - jour).days)
+
+
+def depuis_blocage(bloque_le) -> str:
+    """« depuis 3 j », « depuis aujourd’hui » ; "" si la date est inconnue."""
+    jours = jours_blocage(bloque_le)
+    if jours is None:
+        return ""
+    return "depuis aujourd’hui" if jours == 0 else f"depuis {jours}\u00a0j"
+
+
 GANTT_COULEURS = {"urgent": "#c2401f", "semaine": "#a16207", "tard": "#4a7c59"}
 
 
@@ -510,6 +533,8 @@ def register(app):
         personnes_recentes_d_abord=personnes_recentes_d_abord,
         texte_avec_mentions=texte_avec_mentions,
         heures_interv_chef=heures_interv_chef,
+        jours_blocage=jours_blocage,
+        depuis_blocage=depuis_blocage,
         montant_fr=montant_fr,
         zip=zip,
         # Date du jour côté serveur (retour Fadhel, 2026-09-28) — appelée

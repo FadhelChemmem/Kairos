@@ -78,6 +78,12 @@ async function ouvrir(ctx, chemin) {
   await pret(p);
   return p;
 }
+async function ouvrirSimple(ctx, chemin) {
+  const p = await ctx.newPage();
+  p.on('pageerror', (e) => erreursJs.push(e.message));
+  await p.goto(BASE + chemin);
+  return p;
+}
 async function pret(p) {
   await p.waitForFunction(() => window.KairosDailyLogPage && !window.KairosDailyLogPage.etat().chargement, null, { timeout: 8000 });
 }
@@ -134,18 +140,50 @@ async function contrastes(p) {
   const rim = await contexte(navigateur, 'rim@x.tn');
   let p = await ouvrir(rim, '/dailylog');
 
-  // 1. Page, proposition des projets à 0 h
+  // 1. Page, propositions à 0 h (lot 14, revue produit P0-4) : sa tâche en
+  // cours du projet 1 (pas le projet 1 seul : elle y a une tâche), les
+  // projets 2, 3 (Bloqué compris) et 5 (URBS) qu'elle suit sans tâche.
   let e = await etat(p);
   etape('page chargée sur aujourd\'hui (fuseau de Tunis)', e.sel === T, e.sel);
-  etape('mes projets proposés à 0 h (Bloqué compris)', ['1:0', '2:0', '3:0'].every((k) => e.rows.some((r) => r.cle === k && r.m === 0)), e.rows.map((r) => r.cle));
+  etape('propositions : tâche en cours + projets suivis sans tâche, à 0 h (Bloqué compris)',
+    JSON.stringify(e.rows.map((r) => r.cle).sort()) === JSON.stringify(['1:1', '2:0', '3:0', '5:0']) && e.rows.every((r) => r.m === 0 && r.propose),
+    e.rows.map((r) => r.cle));
+  etape('ligne de tâche : titre en gras, « code · projet » dessous',
+    (await p.textContent('#dl-liste .dl-row[data-cle="1:1"] .dl-pname')) === 'Note de calcul' &&
+    (await p.textContent('#dl-liste .dl-row[data-cle="1:1"] .dl-pcode')) === '26069D · Fondations Hangar GRL2' &&
+    await p.evaluate(() => { const r = document.querySelector('#dl-liste .dl-row[data-cle="1:1"]'); return r.querySelector('.dl-pname').compareDocumentPosition(r.querySelector('.dl-pcode')) & Node.DOCUMENT_POSITION_FOLLOWING; }) > 0 &&
+    await p.evaluate(() => getComputedStyle(document.querySelector('#dl-liste .dl-row[data-cle="1:1"] .dl-pname')).fontWeight) >= 700);
+  etape('note « Vos tâches en cours sont proposées » visible', await p.isVisible('#dl-propositions'));
+  etape('0 h : champ vide, indication « 0 h », infobulle « Tapez 2,5 ou 2h30 »',
+    (await valeur(p, '1:1')) === '' && (await p.getAttribute('#dl-liste .dl-row[data-cle="1:1"] .dl-val', 'placeholder')) === '0 h' &&
+    (await p.getAttribute('#dl-liste .dl-row[data-cle="1:1"] .dl-val', 'title')) === 'Tapez 2,5 ou 2h30');
+  etape('× visible sur les lignes proposées', (await p.$$('#dl-liste .dl-retirer:not(.dl-retirer-cache)')).length === 4);
+  const ordreAvant = e.rows.map((r) => r.cle).join();
+  const stepAvant = await p.locator('#dl-liste .dl-row[data-cle="1:1"] .dl-plus').boundingBox();
+  await p.click('#dl-liste .dl-row[data-cle="3:0"] .dl-retirer');
+  e = await etat(p);
+  etape('× retire la ligne proposée (rien n\'est enregistré), toast avec Annuler',
+    !e.rows.some((r) => r.cle === '3:0') && (await toast(p)).includes('Ligne retirée') && await p.isVisible('#dl-toast .dl-undo') &&
+    sql(`SELECT count(*) FROM dailylog_entree WHERE utilisateur_id=${RIM} AND date='${T}'`) === '0', e.rows.map((r) => r.cle));
+  etape('après × : les lignes au-dessus ne bougent pas', JSON.stringify(await p.locator('#dl-liste .dl-row[data-cle="1:1"] .dl-plus').boundingBox()) === JSON.stringify(stepAvant));
+  await p.click('#dl-toast .dl-undo');
+  etape('Annuler remet la ligne à sa place', (await etat(p)).rows.map((r) => r.cle).join() === ordreAvant, (await etat(p)).rows.map((r) => r.cle));
+  await p.click('#dl-liste .dl-row[data-cle="1:1"] .dl-val');
+  await p.keyboard.type('2h30');
+  await p.keyboard.press('Enter');
+  etape('placeholder « 0 h » : un clic puis « 2h30 » tapé directement', (await valeur(p, '1:1')) === '2 h 30', await valeur(p, '1:1'));
+  await saisir(p, '1:1', '');
+  etape('champ vidé : la ligne garde sa valeur (message)', (await valeur(p, '1:1')) === '2 h 30');
+  await saisir(p, '1:1', '0');
+  etape('« 0 » remet la ligne à 0 h (champ vide)', (await valeur(p, '1:1')) === '');
   etape('statut « Nouvelle saisie »', (await statut(p)) === 'Nouvelle saisie');
   await capture(p, 'dailylog-1280-clair-nouveau.png');
 
   // 2. −/+
-  await plus(p, '1:0', 3);
-  etape('+ ×3 → 1 h 30', (await valeur(p, '1:0')) === '1 h 30');
-  await moins(p, '1:0');
-  etape('− → 1 h', (await valeur(p, '1:0')) === '1 h');
+  await plus(p, '1:1', 3);
+  etape('+ ×3 → 1 h 30', (await valeur(p, '1:1')) === '1 h 30');
+  await moins(p, '1:1');
+  etape('− → 1 h', (await valeur(p, '1:1')) === '1 h');
   etape('statut « Modifié · non enregistré »', (await statut(p)) === 'Modifié · non enregistré');
 
   // 3. Saisie texte
@@ -161,8 +199,8 @@ async function contrastes(p) {
   etape('« 2h30 » puis « 1:00 »', (await valeur(p, '3:0')) === '1 h');
 
   // 4. Plafond de 10 h
-  await saisir(p, '1:0', '9');
-  etape('10 h : ligne plafonnée à 6 h 30', (await valeur(p, '1:0')) === '6 h 30', await valeur(p, '1:0'));
+  await saisir(p, '1:1', '9');
+  etape('10 h : ligne plafonnée à 6 h 30', (await valeur(p, '1:1')) === '6 h 30', await valeur(p, '1:1'));
   etape('toast « Maximum 6 h 30 sur cette ligne »', (await toast(p)).includes('Maximum 6 h 30'), await toast(p));
   etape('+ désactivé à 10 h', await p.isDisabled('#dl-liste .dl-row[data-cle="2:0"] .dl-plus'));
   etape('total 10 h, jauge role=meter', (await p.textContent('#dl-total')) === '10 h' && (await p.getAttribute('#dl-jauge', 'aria-valuenow')) === '10');
@@ -209,7 +247,7 @@ async function contrastes(p) {
   etape('Annuler la copie', (await etat(p)).total === 0);
 
   // 9. Absent + Annuler
-  await saisir(p, '1:0', '2');
+  await saisir(p, '1:1', '2');
   await p.click('#dl-absent');
   await attendre(async () => (await p.isVisible('.dl-absentcard')));
   etape('jour absent : carte affichée', await p.isVisible('.dl-absentcard'));
@@ -280,12 +318,12 @@ async function contrastes(p) {
 
   // 15. keepalive à la fermeture
   const jKeep = puces[0];
-  await plus(p, '1:0', 2);
+  await plus(p, '1:1', 2);
   await p.close({ runBeforeUnload: true });
   await attendre(() => heures(RIM, jKeep) === '1.00', 4000);
   etape('fermeture : PUT keepalive enregistré en base', heures(RIM, jKeep) === '1.00', heures(RIM, jKeep));
   p = await ouvrir(rim, '/dailylog?date=' + jKeep);
-  await plus(p, '1:0');
+  await plus(p, '1:1');
   // Navigation par un lien (comme l'utilisateur) : un page.goto() du pilote
   // coupe le document avant que ses requêtes de pagehide ne partent (mesuré :
   // 2 sur 10 délivrées, même avec sendBeacon), un clic : 10 sur 10.
@@ -304,7 +342,7 @@ async function contrastes(p) {
   await attendre(async () => (await statut(b)) === 'Enregistré');
   etape('« Garder ma saisie » : réenregistré avec la nouvelle version', heures(RIM, T) === '10.00' &&
     sql(`SELECT heures FROM dailylog_entree WHERE utilisateur_id=${RIM} AND date='${T}' AND projet_id=2`) === '2.50', heures(RIM, T));
-  await moins(a, '1:0'); await a.click('#dl-enregistrer');
+  await moins(a, '1:1'); await a.click('#dl-enregistrer');
   await attendre(async () => (await toast(a)).includes('modifiée ailleurs'));
   await a.click('#dl-toast .dl-undo >> text=Reprendre la version enregistrée');
   etape('« Reprendre la version enregistrée »', (await statut(a)) === 'Enregistré' && (await etat(a)).total === 600, (await etat(a)).total);
@@ -376,18 +414,30 @@ async function contrastes(p) {
 
   // 18. Recherche sans accents, tâche d'un projet
   await p.goto(BASE + '/dailylog?date=' + T); await pret(p);
-  await moins(p, '1:0', 4);
+  await moins(p, '1:1', 4);
   await p.click('#dl-ajouter');
   await p.fill('#dl-recherche', 'ete');
   await attendre(async () => (await p.$$('#dl-catalogue-corps [data-add="4:0"]')).length > 0);
   etape('recherche « ete » → Résidence Été', (await p.$$('#dl-catalogue-corps [data-add="4:0"]')).length === 1);
   await p.click('#dl-catalogue-corps [data-add="4:0"]');
   etape('projet ajouté à 30 min', (await valeur(p, '4:0')) === '30 min');
-  await p.click('#dl-ajouter');
+  // Lot 14 : le catalogue reste ouvert après un ajout, le focus sur le choix.
+  etape('catalogue resté ouvert après l\'ajout, focus sur le choix', await p.isVisible('#dl-catalogue') &&
+    await p.evaluate(() => document.activeElement && document.activeElement.dataset.add === '4:0'));
+  await p.fill('#dl-recherche', '');
   await p.click('#dl-catalogue-corps [data-taches="1"]');
   await attendre(async () => (await p.$$('#dl-catalogue-corps [data-add="1:2"]')).length > 0);
+  etape('catalogue : le projet seul ET ses tâches', (await p.$$('#dl-catalogue-corps .dl-catsous [data-add="1:0"]')).length === 1);
+  await p.locator('#dl-catalogue-corps [data-add="1:2"]').scrollIntoViewIfNeeded();
+  const avantAjout = await p.locator('#dl-catalogue-corps [data-add="1:2"]').boundingBox();
   await p.click('#dl-catalogue-corps [data-add="1:2"]');
-  etape('imputation à une tâche du projet', (await p.textContent('#dl-liste .dl-row[data-cle="1:2"] .dl-pcode')).includes('Plans de ferraillage'));
+  const apresAjout = await p.locator('#dl-catalogue-corps [data-add="1:2"]').boundingBox();
+  etape('ajout catalogue ouvert : le choix cliqué ne bouge pas (la liste grandit au-dessus)',
+    Math.abs(apresAjout.y - avantAjout.y) <= 1 && Math.abs(apresAjout.x - avantAjout.x) <= 1, [avantAjout, apresAjout]);
+  await p.click('#dl-catalogue-fini');
+  etape('« Terminé » ferme le catalogue, focus sur la dernière ligne ajoutée', await p.isHidden('#dl-catalogue') &&
+    await p.evaluate(() => document.activeElement && document.activeElement.closest('[data-cle="1:2"]') !== null));
+  etape('imputation à une tâche du projet', (await p.textContent('#dl-liste .dl-row[data-cle="1:2"] .dl-pname')) === 'Plans de ferraillage');
   await p.click('#dl-enregistrer');
   await attendre(async () => (await statut(p)) === 'Enregistré');
   etape('ligne de tâche en base', sql(`SELECT heures FROM dailylog_entree WHERE utilisateur_id=${RIM} AND date='${T}' AND tache_id=2`) === '0.50');
@@ -421,8 +471,8 @@ async function contrastes(p) {
   await p.goto(BASE + '/dailylog?date=' + jPrec); await pret(p);
   await attendre(() => sql(`SELECT objectif_minutes FROM dailylog_preference WHERE utilisateur_id=${RIM}`) === '480', 3000);
   etape('objectif réglé juste avant de quitter la page : enregistré', sql(`SELECT objectif_minutes FROM dailylog_preference WHERE utilisateur_id=${RIM}`) === '480');
-  await p.click('#dl-liste .dl-row[data-cle="1:0"] .dl-pinfo');
-  etape('nom du projet : ligne désactivée (0 h)', (await valeur(p, '1:0')) === '0 h');
+  await p.click('#dl-liste .dl-row[data-cle="1:1"] .dl-pinfo');
+  etape('nom du projet : ligne désactivée (0 h, champ vide)', (await valeur(p, '1:1')) === '');
   etape('total à 0 : bouton « Vider la journée »', (await p.textContent('#dl-enregistrer')) === 'Vider la journée');
   await p.click('#dl-enregistrer');
   // Lot 13 : confirmation en ligne (plus de boîte native), focus sur « Annuler ».
@@ -478,6 +528,22 @@ async function contrastes(p) {
   etape('la personne est prévenue', sql(`SELECT count(*) FROM notification WHERE utilisateur_id=${RIM} AND message LIKE 'Daily log du %corrigé par Ali Chef.'`) === '1');
   await capture(c, 'dailylog-1280-clair-correction.png');
   await ali.close();
+
+  // 22. Lot 14 : « Proposer mes tâches en cours » désactivé (Mes informations).
+  const pr = await ouvrirSimple(rim, '/utilisateurs/moi');
+  etape('Mes informations : réglage activé par défaut', await pr.isChecked('#pref-dl-proposer'));
+  await pr.click('#pref-dl-proposer');
+  await attendre(async () => (await pr.locator('#k-toasts .k-toast').count()) > 0);
+  etape('réglage décoché : toast, mémorisé sur ce navigateur', /ne seront plus proposées/.test(await pr.textContent('#k-toasts')) &&
+    await pr.evaluate((id) => localStorage.getItem('kairos-dl-proposer-' + id), RIM) === 'non');
+  await pr.goto(BASE + '/dailylog?date=' + jPrec); await pret(pr);
+  etape('journée vierge sans propositions (réglage désactivé)', (await etat(pr)).rows.length === 0 && await pr.isHidden('#dl-propositions'),
+    (await etat(pr)).rows.map((r) => r.cle));
+  await pr.goto(BASE + '/utilisateurs/moi');
+  await pr.click('#pref-dl-proposer');
+  await pr.goto(BASE + '/dailylog?date=' + jPrec); await pret(pr);
+  etape('réactivé : propositions de retour', (await etat(pr)).rows.some((r) => r.propose));
+  await pr.close();
 
   etape('aucune erreur JavaScript', erreursJs.length === 0, erreursJs);
   await navigateur.close();

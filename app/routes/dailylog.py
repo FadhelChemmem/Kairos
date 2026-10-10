@@ -114,6 +114,13 @@ TEXTES_DAILYLOG = {
     "taches_du_projet": "Tâches",
     "taches_titre": "Tâches de {x}",
     "projet_seul": "Projet seul (sans tâche)",
+    "sans_tache": "sans tâche",
+    "retirer": "Retirer la ligne {x} (non enregistrée)",
+    "retirer_titre": "Retirer cette ligne (non enregistrée)",
+    "ligne_retiree": "Ligne retirée\u00a0: {x}",
+    "astuce_saisie": "Tapez 2,5 ou 2h30",
+    "propositions_annonce": "{x} tâches ou projets proposés à 0 h",
+    "propositions_annonce_1": "1 tâche ou projet proposé à 0 h",
     "aucune_tache": "Aucune tâche en cours.",
     "total": "Total",
     "jauge": "Total de la journée",
@@ -147,6 +154,10 @@ TEXTES_DAILYLOG = {
     "banniere_plus": "+ {x} plus ancien",
     "banniere_plus_pl": "+ {x} plus anciens",
     "banniere_cal": " (voir le calendrier)",
+    # Recette du lot 14, n° 15 : la bannière garde sa place une fois le
+    # dernier jour manqué rempli.
+    "banniere_faite": "Journée du {x} enregistrée.",
+    "banniere_faite_suite": "Plus aucun jour à compléter.",
     "heures_sur": "Heures sur {x} (pas de 30 minutes)",
     "moins_30": "Moins 30 minutes sur {x}",
     "plus_30": "Plus 30 minutes sur {x}",
@@ -403,6 +414,11 @@ def jour_json(proprio: dict, date, aujourdhui, contexte: bool = True) -> dict:
         out["copie"] = None if jour["absent"] else _copie(proprio, date, droits)
         out["manques"] = ([d.isoformat() for d in dl.jours_manques_recents(proprio, aujourdhui=aujourdhui)]
                           if droits["mode"] == "saisie" else [])
+        # Lot 14 (revue produit P0-4) : journée vierge de SON Daily log, ses
+        # tâches en cours proposées à 0 h (affichées si la personne ne l'a
+        # pas désactivé, voir dailylog.js) ; jamais en correction.
+        out["proposees"] = (dl.lignes_proposees(proprio, date)
+                            if statut == "vide" and droits["mode"] == "saisie" and droits["saisie_libre"] else [])
     return out
 
 
@@ -721,3 +737,106 @@ def api_taches():
     if projet is None or not projet["visible"] or not _modifiable(droits, projet):
         raise ErreurApi(404, "projet_introuvable", "Projet introuvable.")
     return jsonify({"projet_id": projet_id, "taches": dl.taches_ouvertes(projet_id)})
+
+
+# ---------------------------------------------------------------------
+# Daily log de l'équipe (lot 14, revue produit P1-9)
+# ---------------------------------------------------------------------
+LIBELLES_CASE = {
+    "rempli": "rempli",
+    "absent": "absent",
+    "manquant": "non renseigné",
+    "attente": "aujourd’hui, pas encore saisi",
+    "verrouille": "non renseigné, au-delà de 14 jours",
+    "futur": "à venir",
+    "avant": "avant son arrivée",
+    "week_end": "week-end",
+}
+
+
+def _lundi(jour: datetime.date) -> datetime.date:
+    return jour - datetime.timedelta(days=jour.weekday())
+
+
+def _titre_semaine(lundi: datetime.date) -> str:
+    vendredi = lundi + datetime.timedelta(days=4)
+    debut = "1er" if lundi.day == 1 else str(lundi.day)
+    fin = "1er" if vendredi.day == 1 else str(vendredi.day)
+    mois = utils.MOIS_COMPLETS
+    if lundi.year != vendredi.year:
+        return f"Semaine du {debut} {mois[lundi.month - 1]} {lundi.year} au {fin} {mois[vendredi.month - 1]} {vendredi.year}"
+    if lundi.month != vendredi.month:
+        return f"Semaine du {debut} {mois[lundi.month - 1]} au {fin} {mois[vendredi.month - 1]} {vendredi.year}"
+    return f"Semaine du {debut} au {fin} {mois[vendredi.month - 1]} {vendredi.year}"
+
+
+def _lien_jour(personne: dict, date: datetime.date) -> str:
+    if personne["id"] == g.user["id"]:
+        return url_for("dailylog.formulaire", date=date.isoformat())
+    return url_for("dailylog.formulaire", date=date.isoformat(), utilisateur=personne["id"])
+
+
+def contexte_equipe(lundi: datetime.date) -> dict:
+    """Tableau personnes × jours ouvrés d'une semaine. L'Admin voit tout le
+    bureau, un chef de projet les personnes de ses projets en cours (lui
+    compris). Une case = l'état du jour au fuseau de la personne (mêmes
+    règles que le rappel) ; le total d'une personne compte aussi le
+    week-end. Les heures ne disent rien des projets : la correction ouverte
+    depuis une case garde ses propres règles (lignes masquées…)."""
+    jours = [lundi + datetime.timedelta(days=i) for i in range(5)]
+    dimanche = lundi + datetime.timedelta(days=6)
+    gere_par = None if g.user["role"] == "admin" else g.user["id"]
+    personnes = dl.membres_equipe(gere_par)
+    synthese = dl.synthese_periode([p["id"] for p in personnes], lundi, dimanche)
+    totaux = [{"minutes": 0, "manquants": 0} for _ in jours]
+    lignes, manquants, personnes_en_manque = [], 0, 0
+    for p in personnes:
+        cases, total_semaine, manque = [], 0, False
+        for i in range(7):
+            date = lundi + datetime.timedelta(days=i)
+            case = synthese.get((p["id"], date)) or {"minutes": 0, "absent": False}
+            total_semaine += case["minutes"]
+            if i >= 5:
+                continue
+            etat = dl.etat_case(p, date, case)
+            if etat == "manquant":
+                manquants += 1
+                manque = True
+                totaux[i]["manquants"] += 1
+            totaux[i]["minutes"] += case["minutes"]
+            cases.append({
+                "date": date, "etat": etat, "minutes": case["minutes"], "libelle": LIBELLES_CASE[etat],
+                "lien": None if etat in ("futur", "week_end") else _lien_jour(p, date),
+            })
+        personnes_en_manque += manque
+        week_end = sum((synthese.get((p["id"], lundi + datetime.timedelta(days=i))) or {}).get("minutes", 0)
+                       for i in (5, 6))
+        lignes.append({"personne": p, "nom": _nom(p), "soi": p["id"] == g.user["id"], "cases": cases,
+                       "total_minutes": total_semaine, "week_end_minutes": week_end})
+    aujourdhui = dl.aujourdhui_pour(g.user)
+    courant = _lundi(aujourdhui)
+    return {
+        "lundi": lundi, "jours": jours, "lignes": lignes, "totaux": totaux,
+        "total_minutes": sum(l["total_minutes"] for l in lignes),
+        "manquants": manquants, "personnes_en_manque": personnes_en_manque,
+        "titre_semaine": _titre_semaine(lundi),
+        "precedente": lundi - datetime.timedelta(days=7) if lundi - datetime.timedelta(days=7) >= _lundi(DATE_MIN) else None,
+        "suivante": lundi + datetime.timedelta(days=7) if lundi < courant else None,
+        "courante": courant, "est_courante": lundi == courant, "admin": gere_par is None,
+    }
+
+
+@bp.route("/equipe", methods=["GET"])
+@role_required(*ROLES_CORRECTION)
+def equipe():
+    """Daily log de l'équipe : qui a rempli, qui manque, semaine par semaine
+    (navigation en partiel, #dlq). Lecture seule : un clic sur une case
+    ouvre le Daily log de la personne à ce jour, avec les droits de
+    correction habituels."""
+    aujourdhui = dl.aujourdhui_pour(g.user)
+    demande = _date_ou_none(request.args.get("semaine"))
+    lundi = _lundi(min(demande or aujourdhui, aujourdhui))
+    contexte = contexte_equipe(lundi)
+    if partiel.est_partiel():
+        return partiel.repondre("partials/dailylog_equipe.html", **contexte)
+    return render_template("dailylog_equipe.html", **contexte)

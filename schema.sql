@@ -346,6 +346,12 @@ CREATE TABLE tache (
   date_echeance    DATE,
   date_fin         DATE,                    -- renseigné à la clôture
   dossier_lien     TEXT,                    -- lien/chemin vers le dossier de pièces
+  -- Dernier blocage (migration 0020, lot 14 : « Qu'est-ce qui bloque ? ») :
+  -- motif, début et auteur ; affichés tant que la tâche est bloquée.
+  bloque_motif     TEXT CONSTRAINT tache_bloque_motif_longueur
+                     CHECK (bloque_motif IS NULL OR char_length(bloque_motif) BETWEEN 1 AND 500),
+  bloque_le        TIMESTAMPTZ,
+  bloque_par       BIGINT REFERENCES utilisateur(id),
   created_by       BIGINT NOT NULL REFERENCES utilisateur(id),
   updated_by       BIGINT REFERENCES utilisateur(id),
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -357,6 +363,7 @@ CREATE TRIGGER trg_tache_updated_at
 
 CREATE INDEX idx_tache_projet ON tache(projet_id);
 CREATE INDEX idx_tache_etat ON tache(etat);
+CREATE INDEX idx_tache_bloquee ON tache (projet_id) WHERE etat = 'bloque';
 CREATE INDEX idx_tache_echeance ON tache(date_echeance);
 
 -- Intervenant(s) sur une tâche — non requis à la création
@@ -499,7 +506,8 @@ CREATE TABLE post (
   evenement      VARCHAR(20) CONSTRAINT post_evenement_check CHECK (evenement IS NULL OR evenement IN (
                    'creation_tache', 'cloture_tache', 'repost',
                    'creation_projet', 'etat_tache', 'etat_projet', 'titre_tache', 'chef_projet',
-                   'intervenant_tache', 'echeance_tache', 'intervenant_projet')),
+                   'intervenant_tache', 'echeance_tache', 'intervenant_projet',
+                   'blocage_tache', 'deblocage_tache')),
   updated_by     BIGINT REFERENCES utilisateur(id), -- si le post est modifié après publication
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -1525,5 +1533,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0016_equipe_projets_et_recherche'),
   ('0017_chef_projet_et_rappels_dailylog'),
   ('0018_modes_admin_et_date_simulee'),
-  ('0019_lot13_etat_projet_et_temps')
+  ('0019_lot13_etat_projet_et_temps'),
+  ('0020_lot14_blocage_et_cloture')
 ON CONFLICT (version) DO NOTHING;

@@ -58,6 +58,7 @@ def list_taches_projet(projet_id: int, tache_id: int | None = None) -> list[dict
         SELECT t.id, t.projet_id, t.titre, t.etat, t.type_deadline,
                t.date_debut, t.date_echeance, t.date_fin, t.dossier_lien,
                t.created_at, t.updated_at,
+               t.bloque_motif, t.bloque_le, ub.prenom AS bloque_par_prenom, ub.nom AS bloque_par_nom,
                h.heures_cumulees, h.heures_chef, h.heures_intervenant,
                COALESCE(
                  (SELECT json_agg(json_build_object('id', u.id, 'prenom', u.prenom, 'nom', u.nom,
@@ -94,6 +95,7 @@ def list_taches_projet(projet_id: int, tache_id: int | None = None) -> list[dict
           JOIN projet pr ON pr.id = t.projet_id
           WHERE de.tache_id = t.id
         ) h ON true
+        LEFT JOIN utilisateur ub ON ub.id = t.bloque_par
         WHERE t.projet_id = %s
           AND (%s::int IS NULL OR t.id = %s)
         -- Tri (retour Fadhel, lot 8) : échéance la plus proche d'abord ; les
@@ -274,6 +276,40 @@ def list_deadlines_tous(chef_id: int | None = None, equipe_code: str | None = No
         return [dict(r) for r in cur.fetchall()]
 
 
+def list_bloquees(user_id: int | None = None, *, tous: bool = False, chef_id: int | None = None,
+                  equipe_code: str | None = None, limit: int = 50) -> list[dict]:
+    """Tâches bloquées des projets ouverts (lot 14, revue produit P0-1 :
+    section « Bloquées (n) » de l'accueil et des Deadlines), le blocage le
+    plus ancien d'abord, avec son motif et son auteur. Sans `tous` : celles
+    des projets où `user_id` est chef, co-chef, intervenant du projet ou de
+    la tâche, ou qu'il a créées (portée de list_deadlines et de Mes tâches) ;
+    avec `tous` (Admin) : tout le bureau, filtres facultatifs chef de projet
+    titulaire et équipe du projet (vue « Tous les projets » des Deadlines)."""
+    return db.query_all(
+        """
+        SELECT t.id, t.titre, t.date_echeance, t.type_deadline, t.bloque_motif, t.bloque_le,
+               ub.prenom AS bloque_par_prenom, ub.nom AS bloque_par_nom,
+               p.id AS projet_id, p.code AS projet_code, p.nom AS projet_nom,
+               u.prenom AS chef_prenom, u.nom AS chef_nom
+        FROM tache t
+        JOIN projet p ON p.id = t.projet_id
+        JOIN utilisateur u ON u.id = p.chef_projet_id
+        LEFT JOIN utilisateur ub ON ub.id = t.bloque_par
+        WHERE t.etat = 'bloque'
+          AND p.etat IN ('en_cours', 'bloque')
+          AND (%(tous)s OR p.chef_projet_id = %(uid)s OR t.created_by = %(uid)s
+               OR EXISTS (SELECT 1 FROM projet_co_chef cc WHERE cc.projet_id = p.id AND cc.utilisateur_id = %(uid)s)
+               OR EXISTS (SELECT 1 FROM projet_intervenant pi WHERE pi.projet_id = p.id AND pi.utilisateur_id = %(uid)s)
+               OR EXISTS (SELECT 1 FROM tache_intervenant ti WHERE ti.tache_id = t.id AND ti.utilisateur_id = %(uid)s))
+          AND (%(chef)s::bigint IS NULL OR p.chef_projet_id = %(chef)s::bigint)
+          AND (%(equipe)s::text IS NULL OR p.equipe_code = %(equipe)s::text)
+        ORDER BY t.bloque_le NULLS FIRST, p.code, t.id
+        LIMIT %(limit)s
+        """,
+        {"uid": user_id, "tous": tous, "chef": chef_id, "equipe": equipe_code, "limit": limit},
+    )
+
+
 def search(user_id: int, q: str, limit: int = 6) -> list[dict]:
     """Recherche globale de la topbar (lot 11) : tâches dont le titre
     contient `q`, sans accents ni casse, sur les seuls projets visibles par
@@ -311,12 +347,17 @@ def _verrouiller_projet(cur, projet_id: int) -> None:
 # lieu d'en ajouter un second ; la suppression reste au journal d'audit.
 DELAI_ANNULATION_SECONDES = 60
 
+# Contenu quelconque (_retirer_post_annule) : le post de clôture d'une tâche,
+# avec ou sans message (lot 14, P0-2).
+TOUT_CONTENU = object()
 
-def _retirer_post_annule(cur, projet_id: int, auteur_id: int, evenement: str, contenu: str | None,
+
+def _retirer_post_annule(cur, projet_id: int, auteur_id: int, evenement: str, contenu,
                          tache_id: int | None = None) -> bool:
     """Supprime le dernier post automatique `evenement` de l'auteur (sur la
-    tâche, ou sur le projet sans tâche), récent et intact ; `contenu` None :
-    post sans texte (clôture sans message). Vrai si un post a été retiré."""
+    tâche, ou sur le projet sans tâche), récent et intact, de contenu
+    `contenu` (TOUT_CONTENU : quel qu'il soit). Vrai si un post a été retiré."""
+    tout = contenu is TOUT_CONTENU
     cur.execute(
         """
         DELETE FROM post p
@@ -325,7 +366,7 @@ def _retirer_post_annule(cur, projet_id: int, auteur_id: int, evenement: str, co
                 WHERE projet_id = %(p)s AND tache_id IS NOT DISTINCT FROM %(t)s AND evenement = %(e)s
                 ORDER BY created_at DESC, id DESC LIMIT 1)
           AND p.auteur_id = %(a)s
-          AND p.contenu IS NOT DISTINCT FROM %(c)s
+          AND (%(tout)s OR p.contenu IS NOT DISTINCT FROM %(c)s)
           AND p.created_at > now() - make_interval(secs => %(d)s)
           AND NOT EXISTS (SELECT 1 FROM post_commentaire c WHERE c.post_id = p.id)
           AND NOT EXISTS (SELECT 1 FROM post_reaction r WHERE r.post_id = p.id)
@@ -334,8 +375,8 @@ def _retirer_post_annule(cur, projet_id: int, auteur_id: int, evenement: str, co
           AND NOT EXISTS (SELECT 1 FROM post r WHERE r.parent_post_id = p.id)
         RETURNING p.id
         """,
-        {"p": projet_id, "t": tache_id, "e": evenement, "a": auteur_id, "c": contenu,
-         "d": DELAI_ANNULATION_SECONDES},
+        {"p": projet_id, "t": tache_id, "e": evenement, "a": auteur_id, "c": None if tout else contenu,
+         "tout": tout, "d": DELAI_ANNULATION_SECONDES},
     )
     return cur.fetchone() is not None
 
@@ -480,8 +521,48 @@ def add_intervenant(tache_id: int, projet_id: int, utilisateur_id: int, current_
         return True
 
 
+class MotifBlocageRequis(Exception):
+    """Passage en « Bloquée » sans motif (lot 14, revue produit P0-1)."""
+
+
+MOTIF_BLOCAGE_MAX = 500
+
+
+class TacheModifiee(Exception):
+    """« Annuler » périmé (recette du lot 14, n° 5) : la tâche n'est plus
+    dans l'état que le geste annulé avait produit (quelqu'un l'a changée
+    entre-temps) ; rien n'est défait."""
+
+
+def normaliser_motif(texte: str | None) -> str | None:
+    """Motif d'un blocage tel qu'il est gardé (recette du lot 14, n° 3) :
+    caractères de format retirés (largeur nulle U+200B, U+FEFF, U+2060…),
+    caractères de contrôle et blancs (espaces insécables compris) ramenés à
+    une espace ; None s'il ne reste ni lettre, ni chiffre, ni ponctuation,
+    ni symbole (motif « invisible »)."""
+    import unicodedata
+
+    morceaux = []
+    for c in texte or "":
+        categorie = unicodedata.category(c)
+        if categorie == "Cf":
+            continue
+        morceaux.append(" " if categorie.startswith(("C", "Z")) or c.isspace() else c)
+    propre = " ".join("".join(morceaux).split())
+    if not any(unicodedata.category(c)[0] in "LNPS" for c in propre):
+        return None
+    return propre
+
+
+def version(tache_id: int) -> str | None:
+    """Version d'une tâche (son updated_at, exact) : jointe à l'action
+    « Annuler » pour reconnaître l'état produit par le geste."""
+    ligne = db.query_one("SELECT extract(epoch FROM updated_at)::text AS v FROM tache WHERE id = %s", (tache_id,))
+    return ligne["v"] if ligne else None
+
+
 def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, peut_gerer: bool = False,
-             annulation: bool = False) -> bool:
+             annulation: bool = False, motif: str | None = None, version_attendue: str | None = None) -> bool:
     """Changement d'état simple (En cours / Bloqué / Vérifié / Arrêt /
     Abandonné) — avec un post automatique "ancien état → nouvel état"
     depuis le 2026-09-29 (P1) ; la clôture ("Terminé", voir close_tache)
@@ -508,47 +589,88 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, 
     préciser n'obtient que les droits d'un intervenant.
 
     `annulation` (« Annuler » d'un toast, contre-expertise UX N9) : le post
-    automatique de l'aller (changement d'état, ou clôture sans message) est
-    retiré au lieu d'ajouter celui du retour (_retirer_post_annule)."""
+    automatique de l'aller (changement d'état, blocage, levée du blocage ou
+    clôture) est retiré au lieu d'ajouter celui du retour
+    (_retirer_post_annule).
+
+    `motif` (lot 14, revue produit P0-1) : « Qu'est-ce qui bloque ? »,
+    obligatoire pour passer en Bloquée (MotifBlocageRequis), gardé sur la
+    tâche (bloque_motif, bloque_le, bloque_par) et porté par le post
+    automatique 'blocage_tache' (« a signalé un blocage ») ; la sortie du
+    blocage donne 'deblocage_tache' (« a levé le blocage »). En annulation
+    (retour au blocage d'avant), un motif absent garde celui de la tâche,
+    et le même motif garde la date et l'auteur du blocage d'origine. Une
+    tâche déjà bloquée ne change que de motif.
+
+    `version_attendue` (« Annuler », recette du lot 14 n° 5) : version de
+    la tâche (voir `version`) produite par le geste annulé ; si la tâche a
+    changé depuis, TacheModifiee est levée et rien n'est écrit."""
     from ..utils import tache_etat_style
 
+    motif = normaliser_motif(motif)
     with db.get_cursor(user_id=current_user_id) as cur:
         _verrouiller_projet(cur, projet_id)
         cur.execute(
-            "SELECT etat FROM tache WHERE id = %s AND projet_id = %s FOR UPDATE",
+            """SELECT etat, bloque_motif, extract(epoch FROM updated_at)::text AS version
+               FROM tache WHERE id = %s AND projet_id = %s FOR UPDATE""",
             (tache_id, projet_id),
         )
         avant = cur.fetchone()
         if avant is None:
             return False
+        if version_attendue is not None and avant["version"] != version_attendue:
+            raise TacheModifiee()
         if not peut_gerer and (etat in ETATS_RESERVES_GESTION or avant["etat"] in ETATS_RESERVES_GESTION):
             raise EtatReserve(MESSAGE_ETAT_RESERVE)
+        if etat == "bloque":
+            if motif is None and not annulation and avant["etat"] != "bloque":
+                raise MotifBlocageRequis()
+            motif = motif or avant.get("bloque_motif")
         cur.execute(
             """
             UPDATE tache
-            SET etat = %s,
-                date_fin = CASE WHEN %s IN ('en_cours', 'bloque', 'arret') THEN NULL ELSE date_fin END
-            WHERE id = %s AND projet_id = %s
+            SET etat = %(etat)s,
+                date_fin = CASE WHEN %(etat)s IN ('en_cours', 'bloque', 'arret') THEN NULL ELSE date_fin END,
+                bloque_le = CASE WHEN %(etat)s <> 'bloque' THEN bloque_le
+                                 WHEN etat = 'bloque' AND bloque_le IS NOT NULL THEN bloque_le
+                                 WHEN %(annulation)s AND bloque_motif IS NOT DISTINCT FROM %(motif)s
+                                      AND bloque_le IS NOT NULL THEN bloque_le
+                                 ELSE now() END,
+                bloque_par = CASE WHEN %(etat)s <> 'bloque' THEN bloque_par
+                                  WHEN (etat = 'bloque' OR %(annulation)s) AND bloque_motif IS NOT DISTINCT FROM %(motif)s
+                                       AND bloque_par IS NOT NULL THEN bloque_par
+                                  ELSE %(uid)s END,
+                bloque_motif = CASE WHEN %(etat)s = 'bloque' THEN %(motif)s ELSE bloque_motif END
+            WHERE id = %(t)s AND projet_id = %(p)s
             """,
-            (etat, etat, tache_id, projet_id),
+            {"etat": etat, "annulation": annulation, "motif": motif, "uid": current_user_id,
+             "t": tache_id, "p": projet_id},
         )
-        # Post automatique du changement d'état (retour Fadhel, 2026-09-29,
-        # P1 — avant, seules la création et la clôture en avaient un).
         if avant["etat"] != etat:
-            retire = annulation and (
-                _retirer_post_annule(cur, projet_id, current_user_id, "cloture_tache", None, tache_id)
-                if avant["etat"] == "termine" else
-                _retirer_post_annule(cur, projet_id, current_user_id, "etat_tache",
-                                     f"{tache_etat_style(etat)['label']} → {tache_etat_style(avant['etat'])['label']}",
-                                     tache_id))
+            libelle = lambda e: tache_etat_style(e)["label"]  # noqa: E731
+            # Post de l'aller à retirer (« Annuler »), selon le geste annulé.
+            if avant["etat"] == "termine":
+                aller = ("cloture_tache", TOUT_CONTENU)
+            elif avant["etat"] == "bloque":
+                aller = ("blocage_tache", avant.get("bloque_motif"))
+            elif etat == "bloque":
+                aller = ("deblocage_tache", f"{libelle('bloque')} → {libelle(avant['etat'])}")
+            else:
+                aller = ("etat_tache", f"{libelle(etat)} → {libelle(avant['etat'])}")
+            retire = annulation and _retirer_post_annule(cur, projet_id, current_user_id, aller[0], aller[1], tache_id)
             if not retire:
+                if etat == "bloque":
+                    evenement, contenu = "blocage_tache", motif
+                elif avant["etat"] == "bloque":
+                    evenement, contenu = "deblocage_tache", f"{libelle('bloque')} → {libelle(etat)}"
+                else:
+                    evenement, contenu = "etat_tache", f"{libelle(avant['etat'])} → {libelle(etat)}"
                 cur.execute(
-                    """
+                    f"""
                     INSERT INTO post (projet_id, tache_id, auteur_id, type_code, contenu, evenement)
-                    VALUES (%s, %s, %s, 'information', %s, 'etat_tache')
+                    VALUES (%s, %s, %s, 'information', %s, '{evenement}')
                     """,
-                    (projet_id, tache_id, current_user_id,
-                     f"{tache_etat_style(avant['etat'])['label']} → {tache_etat_style(etat)['label']}"),
+                    (projet_id, tache_id, current_user_id, contenu),
                 )
             recalculer_etat_projet(cur, projet_id, current_user_id, annulation=annulation)
         return True
@@ -607,6 +729,11 @@ def get_piece_jointe(piece_id: int) -> dict | None:
         """,
         (piece_id,),
     )
+
+
+# Texte du post de clôture laissé sans message (lot 14, revue produit P0-2 :
+# plus de post « Envoi » vide ; le titre de la tâche est affiché au-dessus).
+TEXTE_CLOTURE_SANS_MESSAGE = "Tâche terminée."
 
 
 def close_tache(
@@ -668,7 +795,8 @@ def close_tache(
             VALUES (%s, %s, %s, %s, %s, 'cloture_tache')
             RETURNING id
             """,
-            (row["projet_id"], tache_id, current_user_id, type_code, contenu),
+            (row["projet_id"], tache_id, current_user_id, type_code,
+             (contenu or "").strip() or TEXTE_CLOTURE_SANS_MESSAGE),
         )
         post_id = cur.fetchone()["id"]
         recalculer_etat_projet(cur, row["projet_id"], current_user_id)

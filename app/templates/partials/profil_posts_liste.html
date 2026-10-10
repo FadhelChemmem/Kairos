@@ -1,0 +1,15 @@
+{# Liste des posts du profil (#profil-posts), remplacée en partiel quand on
+   change de catégorie (lot 14). Contexte : utilisateur, semaines,
+   posts_plus_anciens, fil_entrees, fil_categorie. #}
+{% set plus = url_for('utilisateurs.profil_personne', user_id=utilisateur.id, fil=(fil_categorie if fil_categorie != 'echanges' else none), semaines=semaines + 1) %}
+<div id="profil-posts" class="fil-liste profil-posts" data-fil-categorie="{{ fil_categorie }}">
+  {% with show_projet=true, next_url=url_for('utilisateurs.profil_personne', user_id=utilisateur.id, semaines=(semaines if semaines > 1 else none), fil=fil_categorie) %}
+    {% include "partials/fil_entrees.html" %}
+  {% endwith %}
+  {% if not fil_entrees %}
+    <p class="k-muet" data-partiel-vide>{% if fil_categorie == 'echanges' %}Aucun échange{% elif fil_categorie == 'activite' %}Aucune activité{% else %}Aucun post{% endif %} {{ 'la semaine dernière' if semaines == 1 else 'sur cette période' }} (parmi ceux que vous pouvez voir).</p>
+  {% endif %}
+  {% if posts_plus_anciens and semaines < 12 %}
+    <a href="{{ plus }}#posts" class="bouton-texte bouton-texte-cible" data-partiel="#profil-activite" data-focus-apres="#posts">Voir des posts plus anciens</a>
+  {% endif %}
+</div>

@@ -11,6 +11,7 @@ import datetime
 import re
 
 from tests_integration.test_lot12 import _Base
+from tests_integration.test_lot13_partiel import toasts
 from tests_integration.test_lot13_projets import _Projets
 
 
@@ -39,7 +40,7 @@ class TestCsrfAvantEmpreinte(_Base):
 
     def test_requete_intersite_ne_pose_aucun_message_de_mode(self):
         self.login(self.inter)
-        r = self.client.post(f"/projets/{self.p1}/taches/{self.t1}/etat", data={"etat": "bloque", "_mode": "faux"})
+        r = self.client.post(f"/projets/{self.p1}/taches/{self.t1}/etat", data={"etat": "bloque", "motif": "Attente des plans", "_mode": "faux"})
         self.assertEqual(r.status_code, 302)
         with self.client.session_transaction() as s:
             messages = [m for _, m in s.get("_flashes", [])]
@@ -51,7 +52,7 @@ class TestCsrfAvantEmpreinte(_Base):
 class TestVoirCommeRefusPartiel(_Base):
     def test_refus_en_json_sans_x_requested_with(self):
         self.entrer(self.inter)
-        r = self.client.post(f"/projets/{self.p1}/taches/{self.t1}/etat", data={"etat": "bloque"},
+        r = self.client.post(f"/projets/{self.p1}/taches/{self.t1}/etat", data={"etat": "bloque", "motif": "Attente des plans"},
                              headers=partiel(f"#tache-fenetre-{self.t1}", xhr=False))
         self.assertEqual(r.status_code, 403)
         self.assertEqual(r.get_json()["erreur"], "lecture_seule")
@@ -126,6 +127,11 @@ class TestRoles(_Projets):
 
 
 class TestAnnulerSansSecondPost(_Projets):
+    def annuler(self, r):
+        """« Annuler » du toast de la réponse `r` (avec son jeton)."""
+        action = toasts(r)[0]["action"]
+        return self.client.post(action["url"], data=action["donnees"], headers=partiel(action["cible"]))
+
     def compter_posts(self, evenement):
         return self.compter("SELECT count(*) AS n FROM post WHERE projet_id = %s AND evenement = %s",
                             (self.p1, evenement))
@@ -133,38 +139,40 @@ class TestAnnulerSansSecondPost(_Projets):
     def test_annuler_retire_le_post_de_l_aller(self):
         self.login(self.inter)
         url = f"/projets/{self.p1}/taches/{self.t1}/etat"
-        self.client.post(url, data={"etat": "bloque"}, headers=partiel(f"#tache-fenetre-{self.t1}"))
-        self.assertEqual((self.compter_posts("etat_tache"), self.compter_posts("etat_projet")), (1, 1))
-        r = self.client.post(url, data={"etat": "en_cours", "annulation": "1"}, headers=partiel(f"#tache-ligne-{self.t1}"))
+        r = self.client.post(url, data={"etat": "bloque", "motif": "Attente des plans"}, headers=partiel(f"#tache-fenetre-{self.t1}"))
+        # Lot 14 (P0-1) : le blocage est un post « a signalé un blocage ».
+        self.assertEqual((self.compter_posts("blocage_tache"), self.compter_posts("etat_projet")), (1, 1))
+        r = self.annuler(r)
         self.assertEqual(r.status_code, 200)
-        self.assertEqual((self.compter_posts("etat_tache"), self.compter_posts("etat_projet")), (0, 0))
+        self.assertEqual((self.compter_posts("blocage_tache"), self.compter_posts("deblocage_tache"),
+                          self.compter_posts("etat_projet")), (0, 0, 0))
         self.assertEqual((self.etat_tache(self.t1), self.etat(self.p1)), ("en_cours", "en_cours"))
         # Audit gardé : la suppression des deux posts est journalisée.
         self.assertEqual(self.compter("SELECT count(*) AS n FROM audit_log WHERE table_cible = 'post' "
                                       "AND action = 'DELETE'"), 2)
         # Annulation de la clôture (sans message) : le post de clôture part.
-        self.client.post(f"/projets/{self.p1}/taches/{self.t1}/cloturer", data={"type_code": "envoi"},
-                         headers=partiel(f"#tache-fenetre-{self.t1}"))
-        self.client.post(url, data={"etat": "en_cours", "annulation": "1"}, headers=partiel(f"#tache-ligne-{self.t1}"))
+        self.annuler(self.client.post(f"/projets/{self.p1}/taches/{self.t1}/cloturer", data={"type_code": "envoi"},
+                                      headers=partiel(f"#tache-fenetre-{self.t1}")))
         self.assertEqual((self.compter_posts("cloture_tache"), self.compter_posts("etat_tache")), (0, 0))
 
     def test_post_ancien_ou_commente_garde(self):
         self.login(self.inter)
         url = f"/projets/{self.p1}/taches/{self.t1}/etat"
-        self.client.post(url, data={"etat": "bloque"})
-        self.sql("UPDATE post SET created_at = created_at - interval '5 minutes' WHERE evenement = 'etat_tache'")
-        self.client.post(url, data={"etat": "en_cours", "annulation": "1"})
-        self.assertEqual(self.compter_posts("etat_tache"), 2)
+        r = self.client.post(url, data={"etat": "bloque", "motif": "Attente des plans"}, headers=partiel("#x"))
+        self.sql("UPDATE post SET created_at = created_at - interval '5 minutes' WHERE evenement = 'blocage_tache'")
+        self.annuler(r)
+        blocages = lambda: (self.compter_posts("blocage_tache"), self.compter_posts("deblocage_tache"))  # noqa: E731
+        self.assertEqual(blocages(), (1, 1))
         # Sans « Annuler » : un post par changement, comme avant.
-        self.client.post(url, data={"etat": "bloque"})
+        self.client.post(url, data={"etat": "bloque", "motif": "Attente des plans"})
         self.client.post(url, data={"etat": "en_cours"})
-        self.assertEqual(self.compter_posts("etat_tache"), 4)
+        self.assertEqual(blocages(), (2, 2))
         # Commenté entre-temps : gardé.
-        self.client.post(url, data={"etat": "bloque"})
-        dernier = self.sql("SELECT max(id) AS id FROM post WHERE evenement = 'etat_tache'")[0]["id"]
+        r = self.client.post(url, data={"etat": "bloque", "motif": "Attente des plans"}, headers=partiel("#x"))
+        dernier = self.sql("SELECT max(id) AS id FROM post WHERE evenement = 'blocage_tache'")[0]["id"]
         self.sql("INSERT INTO post_commentaire (post_id, auteur_id, contenu) VALUES (%s, %s, 'vu')", (dernier, self.chef))
-        self.client.post(url, data={"etat": "en_cours", "annulation": "1"})
-        self.assertEqual(self.compter_posts("etat_tache"), 6)
+        self.annuler(r)
+        self.assertEqual(blocages(), (3, 3))
 
 
 class TestPhaseLieeALaDemande(_Projets):

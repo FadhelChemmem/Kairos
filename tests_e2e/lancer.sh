@@ -5,18 +5,23 @@
 # KAIROS_MODE_TEST=true sauf valeur déjà posée) ou socle des mises à jour
 # partielles (lot 13 : KAIROS_E2E_SCENARIO=partiel, même mode test) ou pages
 # converties en phase 2 (KAIROS_E2E_SCENARIO=pages, même mode test) ou
-# stabilité de la mise en page (KAIROS_E2E_SCENARIO=stabilite, même mode test).
+# stabilité de la mise en page (KAIROS_E2E_SCENARIO=stabilite, même mode test)
+# ou tâche bloquée avec raison et message de clôture (lot 14 :
+# KAIROS_E2E_SCENARIO=blocage, même mode test), ou tableaux de bord de
+# l'accueil (lot 14 : KAIROS_E2E_SCENARIO=tableaux, même mode test), ou Daily log de l'équipe (lot 14 :
+# KAIROS_E2E_SCENARIO=dailylog_equipe, même mode test), ou fil filtrable (lot 14 :
+# KAIROS_E2E_SCENARIO=fil, même mode test).
 # Prérequis : PostgreSQL 16 (PGHOST/PGUSER/PGPASSWORD), Node + Playwright
 # (PLAYWRIGHT_MODULE = chemin du module si non installé localement,
 # PLAYWRIGHT_BROWSERS_PATH pour Chromium), psycopg2 (ou un équivalent sur
-# PYTHONPATH). Usage : [KAIROS_E2E_SCENARIO=dailylog|projet|modes|partiel|pages|stabilite] bash tests_e2e/lancer.sh [dossier_captures]
+# PYTHONPATH). Usage : [KAIROS_E2E_SCENARIO=dailylog|projet|modes|partiel|pages|stabilite|blocage|tableaux|dailylog_equipe|fil] bash tests_e2e/lancer.sh [dossier_captures]
 set -euo pipefail
 racine=$(cd "$(dirname "$0")/.." && pwd)
 export PGHOST=${PGHOST:-127.0.0.1} PGUSER=${PGUSER:-kairos} PGPASSWORD=${PGPASSWORD:-kairos}
 scenario=${KAIROS_E2E_SCENARIO:-dailylog}
-case "$scenario" in dailylog|projet|modes|partiel|pages|stabilite) ;; *) echo "Scénario inconnu : $scenario (dailylog, projet, modes, partiel, pages ou stabilite)" >&2; exit 1 ;; esac
+case "$scenario" in dailylog|projet|modes|partiel|pages|stabilite|blocage|tableaux|dailylog_equipe|fil) ;; *) echo "Scénario inconnu : $scenario (dailylog, projet, modes, partiel, pages, stabilite, blocage, tableaux, dailylog_equipe ou fil)" >&2; exit 1 ;; esac
 # « Agir comme » et date simulée n'existent qu'en mode test (lot 12).
-if [ "$scenario" = modes ] || [ "$scenario" = partiel ] || [ "$scenario" = pages ] || [ "$scenario" = stabilite ]; then export KAIROS_MODE_TEST=${KAIROS_MODE_TEST:-true}; fi
+if [ "$scenario" = modes ] || [ "$scenario" = partiel ] || [ "$scenario" = pages ] || [ "$scenario" = stabilite ] || [ "$scenario" = blocage ] || [ "$scenario" = tableaux ] || [ "$scenario" = dailylog_equipe ] || [ "$scenario" = fil ]; then export KAIROS_MODE_TEST=${KAIROS_MODE_TEST:-true}; fi
 base=${KAIROS_E2E_BASE_PG:-kairos_e2e_$scenario}
 port=${KAIROS_E2E_PORT:-8798}
 psql -X -q -d postgres -c "DROP DATABASE IF EXISTS $base" -c "CREATE DATABASE $base"

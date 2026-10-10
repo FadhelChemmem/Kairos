@@ -1,0 +1,13 @@
+{# « Afficher plus » d'un fil (lot 14) : la page suivante est ajoutée à la
+   fin de `cible` (mode « après »), ce bloc est remplacé hors cible. Sans
+   JavaScript, le lien ouvre la page suivante. Après la dernière page
+   (fil_fin), une mention qui reçoit le focus à la place du bouton.
+   Contexte : fil_suite_id, fil_suite_url, fil_suite_cible ; facultatifs :
+   oob, fil_fin. #}
+<div id="{{ fil_suite_id }}" class="fil-suite"{% if oob %} data-partiel-oob{% endif %}>
+  {% if fil_suite_url %}
+  <a href="{{ fil_suite_url }}" id="{{ fil_suite_id }}-lien" class="btn btn-pleine-largeur fil-plus" data-partiel="{{ fil_suite_cible }}" data-partiel-mode="apres" data-partiel-historique="aucun">Afficher plus</a>
+  {% elif fil_fin|default(false) %}
+  <p id="{{ fil_suite_id }}-lien" class="fil-fin" tabindex="-1">Début du fil atteint&nbsp;: rien de plus ancien.</p>
+  {% endif %}
+</div>

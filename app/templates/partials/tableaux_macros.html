@@ -1,0 +1,129 @@
+{# Tableaux de bord de l'accueil (lot 14) : icônes des compteurs et liste
+   dépliée d'un compteur (Vue d'ensemble de l'Admin, carte « À traiter »
+   du chef). Contexte d'un bloc (routes/tableaux.py:_bloc) : compte,
+   voir, detail, jour, jour_libelle, aujourdhui, liens, lien_fermer. #}
+{% from "partials/avatar.html" import avatar %}
+
+{% macro icone(cle, taille=16) -%}
+<svg aria-hidden="true" focusable="false" width="{{ taille }}" height="{{ taille }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+{%- if cle == 'retard' %}<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/><path d="M9 2h6"/>
+{%- elif cle == 'bloquees' %}<path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86Z"/><path d="M8 12h8"/>
+{%- elif cle == 'sans_intervenant' %}<circle cx="10" cy="8" r="4"/><path d="M3 21v-1a7 7 0 0 1 11-5.7"/><path d="m17 17 4 4m0-4-4 4"/>
+{%- elif cle == 'sans_echeance' %}<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M10 14h4"/>
+{%- elif cle == 'projets_sans_tache' %}<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M10 14h4"/>
+{%- elif cle == 'dailylog' %}<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+{%- elif cle == 'ok' %}<path d="M20 6 9 17l-5-5"/>
+{%- elif cle == 'chevron' %}<path d="m6 9 6 6 6-6"/>
+{%- elif cle == 'fermer' %}<path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+{%- endif %}</svg>
+{%- endmacro %}
+
+{# Teinte d'un compteur (jetons thémés, lot14-a2.css) ; « zéro » : vert. #}
+{% macro teinte(cle, n) -%}
+{{ 'tb-t-zero' if not n else {'retard': 'tb-t-retard', 'bloquees': 'tb-t-bloque', 'sans_intervenant': 'tb-t-attention', 'sans_echeance': 'tb-t-neutre', 'projets_sans_tache': 'tb-t-info', 'dailylog': 'tb-t-attention'}[cle] }}
+{%- endmacro %}
+
+{% macro libelle(b, cle, n=None) -%}
+{%- set n = b.compte[cle] if n is none else n -%}
+{%- set mots = b.libelles[cle] -%}
+{{ mots[1] if n > 1 else mots[0] }}{% if cle == 'dailylog' %} {{ b.jour_libelle }}{% endif %}
+{%- endmacro %}
+
+{# Liste dépliée d'un compteur. `admin` : le chef de projet de chaque
+   ligne est cité (tout le bureau). #}
+{% macro detail(b, id_detail, cible, prefixe, admin=false) %}
+<div id="{{ id_detail }}" class="tb-detail{{ ' tb-detail-ouvert ' ~ teinte(b.voir, b.compte[b.voir]) if b.voir }}"{% if b.voir %} role="region" aria-labelledby="{{ id_detail }}-titre"{% endif %}>
+{% if b.voir %}
+  {% set cle = b.voir %}
+  {% set n = b.compte[cle] %}
+  <div class="tb-detail-tete">
+    <h3 class="tb-detail-titre" id="{{ id_detail }}-titre" tabindex="-1" data-partiel-titre>
+      <span class="tb-detail-icone" aria-hidden="true">{{ icone(cle, 15) }}</span>
+      <span class="tb-detail-libelle">{% if cle == 'dailylog' %}Daily log manquants {{ b.jour_libelle }}{% else %}{{ b.libelles[cle][1][:1]|upper }}{{ b.libelles[cle][1][1:] }}{% endif %}</span>
+      <span class="tb-detail-nombre">{{ n }}</span>
+    </h3>
+    <p class="tb-detail-aide">
+      {%- if cle == 'retard' %}Tâches en cours dont l’échéance est passée, la plus ancienne d’abord.
+      {%- elif cle == 'bloquees' %}Tâches signalées bloquées, avec leur motif, le blocage le plus ancien d’abord.
+      {%- elif cle == 'sans_intervenant' %}Tâches ouvertes auxquelles personne n’est affecté.
+      {%- elif cle == 'sans_echeance' %}Tâches en cours sans date d’échéance.
+      {%- elif cle == 'projets_sans_tache' %}Projets ouverts sans tâche en cours ni bloquée&nbsp;: à clore, ou une tâche à créer.
+      {%- else %}Ni heures ni absence le {{ b.jour_texte }} (mêmes personnes que le Daily log de l’équipe).{% endif %}
+    </p>
+    <a href="{{ b.lien_fermer }}" id="{{ id_detail }}-fermer" class="iconbtn tb-detail-fermer" data-partiel="{{ cible }}" data-focus-apres="#{{ prefixe }}{{ cle }}" aria-label="Fermer la liste">{{ icone('fermer', 16) }}</a>
+  </div>
+  {% if b.detail %}
+  <ul class="tb-liste" role="list">
+    {% for x in b.detail %}
+    <li class="tb-ligne">
+      {% if cle == 'dailylog' %}
+        {{ avatar(x.id, x.prenom, x.nom, x.avatar_chemin, 'avatar avatar-md') }}
+        <div class="tb-ligne-texte">
+          {% if x.id == g.user.id %}
+          <a class="tb-ligne-titre" href="{{ url_for('dailylog.formulaire', date=b.jour.isoformat()) }}">{{ x.prenom }} {{ x.nom }} <span class="tb-ligne-vous">(vous)</span></a>
+          {% else %}
+          <a class="tb-ligne-titre" href="{{ url_for('dailylog.formulaire', utilisateur=x.id, date=b.jour.isoformat()) }}">{{ x.prenom }} {{ x.nom }}</a>
+          {% endif %}
+          <span class="tb-ligne-sous">{{ x.poste or role_style(x.role).label }}</span>
+        </div>
+        <span class="tb-ligne-meta"><span class="pill pill-sm pill-orange">Non rempli</span></span>
+      {% elif cle == 'projets_sans_tache' %}
+        <span aria-hidden="true" class="point-etat point-etat-{{ x.etat }}"></span>
+        <div class="tb-ligne-texte">
+          <a class="tb-ligne-titre" href="{{ url_for('projets.detail', projet_id=x.id) }}">{{ x.code }}_{{ x.nom }}</a>
+          <span class="tb-ligne-sous">{{ x.phase }}{% if admin %} · Chef&nbsp;: {{ x.chef_prenom }} {{ x.chef_nom }}{% endif %}</span>
+        </div>
+        <span class="tb-ligne-meta">{% if x.derniere_tache %}<span class="tb-ligne-date">dernière tâche le {{ x.derniere_tache|date_courte }}</span>{% else %}<span class="tb-ligne-date">aucune tâche</span>{% endif %}</span>
+      {% elif cle == 'bloquees' %}
+        {# Comme la section « Bloquées » (recette du lot 14, n° 10) : motif,
+           depuis quand, par qui. #}
+        {% set depuis = depuis_blocage(x.bloque_le) %}
+        {% set par = ((x.bloque_par_prenom or '') ~ ' ' ~ (x.bloque_par_nom or ''))|trim %}
+        <div class="tb-ligne-texte">
+          <a class="tb-ligne-titre" href="{{ url_for('projets.detail', projet_id=x.projet_id, tache=x.id) }}">{{ x.titre }}</a>
+          <span class="tb-ligne-motif">{% if x.bloque_motif %}«&nbsp;{{ x.bloque_motif }}&nbsp;»{% else %}<span class="k-muet">Motif non renseigné</span>{% endif %}</span>
+          <span class="tb-ligne-sous">{{ x.projet_code }}_{{ x.projet_nom }}{% if admin %} · Chef&nbsp;: {{ x.chef_prenom }} {{ x.chef_nom }}{% endif %}</span>
+        </div>
+        <span class="tb-ligne-meta tb-ligne-blocage">
+          {% if depuis %}<span class="tb-ligne-depuis">{{ depuis|capitalize }}</span>{% endif %}
+          {% if par %}<span class="tb-ligne-par">par {{ par }}</span>{% endif %}
+        </span>
+      {% else %}
+        {% set retard = en_retard_de(x.date_echeance, b.aujourdhui) if x.etat == 'en_cours' else '' %}
+        {% if cle == 'sans_intervenant' %}<span class="pill pill-sm {{ tache_etat_style(x.etat).classe }} tb-ligne-etat">{{ tache_etat_style(x.etat).libelle }}</span>{% endif %}
+        <div class="tb-ligne-texte">
+          <a class="tb-ligne-titre" href="{{ url_for('projets.detail', projet_id=x.projet_id, tache=x.id) }}">{{ x.titre }}</a>
+          <span class="tb-ligne-sous">{{ x.projet_code }}_{{ x.projet_nom }}{% if admin %} · Chef&nbsp;: {{ x.chef_prenom }} {{ x.chef_nom }}{% endif %}{% if x.intervenants %} · Interv.&nbsp;: {{ x.intervenants }}{% elif cle != 'sans_intervenant' %} · sans intervenant{% endif %}</span>
+        </div>
+        <span class="tb-ligne-meta">
+          {% if x.date_echeance %}<span class="tb-ligne-date"><span class="tb-ligne-prefixe">éch.</span> {{ x.date_echeance|date_courte }}</span>{% elif cle != 'sans_echeance' %}<span class="tb-ligne-date">sans échéance</span>{% endif %}
+          {% if retard %}<span class="pill pill-sm pill-rouge tb-retard">+{{ (b.aujourdhui - x.date_echeance).days }}&nbsp;j<span class="sr-only">, {{ retard }}</span></span>{% endif %}
+        </span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% if b.detail|length < n %}<p class="tb-detail-suite">{{ b.detail|length }} premières lignes sur {{ n }}.</p>{% endif %}
+  {% else %}
+  <div class="k-vide k-vide-compact">
+    <span class="k-vide-icone tb-vide-ok" aria-hidden="true">{{ icone('ok', 18) }}</span>
+    <p class="k-vide-titre">Rien à signaler</p>
+    <p class="k-vide-texte">
+      {%- if cle == 'retard' %}Aucune tâche en retard.
+      {%- elif cle == 'bloquees' %}Aucune tâche bloquée.
+      {%- elif cle == 'sans_intervenant' %}Toutes les tâches ouvertes ont un intervenant.
+      {%- elif cle == 'sans_echeance' %}Toutes les tâches en cours ont une échéance.
+      {%- elif cle == 'projets_sans_tache' %}Chaque projet ouvert a au moins une tâche ouverte.
+      {%- else %}Tout le monde a rempli son Daily log.{% endif %}
+    </p>
+  </div>
+  {% endif %}
+  {% if cle == 'dailylog' %}
+  <a class="lien-carte lien-carte-petit tb-detail-pied" href="{{ url_for('dailylog.equipe') }}">Daily log de l’équipe <span aria-hidden="true">→</span></a>
+  {% endif %}
+  {% if cle in ('retard', 'bloquees') and b.detail %}
+  <a class="lien-carte lien-carte-petit tb-detail-pied" href="{{ url_for('deadlines.liste', vue='tous') if admin else url_for('deadlines.liste') }}">Voir toutes les échéances <span aria-hidden="true">→</span></a>
+  {% endif %}
+{% endif %}
+</div>
+{% endmacro %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{# Daily log de l'équipe (lot 14, revue produit P1-9) : personnes × jours
+   ouvrés d'une semaine, pour l'Admin (tout le bureau) et les chefs de
+   projet (les personnes de leurs projets). Semaine précédente / suivante
+   en mise à jour partielle (#dlq) ; un clic sur une case ouvre le Daily
+   log de la personne à ce jour. #}
+{% block title %}Daily log de l’équipe — Kairos{% endblock %}
+{% block scripts_fil %}{% endblock %}
+{% block body_class %}page-dailylog-equipe{% endblock %}
+{% block body %}
+<div class="subbar">
+  <div class="subbar-inner dlq-subbar">
+    <a href="{{ url_for('dailylog.formulaire') }}" class="lien-retour"><span aria-hidden="true">←</span> Mon Daily log</a>
+    <h1 class="page-titre">Daily log de l’équipe</h1>
+    <span class="dlq-portee subbar-fin">{{ 'Tout le bureau' if admin else 'Les personnes de vos projets en cours' }}</span>
+  </div>
+</div>
+<div class="page-wrap k-page dlq-page">
+  {% include "partials/dailylog_equipe.html" %}
+</div>
+{% endblock %}

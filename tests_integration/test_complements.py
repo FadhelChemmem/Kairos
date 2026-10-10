@@ -18,9 +18,9 @@ class TestEtatProjetSuitTaches(BaseIntegration):
         from app.repositories import taches
         chef = self.user("chef_de_projet"); p = self.projet(chef)
         t1, t2 = self.tache(p, chef), self.tache(p, chef)
-        taches.set_etat(t1, p, "bloque", chef)
+        taches.set_etat(t1, p, "bloque", chef, motif="Attente des plans")
         self.assertEqual(self._etat(p), "bloque")
-        taches.set_etat(t2, p, "bloque", chef)
+        taches.set_etat(t2, p, "bloque", chef, motif="Attente des plans")
         taches.set_etat(t1, p, "verifie", chef, peut_gerer=True)
         self.assertEqual(self._etat(p), "bloque")       # t2 encore bloquée
         taches.close_tache(t2, p, chef, "information")

@@ -107,8 +107,8 @@ class TestConcurrence(BaseIntegration):
         chef = self.user("chef_de_projet")
         p = self.projet(chef)
         t1, t2 = self.tache(p, chef), self.tache(p, chef)
-        taches.set_etat(t1, p, "bloque", chef)
-        taches.set_etat(t2, p, "bloque", chef)
+        taches.set_etat(t1, p, "bloque", chef, motif="Attente des plans")
+        taches.set_etat(t2, p, "bloque", chef, motif="Attente des plans")
         self.assertEqual(self.sql("SELECT etat FROM projet WHERE id=%s", (p,))[0]["etat"], "bloque")
 
         erreurs = []

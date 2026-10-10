@@ -1,0 +1,5 @@
+{# Page suivante d'un fil (« Afficher plus », lot 14) : ses entrées,
+   ajoutées à la fin de la liste, et le bloc « Afficher plus » hors cible.
+   Contexte : fil_entrees, show_projet, next_url, fil_suite_id, fil_suite_url, fil_suite_cible. #}
+{% include "partials/fil_entrees.html" %}
+{% with oob=true, fil_fin=true %}{% include "partials/fil_suite.html" %}{% endwith %}

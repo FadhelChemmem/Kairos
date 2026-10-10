@@ -466,6 +466,200 @@ def list_lignes_suggerees(user_id: int, gere_par: int | None = None) -> dict:
     return {"mine": mine, "recentes": [_ligne_catalogue(r) for r in recentes]}
 
 
+# ---------------------------------------------------------------------
+# Lignes proposées d'une journée vierge (lot 14, revue produit P0-4)
+# ---------------------------------------------------------------------
+MAX_PROPOSEES = 20
+# Un chef qui gère plus de projets que ça ne se voit proposer, en « projet
+# seul », que ceux où il a saisi des heures dans les 14 jours précédents.
+MAX_PROJETS_GERES_PROPOSES = 8
+
+
+def lignes_proposees(user: dict, date) -> list[dict]:
+    """Lignes proposées à 0 h sur une journée vierge (décision du gérant,
+    lot 14 : « activé, pouvant être désactivé ») :
+    - une ligne par tâche en cours ou bloquée où la personne intervient ;
+    - une ligne « projet seul » pour chaque projet qu'elle gère (chef ou
+      co-chef) — au-delà de 8 projets gérés, ceux où elle a saisi des heures
+      dans les 14 jours précédents — et pour chaque projet qu'elle suit
+      (intervenante du projet) sans tâche à elle.
+    Projets en cours ou bloqués, visibles par la personne, commencés à
+    `date` ; tâche sans date de début ou commencée ce jour-là (une tâche
+    créée aujourd'hui reste proposée pour hier : le travail a souvent
+    précédé sa saisie). Regroupées par projet (projet seul d'abord, puis ses tâches
+    par échéance). Jamais stockées : la route les joint à l'état du jour."""
+    params = {"uid": user["id"], "date": date,
+              "depuis": date - datetime.timedelta(days=FENETRE_LIBRE_JOURS)}
+    visible = """EXISTS (SELECT 1 FROM v_projet_visibilite v WHERE v.projet_id = p.id AND v.utilisateur_id = %(uid)s)
+                 AND p.etat IN ('en_cours', 'bloque') AND (p.date_debut IS NULL OR p.date_debut <= %(date)s)"""
+    taches = db.query_all(
+        f"""
+        SELECT p.id AS projet_id, p.code, p.nom, t.id AS tache_id, t.titre AS tache_titre
+        FROM tache t JOIN projet p ON p.id = t.projet_id
+        WHERE t.etat IN ('en_cours', 'bloque') AND {visible}
+          AND EXISTS (SELECT 1 FROM tache_intervenant ti WHERE ti.tache_id = t.id AND ti.utilisateur_id = %(uid)s)
+          AND (t.date_debut IS NULL OR t.date_debut <= %(date)s)
+        ORDER BY t.date_echeance NULLS LAST, t.titre, t.id
+        LIMIT 200
+        """,
+        params,
+    )
+    projets = db.query_all(
+        f"""
+        SELECT p.id AS projet_id, p.code, p.nom,
+               (p.chef_projet_id = %(uid)s OR EXISTS (SELECT 1 FROM projet_co_chef cc
+                  WHERE cc.projet_id = p.id AND cc.utilisateur_id = %(uid)s)) AS gere,
+               EXISTS (SELECT 1 FROM dailylog_entree d WHERE d.utilisateur_id = %(uid)s AND d.projet_id = p.id
+                        AND d.date >= %(depuis)s AND d.date < %(date)s) AS recent
+        FROM projet p
+        WHERE {visible}
+          AND (p.chef_projet_id = %(uid)s
+               OR EXISTS (SELECT 1 FROM projet_co_chef cc WHERE cc.projet_id = p.id AND cc.utilisateur_id = %(uid)s)
+               OR EXISTS (SELECT 1 FROM projet_intervenant pi WHERE pi.projet_id = p.id AND pi.utilisateur_id = %(uid)s))
+        LIMIT 500
+        """,
+        params,
+    )
+    avec_tache = {t["projet_id"] for t in taches}
+    geres = [p for p in projets if p["gere"]]
+    if len(geres) > MAX_PROJETS_GERES_PROPOSES:
+        geres = [p for p in geres if p["recent"]]
+    seuls = {p["projet_id"]: p for p in geres}
+    for p in projets:
+        if not p["gere"] and p["projet_id"] not in avec_tache:
+            seuls.setdefault(p["projet_id"], p)
+    groupes: dict = {}
+    for p in seuls.values():
+        groupes.setdefault(p["projet_id"], {"code": p["code"], "nom": p["nom"], "lignes": []})["lignes"].append(
+            {"projet_id": p["projet_id"], "tache_id": None, "code": p["code"], "nom": p["nom"], "tache_titre": None})
+    for t in taches:
+        groupes.setdefault(t["projet_id"], {"code": t["code"], "nom": t["nom"], "lignes": []})["lignes"].append(
+            {"projet_id": t["projet_id"], "tache_id": t["tache_id"], "code": t["code"], "nom": t["nom"],
+             "tache_titre": t["tache_titre"]})
+    sortie = []
+    for groupe in sorted(groupes.values(), key=lambda g: (sans_accents(g["nom"]), g["code"])):
+        sortie.extend(groupe["lignes"])
+    return sortie[:MAX_PROPOSEES]
+
+
+# ---------------------------------------------------------------------
+# Daily log de l'équipe (lot 14, revue produit P1-9)
+# ---------------------------------------------------------------------
+def membres_equipe(gere_par: int | None) -> list[dict]:
+    """Personnes du « Daily log de l'équipe », actives et avec un Daily log :
+    - `gere_par` None (Admin) : tout le bureau — chefs de projet et
+      intervenants, plus les Admins qui ont saisi des heures ces 90 derniers
+      jours ;
+    - sinon (chef de projet) : les personnes de ses projets en cours ou
+      bloqués (titulaire ou co-chef) — chef, co-chefs, intervenants du
+      projet ou d'une tâche ouverte —, lui compris."""
+    colonnes = "u.id, u.prenom, u.nom, u.role, u.poste, u.avatar_chemin, u.fuseau, u.date_embauche, u.created_at"
+    if gere_par is None:
+        return db.query_all(
+            f"""
+            SELECT {colonnes} FROM utilisateur u
+            WHERE u.actif AND (u.role IN ('chef_de_projet', 'intervenant')
+                  OR (u.role = 'admin' AND EXISTS (SELECT 1 FROM dailylog_entree d WHERE d.utilisateur_id = u.id
+                                                     AND d.date >= CURRENT_DATE - 90)))
+            ORDER BY u.prenom, u.nom, u.id
+            """
+        )
+    return db.query_all(
+        f"""
+        WITH mes_projets AS (
+            SELECT p.id, p.chef_projet_id FROM projet p
+            WHERE p.etat IN ('en_cours', 'bloque')
+              AND (p.chef_projet_id = %(moi)s OR EXISTS (SELECT 1 FROM projet_co_chef cc
+                     WHERE cc.projet_id = p.id AND cc.utilisateur_id = %(moi)s))
+        ), personnes AS (
+            SELECT %(moi)s::bigint AS uid
+            UNION SELECT chef_projet_id FROM mes_projets
+            UNION SELECT cc.utilisateur_id FROM projet_co_chef cc JOIN mes_projets m ON m.id = cc.projet_id
+            UNION SELECT pi.utilisateur_id FROM projet_intervenant pi JOIN mes_projets m ON m.id = pi.projet_id
+            UNION SELECT ti.utilisateur_id FROM tache_intervenant ti JOIN tache t ON t.id = ti.tache_id
+                   JOIN mes_projets m ON m.id = t.projet_id WHERE t.etat IN ('en_cours', 'bloque')
+        )
+        SELECT {colonnes} FROM utilisateur u JOIN personnes x ON x.uid = u.id
+        WHERE u.actif AND u.role IN ('admin', 'chef_de_projet', 'intervenant')
+        ORDER BY u.prenom, u.nom, u.id
+        """,
+        {"moi": gere_par},
+    )
+
+
+def manquants_du_jour(gere_par: int | None, jour) -> list[dict]:
+    """Personnes du « Daily log de l'équipe » (membres_equipe, même
+    périmètre) dont le jour `jour` est « non renseigné » (etat_case, mêmes
+    règles que la colonne de ce jour) : compteur « Daily log manquants » de
+    la Vue d'ensemble et de « À traiter » (recette du lot 14, n° 9 — un
+    seul périmètre, les mêmes chiffres des deux côtés)."""
+    personnes = membres_equipe(gere_par)
+    synthese = synthese_periode([p["id"] for p in personnes], jour, jour)
+    return [p for p in personnes if etat_case(p, jour, synthese.get((p["id"], jour))) == "manquant"]
+
+
+def synthese_periode(user_ids, debut, fin) -> dict:
+    """{(utilisateur_id, date): {"minutes": n, "absent": bool}} sur une
+    période, en une requête (heures et absences de toute l'équipe)."""
+    ids = sorted({int(i) for i in user_ids})
+    if not ids:
+        return {}
+    rows = db.query_all(
+        """
+        SELECT utilisateur_id, date, sum(heures) AS heures, false AS absent FROM dailylog_entree
+         WHERE utilisateur_id = ANY(%(ids)s) AND date BETWEEN %(debut)s AND %(fin)s GROUP BY utilisateur_id, date
+        UNION ALL
+        SELECT utilisateur_id, date, 0, true FROM dailylog_jour
+         WHERE utilisateur_id = ANY(%(ids)s) AND date BETWEEN %(debut)s AND %(fin)s AND absent
+        """,
+        {"ids": ids, "debut": debut, "fin": fin},
+    )
+    out: dict = {}
+    for r in rows:
+        case = out.setdefault((r["utilisateur_id"], r["date"]), {"minutes": 0, "absent": False})
+        case["minutes"] += heures_en_minutes(r["heures"])
+        case["absent"] = case["absent"] or bool(r["absent"])
+    return out
+
+
+def jours_ouvres_recents(aujourdhui, nombre: int = 10) -> list:
+    """Les `nombre` derniers jours ouvrés, aujourd'hui compris s'il en est
+    un, du plus récent au plus ancien (fiche d'une personne, lot 14)."""
+    jours, jour = [], aujourdhui
+    while len(jours) < nombre:
+        if jour.weekday() < 5:
+            jours.append(jour)
+        jour -= datetime.timedelta(days=1)
+    return jours
+
+
+def etat_case(user: dict, date, case: dict | None, maintenant: datetime.datetime | None = None) -> str:
+    """État d'un jour d'une personne pour les vues d'équipe (lot 14) :
+    'rempli', 'absent', 'manquant' (oubli de la fenêtre de rappel),
+    'attente' (aujourd'hui avant 16 h), 'verrouille' (oubli au-delà de 14
+    jours), 'futur', 'avant' (avant l'arrivée), 'week_end'. Mêmes règles que
+    jours_manques_recents (fuseau de la personne)."""
+    case = case or {}
+    if case.get("minutes"):
+        return "rempli"
+    if case.get("absent"):
+        return "absent"
+    maintenant = maintenant_pour(user, maintenant)
+    aujourdhui = maintenant.date()
+    if date > aujourdhui:
+        return "futur"
+    if date.weekday() >= 5:
+        return "week_end"
+    debut = debut_daily_log(user)
+    if debut is not None and date < debut:
+        return "avant"
+    if date == aujourdhui and maintenant.hour < HEURE_ALERTE_AUJOURDHUI:
+        return "attente"
+    if date < aujourdhui - datetime.timedelta(days=FENETRE_LIBRE_JOURS):
+        return "verrouille"
+    return "manquant"
+
+
 def rechercher_projets(q: str, user_id: int, date, gere_par: int | None = None, limit: int = 20) -> list[dict]:
     """Recherche serveur du catalogue (≥ 2 caractères) : code ou nom, sans
     accents ni casse (« ete » trouve « Résidence Été » ; fn_recherche des

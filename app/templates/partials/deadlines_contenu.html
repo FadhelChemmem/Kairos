@@ -4,7 +4,7 @@
    utils.build_gantt, jetons --gantt-*), colonne du jour teintée.
    Téléphone (< 600 px) : liste groupée par semaine à la place de la frise
    (audit a11y I3). Contexte : gantt, semaines, tous, filtres, chefs,
-   sans_echeance, q, vue_admin, nb_taches. #}
+   sans_echeance, q, vue_admin, nb_taches, taches_bloquees. #}
 <div id="deadlines-contenu" class="deadlines-contenu">
 
   {% if tous %}
@@ -125,6 +125,12 @@
   {# Indication affichée seulement s'il y a vraiment à défiler (2026-09-29). #}
   <p id="deadlines-vide" class="deadlines-note" role="status"></p>
   <p id="gantt-aide-defilement" hidden class="deadlines-note">Faites défiler horizontalement pour voir les semaines suivantes <span aria-hidden="true">→</span></p>
+
+  {# Lot 14 (revue produit P0-1) : tâches bloquées (hors du Gantt), avec
+     leur motif et le nombre de jours de blocage ; panneau sur place. #}
+  {% with bloquees_id='deadlines-bloquees', bloquees_panneau=true, bloquees_chef=tous, bloquees_classe='card deadlines-bloquees' %}
+    {% include "partials/taches_bloquees.html" %}
+  {% endwith %}
 
   {% if tous %}
   {# Lot 12 : vue Admin — les tâches en cours sans échéance aussi. #}

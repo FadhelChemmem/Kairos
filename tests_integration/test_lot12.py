@@ -7,7 +7,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from tests_integration.base import URL, BaseIntegration
+from tests_integration.base import URL, BaseIntegration, fermer_pool
 
 RACINE = Path(__file__).resolve().parent.parent
 MIGRATION_0018 = RACINE / "migrations" / "0018_modes_admin_et_date_simulee.sql"
@@ -34,7 +34,7 @@ class _Base(BaseIntegration):
             UPLOAD_DIR = tempfile.mkdtemp(prefix="kairos-it-")
             MODE_TEST = cls.MODE_TEST
 
-        db._pool = None
+        fermer_pool()
         cls.app = create_app(ConfigIT)
         cls.db = db
 
@@ -114,7 +114,7 @@ class TestVoirComme(_Base):
                  ("post", "dailylog_entree", "dailylog_jour", "notification", "tache_intervenant", "dailylog_preference")}
         cas = [
             ("post", "/posts", {"data": {"projet_id": str(self.p1), "type_code": "information", "contenu": "x"}}),
-            ("post", f"/projets/{self.p1}/taches/{self.t1}/etat", {"data": {"etat": "bloque"}}),
+            ("post", f"/projets/{self.p1}/taches/{self.t1}/etat", {"data": {"etat": "bloque", "motif": "Attente des plans"}}),
             ("post", "/notifications/marquer-toutes-lues", {}),
             ("post", f"/projets/{self.p2}/rejoindre", {}),
             ("post", "/utilisateurs/moi", {"data": {"telephone": "123"}}),
@@ -315,7 +315,9 @@ class TestVoirComme(_Base):
                         "RETURNING id", (p3, chef2))[0]["id"]
         self.tache(p3, chef2, etat="bloque")
         self.login(self.admin)
-        page = self.texte(self.client.get("/deadlines"))
+        # Lot 14 : l'Admin arrive sur « Tous les projets » ; « Mes projets » = ?vue=mes.
+        self.assertIn("3 tâches avec échéance — tous les projets", self.texte(self.client.get("/deadlines")))
+        page = self.texte(self.client.get("/deadlines?vue=mes"))
         self.assertIn("0 tâche avec échéance", page)
         self.assertIn('aria-current="page">Mes projets', page)
         page = self.texte(self.client.get("/deadlines?vue=tous"))
