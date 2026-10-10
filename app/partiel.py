@@ -39,7 +39,7 @@ ENTETE_REDIRECTION = "X-Kairos-Redirection"
 TYPES_FLASH = {"success": "succes", "error": "erreur", "warning": "avertissement"}
 TYPES = ("succes", "erreur", "avertissement", "info")
 
-MESSAGE_SESSION = "Votre session a expiré : reconnectez-vous pour continuer."
+MESSAGE_SESSION = "Votre session a expiré\u00a0: reconnectez-vous pour continuer."
 
 
 def est_partiel() -> str | None:

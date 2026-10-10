@@ -141,7 +141,7 @@ class TestRejoindreTacheClose(_Base):
         resp, add = self._post()
         add.assert_called_once()
         self.assertEqual(resp.status_code, 200)
-        self.assertIn("Cette tâche est close : on ne peut plus la rejoindre.", resp.data.decode())
+        self.assertIn("Cette tâche est close\u00a0: on ne peut plus la rejoindre.", resp.data.decode())
         self.assertNotIn("Vous avez rejoint la tâche.", resp.data.decode())
 
     def test_etats_clos_communs_au_tableau_et_au_refus(self):
@@ -160,7 +160,7 @@ class TestFenetreDatesEtHeures(_Base):
         # Lot 13 : pour qui gère le projet, l'échéance est un champ date (année
         # comprise) ; sinon, le texte « 17 nov. <année> ».
         self.assertTrue(f'value="{annee_passee}-11-17"' in html or f"17 nov. {annee_passee}" in html)
-        self.assertIn("3\u00a0h\u00a030 intervenants / 1\u00a0h\u00a045 chef de projet", html)
+        self.assertIn("3\u00a0h\u00a030 intervenants · 1\u00a0h\u00a045 chef de projet", html)
         self.assertNotIn("heures_courtes", html)
 
     def test_une_seule_tache_demandee_a_la_base(self):

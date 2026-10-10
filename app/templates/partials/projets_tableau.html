@@ -10,7 +10,7 @@
     <span id="projets-compte" data-compte class="projets-compte" tabindex="-1">{{ total }} projet{{ 's' if total > 1 else '' }}{% if nb_pages > 1 %} · {{ premier }}–{{ dernier }} affichés{% endif %}</span>
   </div>
   {% if chef_ignore %}
-    <p role="note" class="projets-note">Recherche dans tous les projets visibles : le filtre « Chef de projet : vous » est ignoré tant qu’un texte est saisi.</p>
+    <p role="note" class="projets-note">Recherche dans tous les projets visibles&nbsp;: le filtre «&nbsp;Chef de projet&nbsp;: vous&nbsp;» est ignoré tant qu’un texte est saisi.</p>
   {% endif %}
 
   <div class="card ptable-carte">
@@ -22,15 +22,16 @@
     <div role="table" aria-label="Projets" aria-describedby="projets-compte" class="ptable">
       <div role="rowgroup" class="ptable-entetes">
         <div role="row" class="ptable-head">
-          <span role="columnheader">Projet</span><span role="columnheader">Phase</span><span role="columnheader">Lots</span><span role="columnheader">Chef de projet</span><span role="columnheader" title="Heures intervenants / heures chef de projet">Heures</span><span role="columnheader" title="Prochain rendu client (tri de la liste)">Rendu</span><span role="columnheader">État</span>
+          <span role="columnheader">Projet</span><span role="columnheader">Phase</span><span role="columnheader">Lots</span><span role="columnheader">Chef de projet</span><span role="columnheader" title="Heures des intervenants · heures du chef de projet">Heures (interv. · chef)</span><span role="columnheader" title="Prochain rendu client, à défaut prochaine échéance interne (tri de la liste)">Prochaine échéance</span><span role="columnheader">État</span>
         </div>
       </div>
       <div role="rowgroup">
       {% for p in projets %}
         {% set st = projet_etat_style(p.etat) %}
         <div role="row" class="ptable-row" data-lien-ligne>
+          {# État codé une seule fois : la pastille en fin de ligne (revue
+             visuelle P2-24). #}
           <span role="cell" class="ptable-projet">
-            <span class="point-etat point-etat-{{ p.etat }}" aria-hidden="true"></span>
             <a href="{{ url_for('projets.detail', projet_id=p.id) }}" class="ptable-lien" title="{{ p.code }}_{{ p.nom }}">{{ p.code }}_{{ p.nom }}</a>
           </span>
           <span role="cell" class="ptable-phase"><span class="pill pill-neutre">{{ p.phase }}</span></span>
@@ -40,13 +41,17 @@
             <span class="ptable-chef-nom">{{ p.chef_prenom }} {{ p.chef_nom }}</span>
           </span>
           {# « 8/5 h » = heures intervenants / heures chef de projet (PR4). #}
-          <span role="cell" class="ptable-heures" title="{{ p.heures_intervenant|heures }} intervenants / {{ p.heures_chef|heures }} chef de projet">{{ heures_interv_chef(p.heures_intervenant, p.heures_chef) }}</span>
+          <span role="cell" class="ptable-heures" title="{{ p.heures_intervenant|heures }} intervenants · {{ p.heures_chef|heures }} chef de projet">{{ heures_interv_chef(p.heures_intervenant, p.heures_chef) }}</span>
           {# Prochain rendu client (sinon prochaine échéance interne, en
              gris) ; le nom de la tâche en infobulle (retour Fadhel). #}
+          {# Revue produit P1-5 : échéance dépassée en rouge, avec « +2 j ». #}
+          {% set p_echeance = p.prochain_rendu or p.prochaine_deadline %}
+          {% set p_retard = en_retard_de(p_echeance, today()) if p_echeance and p.etat in ('en_cours', 'bloque') else '' %}
+          {% set p_retard_html %}{% if p_retard %}<span class="ptable-retard-jours" aria-hidden="true">+{{ p_retard.split(' ')[-2] }}&nbsp;j</span><span class="sr-only">, {{ p_retard }}</span>{% endif %}{% endset %}
           {% if p.prochain_rendu %}
-            <span role="cell" class="ptable-rendu" title="Rendu : {{ p.prochain_rendu_titre }}"><span class="ptable-mobile-libelle">Rendu </span>{{ p.prochain_rendu|date_courte }}</span>
+            <span role="cell" class="ptable-rendu{{ ' ptable-rendu-retard' if p_retard }}" title="Rendu client&nbsp;: {{ p.prochain_rendu_titre }}"><span class="ptable-mobile-libelle">Rendu </span>{{ p.prochain_rendu|date_courte }}{{ p_retard_html }}</span>
           {% elif p.prochaine_deadline %}
-            <span role="cell" class="ptable-rendu ptable-rendu-interne" title="Échéance interne : {{ p.prochaine_deadline_titre }}"><span class="ptable-mobile-libelle">Échéance </span>{{ p.prochaine_deadline|date_courte }} <span class="ptable-interne">(interne)</span></span>
+            <span role="cell" class="ptable-rendu ptable-rendu-interne{{ ' ptable-rendu-retard' if p_retard }}" title="Échéance interne&nbsp;: {{ p.prochaine_deadline_titre }}"><span class="ptable-mobile-libelle">Échéance </span>{{ p.prochaine_deadline|date_courte }} <span class="ptable-interne">(interne)</span>{{ p_retard_html }}</span>
           {% else %}
             <span role="cell" class="ptable-rendu"></span>
           {% endif %}
@@ -58,11 +63,20 @@
     {% else %}
       {# Les filtres s'appliquent toujours (valeurs par défaut comprises) :
          une liste vide vient donc d'eux — lot 10, audit front I2. #}
+      {% if g.user.role == 'client' and not q %}
+      {# Revue produit P1-14 : le client ne voit simplement aucun projet,
+         ce ne sont pas les filtres. #}
+      <div class="k-vide">
+        <p class="k-vide-titre">Aucun projet n’est encore partagé avec votre équipe{% if g.user.equipe_code %} ({{ g.user.equipe_code }}){% endif %}.</p>
+        <p class="k-vide-texte">Votre interlocuteur Midgard vous y donnera accès.</p>
+      </div>
+      {% else %}
       <div class="k-vide">
         <p class="k-vide-titre">Aucun projet ne correspond à ces filtres</p>
         <p class="k-vide-texte">Élargissez la recherche ou affichez tous les projets visibles.</p>
         <a href="{{ url_for('projets.liste', filtres_actifs=1) }}" class="btn" data-partiel="#projets-resultats" data-focus-apres="#projets-compte">Afficher tous les projets</a>
       </div>
+      {% endif %}
     {% endif %}
   </div>
   {% if nb_pages > 1 %}

@@ -21,7 +21,7 @@
     </div>
     <div class="form-row">
       <label for="code">Code (proposé, modifiable)</label>
-      <input type="text" id="code" name="code" data-url-code-propose="{{ url_for('projets.api_code_propose') }}" data-modifie="{{ '1' if saisie.code else '0' }}" maxlength="20" value="{{ code_propose }}" required pattern="[0-9]{5,}[PDXE]" title="Année sur 2 chiffres + numéro (3 chiffres ou plus) + lettre de la phase : P (APS/APD), D (DCE), X (EXE), E (DOE)"{{ err.attrs(erreurs, 'code') }}>
+      <input type="text" id="code" name="code" data-url-code-propose="{{ url_for('projets.api_code_propose') }}" data-modifie="{{ '1' if saisie.code else '0' }}" maxlength="20" value="{{ code_propose }}" required pattern="[0-9]{5,}[PDXE]" title="Année sur 2 chiffres + numéro (3 chiffres ou plus) + lettre de la phase&nbsp;: P (APS/APD), D (DCE), X (EXE), E (DOE)"{{ err.attrs(erreurs, 'code') }}>
       {{ err.message(erreurs, 'code') }}
     </div>
     <div class="form-row">

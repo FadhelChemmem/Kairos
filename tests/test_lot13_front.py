@@ -189,7 +189,7 @@ class TestPiloteUtilisateurs(_Base):
         self.assertIn("data-partiel-oob", html)
         toasts = toasts_de(resp)
         self.assertEqual(len(toasts), 1)
-        self.assertEqual(toasts[0]["texte"], "Compte de Amine Ben Salah désactivé.")
+        self.assertEqual(toasts[0]["texte"], "Compte désactivé\u00a0: Amine Ben Salah.")
         action = toasts[0]["action"]
         self.assertEqual(action["libelle"], "Annuler")
         self.assertEqual(action["url"], "/utilisateurs/5/toggle-actif")
@@ -203,7 +203,7 @@ class TestPiloteUtilisateurs(_Base):
             extra=[patch("app.repositories.utilisateurs.set_actif")],
             **{"app.repositories.utilisateurs.get_utilisateur": {**cible, "actif": True}})
         self.assertNotIn("action", toasts_de(resp)[0])
-        self.assertEqual(toasts_de(resp)[0]["texte"], "Compte de Amine Ben Salah réactivé.")
+        self.assertEqual(toasts_de(resp)[0]["texte"], "Compte réactivé\u00a0: Amine Ben Salah.")
 
     def test_interrupteur_partiel_refus(self):
         cible = {**smoke.UTILISATEUR_PROFIL, "id": 5, "role": "intervenant", "actif": True}

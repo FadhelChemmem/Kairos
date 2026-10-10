@@ -14,11 +14,11 @@
   </div>
   <div class="form-row-2 form-row-serre">
     <div class="form-row">
-      <span class="label">Code <span class="label-note">— fixe</span></span>
+      <span class="label">Code <span class="label-note">(non modifiable)</span></span>
       <div class="champ-fixe">{{ projet.code }}</div>
     </div>
     <div class="form-row">
-      <span class="label">Phase <span class="label-note">— fixe</span></span>
+      <span class="label">Phase <span class="label-note">(non modifiable)</span></span>
       <div class="champ-fixe">{{ projet.phase }}</div>
     </div>
   </div>
@@ -41,11 +41,11 @@
         <option value="{{ u.id }}" {{ 'selected' if u.id == projet.chef_projet_id }} data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}" data-couleur="{{ avatar_color(u.id) }}"{% if u.avatar_chemin %} data-photo="{{ avatar_url(u.id, u.avatar_chemin) }}"{% endif %} data-sous-titre="{% if u.inactif %}Compte désactivé · chef actuel{% elif u.id == projet.chef_projet_id %}Chef actuel{% if rs %} · {{ rs.label }}{% endif %}{% else %}{{ rs.label if rs }}{% if u.poste and (not rs or u.poste|lower != rs.label|lower) %} · {{ u.poste }}{% endif %}{% endif %}">{{ u.prenom }} {{ u.nom }}{{ ' (désactivé)' if u.inactif }}</option>
       {% endfor %}
     </select>
-    <p id="dialog-info-chef-aide" class="aide-champ">Chef de projet ou administrateur, compte actif. L'ancien chef devient co-chef.</p>
+    <p id="dialog-info-chef-aide" class="aide-champ">Chef de projet ou administrateur, compte actif. L’ancien chef devient co-chef.</p>
     {% else %}
     <span class="label">Chef de projet</span>
     <div class="champ-fixe">{{ projet.chef_prenom }} {{ projet.chef_nom }}</div>
-    <p class="aide-champ">Projet clos : rouvrez-le d'abord pour changer de chef.</p>
+    <p class="aide-champ">Projet clos&nbsp;: rouvrez-le d’abord pour changer de chef.</p>
     {% endif %}
   </div>
   <div class="form-row">
@@ -54,11 +54,11 @@
        un projet qui a des tâches ouvertes demande une confirmation. #}
     <label for="dialog-info-etat">État</label>
     <select id="dialog-info-etat" name="etat" aria-describedby="dialog-info-etat-aide">
-      <option value="en_cours" {{ 'selected' if projet.etat in ('en_cours', 'bloque') }}>{{ 'En cours (bloqué : une tâche est bloquée)' if projet.etat == 'bloque' else 'En cours' }}</option>
+      <option value="en_cours" {{ 'selected' if projet.etat in ('en_cours', 'bloque') }}>{{ 'En cours (bloqué : une tâche est bloquée)' if projet.etat == 'bloque' else 'En cours' }}</option>
       <option value="termine" {{ 'selected' if projet.etat == 'termine' }}>Terminé</option>
       <option value="abandonne" {{ 'selected' if projet.etat == 'abandonne' }}>Abandonné</option>
     </select>
-    <p id="dialog-info-etat-aide" class="aide-champ">Un projet ouvert est Bloqué dès qu'une de ses tâches l'est. Le clore ferme aussi ses tâches ouvertes, après confirmation.</p>
+    <p id="dialog-info-etat-aide" class="aide-champ">Un projet ouvert est Bloqué dès qu’une de ses tâches l’est. Le clore ferme aussi ses tâches ouvertes, après confirmation.</p>
   </div>
   <div class="form-row">
     <input type="hidden" name="lots_envoyes" value="1">

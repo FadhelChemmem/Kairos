@@ -111,8 +111,8 @@ const interrupteur = (id) => `#actif-${id}`;
     etape('défilement conservé (|Δy| ≤ 40 px)', Math.abs(apres.y - avant.y) <= 40, [avant.y, apres.y]);
     etape('focus rendu à l’interrupteur', apres.focus === 'actif-' + ANCIEN, apres.focus);
     etape('compte réactivé en base', sql(`SELECT actif FROM utilisateur WHERE id=${ANCIEN}`) === 't');
-    etape('toast « Compte de Ancien Compte réactivé. » avec « Annuler »',
-      /Compte de Ancien Compte réactivé/.test(await p.locator('#k-toasts .k-toast').first().innerText())
+    etape('toast « Compte réactivé : Ancien Compte. » avec « Annuler »',
+      /Compte réactivé\u00a0: Ancien Compte/.test(await p.locator('#k-toasts .k-toast').first().innerText())
       && await p.locator('#k-toasts .k-toast-action:has-text("Annuler")').count() === 1);
     etape('compteur mis à jour hors cible', /33 actifs|actifs/.test(await p.textContent('#utilisateurs-compte'))
       && (await p.textContent('#utilisateurs-compte')).includes(sql('SELECT count(*) FROM utilisateur WHERE actif') + ' actifs'));
@@ -150,7 +150,7 @@ const interrupteur = (id) => `#actif-${id}`;
     await attendre(async () => sql(`SELECT actif FROM utilisateur WHERE id=${ANCIEN}`) === 't', 4000);
     await attendre(async () => /Ctrl\+Z/.test(await p.textContent('#k-annonce')), 2000);
     etape('succès annoncé par #k-annonce (role=status), avec le raccourci d’« Annuler »',
-      /Compte de Ancien Compte réactivé\. « Annuler » : Ctrl\+Z\./.test(await p.textContent('#k-annonce')), await p.textContent('#k-annonce'));
+      /Compte réactivé\u00a0: Ancien Compte\. «\u00a0Annuler\u00a0»\u00a0: Ctrl\+Z\./.test(await p.textContent('#k-annonce')), await p.textContent('#k-annonce'));
     await p.keyboard.press('Control+z');
     await attendre(async () => sql(`SELECT actif FROM utilisateur WHERE id=${ANCIEN}`) === 'f', 4000);
     apres = await etat(p);

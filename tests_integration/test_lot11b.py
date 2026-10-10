@@ -83,7 +83,7 @@ class TestChangementDeChef(_BaseChef):
         # Notification au nouveau chef, reliée au post (ouvre la fiche).
         (n,) = self.sql("SELECT id, message, post_id, categorie FROM notification WHERE utilisateur_id = %s", (self.autre,))
         self.assertEqual((n["post_id"], n["categorie"]), (post["id"], "projet"))
-        self.assertEqual(n["message"], "Ali Chef vous a confié le projet « 26101X_Projet » : vous en êtes le chef de projet.")
+        self.assertEqual(n["message"], "Ali Chef vous a confié le projet «\u00a026101X_Projet\u00a0»\u00a0: vous en êtes le chef de projet.")
         self.login(self.autre)
         o = self.client.post(f"/notifications/{n['id']}/ouvrir")
         # Lot 13 (audit rôles M8) : sur le post, dans la fiche.
@@ -136,7 +136,7 @@ class TestChangementDeChef(_BaseChef):
         self.login(self.chef)
         page = _texte(self.client.get(f"/projets/{self.p}"))
         self.assertNotIn('id="dialog-info-chef"', page)
-        self.assertIn("Projet clos : rouvrez-le d'abord pour changer de chef.", page)
+        self.assertIn("Projet clos\u00a0: rouvrez-le d’abord pour changer de chef.", page)
         # Requête forgée, même en rouvrant dans le même envoi : refusée, rien n'est enregistré.
         r = self.infos(self.autre, etat="en_cours")
         self.assertIn("Ce projet est clos : rouvrez-le d'abord", _texte(r))
@@ -304,7 +304,7 @@ class TestRappelDailyLogLot11b(BaseIntegration):
     def test_une_notification_regroupe_les_jours_puis_pas_de_doublon(self):
         self.verifier()
         (n,) = self.rappels()
-        self.assertEqual(n["message"], "3 jours de Daily log non remplis : lundi 5, mardi 6 et mercredi 7 octobre")
+        self.assertEqual(n["message"], "3 jours de Daily log non remplis\u00a0: lundi 5, mardi 6 et mercredi 7 octobre")
         self.assertEqual(n["rappel_jours"], [datetime.date(2026, 10, d) for d in (5, 6, 7)])
         self.assertEqual(n["categorie"], "rh_info")
         self.verifier()
@@ -330,7 +330,7 @@ class TestRappelDailyLogLot11b(BaseIntegration):
         self.verifier()
         nouveau = self.rappels()[-1]
         self.assertEqual(nouveau["rappel_jours"], [datetime.date(2026, 10, 5), datetime.date(2026, 10, 6)])
-        self.assertEqual(nouveau["message"], "2 jours de Daily log non remplis : lundi 5 et mardi 6 octobre")
+        self.assertEqual(nouveau["message"], "2 jours de Daily log non remplis\u00a0: lundi 5 et mardi 6 octobre")
         # Marquage « lu » : l'ancien dès son jour rempli, le groupé quand TOUS ses jours le sont.
         from app.repositories import notifications
         self.remplir(datetime.date(2026, 10, 7))

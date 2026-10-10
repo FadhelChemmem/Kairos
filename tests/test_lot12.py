@@ -307,7 +307,7 @@ class TestVoirCommeRoutes(_Base):
                                espions=[("app.repositories.notifications.marquer_toutes_lues", None)])
         self.assertEqual(resp.status_code, 403)
         self.assertIn("Lecture seule", self.texte(resp))
-        self.assertIn("Vous voyez Kairos comme Rim Inter : lecture seule, rien n'a été modifié.", self.texte(resp))
+        self.assertIn("Vous voyez Kairos comme Rim Inter\u00a0: lecture seule, rien n’a été modifié.", self.texte(resp))
         m["app.repositories.notifications.marquer_toutes_lues"].assert_not_called()
         for chemin, kw in (("/dailylog/api/jour/2026-10-08", {"json": {"version": 0, "lignes": []}}),
                            ("/posts/9/reagir", {"headers": {"X-Requested-With": "XMLHttpRequest"}}),

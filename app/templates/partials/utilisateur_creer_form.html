@@ -31,7 +31,7 @@
   </div>
   <div class="form-row">
     <label for="email">Adresse e-mail <span class="label-note">— identifiant de connexion</span></label>
-    <input type="email" id="email" name="email" maxlength="255" value="{{ f.get('email', '') }}" placeholder="foulen@gmail.com" autocomplete="off" required{{ ch.attrs(erreurs, 'email') }}>
+    <input type="email" id="email" name="email" maxlength="255" value="{{ f.get('email', '') }}" placeholder="prenom.nom@exemple.com" autocomplete="off" required{{ ch.attrs(erreurs, 'email') }}>
     {{ ch.message(erreurs, 'email') }}
   </div>
   <div class="form-row">
@@ -46,7 +46,7 @@
       {{ ch.message(erreurs, 'poste') }}
     </div>
     <div class="form-row">
-      <label for="date_embauche">Date d'embauche</label>
+      <label for="date_embauche">Date d’embauche</label>
       <input type="date" id="date_embauche" name="date_embauche" value="{{ f.get('date_embauche', '') }}"{{ ch.attrs(erreurs, 'date_embauche') }}>
       {{ ch.message(erreurs, 'date_embauche') }}
     </div>
@@ -84,7 +84,7 @@
           {{ 'RH — déjà attribué à ' ~ rh_titulaire.prenom ~ ' ' ~ rh_titulaire.nom if rh_titulaire else 'RH' }}
         </option>
       </select>
-      <p id="role-aide" class="aide-champ">RH est un rôle unique : un seul compte actif peut l'avoir à la fois.</p>
+      <p id="role-aide" class="aide-champ">RH est un rôle unique&nbsp;: un seul compte actif peut l’avoir à la fois.</p>
       {{ ch.message(erreurs, 'role') }}
     </div>
   </div>
@@ -92,14 +92,14 @@
   <div class="k-interrupteur-ligne">
     <div>
       <div class="k-interrupteur-titre">Compte actif</div>
-      <div class="k-interrupteur-note">Désactivé, le compte disparaît des listes d'affectation sans rien supprimer</div>
+      <div class="k-interrupteur-note">Désactivé, le compte disparaît des listes d’affectation sans rien supprimer</div>
     </div>
     <input type="checkbox" id="actif" name="actif" class="actif-toggle-input" aria-label="Compte actif" {{ 'checked' if request.method != 'POST' or f.get('actif') }}>
     <label for="actif" class="toggle" aria-hidden="true"><span class="toggle-knob"></span></label>
   </div>
 
   <div class="form-row">
-    <label for="fuseau">Bureau <span class="label-note">— fuseau horaire du Daily log</span></label>
+    <label for="fuseau" title="Sert au Daily log&nbsp;: date du jour, fenêtre de 14 jours, rappel">Bureau <span class="label-note">(fuseau horaire)</span></label>
     <select id="fuseau" name="fuseau"{{ ch.attrs(erreurs, 'fuseau') }}>
       {% for code, libelle in fuseaux.items() %}
         <option value="{{ code }}" {{ 'selected' if code == f.get('fuseau', 'Africa/Tunis') }}>{{ libelle }}</option>
@@ -112,8 +112,8 @@
   <div class="radio-opt selected">
     <svg class="radio-opt-icone" aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>
     <div>
-      <div class="radio-opt-title">E-mail d'activation</div>
-      <div class="radio-opt-note">Aucun mot de passe n'est défini ici : un e-mail est envoyé à l'utilisateur pour qu'il choisisse lui-même son mot de passe (lien valable 1 heure, si l'envoi d'e-mails est configuré côté serveur — sinon vous verrez un avertissement ; le compte est quand même créé et le lien peut être renvoyé depuis sa fiche). Le compte reste marqué «&nbsp;Non vérifié&nbsp;» tant qu'il ne l'a pas fait.</div>
+      <div class="radio-opt-title">E-mail d’activation</div>
+      <div class="radio-opt-note">Aucun mot de passe n’est défini ici&nbsp;: un e-mail est envoyé à l’utilisateur pour qu’il choisisse lui-même son mot de passe (lien valable 1 heure, si l’envoi d’e-mails est configuré côté serveur — sinon vous verrez un avertissement&#8239;; le compte est quand même créé et le lien peut être renvoyé depuis sa fiche). Le compte reste marqué «&nbsp;Non vérifié&nbsp;» tant qu’il ne l’a pas fait.</div>
     </div>
   </div>
 
@@ -132,6 +132,6 @@
 
   <div class="k-formulaire-actions">
     <a href="{{ url_for('utilisateurs.liste') }}" class="btn">Annuler</a>
-    <button type="submit" class="btn-primaire" id="utilisateur-creer-envoyer">Créer l'utilisateur</button>
+    <button type="submit" class="btn-primaire" id="utilisateur-creer-envoyer">Créer l’utilisateur</button>
   </div>
 </form>

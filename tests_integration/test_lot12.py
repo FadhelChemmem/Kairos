@@ -89,7 +89,7 @@ class TestVoirComme(_Base):
         self.assertIn("Vous voyez Kairos comme Rim Inter (Intervenant) — Revenir à mon compte", self.visible(r))
         self.assertIn("Revenir à mon compte", page)
         # Menus de l'intervenant : ni Utilisateurs ni Journal d'audit.
-        self.assertNotIn('aria-label="Journal d\'audit"', page)
+        self.assertNotIn('aria-label="Journal d’audit"', page)
         self.assertNotIn('aria-label="Utilisateurs"', page)
         self.assertIn('aria-label="Daily log"', page)
         # Mes tâches : sa tâche, lien vers la fenêtre de la tâche (lot 12).
@@ -190,7 +190,7 @@ class TestVoirComme(_Base):
         self.assertEqual((r.status_code, r.headers["Location"]), (302, f"/projets/{self.p1}"))
         page = self.texte(self.client.get("/accueil"))
         self.assertNotIn("bandeau-admin", page)
-        self.assertIn('aria-label="Journal d\'audit"', page)
+        self.assertIn('aria-label="Journal d’audit"', page)
         self.assertEqual([e["action"] for e in self.journal("mode_voir_comme")], ["ENTREE", "SORTIE"])
         # Adresse de retour extérieure : ignorée.
         self.entrer(self.inter)
@@ -259,7 +259,7 @@ class TestVoirComme(_Base):
         self.assertEqual(r.status_code, 200)
         self.assertNotIn("bandeau-admin", page)
         self.assertIn("Le compte de Rim Inter est désactivé. Retour à votre compte.", page)
-        self.assertIn('aria-label="Journal d\'audit"', page)
+        self.assertIn('aria-label="Journal d’audit"', page)
         sortie = self.journal("mode_voir_comme")[-1]
         self.assertEqual((sortie["action"], sortie["donnees_apres"]["raison"]), ("SORTIE", "compte_refuse"))
         # Compte devenu Admin pendant la session : même chose.

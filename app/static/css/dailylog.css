@@ -55,7 +55,7 @@ html:has(body.page-dailylog) { scroll-padding-bottom: 140px; }
 .dl9 .dl-note-correction { background: var(--dl-accent-soft); border-color: transparent; color: var(--dl-accent-ink); }
 
 .dl9 .dl-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 12px; }
-.dl9 .dl-title { font-size: 19px; font-weight: 800; letter-spacing: -.01em; margin: 0; text-wrap: balance; color: var(--text-strong); }
+.dl9 .dl-title { font-size: var(--texte-xl); font-weight: 700; letter-spacing: -.01em; margin: 0; text-wrap: balance; color: var(--text-strong); }
 .dl9 .dl-subtitle { font-size: 12.5px; color: var(--dl-muted); margin: 2px 0 0; }
 .dl9 .dl-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; white-space: nowrap;
   padding: 5px 10px; border-radius: var(--dl-r-pill); background: var(--dl-surface-2); border: 1px solid var(--dl-border); color: var(--dl-muted); }
@@ -321,4 +321,33 @@ html.k-js .dl9:not(.dl-pret) .dl-wrap { visibility: hidden; animation: dl-revele
   .dl9 .dl-catrow .dl-cname { flex: 1 1 calc(100% - 60px); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .dl9 .dl-catrow .dl-cin { flex: 1 1 100%; margin-left: 19px; }
   .dl9 .dl-cattaches { margin-left: 29px; margin-bottom: 4px; }
+}
+
+/* lot 13 H1 stabilité */
+/* Libellés variables : largeur figée par dailylog.js (min-width du plus long
+   libellé), texte centré dans cette largeur ; journée type en largeur fixe
+   (« 8 h » → « 7 h 30 » ne décale plus le − ; revue d'interaction P0-3 à P0-5). */
+.dl9 .dl-datebtn, .dl9 .dl-tool { justify-content: center; }
+.dl9 .dl-save { text-align: center; }
+.dl9 .dl-objctl b { display: inline-block; min-width: 4.4em; }
+/* Retour à l'appui (P1-9) : enfoncement léger + fond, aussi au toucher
+   (écouteur touchstart passif posé par kairos-amorce.js pour iOS). */
+.dl9 .dl-step, .dl9 .dl-navbtn, .dl9 .dl-tool, .dl9 .dl-save, .dl9 .dl-mini, .dl9 .dl-datebtn, .dl9 .dl-add, .dl9 .dl-chip, .dl9 .dl-cattaches {
+  transition: background-color var(--duree-rapide) var(--courbe-std), border-color var(--duree-rapide) var(--courbe-std),
+              color var(--duree-rapide) var(--courbe-std), transform var(--duree-instant) var(--courbe-std);
+}
+.dl9 :is(.dl-step, .dl-navbtn, .dl-tool, .dl-mini, .dl-datebtn, .dl-cattaches):active:not(:disabled):not([aria-disabled="true"]) { transform: scale(.96); background: var(--surface-survol); }
+.dl9 :is(.dl-save, .dl-add, .dl-chip):active:not(:disabled):not([aria-disabled="true"]) { transform: scale(.97); }
+/* Bannière des jours manqués : repli en hauteur (P1-14). */
+.dl9 .dl-banner.dl-banner-repli { height: 0 !important; padding-top: 0; padding-bottom: 0; margin-bottom: 0; border-width: 0; opacity: 0; overflow: hidden;
+  transition: height var(--duree-base) var(--courbe-entree), padding var(--duree-base) var(--courbe-entree), margin var(--duree-base) var(--courbe-entree), opacity var(--duree-rapide) var(--courbe-std); }
+/* Mouvement sur les jetons communs (P2-12). */
+.dl9 .dl-gauge > i { transition: width var(--duree-base) var(--courbe-std), background-color var(--duree-base) var(--courbe-std); }
+.dl9 .dl-pname { transition: color var(--duree-rapide) var(--courbe-std); }
+.dl9 .dl-toast { transition: opacity var(--duree-base) var(--courbe-sortie), transform var(--duree-base) var(--courbe-sortie); }
+.dl9 .dl-toast:not(.dl-show) { transition: opacity var(--duree-base) var(--courbe-entree), transform var(--duree-base) var(--courbe-entree), visibility 0s var(--duree-base); }
+/* Cibles tactiles de 44 px (P1-12). */
+@media (pointer: coarse) {
+  .dl9 .dl-mini, .dl9 .dl-navbtn { width: 44px; height: 44px; }
+  .dl9 .dl-datebtn { height: 44px; }
 }

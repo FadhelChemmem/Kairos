@@ -10,6 +10,7 @@
 //    (POST/PUT/PATCH/DELETE) vers l'appli reçoit l'en-tête X-CSRFToken.
 // 3. Classe « k-js » sur <html> : les éléments réservés au repli sans
 //    JavaScript (.k-sans-js, ex. bouton « Filtrer ») sont masqués.
+// 4. Outils du mode test repliés avant le premier rendu ; 5. :active sur iOS.
 (function () {
   var racine = document.documentElement;
   racine.classList.add('k-js');
@@ -26,6 +27,21 @@
       if (b) b.setAttribute('aria-pressed', e.matches ? 'true' : 'false');
     });
   }
+
+  // 4. Outils du mode test (bandeau des modes) repliés AVANT le premier
+  //    rendu quand ils le seront (préférence mémorisée, sinon repliés sous
+  //    1 280 px) : plus de repli après coup qui décale la page (revue
+  //    d'interaction P2-5). bandeau-admin.js retire la marque une fois le
+  //    <details> mis dans le bon état. Même clé que bandeau-admin.js.
+  try {
+    var large = !!(window.matchMedia && window.matchMedia('(min-width: 1280px)').matches);
+    var pref = localStorage.getItem('kairos-bandeau-outils-' + (large ? 'large' : 'etroit'));
+    if (!(pref ? pref === 'ouvert' : large)) racine.dataset.kOutilsReplies = '';
+  } catch (e) { /* stockage indisponible : comportement par défaut */ }
+
+  // 5. Toucher : sans écouteur « touchstart », Safari iOS n'applique pas
+  //    :active (retour à l'appui des boutons, revue d'interaction P1-9).
+  document.addEventListener('touchstart', function () {}, { passive: true });
 
   var meta = document.querySelector('meta[name="csrf-token"]');
   var jeton = meta ? meta.content : '';

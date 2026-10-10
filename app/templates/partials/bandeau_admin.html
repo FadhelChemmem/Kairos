@@ -40,7 +40,7 @@
       {% set futur = b.aujourdhui_compte > b.aujourdhui_reel %}
       {% set villes = {'America/Cayenne': 'Cayenne', 'Africa/Tunis': 'Tunis'} %}
       <span class="bandeau-admin-texte bandeau-admin-texte-date">Date simulée&nbsp;: <strong><span class="bandeau-admin-insecable">{{ b.date_simulee|date_longue }}</span>{% if b.heure_simulee %} <span class="bandeau-admin-insecable">à {{ b.heure_simulee.strftime('%H:%M') }} (Tunis)</span>{% endif %}</strong>{% if b.fuseau_compte != 'Africa/Tunis' %} <span class="bandeau-admin-insecable" id="bandeau-admin-local">(à {{ villes.get(b.fuseau_compte, b.fuseau_compte) }}&nbsp;: {{ b.maintenant_compte.date()|date_longue }}, {{ b.maintenant_compte.hour }}&nbsp;h&nbsp;{{ '%02d'|format(b.maintenant_compte.minute) }})</span>{% endif %}</span>
-      {% if futur %}<span class="bandeau-admin-futur" id="bandeau-admin-futur">Date simulée future : les saisies datées (Daily log) sont en lecture seule ; les autres actions sont réelles</span>{% endif %}
+      {% if futur %}<span class="bandeau-admin-futur" id="bandeau-admin-futur">Date simulée future&nbsp;: les saisies datées (Daily log) sont en lecture seule&#8239;; les autres actions sont réelles</span>{% endif %}
       <span class="bandeau-admin-sep" aria-hidden="true">—</span>
       <form method="post" action="{{ url_for('mode_test.date_simulee_effacer') }}" class="bandeau-admin-form" data-permis-lecture>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

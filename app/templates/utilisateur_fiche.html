@@ -26,7 +26,7 @@
   <div class="card k-carte-fiche k-carte-ligne">
     <h2 class="carte-titre">Daily log</h2>
     <span class="k-carte-ligne-texte">Corrections tracées à votre nom dans le journal d’audit.</span>
-    <a class="btn" href="{{ url_for('dailylog.formulaire', utilisateur=utilisateur.id) }}">Corriger le Daily log de {{ utilisateur.prenom }} {{ utilisateur.nom }}</a>
+    <a class="btn" href="{{ url_for('dailylog.formulaire', utilisateur=utilisateur.id) }}">Corriger son Daily log</a>
   </div>
   {% endif %}
 

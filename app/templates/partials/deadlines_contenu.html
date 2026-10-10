@@ -1,11 +1,10 @@
 {# Contenu de la page Deadlines (lot 13 : fragment rendu seul quand on
    bascule de vue ou qu'on filtre — #deadlines-contenu ; le compteur suit,
-   hors cible). Barres : couleur par classe (même seuils que
-   utils.build_gantt), ligne « aujourd'hui » sur la première colonne.
+   hors cible). Barres : couleur par classe g-bar-<niveau> (seuils de
+   utils.build_gantt, jetons --gantt-*), colonne du jour teintée.
    Téléphone (< 600 px) : liste groupée par semaine à la place de la frise
    (audit a11y I3). Contexte : gantt, semaines, tous, filtres, chefs,
    sans_echeance, q, vue_admin, nb_taches. #}
-{% set classes_barre = {'#c2401f': 'g-bar-urgent', '#b8520f': 'g-bar-semaine', '#4a7c59': 'g-bar-tard'} %}
 <div id="deadlines-contenu" class="deadlines-contenu">
 
   {% if tous %}
@@ -65,15 +64,18 @@
       {% for t in gantt.rows %}
         <div class="g-row" data-filtre="{{ (t.projet_code ~ ' ' ~ t.projet_nom ~ ' ' ~ t.titre)|lower }}" data-open-tache="{{ t.id }}" data-tache-url="{{ url_for('taches_fenetre.fenetre', projet_id=t.projet_id, tache_id=t.id) }}">
           <div class="g-label">
-            <div class="g-titre">{{ t.titre }}</div>
-            <div class="g-projet">{{ t.projet_code }}_{{ t.projet_nom }}{% if t.type_deadline == 'interne' %} · interne{% endif %}{% if tous and t.chef_nom %} · {{ t.chef_prenom }} {{ t.chef_nom }}{% endif %}</div>
+            {# Une ligne chacun, coupés en « … » (titre complet au survol) :
+               toutes les lignes ont la même hauteur (revue visuelle P1-6). #}
+            {% set g_projet %}{{ t.projet_code }}_{{ t.projet_nom }}{% if t.type_deadline == 'interne' %} · interne{% endif %}{% if tous and t.chef_nom %} · {{ t.chef_prenom }} {{ t.chef_nom }}{% endif %}{% endset %}
+            <div class="g-titre" title="{{ t.titre }}">{{ t.titre }}</div>
+            <div class="g-projet" title="{{ g_projet }}">{{ g_projet }}</div>
           </div>
           <div class="g-row-track">
             {# Lot 12 : la barre ouvre la fenêtre de la tâche (?tache=<id>).
                Lot 13 (correctifs) : le panneau s'ouvre sur place
                (tache-dialog.js) ; le lien reste pour un nouvel onglet et
                sans JavaScript. #}
-            <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) }}" data-ouvrir-tache data-titre="{{ t.titre }}" aria-haspopup="dialog" class="g-bar{% if t.en_retard %} g-bar-retard{% endif %} {{ classes_barre.get(t.couleur, 'g-bar-tard') }}" style="grid-column: 1 / span {{ t.span }};" aria-label="{{ t.titre }} ({{ t.projet_code }}) : {{ t.retard ~ ', ' if t.en_retard }}échéance le {{ t.date_echeance|date_courte }} — ouvrir la tâche">{{ t.label_barre }}</a>
+            <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) }}" data-ouvrir-tache data-titre="{{ t.titre }}" aria-haspopup="dialog" class="g-bar{% if t.en_retard %} g-bar-retard{% endif %} g-bar-{{ t.niveau }}" style="grid-column: 1 / span {{ t.span }};" aria-label="{{ t.titre }} ({{ t.projet_code }})&nbsp;: {{ t.retard ~ ', ' if t.en_retard }}échéance le {{ t.date_echeance|date_courte }} — ouvrir la tâche">{{ t.label_barre }}</a>
           </div>
         </div>
       {% endfor %}
@@ -91,7 +93,7 @@
           <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) }}" class="deadlines-item" data-ouvrir-tache data-titre="{{ t.titre }}" aria-haspopup="dialog">
             <span class="deadlines-item-titre">{{ t.titre }}</span>
             <span class="deadlines-item-projet">{{ t.projet_code }}_{{ t.projet_nom }}{% if tous and t.chef_nom %} · {{ t.chef_prenom }} {{ t.chef_nom }}{% endif %}</span>
-            <span class="deadlines-item-date {{ classes_barre.get(t.couleur, 'g-bar-tard') }}-texte">{{ t.retard if t.en_retard else t.date_echeance|date_courte }}</span>
+            <span class="deadlines-item-date g-bar-{{ t.niveau }}-texte">{{ t.retard if t.en_retard else t.date_echeance|date_courte }}</span>
           </a>
         </li>
         {% endfor %}

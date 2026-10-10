@@ -67,4 +67,4 @@ class TestPagesApresRechargement(BaseIntegration):
                 reponse = self.client.get(page)
                 self.assertEqual(reponse.status_code, 200, f"{page} pour l'utilisateur {user_id}")
                 if page == "/accueil":
-                    self.assertIn("Mes tâches", reponse.get_data(as_text=True))
+                    self.assertRegex(reponse.get_data(as_text=True), "Mes tâches|Tâches de mes projets")

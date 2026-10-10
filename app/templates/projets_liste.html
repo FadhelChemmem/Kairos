@@ -2,12 +2,14 @@
 {% import "partials/avatar.html" as avatarm %}
 {% block title %}Tous les projets{% if page > 1 %} — page {{ page }}{% endif %} — Kairos{% endblock %}
 {% block body %}
-<div class="page-wrap projets-page">
-  <div class="projets-entete">
-    <h1 class="page-titre projets-titre">Tous les projets</h1>
+{# Revue visuelle P1-9 : un seul modèle d'en-tête de page, la sous-barre
+   (titre à gauche, actions à droite), comme Deadlines ou Utilisateurs. #}
+<div class="subbar">
+  <div class="subbar-inner">
+    <h1 class="page-titre">Tous les projets</h1>
     {# Même règle que la route projets.creer (admin, chef de projet) — le
        bouton était montré à tous (audit n°2). #}
-    <div class="projets-actions">
+    <div class="subbar-actions">
       {% include "partials/projets_export.html" %}
       {% if g.user.role in ('admin', 'chef_de_projet') %}
       {# Fenêtre flottante depuis le 2026-09-28 (retour Fadhel), même principe
@@ -16,7 +18,8 @@
       {% endif %}
     </div>
   </div>
-
+</div>
+<div class="page-wrap projets-page">
   {# Lot 13 (phase 2) : filtres automatiques au socle partiel (frappe
      250 ms, puces au changement) : seul #projets-resultats est remplacé,
      l'adresse suit (pushState, Retour = filtre précédent). Le bouton
@@ -38,6 +41,12 @@
        personne…" pour ce filtre : avec des puces aussi compactes, l'équipe
        Midgard (une quinzaine de personnes) tient déjà d'un coup d'œil. #}
     <div class="card projets-filtres">
+      {# Revue visuelle P1-17 : sur téléphone (avec JavaScript), les filtres
+         (≈ 420 px) sont repliés dès le premier rendu derrière « Filtres · n »
+         (projets-liste.js les déplie) ; toujours visibles au-delà de 600 px. #}
+      {% set nb_filtres = (etats or [])|length + (phases or [])|length + (lots_contient or [])|length + (lots_egal or [])|length + (chef_ids or [])|length %}
+      <button type="button" class="projets-filtres-resume" aria-expanded="false" aria-controls="projets-filtres-groupes" data-filtres-bascule>Filtres <span class="projets-filtres-nb" data-filtres-nb>{% if nb_filtres %}· {{ nb_filtres }}{% endif %}</span></button>
+      <div id="projets-filtres-groupes" class="projets-filtres-groupes">
       {# Une seule ligne, chefs de projet compris (retour Fadhel,
          2026-09-29) — les avatars passent à la ligne DANS leur groupe si
          besoin. #}
@@ -86,6 +95,7 @@
             {% endfor %}
           </select>
         </div>
+      </div>
       </div>
       <button type="submit" class="btn k-sans-js">Filtrer</button>
     </div>

@@ -631,7 +631,7 @@ class TestPage(_BaseDailyLog):
     def test_mode_correction_bandeau(self):
         html = self.appel("get", "/dailylog?utilisateur=2", user=CHEF,
                           **{"app.repositories.utilisateurs.get_utilisateur": EMPLOYE}).data.decode()
-        self.assertIn("Correction du Daily log de <b>Wael Rekik</b>", html)
+        self.assertIn("Correction du Daily log&nbsp;: <b>Wael Rekik</b>", html)
         self.assertIn("Seules les lignes de vos projets sont modifiables", html)
         self.assertIn('"mode": "correction"', html)
 
@@ -710,7 +710,7 @@ class TestJoursManquesEtRappel(unittest.TestCase):
         rappel.assert_called_once()
         _, jours, texte = rappel.call_args.args
         self.assertEqual(jours, [datetime.date(2026, 9, 29), datetime.date(2026, 9, 30)])
-        self.assertEqual(texte(jours), "2 jours de Daily log non remplis : mardi 29 et mercredi 30 septembre")
+        self.assertEqual(texte(jours), "2 jours de Daily log non remplis\u00a0: mardi 29 et mercredi 30 septembre")
 
     def test_texte_du_rappel(self):
         from app.utils import texte_rappel_daily_log as t
@@ -719,13 +719,13 @@ class TestJoursManquesEtRappel(unittest.TestCase):
         self.assertEqual(t([d(2026, 10, 7)], auj), "Daily log du mercredi 7 octobre non rempli")
         self.assertEqual(t([d(2026, 10, 1)], auj), "Daily log du jeudi 1er octobre non rempli")
         self.assertEqual(t([d(2026, 10, 7), d(2026, 10, 5), d(2026, 10, 6)], auj),
-                         "3 jours de Daily log non remplis : lundi 5, mardi 6 et mercredi 7 octobre")
+                         "3 jours de Daily log non remplis\u00a0: lundi 5, mardi 6 et mercredi 7 octobre")
         self.assertEqual(t([d(2026, 9, 30), d(2026, 10, 1), d(2026, 10, 2)], auj),
-                         "3 jours de Daily log non remplis : mercredi 30 septembre, jeudi 1er et vendredi 2 octobre")
+                         "3 jours de Daily log non remplis\u00a0: mercredi 30 septembre, jeudi 1er et vendredi 2 octobre")
         self.assertEqual(t([d(2026, 12, 31), d(2027, 1, 4)], d(2027, 1, 5)),
-                         "2 jours de Daily log non remplis : jeudi 31 décembre 2026 et lundi 4 janvier")
+                         "2 jours de Daily log non remplis\u00a0: jeudi 31 décembre 2026 et lundi 4 janvier")
         cinq = [d(2026, 10, j) for j in (1, 2, 5, 6, 7)]
-        self.assertEqual(t(cinq, auj), "5 jours de Daily log non remplis : jeudi 1er, vendredi 2, lundi 5, "
+        self.assertEqual(t(cinq, auj), "5 jours de Daily log non remplis\u00a0: jeudi 1er, vendredi 2, lundi 5, "
                                        "mardi 6 et mercredi 7 octobre")
         dix = [d(2026, 9, j) for j in (24, 25, 28, 29, 30)] + cinq
         self.assertEqual(t(dix, auj), "10 jours de Daily log non remplis, du jeudi 24 septembre au mercredi 7 octobre")
@@ -775,7 +775,7 @@ class TestAutresPages(_BaseDailyLog):
         """Lot 11 b : le lien suit rappel_jours (pas le texte) — premier jour
         encore vide, à défaut le premier cité."""
         d = datetime.date
-        notif = {"id": 9, "message": "3 jours de Daily log non remplis : lundi 5, mardi 6 et mercredi 7 octobre",
+        notif = {"id": 9, "message": "3 jours de Daily log non remplis\u00a0: lundi 5, mardi 6 et mercredi 7 octobre",
                  "rappel_jours": [d(2026, 10, 7), d(2026, 10, 5), d(2026, 10, 6)],
                  "post_projet_id": None, "tache_projet_id": None, "post_id": None, "tache_id": None}
         for remplis, attendu in ((set(), "2026-10-05"), ({d(2026, 10, 5)}, "2026-10-06"),
@@ -788,8 +788,22 @@ class TestAutresPages(_BaseDailyLog):
                 self.assertTrue(resp.headers["Location"].endswith(f"/dailylog?date={attendu}"), resp.headers["Location"])
 
     def test_carte_accueil_sait_si_aujourdhui_est_rempli(self):
-        html = self.appel("get", "/accueil", **{"app.repositories.dailylog.jour_renseigne": True}).data.decode()
-        self.assertIn("Journée du jour renseignée", html)
+        # Revue produit P1-10 : la carte dit où en est la journée.
+        entree = lambda h: {"id": 1, "projet_id": 1, "tache_id": None, "heures": h}  # noqa: E731
+        html = self.appel("get", "/accueil", **{"app.repositories.dailylog.jour_renseigne": True,
+                                                 "app.repositories.dailylog.list_entrees_jour": [entree(2), entree(1.5)],
+                                                 "app.repositories.dailylog.get_objectif": 480}).data.decode()
+        self.assertIn("3\u00a0h\u00a030 saisies sur 8\u00a0h aujourd’hui.", html)
+        self.assertIn("Compléter mon Daily log", html)
+        html = self.appel("get", "/accueil", **{"app.repositories.dailylog.jour_renseigne": True,
+                                                 "app.repositories.dailylog.list_entrees_jour": [entree(8)],
+                                                 "app.repositories.dailylog.get_objectif": 480}).data.decode()
+        self.assertIn("Journée complète (8\u00a0h).", html)
+        self.assertIn("Voir mon Daily log", html)
+        html = self.appel("get", "/accueil", **{"app.repositories.dailylog.jour_renseigne": True,
+                                                 "app.repositories.dailylog.list_entrees_jour": [],
+                                                 "app.repositories.dailylog.get_objectif": 480}).data.decode()
+        self.assertIn("Absence enregistrée aujourd’hui.", html)
         html = self.appel("get", "/accueil", **{"app.repositories.dailylog.jour_renseigne": False}).data.decode()
         self.assertIn("Répartissez vos heures de la journée par projet.", html)
         self.assertIn("Remplir mon Daily log", html)

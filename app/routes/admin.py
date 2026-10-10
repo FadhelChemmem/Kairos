@@ -143,7 +143,7 @@ def _filtres():
         ignores.append("dates")
     if ignores:
         flash(f"Filtre{'s' if len(ignores) > 1 else ''} invalide{'s' if len(ignores) > 1 else ''} ignoré"
-              f"{'s' if len(ignores) > 1 else ''} : {', '.join(ignores)}.", "error")
+              f"{'s' if len(ignores) > 1 else ''}\u00a0: {', '.join(ignores)}.", "error")
     return {
         "table": table_cible or "", "action": action or "", "utilisateur_id": utilisateur_id or "",
         "date_debut": date_debut_str, "date_fin": date_fin_str,

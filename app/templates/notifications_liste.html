@@ -5,7 +5,7 @@
 {% block body %}
 
 <div class="subbar">
-  <div class="subbar-inner">
+  <div class="subbar-inner k-lecture">
     <h1 class="page-titre">Notifications</h1>
     {% include "partials/notifications_compte.html" %}
     {% if notifications %}
@@ -19,7 +19,7 @@
   </div>
 </div>
 
-<div class="page-wrap k-page notif-page">
+<div class="page-wrap k-page k-lecture notif-page">
   {% include "partials/notifications_liste.html" %}
 </div>
 {% endblock %}

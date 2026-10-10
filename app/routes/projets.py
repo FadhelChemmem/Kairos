@@ -43,7 +43,7 @@ ETATS_PROJET_VALIDES = {"en_cours", "bloque", "termine", "abandonne"}
 
 
 MESSAGE_PROJET_CLOS = (
-    "Ce projet est clos (terminé ou abandonné) : plus aucune intervention n'est "
+    "Ce projet est clos (terminé ou abandonné)\u00a0: plus aucune intervention n’est "
     "possible tant que son chef ou un co-chef ne change pas son état."
 )
 
@@ -94,7 +94,7 @@ def _chefs_possibles() -> list[dict]:
 def _refus_rh():
     """Le RH n'a pas accès aux projets (décision Fadhel, lot 7)."""
     if g.user["role"] == "rh":
-        flash("Le RH n'a pas accès aux projets.", "error")
+        flash("Le RH n’a pas accès aux projets.", "error")
         return redirect(url_for("main.accueil"))
     return None
 
@@ -107,9 +107,9 @@ def _message_erreur_intervenant(exc: Exception, action: str) -> str:
     était auparavant présentée à tort comme un problème de RH — elle est
     maintenant journalisée et signalée comme une erreur générique."""
     if "rôle RH" in str(exc):
-        return f"Impossible {action} : un RH ne peut pas être intervenant."
+        return f"Impossible {action}\u00a0: un RH ne peut pas être intervenant."
     if "rôle Client" in str(exc):
-        return f"Impossible {action} : un client ne peut pas être intervenant."
+        return f"Impossible {action}\u00a0: un client ne peut pas être intervenant."
     current_app.logger.exception("Échec inattendu (%s)", action)
     return f"Impossible {action} (erreur inattendue, réessayez)."
 
@@ -295,7 +295,7 @@ def export_excel():
     feuille.title = "Projets"
     entetes = ["Code", "Nom", "Phase", "Lots", "Chef de projet", "Client", "Honoraires",
                "Heures intervenants", "Heures chef de projet", "Prochain rendu", "Tâche du rendu",
-               "Prochaine échéance", "Tâche de l'échéance", "État", "Début"]
+               "Prochaine échéance", "Tâche de l’échéance", "État", "Début"]
     feuille.append(entetes)
     for cellule in feuille[1]:
         cellule.font = Font(bold=True)
@@ -341,7 +341,7 @@ def export_excel():
 @login_required
 def creer():
     if g.user["role"] not in ("admin", "chef_de_projet"):
-        flash("Seuls les chefs de projet et l'admin peuvent créer un projet.", "error")
+        flash("Seuls les chefs de projet et l’admin peuvent créer un projet.", "error")
         return redirect(url_for("projets.liste"))
 
     # Chef de projet (lot 13, décision 3) : compte actif, chef de projet ou
@@ -377,7 +377,7 @@ def creer():
             champ, erreur = ("nom" if not nom else "code"), "Le code et le nom du projet sont obligatoires."
         elif phase in PHASES and not projets.code_valide(code, phase):
             champ, erreur = "code", (
-                f"Code invalide : l'année sur 2 chiffres, un numéro d'au moins 3 chiffres, puis la lettre "
+                f"Code invalide\u00a0: l’année sur 2 chiffres, un numéro d’au moins 3 chiffres, puis la lettre "
                 f"de la phase {phase} ({projets.LETTRE_PHASE[phase]}) — ex. 26001{projets.LETTRE_PHASE[phase]}."
             )
         elif message := v.trop_long(nom, v.MAX_NOM_PROJET, "Nom du projet"):
@@ -414,7 +414,7 @@ def creer():
                 # Seule une violation d'unicité du code justifie ce message
                 # (audit n°2).
                 if "unique" in str(exc).lower() or "duplicate" in str(exc).lower():
-                    champ, erreur = "code", f"Le code « {code} » est déjà utilisé par un autre projet."
+                    champ, erreur = "code", f"Le code «\u00a0{code}\u00a0» est déjà utilisé par un autre projet."
                 else:
                     current_app.logger.exception("Échec inattendu de création de projet")
                     erreur = "Impossible de créer ce projet (erreur inattendue, réessayez)."
@@ -423,11 +423,11 @@ def creer():
                 # co-chef (create_projet) ; s'il ne le voit quand même pas, pas
                 # de page introuvable (lot 13, audit rôles I5).
                 if not projets.user_can_view(projet_id, g.user["id"]):
-                    flash(f"Projet {code} créé et confié à son chef de projet : il n'est pas visible "
+                    flash(f"Projet {code} créé et confié à son chef de projet\u00a0: il n’est pas visible "
                           "depuis votre compte.", "success")
                     return redirect(url_for("projets.liste"))
                 if chef_projet_id != g.user["id"] and g.user["role"] != "admin":
-                    flash("Projet créé : vous en êtes co-chef.", "success")
+                    flash("Projet créé\u00a0: vous en êtes co-chef.", "success")
                 else:
                     flash("Projet créé.", "success")
                 # Changement de contexte voulu : vraie navigation vers la
@@ -772,7 +772,7 @@ def editer_informations(projet_id: int):
         avant_debut = None
         if premiere and premiere < date_debut_valide:
             avant_debut = (
-                f"Date de début impossible : une tâche ou des heures du projet datent du "
+                f"Date de début impossible\u00a0: une tâche ou des heures du projet datent du "
                 f"{premiere.strftime('%d/%m/%Y')}, avant le {date_debut_valide.strftime('%d/%m/%Y')}."
             )
         for champ, message in (
@@ -814,10 +814,10 @@ def editer_informations(projet_id: int):
         if projets.est_refus_changement_chef(exc):
             # Dernier rempart en base (trg_garde_chef_projet) : l'état a
             # changé entre le contrôle et l'enregistrement.
-            return _refus("Changement de chef refusé : rechargez la page et vérifiez l'état du projet.", 409,
+            return _refus("Changement de chef refusé\u00a0: rechargez la page et vérifiez l’état du projet.", 409,
                           projet_id)
         current_app.logger.exception("Échec inattendu de modification des informations (projet %s)", projet_id)
-        return _refus("Impossible d'enregistrer les informations (erreur inattendue, réessayez).", 500, projet_id)
+        return _refus("Impossible d’enregistrer les informations (erreur inattendue, réessayez).", 500, projet_id)
     else:
         if isinstance(changement, dict):
             nouveau, ancien = changement["nouveau"], changement["ancien"]
@@ -828,12 +828,12 @@ def editer_informations(projet_id: int):
                     notifications_repo.creer(
                         nouveau["id"], "projet",
                         f"{g.user['prenom']} {g.user['nom']} vous a confié le projet "
-                        f"« {actuel.get('code', '')}_{nom} » : vous en êtes le chef de projet.",
+                        f"«\u00a0{actuel.get('code', '')}_{nom}\u00a0»\u00a0: vous en êtes le chef de projet.",
                         post_id=changement["post_id"],
                     )
                 except Exception:
                     current_app.logger.exception("Notification du nouveau chef impossible (projet %s)", projet_id)
-            flash(f"Informations du projet mises à jour : projet confié à {nouveau['prenom']} {nouveau['nom']} "
+            flash(f"Informations du projet mises à jour\u00a0: projet confié à {nouveau['prenom']} {nouveau['nom']} "
                   f"({ancien['prenom']} {ancien['nom']} devient co-chef).", "success")
         elif bilan.get("taches_closes"):
             # Message fondé sur l'effet (recette finale) : un double envoi de
@@ -843,7 +843,7 @@ def editer_informations(projet_id: int):
             flash(f"Projet clos avec sa tâche ouverte ({participe})." if n == 1
                   else f"Projet clos avec ses {n} tâches ouvertes ({participe}s).", "success")
         elif taches_a_clore is not None and bilan.get("etat_avant") == etat:
-            flash("Projet déjà clos : informations enregistrées, aucune tâche à clore.", "info")
+            flash("Projet déjà clos\u00a0: informations enregistrées, aucune tâche à clore.", "info")
         else:
             flash("Informations du projet mises à jour.", "success")
 
@@ -918,8 +918,8 @@ def _message_ecartes(ecartes: list[dict]) -> str:
         return ""
     noms = ", ".join(f"{p.get('prenom') or ''} {p.get('nom') or ''}".strip() for p in ecartes)
     if len(ecartes) == 1:
-        return f" {noms} n'a pas accès à ce projet (ou ne peut pas être intervenant) : non affecté."
-    return f" {noms} n'ont pas accès à ce projet (ou ne peuvent pas être intervenants) : non affectés."
+        return f" {noms} n’a pas accès à ce projet (ou ne peut pas être intervenant)\u00a0: non affecté."
+    return f" {noms} n’ont pas accès à ce projet (ou ne peuvent pas être intervenants)\u00a0: non affectés."
 
 
 def _signaler_co_chefs(projet_id: int, projet: dict | None, intervenant_ids: list[int], avant: set[int]) -> str:
@@ -942,12 +942,12 @@ def _signaler_co_chefs(projet_id: int, projet: dict | None, intervenant_ids: lis
         try:
             if uid != g.user["id"]:
                 notifications_repo.creer(uid, "projet",
-                                         f"Affecté à une tâche du projet « {_code_nom(projet)} », vous en êtes "
+                                         f"Affecté à une tâche du projet «\u00a0{_code_nom(projet)}\u00a0», vous en êtes "
                                          "maintenant co-chef.", projet_id=projet_id)
             chef_id = projet.get("chef_projet_id")
             if chef_id and chef_id not in (uid, g.user["id"]):
                 notifications_repo.creer(chef_id, "projet",
-                                         f"{nom} est maintenant co-chef de votre projet « {_code_nom(projet)} » "
+                                         f"{nom} est maintenant co-chef de votre projet «\u00a0{_code_nom(projet)}\u00a0» "
                                          "(affecté à une tâche).", projet_id=projet_id)
         except Exception:
             current_app.logger.exception("Notification de co-chef impossible (projet %s)", projet_id)
@@ -974,14 +974,14 @@ def creer_tache(projet_id: int):
 
     type_deadline = request.form.get("type_deadline", "rendu_client")
     if type_deadline not in TYPE_DEADLINE_VALIDES:
-        return _refus("Type d'échéance invalide.", 422, projet_id, champs={"type_deadline": "Type d'échéance invalide."})
+        return _refus("Type d’échéance invalide.", 422, projet_id, champs={"type_deadline": "Type d’échéance invalide."})
 
     try:
         date_debut = _parser_date_tache(request.form.get("date_debut"))
         date_echeance = _parser_date_tache(request.form.get("date_echeance"))
     except ValueError:
-        return _refus("Date de début ou d'échéance invalide.", 422, projet_id,
-                      champs={"date_echeance": "Date de début ou d'échéance invalide."})
+        return _refus("Date de début ou d’échéance invalide.", 422, projet_id,
+                      champs={"date_echeance": "Date de début ou d’échéance invalide."})
     # Dates cohérentes (retour Fadhel, lot 8) : pas de tâche antérieure au
     # début du projet, pas d'échéance avant le début de la tâche.
     projet = projets.get_projet(projet_id)
@@ -1038,7 +1038,7 @@ def creer_tache(projet_id: int):
     if intervenant_ids:
         notifications_repo.creer_pour_plusieurs(
             intervenant_ids, "projet",
-            f"Vous avez été affecté à la tâche « {titre} » du projet « {_code_nom(projet)} ».",
+            f"Nouvelle tâche pour vous\u00a0: «\u00a0{titre}\u00a0» ({projet['code']}).",
             tache_id=tache_id, exclure_id=g.user["id"],
         )
     co_chefs = _signaler_co_chefs(projet_id, projet, intervenant_ids, co_chefs_avant)
@@ -1117,7 +1117,7 @@ def changer_etat_tache(projet_id: int, tache_id: int):
             action = _action_annuler(url_for("projets.changer_etat_tache", projet_id=projet_id, tache_id=tache_id),
                                      {"etat": etat_avant}, tache_id)
         deplacee = (etat_avant in taches.ETATS_CLOS) != (etat in taches.ETATS_CLOS)
-        return _reponse_tache(projet_id, tache_id, [partiel.toast(f"État de la tâche : {libelle}.", action=action)],
+        return _reponse_tache(projet_id, tache_id, [partiel.toast(f"État de la tâche\u00a0: {libelle}.", action=action)],
                               deplacee=deplacee)
     flash("État de la tâche mis à jour.", "success")
     return redirect(url_for("projets.detail", projet_id=projet_id))
@@ -1237,7 +1237,7 @@ def ajouter_intervenant(projet_id: int):
     except Exception as exc:
         # Garde-fou base de données (trg_check_projet_intervenant_role) :
         # un RH ne peut pas être intervenant.
-        return _refus(_message_erreur_intervenant(exc, "d'ajouter cet intervenant"), 422, projet_id)
+        return _refus(_message_erreur_intervenant(exc, "d’ajouter cet intervenant"), 422, projet_id)
     # Un chef de projet ajouté devient co-chef (décision 3, lot 10).
     # Notification seulement si le rattachement est NOUVEAU (audit
     # sécurité I12).
@@ -1248,13 +1248,13 @@ def ajouter_intervenant(projet_id: int):
         notifications_repo.creer(
             utilisateur_id, "projet",
             f"Vous avez été ajouté comme {'co-chef' if comme_co_chef else 'intervenant'} "
-            f"sur le projet « {_code_nom(projet)} ».",
+            f"sur le projet «\u00a0{_code_nom(projet)}\u00a0».",
             projet_id=projet_id,
         )
     if not ajoute:
         flash("Cette personne est déjà rattachée au projet.", "success")
     elif comme_co_chef:
-        flash("Chef de projet ajouté : il devient co-chef du projet.", "success")
+        flash("Chef de projet ajouté\u00a0: il devient co-chef du projet.", "success")
     else:
         flash("Intervenant ajouté.", "success")
     if partiel.est_partiel():
@@ -1283,7 +1283,7 @@ def ajouter_intervenants_tache(projet_id: int, tache_id: int):
     personnes actives, ni Client ni RH, qui voient le projet (les autres
     sont nommées dans le message). Notification aux personnes ajoutées,
     post automatique, audit (triggers)."""
-    refus = _garde_gestion(projet_id, "affecter quelqu'un à une tâche")
+    refus = _garde_gestion(projet_id, "affecter quelqu’un à une tâche")
     if refus:
         return refus
     retenus, ecartes = _intervenants_possibles(projet_id, request.form.getlist("utilisateur_id"))
@@ -1294,10 +1294,10 @@ def ajouter_intervenants_tache(projet_id: int, tache_id: int):
     try:
         resultat = taches.ajouter_intervenants(tache_id, projet_id, retenus, g.user["id"])
     except taches.TacheClose:
-        return _refus("Cette tâche est close : rouvrez-la pour changer ses intervenants.", 409, projet_id, tache_id,
+        return _refus("Cette tâche est close\u00a0: rouvrez-la pour changer ses intervenants.", 409, projet_id, tache_id,
                       vers_tache=True)
     except Exception as exc:
-        return _refus(_message_erreur_intervenant(exc, "d'affecter cette personne"), 422, projet_id, tache_id,
+        return _refus(_message_erreur_intervenant(exc, "d’affecter cette personne"), 422, projet_id, tache_id,
                       vers_tache=True)
     if resultat is None:
         return _refus("Tâche introuvable sur ce projet.", 404, projet_id)
@@ -1308,7 +1308,7 @@ def ajouter_intervenants_tache(projet_id: int, tache_id: int):
         try:
             notifications_repo.creer_pour_plusieurs(
                 resultat["ajoutes"], "projet",
-                f"Vous avez été affecté à la tâche « {resultat['titre']} » du projet « {_code_nom(projet)} ».",
+                f"Nouvelle tâche pour vous\u00a0: «\u00a0{resultat['titre']}\u00a0» ({projet['code']}).",
                 tache_id=tache_id, exclure_id=g.user["id"],
             )
         except Exception:
@@ -1328,24 +1328,24 @@ def retirer_intervenant_tache(projet_id: int, tache_id: int, utilisateur_id: int
     """Retirer quelqu'un d'une tâche ouverte (lot 13, décision 4) : mêmes
     droits ; la personne est prévenue ; ses heures restent. En partiel :
     toast avec « Annuler » (la personne est réaffectée)."""
-    refus = _garde_gestion(projet_id, "retirer quelqu'un d'une tâche")
+    refus = _garde_gestion(projet_id, "retirer quelqu’un d’une tâche")
     if refus:
         return refus
     try:
         resultat = taches.retirer_intervenant(tache_id, projet_id, utilisateur_id, g.user["id"])
     except taches.TacheClose:
-        return _refus("Cette tâche est close : rouvrez-la pour changer ses intervenants.", 409, projet_id, tache_id,
+        return _refus("Cette tâche est close\u00a0: rouvrez-la pour changer ses intervenants.", 409, projet_id, tache_id,
                       vers_tache=True)
     if resultat is None:
         return _refus("Tâche introuvable sur ce projet.", 404, projet_id)
     if not resultat:
-        return _refus("Cette personne n'est pas affectée à cette tâche.", 409, projet_id, tache_id, vers_tache=True)
+        return _refus("Cette personne n’est pas affectée à cette tâche.", 409, projet_id, tache_id, vers_tache=True)
     if utilisateur_id != g.user["id"]:
         try:
             notifications_repo.creer(
                 utilisateur_id, "projet",
-                f"{g.user['prenom']} {g.user['nom']} vous a retiré de la tâche « {resultat['titre']} » du projet "
-                f"« {_code_nom(projets.get_projet(projet_id))} ».",
+                f"{g.user['prenom']} {g.user['nom']} vous a retiré de la tâche «\u00a0{resultat['titre']}\u00a0» du projet "
+                f"«\u00a0{_code_nom(projets.get_projet(projet_id))}\u00a0».",
                 projet_id=projet_id,
             )
         except Exception:
@@ -1367,13 +1367,13 @@ def modifier_echeance_tache(projet_id: int, tache_id: int):
     chef titulaire, co-chef ou Admin. Champ date vide : sans échéance. Les
     intervenants de la tâche sont prévenus ; post automatique. En partiel :
     une date refusée est signalée sous le champ (422)."""
-    refus = _garde_gestion(projet_id, "changer l'échéance d'une tâche")
+    refus = _garde_gestion(projet_id, "changer l’échéance d’une tâche")
     if refus:
         return refus
     type_deadline = request.form.get("type_deadline", "rendu_client")
     if type_deadline not in TYPE_DEADLINE_VALIDES:
-        return _refus("Type d'échéance invalide.", 422, projet_id, tache_id, vers_tache=True,
-                      champs={"type_deadline": "Type d'échéance invalide."})
+        return _refus("Type d’échéance invalide.", 422, projet_id, tache_id, vers_tache=True,
+                      champs={"type_deadline": "Type d’échéance invalide."})
     try:
         date_echeance = _parser_date_tache(request.form.get("date_echeance"))
     except ValueError:
@@ -1393,7 +1393,7 @@ def modifier_echeance_tache(projet_id: int, tache_id: int):
     try:
         resultat = taches.set_echeance(tache_id, projet_id, date_echeance, type_deadline, g.user["id"])
     except taches.TacheClose:
-        return _refus("Cette tâche est close : rouvrez-la pour changer son échéance.", 409, projet_id, tache_id,
+        return _refus("Cette tâche est close\u00a0: rouvrez-la pour changer son échéance.", 409, projet_id, tache_id,
                       vers_tache=True)
     if resultat is None:
         return _refus("Tâche introuvable sur ce projet.", 404, projet_id)
@@ -1405,13 +1405,13 @@ def modifier_echeance_tache(projet_id: int, tache_id: int):
                             .get("intervenants", [])]
             notifications_repo.creer_pour_plusieurs(
                 intervenants, "projet",
-                f"Échéance de la tâche « {resultat['titre']} » ({_code_nom(projet)}) : {resultat['avant']} → "
+                f"Échéance de la tâche «\u00a0{resultat['titre']}\u00a0» ({_code_nom(projet)})\u00a0: {resultat['avant']} → "
                 f"{resultat['apres']}.",
                 tache_id=tache_id, exclure_id=g.user["id"],
             )
         except Exception:
             current_app.logger.exception("Notification d'échéance impossible (tâche %s)", tache_id)
-        flash(f"Échéance mise à jour : {resultat['apres']}.", "success")
+        flash(f"Échéance mise à jour\u00a0: {resultat['apres']}.", "success")
     if partiel.est_partiel():
         return _reponse_tache(projet_id, tache_id)
     return _vers_tache(projet_id, tache_id)
@@ -1436,7 +1436,7 @@ def retirer_intervenant_projet(projet_id: int, utilisateur_id: int):
         try:
             notifications_repo.creer(
                 utilisateur_id, "projet",
-                f"{g.user['prenom']} {g.user['nom']} vous a retiré du projet « {_code_nom(projets.get_projet(projet_id))} »"
+                f"{g.user['prenom']} {g.user['nom']} vous a retiré du projet «\u00a0{_code_nom(projets.get_projet(projet_id))}\u00a0»"
                 + (f" et de {len(resultat['taches'])} tâche(s) en cours." if resultat["taches"] else "."),
                 projet_id=projet_id,
             )
@@ -1491,7 +1491,7 @@ def rejoindre(projet_id: int):
         if projet and projet["chef_projet_id"] != g.user["id"]:
             notifications_repo.creer(
                 projet["chef_projet_id"], "projet",
-                f"{g.user['prenom']} {g.user['nom']} a rejoint votre projet « {_code_nom(projet)} » comme co-chef.",
+                f"{g.user['prenom']} {g.user['nom']} a rejoint votre projet «\u00a0{_code_nom(projet)}\u00a0» comme co-chef.",
                 projet_id=projet_id,
             )
     flash("Vous avez rejoint le projet comme co-chef." if comme_co_chef else "Vous avez rejoint le projet.", "success")
@@ -1524,7 +1524,7 @@ def rejoindre_tache(projet_id: int, tache_id: int):
     try:
         ok = taches.add_intervenant(tache_id, projet_id, g.user["id"], g.user["id"])
     except taches.TacheClose:
-        return _refus("Cette tâche est close : on ne peut plus la rejoindre.", 409, projet_id)
+        return _refus("Cette tâche est close\u00a0: on ne peut plus la rejoindre.", 409, projet_id)
     except Exception as exc:
         return _refus(_message_erreur_intervenant(exc, "de rejoindre cette tâche"), 422, projet_id)
 

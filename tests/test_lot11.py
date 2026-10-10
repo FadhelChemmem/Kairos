@@ -80,7 +80,7 @@ class TestListeDesProjets(_Base):
         self.assertIsNone(liste.call_args.kwargs["chef_ids"])
         self.assertIsNone(compte.call_args.kwargs["chef_ids"])
         self.assertEqual(liste.call_args.kwargs["etats"], ["en_cours", "bloque"])
-        self.assertIn("le filtre « Chef de projet : vous » est ignoré", resp.get_data(as_text=True))
+        self.assertIn("le filtre «&nbsp;Chef de projet&nbsp;: vous&nbsp;» est ignoré", resp.get_data(as_text=True))
         # Sans texte : le filtre par défaut s'applique.
         resp, liste, _ = self._liste("/projets", total=1, **{"app.repositories.projets.list_chefs_de_projet": chefs})
         self.assertEqual(liste.call_args.kwargs["chef_ids"], [1])
@@ -139,7 +139,7 @@ class TestDatesEtHeures(_Base):
         self.assertEqual(heures(None), f"0{nb}h")
         self.assertEqual(heures(2.67), f"2{nb}h{nb}40")
         self.assertEqual(heures(0.25), f"0{nb}h{nb}15")
-        self.assertEqual(heures_interv_chef(8, 5.5), f"8{nb}h / 5{nb}h{nb}30")
+        self.assertEqual(heures_interv_chef(8, 5.5), f"8{nb}h · 5{nb}h{nb}30")
 
     def test_plus_aucune_heure_decimale_dans_les_gabarits(self):
         import pathlib

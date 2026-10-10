@@ -121,7 +121,7 @@ def ouvrir(notification_id: int):
     # rôles N1) : retour à la liste avec un message plutôt qu'une page 404.
     projet_vise = notif["post_projet_id"] or notif["tache_projet_id"] or notif.get("projet_id")
     if projet_vise and not projets_repo.user_can_view(projet_vise, g.user["id"]):
-        flash("Vous n'avez plus accès à ce projet.", "error")
+        flash("Vous n’avez plus accès à ce projet.", "error")
         return redirect(url_for("notifications.liste"))
 
     # Notification d'une tâche (affectation…) : la fiche du projet ouvre la

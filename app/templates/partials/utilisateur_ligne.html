@@ -48,7 +48,7 @@
       {# Lot 10 (audit front I8) : interrupteur nommé et à état
          (role=switch), désactivé sur son propre compte (le serveur refuse
          de toute façon). #}
-      <button type="submit" id="actif-{{ u.id }}" class="toggle toggle-liste" role="switch" aria-checked="{{ 'true' if u.actif else 'false' }}" aria-label="Compte actif : {{ u.prenom }} {{ u.nom }}"
+      <button type="submit" id="actif-{{ u.id }}" class="toggle toggle-liste" role="switch" aria-checked="{{ 'true' if u.actif else 'false' }}" aria-label="Compte actif&nbsp;: {{ u.prenom }} {{ u.nom }}"
               {% if u.id == g.user.id %}disabled title="Vous ne pouvez pas désactiver votre propre compte"{% else %}title="{{ 'Désactiver' if u.actif else 'Réactiver' }} ce compte"{% endif %}>
         <span class="toggle-knob"></span>
       </button>

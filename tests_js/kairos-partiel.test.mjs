@@ -397,8 +397,8 @@ test('Kairos.annoncer : région persistante vidée puis remplie, rafale lue ense
 
 test('texte annoncé d’un toast : « Annuler » indique Ctrl+Z, autre action nommée (a11y N4)', () => {
   const { K } = environnement({ reponses: [] });
-  assert.equal(K.texteAnnonce('Compte désactivé.', { libelle: 'Annuler' }), 'Compte désactivé. « Annuler » : Ctrl+Z.');
-  assert.equal(K.texteAnnonce('Connexion impossible.', { libelle: 'Réessayer' }), 'Connexion impossible. Bouton « Réessayer » dans le message.');
+  assert.equal(K.texteAnnonce('Compte désactivé.', { libelle: 'Annuler' }), 'Compte désactivé. «\u00a0Annuler\u00a0»\u00a0: Ctrl+Z.');
+  assert.equal(K.texteAnnonce('Connexion impossible.', { libelle: 'Réessayer' }), 'Connexion impossible. Bouton «\u00a0Réessayer\u00a0» dans le message.');
   assert.equal(K.texteAnnonce('Enregistré.'), 'Enregistré.');
 });
 

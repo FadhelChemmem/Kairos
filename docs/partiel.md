@@ -178,8 +178,10 @@ Critères d'acceptation (audit UX §4.8), déjà outillés dans le scénario
    sur la cible (contenu atténué, barre de 2 px) ; affiché au moins
    **300 ms**.
 5. Réponse : toasts de l'en-tête, puis selon le statut —
-   2xx : remplacement (View Transition si disponible et sans mouvement
-   réduit ; fondu de 120 ms pour les filtres), défilement compensé, focus
+   2xx : remplacement (View Transition pour un GET seulement — jamais pour
+   une écriture ni une mise à jour optimiste, dont la capture avalait les
+   clics suivants ; sans mouvement réduit ; fondu de 120 ms pour les
+   filtres), défilement compensé, focus
    rendu, historique, `kairos:fragment` ;
    422 : remplacement et focus sur le premier `[aria-invalid=true]` ;
    401 : fenêtre « Session expirée » ;

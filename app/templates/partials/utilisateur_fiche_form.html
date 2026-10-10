@@ -8,7 +8,7 @@
 <form method="post" action="{{ url_for('utilisateurs.fiche', user_id=utilisateur.id) }}" class="card k-formulaire" id="utilisateur-form" enctype="multipart/form-data"
       data-partiel="#utilisateur-form" novalidate>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  {% if lecture_seule %}<p class="k-note k-note-alerte" role="note">Compte Admin : seul un Admin peut le modifier.</p>{% endif %}
+  {% if lecture_seule %}<p class="k-note k-note-alerte" role="note">Compte Admin&nbsp;: seul un Admin peut le modifier.</p>{% endif %}
   <fieldset {{ 'disabled' if lecture_seule }} class="k-fieldset">
 
   <div class="section-title">Identité</div>
@@ -53,7 +53,7 @@
       {{ ch.message(erreurs, 'poste') }}
     </div>
     <div class="form-row">
-      <label for="date_embauche">Date d'embauche</label>
+      <label for="date_embauche">Date d’embauche</label>
       <input type="date" id="date_embauche" name="date_embauche" value="{{ utilisateur.date_embauche or '' }}"{{ ch.attrs(erreurs, 'date_embauche') }}>
       {{ ch.message(erreurs, 'date_embauche') }}
     </div>
@@ -111,7 +111,7 @@
   </div>
 
   <div class="form-row">
-    <label for="fuseau">Bureau <span class="label-note">— fuseau horaire du Daily log (« aujourd’hui », fenêtre de 14 jours, rappel)</span></label>
+    <label for="fuseau" title="Sert au Daily log&nbsp;: date du jour, fenêtre de 14 jours, rappel">Bureau <span class="label-note">(fuseau horaire)</span></label>
     <select id="fuseau" name="fuseau"{{ ch.attrs(erreurs, 'fuseau') }}>
       {% for code, libelle in fuseaux.items() %}
         <option value="{{ code }}" {{ 'selected' if code == (utilisateur.fuseau or 'Africa/Tunis') }}>{{ libelle }}</option>

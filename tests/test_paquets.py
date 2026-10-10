@@ -100,8 +100,8 @@ class TestRoute(smoke.SmokeBase):
         self.assertNotIn("kairos-partiel.js", html)
         self.assertNotIn("paquets/commun.js", html)
         self.assertIn("paquets/app.css", html)
-        self.assertIn("img/kairos-logo-connexion.png", html)
-        self.assertNotIn("img/kairos-logo.png", html)
+        self.assertIn('<svg class="logo-kairos logo-connexion"', html)
+        self.assertNotIn("img/kairos-logo", html)
 
 
 if __name__ == "__main__":

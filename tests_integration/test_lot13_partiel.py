@@ -49,7 +49,7 @@ class TestPanneauDeTache(_Partiel):
         self.assertIn('id="fil-posts" data-partiel-oob="avant"', html)
         self.assertEqual(self.etat("projet", self.p1), "bloque")
         t = toasts(r)[0]
-        self.assertEqual(t["texte"], "État de la tâche : Bloquée.")
+        self.assertEqual(t["texte"], "État de la tâche\u00a0: Bloquée.")
         self.assertEqual(t["action"]["donnees"], {"etat": "en_cours", "annulation": "1"})
         self.assertEqual(t["action"]["cible"], f"#tache-ligne-{self.t1}")
         # « Annuler » rejoué sur la ligne : la ligne est la racine, sans

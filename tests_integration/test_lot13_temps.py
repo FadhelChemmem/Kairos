@@ -166,7 +166,7 @@ class TestInstantSimule(_Temps):
         page = self.texte(self.client.get(f"/projets/{self.p1}"))
         self.assertNotIn("à l'instant", page)
         self.assertRegex(page, r"\d+ \w+\.? à \d+\xa0h\xa0\d\d")
-        self.assertIn('title="Horodatage réel : ', page)
+        self.assertIn('title="Horodatage réel\u00a0: ', page)
 
     def test_aujourdhui_au_fuseau_de_la_personne(self):
         from app import horloge, utils

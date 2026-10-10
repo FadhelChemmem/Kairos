@@ -43,13 +43,13 @@ _TELEPHONE = re.compile(r"[0-9+ ().\-/]*")
 
 def trop_long(valeur: str | None, maximum: int, libelle: str) -> str | None:
     if valeur and len(valeur) > maximum:
-        return f"{libelle} : {maximum} caractères au plus."
+        return f"{libelle}\u00a0: {maximum} caractères au plus."
     return None
 
 
 def date_hors_bornes(d: datetime.date | None, libelle: str) -> str | None:
     if d is not None and not (DATE_MIN <= d <= DATE_MAX):
-        return f"{libelle} invalide ({d.strftime('%d/%m/%Y')}) : vérifiez l'année."
+        return f"{libelle} invalide ({d.strftime('%d/%m/%Y')})\u00a0: vérifiez l’année."
     return None
 
 

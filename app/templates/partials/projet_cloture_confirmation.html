@@ -14,7 +14,7 @@
     {{ 'Clore' if etat_demande == 'termine' else 'Abandonner' }} le projet {{ projet.code }}_{{ projet.nom }}&nbsp;?
   </{{ balise }}>
   {% if liste_changee %}
-  <p role="alert" class="aide-champ champ-erreur">La liste des tâches ouvertes a changé depuis votre demande : vérifiez-la avant de confirmer.</p>
+  <p role="alert" class="aide-champ champ-erreur">La liste des tâches ouvertes a changé depuis votre demande&nbsp;: vérifiez-la avant de confirmer.</p>
   {% endif %}
   <p class="cloture-texte">
     Ce projet a encore {{ n }} tâche{{ 's' if n > 1 }} ouverte{{ 's' if n > 1 }}. En confirmant, {{ 'elles passent' if n > 1 else 'elle passe' }}

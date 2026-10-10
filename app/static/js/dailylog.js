@@ -465,7 +465,9 @@
         carte.appendChild(b); carte.appendChild(document.createElement('br'));
         carte.appendChild(document.createTextNode(T.absent_carte_texte));
         listeEl.appendChild(carte);
-        ajoutWrap.hidden = true; copierBtn.hidden = true; aideEl.hidden = true;
+        // « Copier » reste à sa place, désactivé (revue d'interaction P0-4) :
+        // « Annuler l'absence » ne glisse plus vers la gauche.
+        ajoutWrap.hidden = true; copierBtn.hidden = !d.copie; copierBtn.disabled = true; aideEl.hidden = true;
         renderTotal(); return;
       }
       if (listeEl.querySelector('.dl-absentcard')) listeEl.textContent = '';
@@ -1182,11 +1184,29 @@
     }
 
     // --- bannière des jours manqués -------------------------------------------
+    // Revue d'interaction P1-14 : la bannière qui n'a plus lieu d'être se
+    // replie en hauteur (180 ms) au lieu de disparaître d'un coup sous le doigt.
+    function replierBanniere() {
+      if (banniere.hidden || banniere._repli) return;
+      var reduit = false;
+      try { reduit = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { reduit = false; }
+      if (reduit || !banniere.offsetHeight) { banniere.hidden = true; return; }
+      banniere.style.height = banniere.offsetHeight + 'px';
+      void banniere.offsetHeight;
+      banniere.classList.add('dl-banner-repli');
+      banniere._repli = setTimeout(function () {
+        banniere._repli = 0;
+        banniere.hidden = true;
+        banniere.classList.remove('dl-banner-repli');
+        banniere.style.height = '';
+      }, 200);
+    }
     function renderBanner() {
       // Jours après la vraie date (date simulée) : pas saisissables, donc pas « à compléter ».
       var reel = jour && jour.aujourdhui_reel && jour.aujourdhui_reel < TODAY ? jour.aujourdhui_reel : TODAY;
       var manques = (jour && jour.manques ? jour.manques : []).filter(function (k) { return k <= reel; }).sort();
-      if (!manques.length || !A.proprietaire.soi) { banniere.hidden = true; return; }
+      if (!manques.length || !A.proprietaire.soi) { replierBanniere(); return; }
+      if (banniere._repli) { clearTimeout(banniere._repli); banniere._repli = 0; banniere.classList.remove('dl-banner-repli'); banniere.style.height = ''; }
       banniere.hidden = false;
       var affiches = manques.slice(-5), autres = manques.length - affiches.length;
       banniereTexte.textContent = '';
@@ -1353,7 +1373,50 @@
       });
     }
 
+    // --- largeurs fixes (revue d'interaction P0-3 à P0-5) ---------------------
+    // Un bouton dont le libellé change (Enregistrer / Enregistrement… /
+    // Enregistré ✓, Marquer absent / Annuler l'absence, Copier le <date>,
+    // date du jour) garde la largeur du plus long de ses libellés possibles :
+    // mesurée sur un double invisible, posée en min-width ; refaite quand la
+    // police arrive et quand la largeur d'écran change.
+    function datesTypes() {
+      var an = Number(String(TODAY).slice(0, 4)), out = [];
+      for (var m = 1; m <= 12; m++) {
+        for (var j = 20; j <= 26; j++) out.push(dateCourte(an + '-' + (m < 10 ? '0' : '') + m + '-' + j));   // 7 jours de semaine
+      }
+      for (var j2 = 20; j2 <= 26; j2++) out.push(dateCourte((an - 1) + '-12-' + j2));   // année précédente (année affichée)
+      return out;
+    }
+    function largeurMax(btn, poser, valeurs) {
+      if (!btn || !btn.parentNode) return 0;
+      var c = btn.cloneNode(true);
+      c.removeAttribute('id');
+      c.hidden = false;
+      c.setAttribute('aria-hidden', 'true');
+      c.tabIndex = -1;
+      c.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;left:0;top:0;min-width:0;width:auto;max-width:none;white-space:nowrap';
+      btn.parentNode.appendChild(c);
+      var max = 0;
+      valeurs.forEach(function (v) { poser(c, v); max = Math.max(max, c.getBoundingClientRect().width); });
+      c.parentNode.removeChild(c);
+      return Math.ceil(max);
+    }
+    function figerLargeurs() {
+      if (!document.contains(racine)) return;
+      var texte = function (c, v) { c.textContent = v; };
+      var dates = datesTypes();
+      saveBtn.style.minWidth = largeurMax(saveBtn, texte, [T.enregistrer, T.enregistrement, T.enregistre_ok, T.absent_bouton, T.vider_journee]) + 'px';
+      absentBtn.style.minWidth = largeurMax(absentBtn, texte, [T.marquer_absent, T.annuler_absence]) + 'px';
+      copierBtn.style.minWidth = largeurMax(copierBtn, function (c, v) { c.innerHTML = SVG_COPIE; c.appendChild(document.createTextNode(v)); },
+        dates.map(function (d) { return tr(T.copier_le, d); }).concat([T.copier_aucun])) + 'px';
+      dateBtn.style.minWidth = largeurMax(dateBtn, function (c, v) { var l = c.querySelector('span'); if (l) l.textContent = v; }, dates) + 'px';
+    }
+    var minuteurLargeurs = null;
+    window.addEventListener('resize', function () { clearTimeout(minuteurLargeurs); minuteurLargeurs = setTimeout(figerLargeurs, 150); }, sig);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(figerLargeurs);
+
     // --- démarrage -----------------------------------------------------------
+    figerLargeurs();
     appliquerJour(A.jour);
     // Lot 13 (audit a11y I1, CLS 0,14) : la page se montre une fois la liste,
     // la bannière et les outils construits (dailylog.css).

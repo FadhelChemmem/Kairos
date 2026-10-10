@@ -29,6 +29,10 @@
     var pref = lire(k);
     var ouvert = pref ? pref === 'ouvert' : /large$/.test(k);
     if (outils.open !== ouvert) outils.open = ouvert;
+    // État posé : la marque de kairos-amorce.js (repli avant le premier
+    // rendu) n'a plus lieu d'être.
+    var racineDoc = document.documentElement;
+    if (racineDoc && racineDoc.dataset) delete racineDoc.dataset.kOutilsReplies;
     // Clé lue au moment du geste (l'évènement « toggle » arrive après coup).
     var geste = null;
     var resume = outils.querySelector('summary');

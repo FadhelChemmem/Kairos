@@ -13,7 +13,6 @@
     {# Lot 11 (audit front M6) : avec un filtre, le nombre de résultats. #}
     {% include "partials/utilisateurs_compte.html" %}
     {% if g.user.role == 'admin' %}<a href="{{ url_for('modes_admin.page') }}" class="lien-carte subbar-lien">Voir Kairos comme…</a>{% endif %}
-    <span class="pill pill-neutre{{ '' if g.user.role == 'admin' else ' subbar-fin' }}">Visible par&nbsp;: administrateur, RH, chef de projet</span>
   </div>
 </div>
 
@@ -25,10 +24,10 @@
   {% if projets_chef_inactif %}
   <section class="card carte-alerte" aria-labelledby="titre-chef-inactif">
     <h2 id="titre-chef-inactif" class="carte-titre">Projets ouverts dont le chef est désactivé ({{ projets_chef_inactif|length }})</h2>
-    <p class="carte-alerte-texte">Plus personne ne pilote ces projets : à clore, ou à confier à un autre chef depuis la fenêtre Informations du projet.</p>
+    <p class="carte-alerte-texte">Plus personne ne pilote ces projets&nbsp;: à clore, ou à confier à un autre chef depuis la fenêtre Informations du projet.</p>
     <ul class="carte-alerte-liste">
       {% for p in projets_chef_inactif %}
-        <li><a href="{{ url_for('projets.detail', projet_id=p.id) }}" class="lien-fort">{{ p.code }}_{{ p.nom }}</a> <span class="k-muet">· {{ projet_etat_style(p.etat).label }} · chef : {{ p.chef_prenom }} {{ p.chef_nom }} (désactivé)</span> · <a href="{{ url_for('projets.detail', projet_id=p.id, informations='chef') }}" class="lien-changer-chef" aria-label="Changer le chef du projet {{ p.code }}_{{ p.nom }}">Changer le chef</a></li>
+        <li><a href="{{ url_for('projets.detail', projet_id=p.id) }}" class="lien-fort">{{ p.code }}_{{ p.nom }}</a> <span class="k-muet">· {{ projet_etat_style(p.etat).label }} · chef&nbsp;: {{ p.chef_prenom }} {{ p.chef_nom }} (désactivé)</span> · <a href="{{ url_for('projets.detail', projet_id=p.id, informations='chef') }}" class="lien-changer-chef" aria-label="Changer le chef du projet {{ p.code }}_{{ p.nom }}">Changer le chef</a></li>
       {% endfor %}
     </ul>
   </section>
@@ -71,7 +70,7 @@
 
   {% include "partials/utilisateurs_resultats.html" %}
 
-  <p class="k-note k-marge-haut">Désactiver un compte le retire des listes d'affectation sans rien supprimer — tout l'historique (projets, tâches, posts) reste intact.</p>
+  <p class="k-note k-marge-haut">Désactiver un compte le retire des listes d’affectation sans rien supprimer — tout l’historique (projets, tâches, posts) reste intact.</p>
 
 </div>
 {% endblock %}

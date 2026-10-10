@@ -71,7 +71,7 @@ class TestChangementDeChefRoute(_Base):
         notif = mocks["app.repositories.notifications.creer"]
         self.assertEqual(notif.call_args.args[:2], (5, "projet"))
         self.assertEqual(notif.call_args.args[2],
-                         "Ali Chef vous a confié le projet « 26099X_Tour Meridian » : vous en êtes le chef de projet.")
+                         "Ali Chef vous a confié le projet «\u00a026099X_Tour Meridian\u00a0»\u00a0: vous en êtes le chef de projet.")
         self.assertEqual(notif.call_args.kwargs["post_id"], 77)
         self.assertIn("projet confié à Sami Chérif (Foulen Chedly devient co-chef)", self.texte(resp))
 
@@ -146,13 +146,13 @@ class TestFenetreInformations(_Base):
         self.assertEqual(re.findall(r'<option value="(\d+)"', select), ["1", "5"])  # pas l'intervenant
         self.assertRegex(select, r'<option value="1" selected[^>]*data-sous-titre="Chef actuel · Chef de projet"')
         self.assertIn('data-sous-titre="Chef de projet">Sami Chérif</option>', select)
-        self.assertIn("L'ancien chef devient co-chef.", page)
+        self.assertIn("L’ancien chef devient co-chef.", page)
         self.assertNotIn("data-ouvrir-au-chargement", page)
 
     def test_projet_clos_lecture_seule_sauf_admin(self):
         page = self.page(projet=PROJET_CLOS)
         self.assertNotIn('id="dialog-info-chef"', page)
-        self.assertIn("Projet clos : rouvrez-le d'abord pour changer de chef.", page)
+        self.assertIn("Projet clos\u00a0: rouvrez-le d’abord pour changer de chef.", page)
         self.assertIn('id="dialog-info-chef"', self.page(user=ADMIN, projet=PROJET_CLOS))
 
     def test_chef_desactive_reste_le_choix_affiche(self):

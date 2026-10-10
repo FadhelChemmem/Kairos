@@ -76,7 +76,7 @@ def _motif_echec_email(email: str | None = None) -> str:
     if not mailer.est_configure():
         return "SMTP non configuré sur ce serveur"
     if email is not None and not mailer.destinataire_autorise(email):
-        return ("mode test : cette adresse n'est pas dans la liste des destinataires "
+        return ("mode test\u00a0: cette adresse n’est pas dans la liste des destinataires "
                 "autorisés, MAIL_DESTINATAIRES_AUTORISES")
     return "serveur SMTP indisponible ou en erreur"
 
@@ -101,12 +101,12 @@ def _envoyer_lien_mot_de_passe(user_id: int, email: str, creation: bool) -> bool
         sujet = "Kairos — création de votre compte"
         corps = (
             "Bonjour,\n\n"
-            "Un compte Kairos vient d'être créé pour vous.\n\n"
-            f"Adresse e-mail : {email}\n\n"
+            "Un compte Kairos vient d’être créé pour vous.\n\n"
+            f"Adresse e-mail\u00a0: {email}\n\n"
             "Pour définir votre mot de passe et activer votre "
-            f"compte, utilisez ce lien (valable 1 heure) : {lien}\n\n"
+            f"compte, utilisez ce lien (valable 1 heure)\u00a0: {lien}\n\n"
             "Si ce lien a expiré, utilisez \"Mot de passe "
-            "oublié ?\" sur la page de connexion avec cette même "
+            "oublié\u202f?\" sur la page de connexion avec cette même "
             "adresse email pour en recevoir un nouveau."
         )
     else:
@@ -115,10 +115,10 @@ def _envoyer_lien_mot_de_passe(user_id: int, email: str, creation: bool) -> bool
             "Bonjour,\n\n"
             f"{g.user['prenom']} {g.user['nom']} vous a envoyé un lien pour "
             "choisir un nouveau mot de passe Kairos.\n\n"
-            f"Ce lien est valable 1 heure : {lien}\n\n"
-            "Votre mot de passe actuel reste valable tant que vous n'en avez "
-            "pas choisi un nouveau. Si vous n'attendiez pas ce message, "
-            "prévenez l'administrateur."
+            f"Ce lien est valable 1 heure\u00a0: {lien}\n\n"
+            "Votre mot de passe actuel reste valable tant que vous n’en avez "
+            "pas choisi un nouveau. Si vous n’attendiez pas ce message, "
+            "prévenez l’administrateur."
         )
     return mailer.envoyer(email, sujet, corps)
 
@@ -129,7 +129,7 @@ def _message_garde_admin(exc: Exception) -> str | None:
     qui n'en sont que le premier rempart."""
     texte = str(exc)
     if "dernier Admin actif" in texte:
-        return "Impossible : ce compte est le dernier Admin actif."
+        return "Impossible\u00a0: ce compte est le dernier Admin actif."
     if "Le RH ne peut ni créer" in texte:
         return "Seul un Admin peut créer, modifier ou désactiver un compte Admin."
     return None
@@ -145,7 +145,7 @@ def _enregistrer_avatar_si_fourni(user_id: int, current_user_id: int) -> None:
     if not fichier or not fichier.filename:
         return
     if not is_image_filename(fichier.filename):
-        flash("Photo de profil ignorée : formats acceptés — jpg, png, gif, webp.", "error")
+        flash("Photo de profil ignorée\u00a0: formats acceptés — jpg, png, gif, webp.", "error")
         return
     _, chemin = save_upload(fichier, f"avatars/{user_id}")
     # Fichier orphelin sur disque si l'UPDATE échoue juste après (audit
@@ -194,14 +194,14 @@ def _erreurs_fiche(prenom, nom, email, telephone, poste, adresse, date_embauche,
     poser("telephone", v.telephone_invalide(telephone))
     poser("poste", v.trop_long(poste, v.MAX_POSTE, "Poste"))
     poser("adresse", v.trop_long(adresse, v.MAX_ADRESSE, "Adresse"))
-    poser("date_embauche", v.date_hors_bornes(date_embauche, "Date d'embauche"))
+    poser("date_embauche", v.date_hors_bornes(date_embauche, "Date d’embauche"))
     if date_embauche and date_embauche > horloge.aujourdhui() + datetime.timedelta(days=366):
-        poser("date_embauche", "Date d'embauche invalide : plus d'un an dans le futur.")
+        poser("date_embauche", "Date d’embauche invalide\u00a0: plus d’un an dans le futur.")
     if equipe_code and equipe_code not in {c for c, _ in EQUIPE_CHOICES}:
         poser("equipe_code", "Équipe invalide.")
     if len(champs_perso) > v.MAX_CHAMPS_PERSO:
         poser("champs_perso", f"{v.MAX_CHAMPS_PERSO} champs personnalisés au plus.")
-    poser("champs_perso", next((f"Champ personnalisé « {n[:30]} » : nom ou valeur trop long." for n, val in champs_perso.items()
+    poser("champs_perso", next((f"Champ personnalisé «\u00a0{n[:30]}\u00a0»\u00a0: nom ou valeur trop long." for n, val in champs_perso.items()
                                 if len(n) > v.MAX_CHAMP_PERSO_NOM or len(val) > v.MAX_CHAMP_PERSO_VALEUR), None))
     return erreurs
 
@@ -456,11 +456,11 @@ def creer():
         if fuseau not in dailylog_repo.FUSEAUX:
             erreurs["fuseau"] = "Bureau (fuseau horaire) invalide."
         if date_embauche_valide is False:
-            erreurs["date_embauche"] = "Date d'embauche invalide."
+            erreurs["date_embauche"] = "Date d’embauche invalide."
         if role in ROLES_EQUIPE_OBLIGATOIRE and not equipe_code:
             # Lot 13 (audit rôles M4) : sans équipe, un intervenant ou un chef
             # de projet ne voit aucun projet et n'a rien à saisir.
-            erreurs["equipe_code"] = "Choisissez l'équipe de ce compte (intervenant ou chef de projet)."
+            erreurs["equipe_code"] = "Choisissez l’équipe de ce compte (intervenant ou chef de projet)."
         for champ, message in _erreurs_fiche(prenom, nom, email, telephone, poste, adresse,
                                              date_embauche_valide or None, equipe_code, champs_perso).items():
             erreurs.setdefault(champ, message)
@@ -483,10 +483,10 @@ def creer():
                 )
             except Exception as exc:
                 if "idx_utilisateur_rh_singleton" in str(exc):
-                    erreurs["role"] = ("Il y a déjà un compte RH actif. Désactivez-le d'abord "
+                    erreurs["role"] = ("Il y a déjà un compte RH actif. Désactivez-le d’abord "
                                        "pour en créer un nouveau.")
                 elif "idx_utilisateur_email_lower" in str(exc):
-                    erreurs["email"] = f"Un compte existe déjà avec l'email {email}."
+                    erreurs["email"] = f"Un compte existe déjà avec l’email {email}."
                 else:
                     flash("Impossible de créer ce compte.", "error")
             else:
@@ -502,13 +502,13 @@ def creer():
                 if not actif_compte:
                     flash(
                         f"Compte créé pour {prenom} {nom} (inactif) — aucun "
-                        "email envoyé. Réactivez le compte pour qu'il puisse "
+                        "email envoyé. Réactivez le compte pour qu’il puisse "
                         "définir son mot de passe.", "success",
                     )
                 elif _envoyer_lien_mot_de_passe(user_id, email, creation=True):
                     flash(
                         f"Compte créé pour {prenom} {nom}. Un email lui a été "
-                        "envoyé pour qu'il définisse son mot de passe.", "success",
+                        "envoyé pour qu’il définisse son mot de passe.", "success",
                     )
                 else:
                     # Le RH ne fixe plus de mot de passe (décision du gérant,
@@ -517,13 +517,11 @@ def creer():
                         ", ou définissez-lui un mot de passe depuis sa fiche"
                         if g.user["role"] == "admin" else ""
                     )
+                    # Revue produit (§ 3) : deux phrases au lieu de quatre lignes.
                     flash(
-                        f"Compte créé pour {prenom} {nom}, mais l'e-mail n'a "
-                        f"pas pu être envoyé ({_motif_echec_email(email)}) : la "
-                        "personne ne pourra pas se connecter tant qu'un mot de "
-                        "passe n'est pas défini. Renvoyez-lui le lien depuis sa fiche "
-                        "(« Envoyer un lien de réinitialisation ») une fois "
-                        f"l'envoi d'e-mails opérationnel{autre_option}.", "error",
+                        f"Compte créé pour {prenom} {nom}, mais l’e-mail n’a pas pu être envoyé "
+                        f"({_motif_echec_email(email)}). Renvoyez-lui le lien depuis sa fiche "
+                        f"(«\u00a0Envoyer un lien de réinitialisation\u00a0»){autre_option}.", "error",
                     )
                 # Lot 13 : en mise à jour partielle, la redirection devient
                 # une navigation (204 + X-Kairos-Redirection), messages compris.
@@ -670,8 +668,8 @@ def fiche(user_id: int):
 
     if request.method == "POST" and _cible_protegee(utilisateur):
         if partiel.est_partiel():
-            return partiel.refuser("Seul un Admin peut modifier le compte d'un Admin.", 403)
-        flash("Seul un Admin peut modifier le compte d'un Admin.", "error")
+            return partiel.refuser("Seul un Admin peut modifier le compte d’un Admin.", 403)
+        flash("Seul un Admin peut modifier le compte d’un Admin.", "error")
         return redirect(url_for("utilisateurs.fiche", user_id=user_id))
 
     erreurs: dict = {}
@@ -737,13 +735,13 @@ def fiche(user_id: int):
             if not valeur:
                 erreurs[champ] = "Obligatoire."
         if email_change_refuse:
-            erreurs["email"] = ("Seul un Admin peut changer l'adresse e-mail d'un compte (c'est "
+            erreurs["email"] = ("Seul un Admin peut changer l’adresse e-mail d’un compte (c’est "
                                 "à cette adresse que part le lien de réinitialisation).")
         if date_embauche_valide is False:
-            erreurs["date_embauche"] = "Date d'embauche invalide."
+            erreurs["date_embauche"] = "Date d’embauche invalide."
         if role in ROLES_EQUIPE_OBLIGATOIRE and not equipe_code:
             # Contre-expertise rôles M4 : même règle qu'à la création.
-            erreurs["equipe_code"] = "Choisissez l'équipe de ce compte (intervenant ou chef de projet)."
+            erreurs["equipe_code"] = "Choisissez l’équipe de ce compte (intervenant ou chef de projet)."
         for champ, message in _erreurs_fiche(prenom, nom, email, telephone, poste, adresse,
                                              date_embauche_valide or None, equipe_code, champs_perso).items():
             erreurs.setdefault(champ, message)
@@ -764,7 +762,7 @@ def fiche(user_id: int):
                     if len(nouveau_mot_de_passe) < MOT_DE_PASSE_MIN_LEN:
                         avertissement_mdp = (
                             f"Fiche mise à jour, mais le mot de passe doit faire au "
-                            f"moins {MOT_DE_PASSE_MIN_LEN} caractères — il n'a pas été "
+                            f"moins {MOT_DE_PASSE_MIN_LEN} caractères — il n’a pas été "
                             "changé.")
                     else:
                         nouveau_hash = hash_password(nouveau_mot_de_passe)
@@ -777,16 +775,16 @@ def fiche(user_id: int):
                             session["pw_fingerprint"] = password_fingerprint(nouveau_hash)
             except Exception as exc:
                 if "idx_utilisateur_rh_singleton" in str(exc):
-                    erreurs["role"] = ("Il y a déjà un compte RH actif. Désactivez-le d'abord "
+                    erreurs["role"] = ("Il y a déjà un compte RH actif. Désactivez-le d’abord "
                                        "pour en attribuer ce rôle.")
                 elif "idx_utilisateur_email_lower" in str(exc):
-                    erreurs["email"] = f"Un compte existe déjà avec l'email {email}."
+                    erreurs["email"] = f"Un compte existe déjà avec l’email {email}."
                 elif "rôle RH" in str(exc):
                     # trg_check_passage_role_rh (migration 0005).
                     erreurs["role"] = (
-                        "Impossible de passer cette personne au rôle RH : elle est "
+                        "Impossible de passer cette personne au rôle RH\u00a0: elle est "
                         "encore chef de projet, co-chef ou intervenant. Retirez-la "
-                        "d'abord de ses projets et tâches.")
+                        "d’abord de ses projets et tâches.")
                 elif message := _message_garde_admin(exc):
                     erreurs["role"] = message
                 else:
@@ -795,7 +793,7 @@ def fiche(user_id: int):
                 if avertissement_mdp:
                     if partiel.est_partiel():
                         erreurs["nouveau_mot_de_passe"] = (
-                            f"{MOT_DE_PASSE_MIN_LEN} caractères au moins : le mot de passe n'a pas été changé "
+                            f"{MOT_DE_PASSE_MIN_LEN} caractères au moins\u00a0: le mot de passe n’a pas été changé "
                             "(le reste de la fiche est enregistré).")
                         return _fiche_partielle(user_id, erreurs, statut=422,
                                                 toasts=[partiel.toast("Fiche mise à jour, sauf le mot de passe.", "avertissement")])
@@ -860,10 +858,10 @@ def envoyer_lien_reinitialisation(user_id: int):
         flash("Utilisateur introuvable.", "error")
         return redirect(url_for("utilisateurs.liste"))
     if _cible_protegee(cible):
-        flash("Seul un Admin peut agir sur le compte d'un Admin.", "error")
+        flash("Seul un Admin peut agir sur le compte d’un Admin.", "error")
     elif not cible["actif"]:
         flash(
-            "Ce compte est désactivé : réactivez-le avant d'envoyer un lien "
+            "Ce compte est désactivé\u00a0: réactivez-le avant d’envoyer un lien "
             "(un compte désactivé ne peut pas définir de mot de passe).", "error",
         )
     elif not mailer.est_configure() or not mailer.destinataire_autorise(cible["email"]):
@@ -874,26 +872,26 @@ def envoyer_lien_reinitialisation(user_id: int):
             current_app.logger.warning("Lien de réinitialisation non envoyé à %s (mode test des e-mails).",
                                        mailer.masquer(cible["email"]))
         flash(
-            f"L'e-mail de réinitialisation n'a pas pu être envoyé "
-            f"({_motif_echec_email(cible['email'])}) : "
-            f"aucun lien n'a été transmis à {cible['email']}.", "error",
+            f"L’e-mail de réinitialisation n’a pas pu être envoyé "
+            f"({_motif_echec_email(cible['email'])})\u00a0: "
+            f"aucun lien n’a été transmis à {cible['email']}.", "error",
         )
     elif _envoyer_lien_mot_de_passe(user_id, cible["email"], creation=False):
         flash(
             f"Lien de réinitialisation envoyé à {cible['email']} (valable 1 heure). "
-            "Son mot de passe actuel reste valable jusqu'à ce qu'il en choisisse un nouveau.",
+            "Son mot de passe actuel reste valable jusqu’à ce qu’il en choisisse un nouveau.",
             "success",
         )
     else:
         flash(
-            f"L'e-mail de réinitialisation n'a pas pu être envoyé ({_motif_echec_email(cible['email'])}) : "
-            f"aucun lien n'a été transmis à {cible['email']}. Réessayez plus tard.", "error",
+            f"L’e-mail de réinitialisation n’a pas pu être envoyé ({_motif_echec_email(cible['email'])})\u00a0: "
+            f"aucun lien n’a été transmis à {cible['email']}. Réessayez plus tard.", "error",
         )
     if partiel.est_partiel():
         # Lot 13 : la carte reste en place, le résultat en toast.
         if _cible_protegee(cible):
             partiel.lire_flash()
-            return partiel.refuser("Seul un Admin peut agir sur le compte d'un Admin.", 403)
+            return partiel.refuser("Seul un Admin peut agir sur le compte d’un Admin.", 403)
         return partiel.repondre("partials/utilisateur_reinit.html", utilisateur=cible)
     return redirect(url_for("utilisateurs.fiche", user_id=user_id))
 
@@ -907,11 +905,11 @@ def toggle_actif(user_id: int):
     elif user_id == g.user["id"]:
         flash("Vous ne pouvez pas désactiver votre propre compte.", "error")
     elif _cible_protegee(cible):
-        flash("Seul un Admin peut activer ou désactiver le compte d'un Admin.", "error")
+        flash("Seul un Admin peut activer ou désactiver le compte d’un Admin.", "error")
     elif request.form.get("actif_cible") not in ("0", "1"):
         # État VOULU envoyé par le formulaire (utilisateurs_liste.html) :
         # un double clic ne fait plus revenir à l'état d'avant.
-        flash("Requête invalide : rechargez la page et réessayez.", "error")
+        flash("Requête invalide\u00a0: rechargez la page et réessayez.", "error")
     else:
         try:
             utilisateurs_repo.set_actif(user_id, request.form["actif_cible"] == "1", g.user["id"])
@@ -922,7 +920,7 @@ def toggle_actif(user_id: int):
             # lieu du message clair déjà utilisé ailleurs (creer(), fiche()).
             if "idx_utilisateur_rh_singleton" in str(exc):
                 flash(
-                    "Il y a déjà un compte RH actif. Désactivez-le d'abord "
+                    "Il y a déjà un compte RH actif. Désactivez-le d’abord "
                     "pour en réactiver un autre.", "error",
                 )
             elif message := _message_garde_admin(exc):
@@ -973,7 +971,8 @@ def _toggle_actif_partiel(user_id: int, cible: dict | None, filtres: dict, depui
                 "donnees": {"retour": "fiche", "actif_cible": "0" if u["actif"] else "1", "annulation": "1"},
                 "cible": "#utilisateur-actif", "focus": "#fiche-actif",
             }
-        texte = f"Compte de {u['prenom']} {u['nom']} {'réactivé' if u['actif'] else 'désactivé'}."
+        # Revue produit (§ 3) : pas d'élision ratée (« de Interv »).
+        texte = f"Compte {'réactivé' if u['actif'] else 'désactivé'}\u00a0: {u['prenom']} {u['nom']}."
         return partiel.repondre("partials/utilisateur_actif.html", toasts=[partiel.toast(texte, action=action)],
                                 utilisateur=u, oob_reinit=True)
     q = filtres.get("q") or None
@@ -992,7 +991,7 @@ def _toggle_actif_partiel(user_id: int, cible: dict | None, filtres: dict, depui
             "cible": f"#u-{user_id}",
             "focus": f"#actif-{user_id}",
         }
-    texte = f"Compte de {nom} {'réactivé' if u['actif'] else 'désactivé'}."
+    texte = f"Compte {'réactivé' if u['actif'] else 'désactivé'}\u00a0: {nom}."
     return partiel.repondre(
         "partials/utilisateur_ligne.html", toasts=[partiel.toast(texte, action=action)], oob_compte=True,
         u=u, peut_gerer=True, compte=utilisateurs_repo.compter(),

@@ -12,8 +12,9 @@
     </div>
     <div class="fiche-entete-meta">
       <span>Lot{{ 's' if lots|length > 1 }} {% for l in lots %}<strong>{{ l.code }}</strong>{% if not loop.last %} · {% endif %}{% endfor %}</span>
-      <span>{% if projet.date_debut %}Début {{ projet.date_debut|date_courte(true) }}{% endif %}{% if projet.date_fin %} → Échéance {{ projet.date_fin|date_courte(true) }}{% endif %}</span>
-      {% if projet_clos and projet.date_cloture %}<span>Clôturé le {{ projet.date_cloture|date_courte(true) }}</span>{% endif %}
+      {# Revue produit P2-12 : un projet clos affiche sa date de clôture, et
+         non une « échéance » qui n'a plus de sens. #}
+      <span>{% if projet.date_debut %}Début {{ projet.date_debut|date_courte(true) }}{% endif %}{% if projet.date_fin and not (projet_clos and projet.date_cloture) %} → Échéance {{ projet.date_fin|date_courte(true) }}{% endif %}{% if projet_clos and projet.date_cloture %}{{ ' · ' if projet.date_debut }}Clôturé le {{ projet.date_cloture|date_courte(true) }}{% endif %}</span>
       {% if projet.phase_liee_id %}
         <a href="{{ url_for('projets.detail', projet_id=projet.phase_liee_id) }}" class="fiche-phase-liee">Phase liée&nbsp;: {{ projet.phase_liee_code }}_{{ projet.phase_liee_nom }}</a>
       {% endif %}
@@ -24,12 +25,12 @@
       <div class="fiche-heures-total">{{ projet.heures_cumulees|heures }}</div>
       <div class="fiche-heures-libelle">cumulées</div>
       {# Répartition par rôle (retour Fadhel, 2026-09-28, Lot 5). #}
-      <div class="fiche-heures-libelle" title="{{ projet.heures_intervenant|heures }} intervenants / {{ projet.heures_chef|heures }} chef de projet">{{ heures_interv_chef(projet.heures_intervenant, projet.heures_chef) }} <span>interv./chef</span></div>
+      <div class="fiche-heures-libelle">{{ projet.heures_intervenant|heures }} intervenants · {{ projet.heures_chef|heures }} chef</div>
     </div>
     <div class="fiche-separateur" aria-hidden="true"></div>
     <div>
       <div class="fiche-chef-libelle">Chef de projet</div>
-      <a href="{{ url_for('utilisateurs.profil_personne', user_id=projet.chef_projet_id) }}" class="lien-personne fiche-chef" title="Voir la fiche de {{ projet.chef_prenom }} {{ projet.chef_nom }}">
+      <a href="{{ url_for('utilisateurs.profil_personne', user_id=projet.chef_projet_id) }}" class="lien-personne fiche-chef" title="Voir sa fiche">
         <span class="nom-personne">{{ projet.chef_prenom }} {{ projet.chef_nom }}</span>
         {{ avatarm.avatar(projet.chef_projet_id, projet.chef_prenom, projet.chef_nom, projet.chef_avatar_chemin, css_class='avatar avatar-md') }}
       </a>

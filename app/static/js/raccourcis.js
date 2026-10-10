@@ -74,9 +74,9 @@
         + '<tr><td><kbd>j</kbd> / <kbd>k</kbd></td><td>Ligne suivante / précédente (tâches, projets, utilisateurs), puis <kbd>Entrée</kbd></td></tr>'
         + '<tr><td><kbd>Échap</kbd></td><td>Fermer la fenêtre ou la liste ouverte</td></tr>'
         + '<tr><td><kbd>Ctrl</kbd> + <kbd>Entrée</kbd></td><td>Envoyer le formulaire de la fenêtre</td></tr>'
-        + '<tr><td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td><td>« Annuler » du dernier message (10 s, hors d’un champ de saisie)</td></tr>'
+        + '<tr><td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td><td>«\u00a0Annuler\u00a0» du dernier message (10 s, hors d’un champ de saisie)</td></tr>'
         + '</tbody></table>'
-        + '<label class="k-option"><input type="checkbox" data-pref-raccourcis> Raccourcis d’une seule touche (désactivables : lecteur d’écran, commande vocale)</label>';
+        + '<label class="k-option"><input type="checkbox" data-pref-raccourcis> Raccourcis d’une seule touche (désactivables\u00a0: lecteur d’écran, commande vocale)</label>';
       document.body.appendChild(aide);
       aide.querySelector('[data-k-fermer]').addEventListener('click', function () { aide.close(); });
       aide.addEventListener('click', function (e) { if (e.target === aide) aide.close(); });

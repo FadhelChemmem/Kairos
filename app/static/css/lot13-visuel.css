@@ -1,0 +1,372 @@
+/* Lot 13 — revue visuelle (H2) : grille, barre du haut, typographie,
+   système de boutons et de champs, Gantt, finitions. Chargé APRÈS app.css et
+   lot13-pages.css dans le paquet app.css (app/paquets.py) : les règles
+   ci-dessous complètent ou remplacent les anciennes, sans toucher à la
+   stabilité des contrôles (même graisse au survol, au focus et à l'état
+   actif ; bordures réservées). Constats : /tmp/l13-audit/revue-visuel.md
+   (P0-1 à P2-34) et revue-produit.md (P1-1, § 3). */
+
+/* --- Jetons complémentaires ----------------------------------------------- */
+:root {
+  /* Échelle de texte (P1-10) : corps à 14 px, méta à 12–13 px, rien sous
+     11,5 px. */
+  --texte-xs: 12px; --texte-s: 13px; --texte-m: 14px;
+  /* Gabarits de largeur (P1-16), padding latéral de 32 px compris. */
+  --largeur-formulaire: 704px; --largeur-lecture: 944px; --largeur-page: 1360px;
+  /* Gantt (P1-6) : « cette semaine » en ambre, distinct du rouge du retard
+     (ΔE 31,6 ; blanc dessus 4,92:1). */
+  --gantt-urgent: #c2401f; --gantt-semaine: #a16207; --gantt-tard: #4a7c59;
+  --gantt-jour: color-mix(in srgb, var(--accent-fill) 10%, transparent);
+  /* Bandeaux des modes (P1-7 : assourdis en sombre). */
+  --mode-voir: #a3480d; --mode-agir: #b93a1a; --mode-date: #5f52d1;
+}
+:root[data-theme="dark"] {
+  --gantt-jour: color-mix(in srgb, var(--accent-fill) 18%, transparent);
+  --mode-voir: #8f3f0c; --mode-agir: #8f2d14; --mode-date: #5246b8;
+}
+
+/* --- Bandeau des modes : couleurs en jetons (sombre : #8f2d14), champs
+   date et heure sombres en thème sombre (P1-7). La structure et la place
+   des contrôles restent celles du lot 13 (stabilité : H1). --- */
+.bandeau-admin-voir, :root[data-theme="dark"] .bandeau-admin-voir { background: var(--mode-voir); --bandeau-fond: var(--mode-voir); }
+.bandeau-admin-agir, :root[data-theme="dark"] .bandeau-admin-agir { background: var(--mode-agir); --bandeau-fond: var(--mode-agir); }
+.bandeau-admin-date, :root[data-theme="dark"] .bandeau-admin-date { background: var(--mode-date); --bandeau-fond: var(--mode-date); }
+.topbar-mode-voir { border-bottom-color: var(--mode-voir); }
+.topbar-mode-agir { border-bottom-color: var(--mode-agir); }
+:root[data-theme="dark"] :is(.bandeau-admin-voir, .bandeau-admin-agir, .bandeau-admin-date) .bandeau-admin-form input:is([type=date], [type=time]) {
+  background: rgb(0 0 0 / .28); color: #fff; border-color: rgb(255 255 255 / .55); color-scheme: dark;
+}
+
+/* --- Grille (P0-2) : la bannière Deadlines de l'accueil s'aligne sur les
+   cartes à toute largeur, un seul bord gauche de 16 px sur téléphone. --- */
+.deadline-banner { width: calc(100% - 64px); max-width: 1296px; margin: var(--esp-6) auto 0; }
+@media (max-width: 860px) {
+  .deadline-banner { width: auto; margin: var(--esp-4) var(--esp-4) 0; }
+  .topbar-inner { padding-left: 16px; padding-right: 16px; }
+}
+@media (max-width: 370px) { .topbar-inner { padding-left: 12px; padding-right: 12px; } }
+
+/* --- Barre du haut (P0-3, revue produit P1-1) ------------------------------ */
+.lien-logo { color: var(--text-strong); }
+.logo-kairos { display: block; height: 24px; width: auto; }
+.logo-connexion { display: block; margin: 0 auto 8px; height: 40px; width: auto; color: var(--text-strong); }
+@media (max-width: 480px) { .topbar .logo-kairos { height: 18px; } }
+.topbar-lien { flex-shrink: 0; }
+.topbar-libelle { display: none; }
+/* Page courante : icône teintée et filet vert de 2 px posé sur le bord de
+   la barre. Même graisse, même taille : rien ne bouge. */
+.topbar a.iconbtn[aria-current] { color: var(--brand-text-strong); background: var(--brand-bg-soft); }
+.topbar a.iconbtn::after {
+  content: ""; position: absolute; left: 7px; right: 7px; bottom: -11px; height: 2px; border-radius: 2px;
+  background: var(--accent-fill); opacity: 0; transition: opacity var(--duree-rapide) var(--courbe-std);
+}
+.topbar a.iconbtn[aria-current]::after { opacity: 1; }
+/* À partir de 1 200 px : libellé sous chaque icône (Accueil, Projets…). */
+@media (min-width: 1200px) {
+  .topbar-actions { gap: 2px; }
+  .topbar-actions .topbar-lien {
+    width: auto; min-width: 60px; height: 48px; padding: 0 8px; flex-direction: column; gap: 3px; border-radius: var(--rayon-m);
+  }
+  .topbar-libelle { display: block; font-size: 11.5px; font-weight: 600; line-height: 1; white-space: nowrap; letter-spacing: 0; word-spacing: 0; }
+  .topbar a.iconbtn.topbar-lien::after { left: 10px; right: 10px; bottom: -4px; }
+  .topbar-lien .iconbtn-badge { top: 2px; right: auto; left: calc(50% + 3px); }
+  .topbar-search-box { max-width: 380px; }
+}
+@media (min-width: 1200px) and (max-width: 1320px) { .topbar-actions .topbar-lien { min-width: 54px; padding: 0 6px; } }
+
+/* Menu du compte (Mes informations, Thème sombre, Raccourcis, Se déconnecter). */
+.topbar-compte { display: flex; align-items: center; margin-left: 6px; }
+.topbar-compte-btn {
+  display: flex; align-items: center; justify-content: center; padding: 2px; border: 0; border-radius: 999px; background: none; cursor: pointer;
+  transition: box-shadow var(--duree-rapide) var(--courbe-std);
+}
+.topbar-compte-btn:hover { box-shadow: 0 0 0 3px var(--hover-bg-strong); }
+.topbar-compte-btn:has(+ .menu-compte:popover-open) { box-shadow: 0 0 0 3px var(--brand-bg-soft), 0 0 0 4px var(--accent-fill); }
+.topbar-avatar { display: block; margin: 0; border-radius: 999px; }
+.menu-compte {
+  position: fixed; inset: 60px max(16px, calc((100vw - 1360px) / 2 + 24px)) auto auto; margin: 0; width: 260px; max-width: calc(100vw - 24px);
+  padding: 6px; border: 1px solid var(--border); border-radius: var(--rayon-l); background: var(--surface); color: var(--text);
+  box-shadow: var(--ombre-2); z-index: 660;
+}
+.menu-compte:popover-open { display: flex; flex-direction: column; gap: 2px; animation: k-toast-entree var(--duree-base) var(--courbe-sortie); }
+.menu-compte-tete { display: flex; flex-direction: column; gap: 2px; margin: 0 0 4px; padding: 8px 10px 10px; border-bottom: 1px solid var(--border-soft); min-width: 0; }
+.menu-compte-nom { font-size: var(--texte-m); font-weight: 700; color: var(--text-strong); overflow-wrap: anywhere; }
+.menu-compte-sous { font-size: var(--texte-xs); color: var(--text-muted); overflow-wrap: anywhere; }
+.menu-compte-form { margin: 2px 0 0; padding-top: 2px; border-top: 1px solid var(--border-soft); }
+.menu-compte-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 0 10px; border: 0; border-radius: var(--rayon-s);
+  background: none; font: inherit; font-size: var(--texte-m); font-weight: 600; color: var(--text); text-align: left; text-decoration: none; cursor: pointer;
+  transition: background-color var(--duree-rapide) var(--courbe-std);
+}
+.menu-compte-item > svg { flex-shrink: 0; color: var(--text-muted); }
+.menu-compte-item > span:not(.menu-compte-bascule) { flex: 1; min-width: 0; }
+.menu-compte-item:hover { background: var(--surface-survol); color: var(--text-strong); }
+.menu-compte-item:focus-visible { outline-offset: -2px; }
+.menu-compte-item[aria-current] { color: var(--brand-text-strong); }
+.menu-compte-item kbd { font-size: 11.5px; }
+.menu-compte-sortie, .menu-compte-sortie > svg { color: var(--error-text); }
+/* Petit interrupteur du thème : état porté par aria-pressed (kairos-ui.js). */
+.menu-compte-bascule { position: relative; flex-shrink: 0; width: 32px; height: 18px; border-radius: 999px; background: var(--control-border);
+  transition: background-color var(--duree-base) var(--courbe-std); }
+.menu-compte-bascule::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 999px; background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / .25); transition: transform var(--duree-base) var(--courbe-std); }
+#theme-toggle[aria-pressed="true"] .menu-compte-bascule { background: var(--accent-fill); }
+#theme-toggle[aria-pressed="true"] .menu-compte-bascule::after { transform: translateX(14px); }
+@media (max-width: 600px) {
+  .topbar-compte { margin-left: 2px; }
+  .menu-compte { inset: 60px 8px auto auto; }
+  .menu-compte-item { min-height: 44px; }
+}
+
+/* --- Typographie (P0-4, P1-8, P1-10) --------------------------------------- */
+.projets-titre, .page-titre-espace { font-size: var(--texte-xl); }
+.fenetre-titre { font-size: var(--texte-l); }
+.post-entete-ligne, .post-corps { font-size: var(--texte-m); }
+.post-corps { line-height: 1.55; }
+.post-meta, .notif-quand { font-size: var(--texte-xs); }
+.post-comment-body, .comment-input textarea { font-size: 13.5px; }
+.post-action, .post-comment-action, .post-comment-meta { font-size: var(--texte-xs); }
+.ptable-lien, .taskrow-titre, .urow-nom, .deadlines-item-titre, .notif-message { font-size: var(--texte-m); }
+.ptable-lots, .ptable-chef, .ptable-heures, .ptable-rendu, .taskrow-date, .taskrow-heures, .ucell-texte,
+.urow-date, .urow-sous, .info-liste, .k-cles, .intervenant-nom, .journal-table, .accueil-tache-titre, .accueil-projet-nom,
+.tache-prop dd, .profil-tache-titre, .dl-semaine-date { font-size: var(--texte-s); }
+.accueil-sous, .accueil-projet .accueil-sous, .intervenant-role, .profil-tache-projet, .g-projet, .mini-gantt-projet, .fiche-heures-libelle,
+.journal-admin-reel, .deadline-banner-tout, .k-interrupteur-note { font-size: var(--texte-xs); }
+.fiche-entete-meta, .subbar-ariane, .projets-compte, .taches-compteur, .tache-prop dt { font-size: var(--texte-s); }
+.ptable-head, .thead, .uhead, .journal-table thead th { font-size: var(--texte-xs); }
+.accueil-vide, .intervenant-vide, .taches-vide, .deadline-banner-empty { font-size: var(--texte-s); }
+/* Pastilles et petits libellés : jamais sous 11,5 px (P2-25). */
+.pill { font-size: var(--texte-xs); }
+.pill-sm, .pill-xs, .ptable-interne { font-size: 11.5px; }
+.pill-sm { padding: 2px 8px; }
+.pill-xs { padding: 1px 7px; }
+.g-daycell .g-jour-lettre, .mini-gantt-daycell { font-size: 11.5px; }
+.g-daycell .g-jour-num { font-size: var(--texte-xs); }
+.iconbtn-badge { font-size: 10.5px; }
+/* Initiales des mini-avatars (P2-26). */
+.avatar-sm { font-size: 11px; font-weight: 600; letter-spacing: -.02em; }
+.avatar-md { font-size: 11.5px; }
+/* Titres en casse de phrase (revue produit P2-11) : « Réinitialisation du
+   mot de passe » plutôt que des capitales à côté de « Compte actif ». */
+.section-title, .tache-fenetre-sous-titre, .fiche-chef-libelle, .g-entete, .filtre-titre {
+  text-transform: none; letter-spacing: 0;
+}
+.section-title { font-size: var(--texte-m); color: var(--text-strong); }
+.tache-fenetre-sous-titre, .filtre-titre, .g-entete { font-size: var(--texte-xs); color: var(--text-muted); }
+.fiche-chef-libelle { font-size: var(--texte-xs); color: var(--text-muted); }
+
+/* --- Champs (P1-12) : 36 px côte à côte (44 px sous 600 px), corps 14 px.
+   :where() : spécificité nulle, les champs propres à un composant (Daily
+   log, recherche, bandeau, titre du panneau) gardent leur rendu. --- */
+:where(input:not([type=checkbox], [type=radio], [type=file], [type=hidden], [type=range]), select:not([data-chip-select], [data-chip-tristate])):not(:where(.search-mini *, .topbar-search *, .dl9 *, .bandeau-admin *, .tache-titre-form *)) {
+  min-height: 36px; box-sizing: border-box;
+}
+:where(input, select, textarea) { font-size: var(--texte-m); }
+.search-combobox-input, .chip-select-filter { min-height: 36px; font-size: var(--texte-s); }
+@media (max-width: 600px) {
+  :where(input:not([type=checkbox], [type=radio], [type=file], [type=hidden], [type=range]), select:not([data-chip-select], [data-chip-tristate])):not(:where(.search-mini *, .topbar-search *, .dl9 *, .bandeau-admin *, .tache-titre-form *)),
+  .search-combobox-input { min-height: 44px; }
+}
+label, .label { font-size: var(--texte-xs); }
+
+/* Champ fichier natif (P1-14) : bouton à l'image de .btn. */
+input[type=file]:not(.dropzone-input):not(.comment-attach input) { border: 0; padding: 0; background: none; font-size: var(--texte-s); color: var(--text-muted); }
+input[type=file]::file-selector-button {
+  font: inherit; font-weight: 600; min-height: 32px; padding: 0 12px; margin-right: 10px; border: 1px solid var(--border-3);
+  border-radius: var(--rayon-s); background: var(--surface); color: var(--text-strong); cursor: pointer;
+  transition: background-color var(--duree-rapide) var(--courbe-std), border-color var(--duree-rapide) var(--courbe-std);
+}
+input[type=file]::file-selector-button:hover { background: var(--surface-survol); border-color: var(--border-hover); }
+
+/* --- Boutons (P1-11) : 3 tailles (petit 28 px, normal 36 px, tactile
+   44 px sous 600 px) × 4 variantes (.btn-primaire, .btn secondaire,
+   .btn-fantome, .btn-danger), un seul rayon --rayon-m. Les anciennes
+   classes encore présentes prennent les mêmes mesures. --- */
+.btn, .btn-primaire, .btn-fantome, .btn-danger, .btn-secondary, .btn-primary, .quickadd, .k-bouton-danger {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: auto;
+  min-height: 36px; padding: 0 14px; border-radius: var(--rayon-m); border: 1px solid transparent;
+  font: inherit; font-size: var(--texte-s); font-weight: var(--graisse-forte); line-height: 1.2; white-space: nowrap;
+  cursor: pointer; text-decoration: none; user-select: none;
+}
+.btn-petit, .btn-petit.btn, .btn-petit.btn-primaire, .btn-petit.btn-fantome, .btn-petit.btn-danger, .comment-send {
+  min-height: 28px; padding: 0 10px; font-size: 12.5px; border-radius: var(--rayon-s);
+}
+.btn, .btn-secondary, .quickadd { background: var(--surface); border-color: var(--border-3); color: var(--text-strong); }
+.btn:hover { background: var(--surface-survol); border-color: var(--border-hover); color: var(--text-strong); }
+.btn-primaire { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }
+.btn-primaire:hover { background: var(--accent-fill-hover); border-color: var(--accent-fill-hover); color: var(--on-accent); }
+.btn-fantome { background: transparent; border-color: transparent; color: var(--brand-text); }
+.btn-fantome:hover { background: var(--surface-survol); color: var(--brand-text-strong); }
+.btn-secondary:hover, .quickadd:hover { background: var(--surface-survol); border-color: var(--border-hover); color: var(--text-strong); }
+.btn-primary { background: var(--surface); border-color: var(--surface); color: var(--brand-text-strong); }
+.btn-primary:hover { background: var(--hover-bg); border-color: var(--hover-bg); color: var(--brand-text-strong); }
+.quickadd-primary, .btn-accent, .btn-primary.btn-accent { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }
+.quickadd-primary:hover, .btn-accent:hover, .btn-primary.btn-accent:hover { background: var(--accent-fill-hover); border-color: var(--accent-fill-hover); color: var(--on-accent); }
+.btn-danger, .btn.btn-danger, .btn-primary.btn-danger, .k-bouton-danger { background: var(--danger-fill); border-color: var(--danger-fill); color: #fff; }
+.btn-danger:hover, .btn.btn-danger:hover, .btn-primary.btn-danger:hover, .k-bouton-danger:hover { background: #962f15; border-color: #962f15; color: #fff; }
+.btn-pleine-largeur, .k-carte-ligne .btn.btn-pleine-largeur { width: 100%; }
+/* « Envoyer » d'un commentaire : primaire petit, centré sur une ligne de saisie. */
+.comment-send { width: auto; height: auto; flex-shrink: 0; margin-bottom: 3px; border: 1px solid var(--accent-fill);
+  background: var(--accent-fill); color: var(--on-accent); font-weight: var(--graisse-forte); }
+.comment-send:hover:not([disabled]):not([aria-disabled="true"]) { background: var(--accent-fill-hover); border-color: var(--accent-fill-hover); }
+.btn-danger:active, .k-bouton-danger:active { transform: scale(.97); }
+.btn-danger, .k-bouton-danger, .btn-primary {
+  transition: background-color var(--duree-rapide) var(--courbe-std), border-color var(--duree-rapide) var(--courbe-std),
+              color var(--duree-rapide) var(--courbe-std), transform var(--duree-instant) var(--courbe-std);
+}
+@media (max-width: 600px) {
+  .btn, .btn-primaire, .btn-fantome, .btn-danger, .btn-secondary, .btn-primary, .quickadd, .k-bouton-danger { min-height: 44px; }
+  .btn-petit, .btn-petit.btn, .btn-petit.btn-primaire, .btn-petit.btn-fantome, .btn-petit.btn-danger { min-height: 36px; }
+  .quickadd { padding: 0 12px; font-size: var(--texte-s); }
+}
+.filtres-utilisateurs .btn-secondary { padding: 0 16px; }
+.quickadd-grand { padding: 0 16px; }
+
+/* --- Cartes et colonnes ---------------------------------------------------- */
+.card { border-radius: var(--rayon-l); }
+.carte-entete { gap: 8px; }
+
+/* --- Fenêtre « Nouveau post » (P1-13) : le pied (Annuler / Publier) reste
+   collé en bas de la fenêtre, le vide passe dans le corps. --- */
+#dialog-nouveau-post[open] { display: flex; flex-direction: column; }
+#dialog-nouveau-post[open] > * { flex-shrink: 0; }
+#dialog-nouveau-post .intent-panels { flex: 1 0 auto; display: flex; flex-direction: column; }
+#intent-tache:checked ~ .intent-panels .panel-tache,
+#intent-information:checked ~ .intent-panels .panel-information,
+#intent-requete:checked ~ .intent-panels .panel-requete { display: flex; flex-direction: column; flex: 1 0 auto; }
+#dialog-nouveau-post .intent-panel > form { flex: 1 0 auto; display: flex; flex-direction: column; }
+#dialog-nouveau-post .fenetre-actions {
+  margin-top: auto; position: sticky; bottom: -20px; z-index: 2; background: var(--surface);
+  padding-bottom: 4px; margin-bottom: -4px;
+}
+@media (max-width: 600px) { #dialog-nouveau-post .fenetre-actions { bottom: calc(-20px - env(safe-area-inset-bottom, 0px)); } }
+/* Titre selon l'onglet : « Nouvelle tâche », « Nouvelle information »,
+   « Nouvelle requête » (revue produit P1-6). */
+.titre-intent { display: none; }
+#dialog-nouveau-post:has(#intent-tache:checked) .titre-tache,
+#dialog-nouveau-post:has(#intent-information:checked) .titre-information,
+#dialog-nouveau-post:has(#intent-requete:checked) .titre-requete { display: inline; }
+
+/* --- États vides de l'accueil (P1-15) : .k-vide compact --------------------- */
+.k-vide-mini { padding: 10px 4px 4px; gap: 4px; }
+.k-vide-mini .k-vide-icone { width: 32px; height: 32px; margin-bottom: 2px; }
+.k-vide-mini .k-vide-texte { font-size: var(--texte-s); }
+.k-vide-mini .btn-fantome { margin-top: 2px; min-height: 28px; padding: 0 8px; font-size: 12.5px; border-radius: var(--rayon-s); }
+.deadline-banner-vide { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: var(--texte-s); color: var(--text-muted); }
+
+/* --- Carte Daily log de l'accueil : progression de la journée --------------- */
+.dl-carte-texte { font-size: var(--texte-xs); line-height: 1.4; margin: 0 0 12px; }
+.card-cta .dl-carte-texte { color: #fff; }
+.card-cta-alert .dl-carte-texte { color: var(--text-secondary); }
+.card-cta .carte-titre, .card-cta-alert .carte-titre { font-size: var(--texte-m); margin-bottom: 4px; }
+.card-cta .carte-titre { color: #fff; }
+.card-cta-alert .carte-titre { color: var(--text-strong); }
+.dl-carte-jauge { display: block; height: 6px; margin: -4px 0 12px; border-radius: 999px; background: rgb(255 255 255 / .28); overflow: hidden; }
+.dl-carte-jauge > span { display: block; height: 100%; border-radius: inherit; background: #fff; }
+
+/* --- Tous les projets : point d'état retiré (P2-24), pastille de phase qui
+   ne disparaît plus au survol (P2-23), échéance dépassée en rouge. --- */
+.ptable-row:hover, .ptable-row:focus-within { background: var(--bg-subtle-1); }
+.ptable-rendu-retard { color: var(--error-text); }
+/* Le texte réservé aux lecteurs d'écran reste dans la cellule (sinon, en
+   position absolue, il échappe au défilement du tableau et élargit la page). */
+.ptable-rendu { position: relative; }
+@media (min-width: 601px) { .ptable-head, .ptable-row { grid-template-columns: minmax(200px, 1.2fr) 64px 80px minmax(150px, 1fr) 140px 132px 96px; } }
+@media (min-width: 601px) and (max-width: 860px) { .table-scroll .ptable-head, .table-scroll .ptable-row { min-width: 900px; } }
+.ptable-rendu-retard .ptable-retard-jours { margin-left: 4px; font-weight: 700; }
+
+/* Filtres repliés sur téléphone (P1-17) : dès le premier rendu (classe
+   k-js posée dans <head>), sans saut quand les scripts arrivent. */
+.projets-filtres-resume { display: none; }
+@media (max-width: 600px) {
+  html.k-js .projets-filtres-resume {
+    display: flex; align-items: center; gap: 6px; width: 100%; min-height: 44px; margin: -8px 0; padding: 0; border: 0; background: none;
+    font: inherit; font-weight: 700; font-size: var(--texte-m); color: var(--text-strong); cursor: pointer; text-align: left;
+  }
+  html.k-js .projets-filtres-resume::after { content: ""; margin-left: auto; margin-right: 4px; width: 8px; height: 8px; border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor; transform: rotate(45deg); transition: transform var(--duree-rapide) var(--courbe-std); }
+  html.k-js .projets-filtres.filtres-ouverts .projets-filtres-resume { margin-bottom: 8px; }
+  html.k-js .projets-filtres.filtres-ouverts .projets-filtres-resume::after { transform: rotate(-135deg); }
+  html.k-js .projets-filtres:not(.filtres-ouverts) .projets-filtres-groupes { display: none; }
+  .projets-filtres-nb { color: var(--brand-text-strong); }
+}
+/* Formulaires de « Mes informations » : bouton à droite (P2-29). */
+#mes-infos form > button[type=submit], #mot-de-passe form > button[type=submit] { display: flex; margin-left: auto; }
+
+/* --- Carte Informations entre 600 et 860 px (P2-22) : deux colonnes. --- */
+@media (min-width: 601px) and (max-width: 860px) {
+  .info-liste, .k-cles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; row-gap: 10px; }
+}
+
+/* --- Fil (P2-21) : « Donner suite » reste sur la ligne à 375 px. --- */
+@media (max-width: 400px) {
+  .post-actions { flex-wrap: nowrap; }
+  .post-action-reposter .post-action-libelle { display: none; }
+  .post-action { padding-left: 8px; padding-right: 8px; }
+}
+.post-action-libelle-vu { font-weight: inherit; }
+
+/* --- Gantt (P1-6) : couleurs en jetons, lignes d'une seule hauteur, colonne
+   du jour teintée au lieu du trait, barres de 24 px. --- */
+.g-bar-urgent { background: var(--gantt-urgent); }
+.g-bar-semaine { background: var(--gantt-semaine); }
+.g-bar-tard { background: var(--gantt-tard); }
+.g-bar-semaine-texte { color: var(--warn-text); }
+.gantt { grid-template-columns: 300px repeat(var(--gantt-days, 21), minmax(44px, 1fr)); min-width: calc(300px + var(--gantt-days, 21) * 44px); }
+.g-label { padding: 8px 14px; min-width: 0; }
+.g-titre, .g-projet { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g-titre { font-size: var(--texte-s); line-height: 1.35; }
+.g-row-track {
+  min-height: 52px;
+  background-image: linear-gradient(90deg, var(--gantt-jour) 0 calc(100% / var(--gantt-days, 21)), transparent 0);
+}
+.g-bar { height: 24px; border-radius: var(--rayon-s); font-size: var(--texte-xs); }
+.deadlines-pastille { width: 12px; height: 12px; border-radius: 4px; }
+.deadlines-pastille-jour { width: 12px; height: 12px; border-radius: 4px; background: var(--gantt-jour); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-fill) 45%, transparent); }
+.mini-gantt-bar { font-size: 11.5px; border-radius: var(--rayon-s); }
+.mini-gantt-bar.g-bar-urgent, .mini-gantt-bar.g-bar-semaine, .mini-gantt-bar.g-bar-tard { color: #fff; }
+@media (min-width: 601px) {
+  .mini-gantt-track { background-image: linear-gradient(90deg, var(--gantt-jour) 0 calc(100% / var(--mg-days, 8)), transparent 0); border-radius: 4px; }
+}
+
+/* --- Largeurs de contenu (P1-16) : formulaire 640 px, lecture 880 px,
+   page 1 296 px ; la sous-barre prend la largeur de son contenu, ses
+   actions s'alignent sur lui. --- */
+.k-etroit, .k-colonne-formulaire, .subbar-inner.k-etroit { max-width: var(--largeur-formulaire); }
+.k-colonne-formulaire { padding: 0 32px; }
+.k-moyen, .k-lecture { max-width: var(--largeur-lecture); }
+.page-wrap.k-lecture, .page-wrap.k-etroit { margin-left: auto; margin-right: auto; }
+.notif-page { max-width: var(--largeur-lecture); }
+.voir-comme-carte { max-width: none; }
+.page-body.page-body-2col.k-lecture { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
+@media (max-width: 860px) {
+  .page-body.page-body-2col.k-lecture { grid-template-columns: 1fr; }
+  .k-colonne-formulaire { padding: 0 16px; }
+}
+/* Sous-barre des pages qui avaient un titre posé dans la page (P1-9). */
+.subbar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.projets-page { padding-top: var(--esp-6); }
+.dl-subbar-inner { max-width: 592px; }
+@media (max-width: 860px) { .dl-subbar-inner { max-width: none; } }
+/* Aide du Daily log repliée (P2-27). */
+.dl9 details.dl-aide > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
+  min-height: 28px; padding: 4px 0; font-weight: 700; color: var(--brand-text); }
+.dl9 details.dl-aide > summary::-webkit-details-marker { display: none; }
+.dl9 details.dl-aide > summary::before { content: "▸"; content: "▸" / ""; display: inline-block; transition: transform var(--duree-rapide) var(--courbe-std); }
+.dl9 details.dl-aide[open] > summary::before { transform: rotate(90deg); }
+.dl9 .dl-aide-court { font-weight: 400; color: var(--text-muted); }
+.dl9 details.dl-aide[open] .dl-aide-court { display: none; }
+.dl9 details.dl-aide { font-size: var(--texte-xs); }
+.dl9 details.dl-aide > p { margin: 6px 0 0; }
+
+/* --- Formulaires : actions à droite, primaire en dernier (P2-29). --- */
+.k-actions-droite { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+
+/* --- Panneau de tâche : retard en pastille à côté du champ, aide sur sa
+   propre ligne (P2-30). --- */
+.tache-retard-pastille { align-self: center; }
+.tache-echeance-form .tache-prop-aide { color: var(--text-muted); }
+
+/* --- Notifications : code du projet à la place de la pastille « Projet »
+   répétée (P2-31). --- */
+.notif-projet { font-size: var(--texte-xs); font-weight: 700; color: var(--text-secondary); font-variant-numeric: var(--chiffres); }

@@ -140,7 +140,7 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
       && (await bandeau.getAttribute('class')).includes('bandeau-admin-voir'));
     etape('texte du bandeau', (await texteBandeau(p)).startsWith('Vous voyez Kairos comme Rim Inter (Intervenant) — Revenir à mon compte'), await texteBandeau(p));
     etape('menus de l’intervenante (ni Utilisateurs ni Journal)', await p.locator('nav.topbar-actions a[aria-label="Utilisateurs"]').count() === 0
-      && await p.locator('nav.topbar-actions a[aria-label="Journal d\'audit"]').count() === 0
+      && await p.locator('nav.topbar-actions a[aria-label="Journal d’audit"]').count() === 0
       && await p.locator('nav.topbar-actions a[aria-label="Daily log"]').count() === 1);
     etape('onglet du navigateur', (await p.title()).startsWith('[Vu comme Rim Inter]'), await p.title());
     const ctr = await contraste(p, '#bandeau-admin .bandeau-admin-ligne span');
@@ -201,7 +201,7 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
     await p.locator('#bandeau-admin button:has-text("Revenir à mon compte")').focus();
     await Promise.all([p.waitForNavigation(), p.keyboard.press('Enter')]);
     etape('retour au compte de l’Admin', /^mode test/i.test(await texteBandeau(p))
-      && await p.locator('nav.topbar-actions a[aria-label="Journal d\'audit"]').count() === 1, await texteBandeau(p));
+      && await p.locator('nav.topbar-actions a[aria-label="Journal d’audit"]').count() === 1, await texteBandeau(p));
     etape('journal : entrée et sortie (Admin réel, compte vu)',
       sql("SELECT string_agg(action || ':' || utilisateur_id || ':' || ligne_id, ',' ORDER BY id) FROM audit_log WHERE table_cible='mode_voir_comme'")
         === `ENTREE:${ADMIN}:${RIM},SORTIE:${ADMIN}:${RIM}`);
@@ -221,7 +221,7 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
     await p.waitForSelector('#dialog-contenu-information', { state: 'visible' });
     await p.fill('#dialog-contenu-information', 'Post e2e au nom de Rim');
     // Lot 13 : publication en partiel (post inséré en tête du fil, sans navigation).
-    await p.click('button:has-text("Publier l\'information")');
+    await p.click('button:has-text("Publier l’information")');
     await p.waitForSelector('#fil-posts .fil-item:has-text("Post e2e au nom de Rim")');
     const post = sql("SELECT id || ':' || auteur_id FROM post WHERE contenu = 'Post e2e au nom de Rim'");
     etape('post créé au nom de l’intervenante', post.endsWith(':' + RIM), post);

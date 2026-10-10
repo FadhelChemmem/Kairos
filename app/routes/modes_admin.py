@@ -72,7 +72,7 @@ def _retour(defaut: str = "main.accueil"):
 @admin_reel_requis
 def page():
     if g.get("admin_reel") is not None:
-        flash("Revenez d'abord à votre compte (bandeau en haut de la page).", "error")
+        flash("Revenez d’abord à votre compte (bandeau en haut de la page).", "error")
         return redirect(url_for("main.accueil"))
     return render_template(
         "admin_voir_comme.html",
@@ -84,7 +84,7 @@ def page():
 def _commencer(mode: str):
     admin = _admin_reel()
     if g.get("admin_reel") is not None:
-        flash("Revenez d'abord à votre compte avant d'en choisir un autre.", "error")
+        flash("Revenez d’abord à votre compte avant d’en choisir un autre.", "error")
         return redirect(url_for("main.accueil"))
     brut = (request.form.get("utilisateur_id") or "").strip()
     if not brut:
@@ -137,14 +137,14 @@ def date_simulee():
     admin = _admin_reel()
     date = modes.lire_date((request.form.get("date") or "").strip())
     if date is None:
-        flash(f"Date simulée invalide : choisissez une date entre le {modes.DATE_SIMULEE_MIN.strftime('%d/%m/%Y')} "
+        flash(f"Date simulée invalide\u00a0: choisissez une date entre le {modes.DATE_SIMULEE_MIN.strftime('%d/%m/%Y')} "
               f"et le {modes.DATE_SIMULEE_MAX.strftime('%d/%m/%Y')}.", "error")
         return _retour()
     # Heure facultative (lot 13, audit temps T-M4) : instant simulé à Tunis.
     heure_brute = (request.form.get("heure") or "").strip()
     heure = modes.lire_heure(heure_brute)
     if heure_brute and heure is None:
-        flash("Heure simulée invalide : HH:MM (ex. 23:30), ou laissez le champ vide.", "error")
+        flash("Heure simulée invalide\u00a0: HH:MM (ex. 23:30), ou laissez le champ vide.", "error")
         return _retour()
     valeur = {"admin": admin["id"], "date": date.isoformat()}
     if heure is not None:
@@ -155,7 +155,7 @@ def date_simulee():
     # Toast à l'arrivée (verif-ux, écart de spécification) : la page est
     # rechargée — toute la page dépend de la date —, l'Admin sait pourquoi.
     from ..utils import date_longue
-    flash(f"Date simulée appliquée : {date_longue(date)}"
+    flash(f"Date simulée appliquée\u00a0: {date_longue(date)}"
           f"{' à ' + valeur['heure'] + ' (Tunis)' if heure is not None else ''}.", "success")
     return _retour()
 
@@ -191,7 +191,7 @@ def rappel_simule():
 
     cible = g.user
     if cible.get("role") not in ("admin", "chef_de_projet", "intervenant"):
-        flash(f"{modes.nom_complet(cible)} n'a pas de Daily log : aucun rappel possible.", "error")
+        flash(f"{modes.nom_complet(cible)} n’a pas de Daily log\u00a0: aucun rappel possible.", "error")
         return _retour()
     aujourdhui = dailylog_repo.aujourdhui_pour(cible)
     simulee = g.get("date_simulee") is not None
@@ -200,9 +200,9 @@ def rappel_simule():
     from ..utils import date_longue, texte_rappel_daily_log
 
     if jours:
-        flash(f"Rappel {'simulé ' if simulee else ''}du {date_longue(aujourdhui)} pour {modes.nom_complet(cible)} : "
-              f"« {texte_rappel_daily_log(jours, aujourdhui)} » (cloche).", "success")
+        flash(f"Rappel {'simulé ' if simulee else ''}du {date_longue(aujourdhui)} pour {modes.nom_complet(cible)}\u00a0: "
+              f"«\u00a0{texte_rappel_daily_log(jours, aujourdhui)}\u00a0» (cloche).", "success")
     else:
-        flash(f"Aucun rappel le {date_longue(aujourdhui)} pour {modes.nom_complet(cible)} : rien à rappeler "
-              "(jours remplis, déjà rappelés, week-end ou avant l'arrivée).", "success")
+        flash(f"Aucun rappel le {date_longue(aujourdhui)} pour {modes.nom_complet(cible)}\u00a0: rien à rappeler "
+              "(jours remplis, déjà rappelés, week-end ou avant l’arrivée).", "success")
     return _retour()

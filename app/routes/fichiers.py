@@ -36,7 +36,7 @@ def upload_tache(tache_id: int):
     if g.user["role"] == "client":
         abort(403)
     if tache.get("projet_etat") in projets_repo.ETATS_CLOS:
-        return _refus("Ce projet est clos (terminé ou abandonné) : on ne peut plus y ajouter de fichier.", 409)
+        return _refus("Ce projet est clos (terminé ou abandonné)\u00a0: on ne peut plus y ajouter de fichier.", 409)
     # Même règle que les autres actions sur une tâche (état, titre, clôture)
     # et que le point G de l'audit pour les posts : chef, co-chef ou
     # intervenant de CETTE tâche — plus n'importe qui voyant le projet.
@@ -62,7 +62,7 @@ def upload_tache(tache_id: int):
         # la tâche montre aussitôt la pièce jointe.
         from .projets import _reponse_tache
 
-        return _reponse_tache(tache["projet_id"], tache_id, [partiel.toast(f"Pièce jointe « {nom_fichier} » ajoutée.")])
+        return _reponse_tache(tache["projet_id"], tache_id, [partiel.toast(f"Pièce jointe «\u00a0{nom_fichier}\u00a0» ajoutée.")])
     flash("Pièce jointe ajoutée.", "success")
     return _safe_redirect()
 

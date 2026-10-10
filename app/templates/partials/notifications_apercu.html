@@ -5,10 +5,11 @@
 <div id="notifs-apercu" class="notifs-apercu">
   <div class="notifs-apercu-tete">
     <h2 class="notifs-apercu-titre" id="notifs-apercu-titre" tabindex="-1" data-partiel-titre>Notifications{% if nb_non_lues %} <span class="k-muet">· {{ nb_non_lues }} non lue{{ 's' if nb_non_lues > 1 }}</span>{% endif %}</h2>
-    {% if nb_non_lues %}
+    {% if notifications %}
+    {# Reste en place, désactivé quand tout est lu (la liste ne remonte pas). #}
     <form method="post" action="{{ url_for('notifications.marquer_toutes_lues') }}" data-partiel="#notifs-apercu" data-optimiste="notifs-toutes-lues" data-focus-apres="#notifs-apercu-titre">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn-fantome btn-petit">Tout marquer comme lu</button>
+      <button type="submit" class="btn-fantome btn-petit"{% if not nb_non_lues %} disabled{% endif %}>Tout marquer comme lu</button>
     </form>
     {% endif %}
   </div>

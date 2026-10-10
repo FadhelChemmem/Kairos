@@ -211,9 +211,9 @@
     var SYMB = { contient: '⊇', egal: '=' };
     var MODES = ['', 'contient', 'egal'];
     var ARIA = {
-      '': ' : non filtré (cliquer : contient ce lot)',
-      contient: ' : contient ce lot (cliquer : uniquement ce lot)',
-      egal: ' : uniquement ce lot (cliquer : retirer le filtre)'
+      '': '\u00a0: non filtré (cliquer\u00a0: contient ce lot)',
+      contient: '\u00a0: contient ce lot (cliquer\u00a0: uniquement ce lot)',
+      egal: '\u00a0: uniquement ce lot (cliquer\u00a0: retirer le filtre)'
     };
 
     var wrap = document.createElement('div');

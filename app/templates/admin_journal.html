@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/journal_libelles.html" import libelles_action, libelles_table %}
-{% block title %}Journal d'audit{{ ' — suite' if suite_page }} — Kairos{% endblock %}
+{% block title %}Journal d’audit{{ ' — suite' if suite_page }} — Kairos{% endblock %}
 {# Pas de fil sur cette page (lot 11, audit front M8). #}
 {% block scripts_fil %}{% endblock %}
 {% block body %}
@@ -11,10 +11,9 @@
 
 <div class="subbar">
   <div class="subbar-inner">
-    <h1 class="page-titre">Journal d'audit</h1>
+    <h1 class="page-titre">Journal d’audit</h1>
     {% include "partials/journal_compte.html" %}
     <a href="{{ url_for('modes_admin.page') }}" class="lien-carte subbar-lien">Voir Kairos comme…</a>
-    <span class="pill pill-neutre">Visible par&nbsp;: administrateur</span>
   </div>
 </div>
 

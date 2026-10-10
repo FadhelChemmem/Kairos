@@ -23,7 +23,7 @@ class TestRejoindreTacheClose(BaseIntegration):
                 t = self.tache(p, chef, etat=etat)
                 r = self.client.post(f"/projets/{p}/taches/{t}/rejoindre", follow_redirects=True)
                 self.assertEqual(r.status_code, 200)
-                self.assertIn("Cette tâche est close : on ne peut plus la rejoindre.", r.data.decode())
+                self.assertIn("Cette tâche est close\u00a0: on ne peut plus la rejoindre.", r.data.decode())
                 n = self.sql("SELECT count(*) AS n FROM tache_intervenant WHERE tache_id = %s", (t,))[0]["n"]
                 self.assertEqual(n, 0)
 
@@ -87,7 +87,7 @@ class TestFenetreTache(BaseIntegration):
         html = self.client.get(f"/projets/{p}/taches/{t}/fenetre").data.decode()
         # Lot 13 : le chef modifie l'échéance dans un champ date (année comprise).
         self.assertIn(f'value="{echeance.isoformat()}"', html)
-        self.assertIn("1\u00a0h\u00a030 intervenants / 0\u00a0h\u00a030 chef de projet", html)
+        self.assertIn("1\u00a0h\u00a030 intervenants · 0\u00a0h\u00a030 chef de projet", html)
 
 
 class TestRechercheNavigateurCommeServeur(BaseIntegration):

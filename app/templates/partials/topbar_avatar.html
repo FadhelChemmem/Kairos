@@ -1,4 +1,6 @@
 {% import "partials/avatar.html" as avatarm %}
-<a href="{{ url_for('utilisateurs.mon_profil') }}" class="topbar-avatar" id="topbar-avatar" title="{{ g.user.prenom }} {{ g.user.nom }}" aria-label="Mes informations ({{ g.user.prenom }} {{ g.user.nom }})"{% if oob_avatar %} data-partiel-oob{% endif %}>
+{# Avatar du bouton « Mon compte » de la barre du haut (base.html) ;
+   remplacé hors cible après un changement de photo (Mes informations). #}
+<span class="topbar-avatar" id="topbar-avatar"{% if oob_avatar %} data-partiel-oob{% endif %}>
   {{ avatarm.avatar(g.user.id, g.user.prenom, g.user.nom, g.user.avatar_chemin, css_class='avatar avatar-lg') }}
-</a>
+</span>

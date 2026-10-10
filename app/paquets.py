@@ -38,7 +38,7 @@ PAQUETS: dict[str, tuple[str, ...]] = {
         "js/raccourcis.js",
         "js/notifications.js",
     ),
-    "app.css": ("css/app.css", "css/lot13-pages.css"),
+    "app.css": ("css/app.css", "css/lot13-pages.css", "css/lot13-visuel.css"),
 }
 TYPES = {".js": "application/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
 CACHE_LONG = "public, max-age=31536000, immutable"

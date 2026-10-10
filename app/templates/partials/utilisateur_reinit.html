@@ -7,9 +7,9 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <h2 class="section-title section-title-carte">Réinitialisation du mot de passe</h2>
   {% if utilisateur.actif %}
-    <p class="aide-champ k-carte-texte">Envoie à l'adresse e-mail enregistrée un lien (valable 1 heure) pour choisir un nouveau mot de passe. Le mot de passe actuel reste valable jusque-là.</p>
+    <p class="aide-champ k-carte-texte">Envoie à l’adresse e-mail enregistrée un lien (valable 1 heure) pour choisir un nouveau mot de passe. Le mot de passe actuel reste valable jusque-là.</p>
     <button type="submit" class="btn" id="utilisateur-reinit-envoyer">Envoyer un lien de réinitialisation</button>
   {% else %}
-    <p class="aide-champ k-carte-texte">Compte désactivé : réactivez-le avant d'envoyer un lien de réinitialisation.</p>
+    <p class="aide-champ k-carte-texte">Compte désactivé&nbsp;: réactivez-le avant d’envoyer un lien de réinitialisation.</p>
   {% endif %}
 </form>

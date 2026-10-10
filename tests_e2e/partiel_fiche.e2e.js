@@ -90,7 +90,7 @@ module.exports = async function scenarioFiche(h) {
   await mesurer(p, c, 'ouvrir le panneau (pushState ?tache=20)',
     () => p.click('#tache-ligne-20 [data-ouvrir-tache]'),
     () => p.evaluate(() => !!document.querySelector('#dialog-tache #tache-fenetre-20') && location.search === '?tache=20'),
-    '#tache-titre-20', { latence: 0 });
+    '#tache-fenetre-20 [data-tache-entete]', { latence: 0 });
   await pause(350);   // fin du glissement (240 ms)
   etape('panneau latéral non modal de 480 px, à droite', await p.evaluate(() => {
     const d = document.getElementById('dialog-tache');
@@ -221,7 +221,7 @@ module.exports = async function scenarioFiche(h) {
     () => p.click('#tache-20-rejoindre'),
     async () => sql('SELECT count(*) FROM tache_intervenant WHERE tache_id=20 AND utilisateur_id=2') === '1'
       && await p.locator('#tache-20-rejoindre').count() === 0,
-    '#tache-titre-20');
+    '#tache-fenetre-20 [data-tache-entete]');
 
   // --- Pièce jointe : progression, liste à jour ----------------------------
   const fichier = path.join(os.tmpdir(), 'kairos-e2e-pj-' + process.pid + '.txt');
@@ -249,7 +249,7 @@ module.exports = async function scenarioFiche(h) {
     () => p.click('#tache-20-cloturer'),
     async () => sql('SELECT etat FROM tache WHERE id=20') === 'termine'
       && await p.locator('#taches-closes [data-open-tache="20"]').count() === 1,
-    '#tache-titre-20', { dy: false });
+    '#tache-fenetre-20 [data-tache-entete]', { dy: false });
   etape('clôturer : compteur à jour', (await p.innerText('#taches-compteur')) !== compteurAvant, [compteurAvant, await p.innerText('#taches-compteur')]);
   etape('clôturer : bouton « Rouvrir » proposé', await p.locator('#tache-20-etat-en_cours:has-text("Rouvrir")').count() === 1);
   await capture(p, 'c-panneau-cloture-1440-clair.png');

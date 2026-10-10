@@ -73,7 +73,7 @@
     return !!(doc.documentElement && doc.documentElement.hasAttribute('data-lecture-seule'));
   }
   K.lectureSeule = lectureSeule;
-  K.MESSAGE_LECTURE_SEULE = 'Lecture seule (« Voir comme ») : rien n’est modifié. Revenez à votre compte pour agir.';
+  K.MESSAGE_LECTURE_SEULE = 'Lecture seule («\u00a0Voir comme\u00a0»)\u00a0: rien n’est modifié. Revenez à votre compte pour agir.';
 
   /* ------------------------------------------------------------------ */
   /* Outils                                                               */
@@ -127,9 +127,9 @@
       if (j && j.message) return String(j.message);
     } catch (e) { /* pas du JSON */ }
     if (statut === 403) return 'Action non autorisée.';
-    if (statut === 404) return 'Élément introuvable : il a peut-être été supprimé. Rechargez la page.';
-    if (statut === 409) return 'Conflit : l’élément a changé entre-temps. Rechargez la page.';
-    if (statut >= 500) return 'Erreur du serveur : réessayez dans un instant.';
+    if (statut === 404) return 'Élément introuvable\u00a0: il a peut-être été supprimé. Rechargez la page.';
+    if (statut === 409) return 'Conflit\u00a0: l’élément a changé entre-temps. Rechargez la page.';
+    if (statut >= 500) return 'Erreur du serveur\u00a0: réessayez dans un instant.';
     return 'La demande n’a pas abouti.';
   };
 
@@ -280,8 +280,8 @@
     var t = String(texte);
     if (action && action.libelle) {
       t += RE_ANNULER.test(action.libelle)
-        ? ' « ' + action.libelle + ' » : Ctrl+Z.'
-        : ' Bouton « ' + action.libelle + ' » dans le message.';
+        ? ' «\u00a0' + action.libelle + '\u00a0»\u00a0: Ctrl+Z.'
+        : ' Bouton «\u00a0' + action.libelle + '\u00a0» dans le message.';
     }
     return t;
   };
@@ -327,16 +327,46 @@
       var avaitFocus = el.contains(actif) || ((!actif || actif === doc.body) && el._avaitFocus);
       if (el.parentNode) el.parentNode.removeChild(el);
       if (avaitFocus && rendreFocus !== false) {
+        // Revue d'interaction P1-5 : le focus revient au contrôle d'où vient
+        // l'action (ou à son homologue), jamais hors d'une fenêtre ouverte.
         var autre = doc.querySelector('#k-toasts .k-toast .k-toast-fermer');
         if (autre) autre.focus();
-        else {
+        else if (!focusOrigine(el)) {
           var m = doc.getElementById('contenu');
           if (m) m.focus({ preventScroll: true });
         }
       }
     };
     if (mouvementReduit()) retirer();
-    else { el.classList.add('k-sortie'); minuter(retirer, 130); }
+    else {
+      el.classList.add('k-sortie');
+      // P2-4 : le toast se replie en hauteur avant d'être retiré — les
+      // autres glissent au lieu de sauter.
+      minuter(function () {
+        if (!el.parentNode) return;
+        var h = el.offsetHeight;
+        el.style.height = h + 'px';
+        el.style.overflow = 'hidden';
+        void el.offsetHeight;
+        el.classList.add('k-repli');
+        minuter(retirer, 140);
+      }, 120);
+    }
+  }
+  /** Rend le focus au contrôle d'origine d'un toast (ou à son homologue de
+   *  même id après remplacement ; à défaut, à la fenêtre ouverte). */
+  function focusOrigine(t) {
+    var el = t && t._origine && doc.contains(t._origine) ? t._origine : null;
+    if (!el && t && t._origineId) el = doc.getElementById(t._origineId);
+    if (el && el.closest && el.closest('[hidden], dialog:not([open]), [inert]')) el = null;
+    if (!el) {
+      var d = doc.querySelector('dialog[open]');
+      if (d) el = d.querySelector('[data-partiel-titre]') || d;
+    }
+    if (!el || !el.focus) return false;
+    if (!focalisable(el)) el.setAttribute('tabindex', '-1');
+    el.focus({ preventScroll: true });
+    return doc.activeElement === el;
   }
   K.fermerToast = fermerToast;
 
@@ -356,6 +386,12 @@
 
     var el = doc.createElement('div');
     el.className = 'k-toast k-toast-' + type;
+    // Contrôle d'origine (P1-5) : le focus y revient après « Annuler ».
+    var origine = doc.activeElement;
+    if (origine && origine !== doc.body && origine !== doc.documentElement && !(origine.closest && origine.closest('#k-toasts'))) {
+      el._origine = origine;
+      el._origineId = origine.id || null;
+    }
     el.innerHTML = '<span class="k-toast-icone" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">'
       + (ICONES[type] || ICONES.info) + '</svg></span><span class="k-toast-texte"></span><span class="k-toast-actions"></span>';
     el.querySelector('.k-toast-texte').textContent = String(texte);
@@ -370,7 +406,9 @@
         b.setAttribute('aria-keyshortcuts', 'Control+Z');
       }
       b.addEventListener('click', function () {
+        var focusDedans = el.contains(doc.activeElement);
         fermerToast(el, false);
+        if (focusDedans) focusOrigine(el);
         if (typeof opts.action.surClic === 'function') opts.action.surClic();
         else K.rejouerAction(opts.action);
       });
@@ -461,6 +499,9 @@
       if (fenetre) {
         boite.classList.add('k-confirmation-bloc');
         fenetre.insertBefore(boite, fenetre.firstChild);
+        // Par-dessus le haut de la fenêtre, sans pousser son contenu
+        // (revue d'interaction P1-1) : sa hauteur est rendue en marge basse.
+        boite.style.marginBottom = -boite.offsetHeight + 'px';
       } else {
         doc.body.appendChild(boite);
         var r = ancre && ancre.getBoundingClientRect ? ancre.getBoundingClientRect() : { left: 16, bottom: 80, top: 60 };
@@ -517,7 +558,7 @@
       d.className = 'post-dialog';
       d.setAttribute('aria-labelledby', 'k-session-expiree-titre');
       d.innerHTML = '<h2 id="k-session-expiree-titre" class="carte-titre" style="font-size:16px;margin:0 0 8px;">Session expirée</h2>'
-        + '<p style="margin:0 0 16px;font-size:13.5px;color:var(--text-secondary);">Reconnectez-vous pour continuer : votre saisie reste dans la page, rien n’a été envoyé.</p>'
+        + '<p style="margin:0 0 16px;font-size:13.5px;color:var(--text-secondary);">Reconnectez-vous pour continuer\u00a0: votre saisie reste dans la page, rien n’a été envoyé.</p>'
         + '<div class="k-confirmation-actions"><a class="btn-primaire" data-k-reconnexion target="_blank" rel="opener">Se reconnecter</a>'
         + '<button type="button" class="btn" data-k-fermer>Fermer</button></div>';
       doc.body.appendChild(d);
@@ -583,6 +624,20 @@
 
   /** data-partiel-oob="avant" : les enfants du fragment absents de la page
    *  (même id) sont insérés en tête du conteneur homonyme, surlignés. */
+  /** Élément inséré en tête d'une liste : sa hauteur s'ouvre en 240 ms
+   *  (le fil glisse au lieu de sauter — revue d'interaction P1-13). */
+  function deplier(el) {
+    if (mouvementReduit() || !el || !el.animate || !el.parentElement) return;
+    var h = el.offsetHeight;
+    if (!h) return;
+    var ecart = parseFloat(win.getComputedStyle(el.parentElement).rowGap) || 0;
+    el.style.overflow = 'hidden';
+    var a = el.animate([{ height: '0px', marginBottom: (-ecart) + 'px' }, { height: h + 'px', marginBottom: '0px' }],
+      { duration: 240, easing: 'cubic-bezier(.2, 0, 0, 1)' });
+    a.onfinish = a.oncancel = function () { el.style.overflow = ''; };
+  }
+  K.deplier = deplier;
+
   function insererNouveaux(existant, el) {
     var nouveaux = Array.prototype.filter.call(el.children, function (n) {
       return !(n.id && doc.getElementById(n.id));
@@ -593,6 +648,7 @@
     nouveaux.forEach(function (n) {
       if (n.classList && !mouvementReduit()) n.classList.add('k-nouveau');
       existant.insertBefore(n, premier);
+      deplier(n);
     });
     return nouveaux;
   }
@@ -635,6 +691,7 @@
       if (premier && premier.classList && !mouvementReduit()) premier.classList.add('k-nouveau');
       cible.insertBefore(frag, cible.firstChild);
       racine = premier || cible;
+      deplier(premier);
     } else if (mode === 'apres') {
       var debut = frag.firstElementChild;
       cible.appendChild(frag);
@@ -811,7 +868,7 @@
     }).catch(function (err) {
       if (etat.abandonnee || (err && err.name === 'AbortError')) return null;
       etat.nettoyer();
-      echec('Connexion au serveur impossible : vérifiez le réseau, puis réessayez.', true);
+      echec('Connexion au serveur impossible\u00a0: vérifiez le réseau, puis réessayez.', true);
       return { statut: 0, erreur: err };
     });
 
@@ -820,7 +877,10 @@
       // Pas de View Transition (capture de toute la page) quand une fenêtre
       // est ouverte ou que la cible est dans une fenêtre : simple fondu.
       var dansFenetre = !!((cible.closest && cible.closest('dialog')) || doc.querySelector('dialog[open]'));
-      var sansVT = o.transition === false || dansFenetre;
+      // Revue d'interaction P0-1 : ni pour une écriture ni pour une mise à
+      // jour optimiste (déjà rendue) — la capture de la page avalait les
+      // clics suivants (2 interrupteurs sur 4 pris à la suite).
+      var sansVT = o.transition === false || dansFenetre || !!o.optimiste || methode !== 'GET';
       var faire = function () {
         resultat = K.remplacer(cible, texte, o.mode || 'outer', selecteur);
         if (resultat.racine && sansVT && !mouvementReduit() && resultat.racine.classList) {

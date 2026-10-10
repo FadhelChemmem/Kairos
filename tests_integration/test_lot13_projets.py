@@ -79,7 +79,7 @@ class TestEtatDuProjet(_Projets):
         self.assertEqual(self.etat(self.p1), "bloque")
         self.assertEqual(self.sql("SELECT nom FROM projet WHERE id = %s", (self.p1,))[0]["nom"], "Renommé")
         page = self.texte(self.client.get(f"/projets/{self.p1}"))
-        self.assertIn('value="en_cours" selected>En cours (bloqué : une tâche est bloquée)', page)
+        self.assertIn('value="en_cours" selected>En cours (bloqué\u00a0: une tâche est bloquée)', page)
 
 
 class TestClotureDuProjet(_Projets):
@@ -253,12 +253,12 @@ class TestTacheExistante(_Projets):
         self.assertTrue(r.headers["Location"].endswith(f"/projets/{self.p1}?tache={self.t1}"))
         message = self.flash(r)
         self.assertIn("1 intervenant ajouté à la tâche", message)
-        self.assertIn("n'a pas accès à ce projet", message)
+        self.assertIn("n’a pas accès à ce projet", message)
         self.assertEqual({x["utilisateur_id"] for x in self.sql(
             "SELECT utilisateur_id FROM tache_intervenant WHERE tache_id = %s", (self.t1,))}, {self.inter, self.inter2})
         (n,) = self.notifs(self.inter2)
         self.assertEqual(n["tache_id"], self.t1)
-        self.assertIn(f"du projet « ", n["message"])
+        self.assertIn("Nouvelle tâche pour vous\u00a0: «\u00a0", n["message"])
         self.assertIn("a ajouté Omar Deux", self.posts(self.p1, "intervenant_tache")[-1]["contenu"])
         self.assertEqual(self.compter("SELECT count(*) AS n FROM audit_log WHERE table_cible = 'tache_intervenant' "
                                       "AND action = 'INSERT' AND utilisateur_id = %s", (self.cochef,)), 1)
@@ -368,13 +368,13 @@ class TestTacheExistante(_Projets):
                                    "intervenants": [str(self.inter2), str(self.urbs), str(self.client_ipco), str(autre_chef)]})
         message = self.flash(r)
         self.assertIn("Tâche créée.", message)
-        self.assertIn("n'ont pas accès à ce projet", message)
+        self.assertIn("n’ont pas accès à ce projet", message)
         self.assertIn("Sami Chef devient co-chef du projet", message)
         (t,) = self.sql("SELECT id FROM tache WHERE titre = 'Note de calcul'")
         self.assertEqual({x["utilisateur_id"] for x in self.sql(
             "SELECT utilisateur_id FROM tache_intervenant WHERE tache_id = %s", (t["id"],))}, {self.inter2, autre_chef})
         code = self.sql("SELECT code FROM projet WHERE id = %s", (self.p1,))[0]["code"]
-        self.assertIn(f"« Note de calcul » du projet « {code}_Projet »", self.notifs(self.inter2)[-1]["message"])
+        self.assertIn(f"«\u00a0Note de calcul\u00a0» ({code})", self.notifs(self.inter2)[-1]["message"])
         messages = [n["message"] for n in self.notifs(autre_chef)]
         self.assertTrue(any("vous en êtes maintenant co-chef" in m for m in messages), messages)
         self.assertTrue(any("Sami Chef est maintenant co-chef de votre projet" in n["message"]
@@ -478,7 +478,7 @@ class TestNotificationsEtDroits(_Projets):
         donnees = {"prenom": "Neo", "nom": "Phyte", "email": "neo@exemple.test", "role": "intervenant",
                    "fuseau": "Africa/Tunis"}
         r = self.client.post("/utilisateurs/nouveau", data=donnees)
-        self.assertIn("Choisissez l'équipe de ce compte", self.visible(r))
+        self.assertIn("Choisissez l’équipe de ce compte", self.visible(r))
         self.assertEqual(self.compter("SELECT count(*) AS n FROM utilisateur WHERE email = 'neo@exemple.test'"), 0)
         self.client.post("/utilisateurs/nouveau", data={**donnees, "equipe_code": "MIDGARD"})
         self.assertEqual(self.compter("SELECT count(*) AS n FROM utilisateur WHERE email = 'neo@exemple.test'"), 1)

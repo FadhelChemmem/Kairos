@@ -119,7 +119,8 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
         && d.getAttribute('aria-label') === 'Tâche « Plans de ferraillage »' && location.search === '?tache=2';
     }));
     a = await actif(p);
-    etape('focus sur le premier champ (titre)', a.id === 'tache-titre-2', a);
+    // Revue d'interaction P1-6 : focus sur l'en-tête, jamais dans le champ du titre.
+    etape('focus sur l’en-tête du panneau (pas dans le titre)', await p.evaluate(() => document.activeElement && document.activeElement.matches('#tache-fenetre-2 [data-tache-entete]')), a);
     etape('« Rejoindre cette tâche » proposé dans la fenêtre', await p.locator('#dialog-tache button:has-text("Rejoindre cette tâche")').count() === 1);
     await capture(p, 'e2e-projet-fenetre.png');
     await p.keyboard.press('Escape');
@@ -370,7 +371,7 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     etape('post « Ali Chef a confié le projet à Sami Chérif » dans le fil',
       (await pg.locator('#fil-posts').innerText()).includes('Ali Chef a confié le projet à Sami Chérif.'));
     etape('notification au nouveau chef, journal d’audit',
-      sql("SELECT count(*) FROM notification WHERE utilisateur_id=5 AND message LIKE 'Ali Chef vous a confié le projet « 21114X_Siemens »%' AND post_id IS NOT NULL") === '1'
+      sql("SELECT count(*) FROM notification WHERE utilisateur_id=5 AND message LIKE 'Ali Chef vous a confié le projet «\u00a021114X_Siemens\u00a0»%' AND post_id IS NOT NULL") === '1'
       && sql("SELECT count(*) FROM audit_log WHERE table_cible='projet' AND ligne_id=1 AND utilisateur_id=2 AND donnees_avant->>'chef_projet_id'='2' AND donnees_apres->>'chef_projet_id'='5'") === '1');
     etape('en-tête et carte Intervenants à jour', (await pg.locator('.lien-personne .nom-personne').first().innerText()) === 'Sami Chérif'
       && (await pg.locator('#carte-intervenants').innerText()).includes('Co-chef'));
@@ -382,7 +383,7 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     await pg.click('button.bouton-texte[data-open-informations-dialog]');
     etape('projet clos : chef en lecture seule pour un co-chef',
       await pg.locator('#dialog-info-chef').count() === 0
-      && (await pg.locator('#dialog-informations-projet').innerText()).includes('Projet clos : rouvrez-le d’abord'.replace('’', "'")));
+      && (await pg.locator('#dialog-informations-projet').innerText()).includes('Projet clos\u00a0: rouvrez-le d’abord'));
     await pg.keyboard.press('Escape');
     sql("UPDATE projet SET etat='en_cours' WHERE id=1");
     await ali2.close();

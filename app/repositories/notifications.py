@@ -52,10 +52,14 @@ def list_notifications(user_id: int, limit: int = 50, avec_simulees: bool = Fals
         SELECT n.id, n.categorie, n.message, n.lu, n.created_at,
                n.post_id, n.tache_id, n.projet_id, n.simulee,
                p.projet_id AS post_projet_id,
-               t.projet_id AS tache_projet_id, t.titre AS tache_titre
+               t.projet_id AS tache_projet_id, t.titre AS tache_titre,
+               pr.code AS projet_code
         FROM notification n
         LEFT JOIN post p ON p.id = n.post_id
         LEFT JOIN tache t ON t.id = n.tache_id
+        -- Revue visuelle P2-31 : le code du projet remplace la pastille
+        -- « Projet » répétée sur chaque ligne.
+        LEFT JOIN projet pr ON pr.id = COALESCE(n.projet_id, p.projet_id, t.projet_id)
         WHERE n.utilisateur_id = %s AND (%s OR NOT n.simulee)
         ORDER BY n.created_at DESC
         LIMIT %s

@@ -32,11 +32,18 @@ def accueil():
     fil = posts.list_feed_mes_projets(user_id, limit=20)
     # Daily log (lot 10) : jours oubliés au fuseau de la personne, bornés
     # par sa date d'arrivée ; et la journée du jour, pour le texte de la carte.
+    # Revue produit P1-10 : la carte dit où en est la journée (« 3 h 30
+    # saisies sur 8 h »), et non « renseignée » dès la première ligne.
+    dailylog_minutes, dailylog_objectif = 0, None
     if role == "client":
         dailylog_jours_manques, dailylog_aujourdhui = [], None
     else:
         dailylog_jours_manques = dailylog_repo.jours_manques_recents(g.user, aujourdhui=aujourdhui_local)
         dailylog_aujourdhui = dailylog_repo.jour_renseigne(user_id, aujourdhui_local)
+        if dailylog_aujourdhui:
+            dailylog_minutes = sum(dailylog_repo.heures_en_minutes(e["heures"])
+                                   for e in dailylog_repo.list_entrees_jour(user_id, aujourdhui_local))
+            dailylog_objectif = dailylog_repo.get_objectif(user_id)
 
     # Fenêtre "+ Nouveau post" de l'accueil (audit n°2) : seulement les
     # projets actifs (pas ceux terminés/abandonnés), la liste des personnes
@@ -86,6 +93,8 @@ def accueil():
         fil=fil,
         dailylog_jours_manques=dailylog_jours_manques,
         dailylog_aujourdhui=dailylog_aujourdhui,
+        dailylog_minutes=dailylog_minutes,
+        dailylog_objectif=dailylog_objectif,
         aujourdhui=aujourdhui_local,
     )
 

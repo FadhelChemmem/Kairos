@@ -288,6 +288,30 @@
         if (sum) sum.focus();
       }
     });
+    // Revue d'interaction P2-6 : Échap dans le champ de réponse le replie
+    // (vide, ou seulement la mention posée d'office) et rend le focus à
+    // « Répondre » ; avec une saisie, la même question que les fenêtres.
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      var ta = e.target;
+      var bloc = ta && ta.tagName === 'TEXTAREA' && ta.closest ? ta.closest('[data-reponse-a]') : null;
+      if (!bloc || bloc.hidden || (ta.closest('.comment-input') && ta.closest('.comment-input').querySelector('.mention-liste:not([hidden])'))) return;
+      e.preventDefault();
+      var carte = bloc.closest('.post-card') || document;
+      var replier = function () {
+        bloc.hidden = true;
+        ta.value = '';
+        var b = carte.querySelector('[data-repondre="' + bloc.getAttribute('data-reponse-a') + '"]');
+        if (b) b.focus();
+      };
+      var reste = ta.value.replace(/^@\S+ \S+ /, '').trim();
+      var K = window.Kairos;
+      if (!reste) { replier(); return; }
+      if (K && K.confirmer) {
+        K.confirmer(ta, 'Abandonner les modifications\u00a0? La saisie sera perdue.', { libelleOk: 'Abandonner', libelleAnnuler: 'Continuer la saisie', danger: true })
+          .then(function (oui) { if (oui) replier(); });
+      }
+    });
     // À l'ouverture de « Supprimer », le focus va sur « Oui, supprimer »
     // (l'évènement toggle ne remonte pas : écoute en capture).
     document.addEventListener('toggle', function (e) {

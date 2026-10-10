@@ -109,7 +109,8 @@ class TestBuildGantt(unittest.TestCase):
     def test_this_week_task_is_orange(self):
         taches = [{"titre": "Cette semaine", "date_echeance": self.TODAY + datetime.timedelta(days=5)}]
         row = build_gantt(taches, self.TODAY)["rows"][0]
-        self.assertEqual(row["couleur"], "#b8520f")
+        self.assertEqual(row["couleur"], "#a16207")
+        self.assertEqual(row["niveau"], "semaine")
 
     def test_later_task_is_green(self):
         taches = [{"titre": "Plus tard", "date_echeance": self.TODAY + datetime.timedelta(days=14)}]

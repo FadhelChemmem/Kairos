@@ -22,7 +22,7 @@
 
   dialog.querySelectorAll('[data-close-projet-dialog]').forEach(function (b) {
     b.addEventListener('click', function () {
-      dialog.close();
+      (window.KairosFloatingWindow && window.KairosFloatingWindow.fermer ? window.KairosFloatingWindow.fermer(dialog) : dialog.close());
     });
   });
   // Clic sur le fond (backdrop) : ferme, sauf si un champ a été modifié

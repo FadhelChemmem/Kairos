@@ -322,7 +322,7 @@ def texte_rappel_daily_log(jours, aujourdhui) -> str:
     if len(morceaux) == 1:
         return f"Daily log du {morceaux[0]} non rempli"
     liste = ", ".join(morceaux[:-1]) + " et " + morceaux[-1]
-    return f"{len(morceaux)} jours de Daily log non remplis : {liste}"
+    return f"{len(morceaux)} jours de Daily log non remplis\u00a0: {liste}"
 
 
 def en_retard_de(echeance, aujourdhui) -> str:
@@ -331,6 +331,9 @@ def en_retard_de(echeance, aujourdhui) -> str:
     if echeance is None or aujourdhui is None or echeance >= aujourdhui:
         return ""
     return f"en retard de {(aujourdhui - echeance).days} j"
+
+
+GANTT_COULEURS = {"urgent": "#c2401f", "semaine": "#a16207", "tard": "#4a7c59"}
 
 
 def build_gantt(taches: list[dict], today, window_days: int = 21) -> dict:
@@ -364,19 +367,23 @@ def build_gantt(taches: list[dict], today, window_days: int = 21) -> dict:
         offset = (echeance - today).days
         # Teintes assombries (lot 10, audit front §3.6) : texte blanc sur la
         # barre à 5,19:1 et 4,94:1 (contre 3,83 et 3,15 avant).
+        # Revue visuelle P1-6 : « cette semaine » en ambre (#a16207, ΔE 31,6
+        # avec le rouge du retard, blanc dessus 4,92:1) ; les gabarits
+        # passent par la classe g-bar-<niveau> (jetons --gantt-*).
         if offset < 0:
-            span, couleur, label_barre = 1, "#c2401f", f"◀ {en_retard_de(echeance, today)}"
+            span, niveau, label_barre = 1, "urgent", f"◀ {en_retard_de(echeance, today)}"
         else:
             span = min(offset + 1, window_days)
             if offset <= 1:
-                couleur = "#c2401f"
+                niveau = "urgent"
             elif offset <= 6:
-                couleur = "#b8520f"
+                niveau = "semaine"
             else:
-                couleur = "#4a7c59"
+                niveau = "tard"
             # « 7 oct. » comme partout ailleurs (c'était « 07/10 »).
             label_barre = date_courte(echeance)
-        rows.append({**t, "span": span, "couleur": couleur, "label_barre": label_barre,
+        couleur = GANTT_COULEURS[niveau]
+        rows.append({**t, "span": span, "couleur": couleur, "niveau": niveau, "label_barre": label_barre,
                      "en_retard": offset < 0, "retard": en_retard_de(echeance, today)})
 
     return {"days": days, "rows": rows, "window_days": window_days}
@@ -471,8 +478,9 @@ def heures_interv_chef(interv, chef) -> str:
     """« 8 h / 5 h 30 » = heures intervenants / heures chef de projet
     (retour Fadhel, J.docx : « 8/5 h pour 8 heure intervenant et 5 heure
     chef de projet ») — projets, tâches et panneau Informations ; en heures
-    et minutes depuis le lot 11."""
-    return f"{heures(interv)} / {heures(chef)}"
+    et minutes depuis le lot 11. Revue produit P1-5 : « 8 h · 5 h » (le
+    sens des deux nombres est donné par l'en-tête ou le libellé voisin)."""
+    return f"{heures(interv)} · {heures(chef)}"
 
 
 def _aujourdhui():

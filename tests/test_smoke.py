@@ -498,7 +498,7 @@ class SmokeTestCase(SmokeBase):
         resp = self._get("/accueil")
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
         self.assertIn("Tour Meridian".encode(), resp.data)
-        self.assertIn("Mes tâches".encode(), resp.data)
+        self.assertIn("Tâches de mes projets".encode(), resp.data)  # revue produit P1-2 (Admin)
         # Le mot interdit ne doit jamais apparaître dans le HTML rendu.
         self.assertNotIn("rebond".encode(), resp.data.lower())
 
@@ -776,7 +776,7 @@ class SmokeTestCase(SmokeBase):
         self.assertEqual(resp.status_code, 302)
         with self.client.session_transaction() as sess:
             flashes = sess.get("_flashes", [])
-        self.assertTrue(any("Date de d\xe9but ou d'\xe9ch\xe9ance invalide" in msg for _, msg in flashes))
+        self.assertTrue(any("Date de d\xe9but ou d’\xe9ch\xe9ance invalide" in msg for _, msg in flashes))
 
     def test_creer_tache_gere_le_garde_fou_intervenant_rh(self):
         """Un intervenant RH (garde-fou trg_check_tache_intervenant_role)
@@ -1228,7 +1228,7 @@ class SmokeTestCase(SmokeBase):
     def test_utilisateur_creer_form_renders(self):
         resp = self._get("/utilisateurs/nouveau")
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
-        self.assertIn("Cr\xe9er l'utilisateur".encode(), resp.data)
+        self.assertIn("Cr\xe9er l’utilisateur".encode(), resp.data)
         self.assertIn("Compte actif".encode(), resp.data)
 
     def test_utilisateur_creer_equipe_option_vide_selectionnee_par_defaut(self):
@@ -1546,10 +1546,10 @@ class SmokeTestCase(SmokeBase):
                 follow_redirects=False,
             )
         body = resp.data.decode()
-        self.assertIn("Email ou mot de passe incorrect", body)
+        self.assertIn("Adresse e-mail ou mot de passe incorrect", body)
         # Lot 13 : zone des toasts (position fixe), message injecté au chargement.
         self.assertIn('<div id="k-toasts" class="k-toasts" popover="manual">', body)
-        self.assertIn('<template id="k-toasts-initiaux"><p data-type="erreur">Email ou mot de passe incorrect', body)
+        self.assertIn('<template id="k-toasts-initiaux"><p data-type="erreur">Adresse e-mail ou mot de passe incorrect', body)
         # Page publique : le socle (toasts) n'est chargé que pour afficher un message.
         self.assertIn("js/kairos-partiel.js", body)
         self.assertNotIn("flash-wrap", body)
@@ -1931,7 +1931,7 @@ class SmokeTestCase(SmokeBase):
         self.assertIn('data-intents="tache,information,requete"', bouton)
         self.assertIn('data-projet-id="1"', bouton)
         self.assertNotIn("disabled", bouton)
-        self.assertIn("Reposter", body)
+        self.assertIn("Donner suite", body)
         # Plus de trombone "Joindre un fichier" ni de flèche "Créer un post lié".
         self.assertNotIn('title="Joindre un fichier"', body)
         self.assertNotIn("Créer un post lié", body)
@@ -2326,10 +2326,10 @@ class SmokeTestCase(SmokeBase):
         resp = self._get("/projets/1")
         self.assertEqual(resp.status_code, 200)
         body = resp.data.decode()
-        self.assertIn("302\u00a0h / 180\u00a0h", body)  # en-tête (lot 11 : h et min)
+        self.assertIn("302\u00a0h intervenants · 180\u00a0h chef", body)  # en-tête (lot 11 : h et min)
         self.assertIn("Heures intervenants", body)  # panneau Informations
         self.assertIn("Heures chef de projet", body)
-        self.assertIn(">8\u00a0h / 4\u00a0h<", body)  # tâche 5 : 8 h interv., 4 h chef
+        self.assertIn(">8\u00a0h · 4\u00a0h<", body)  # tâche 5 : 8 h interv., 4 h chef
 
     def test_repartition_heures_affichee_sur_la_liste_projets(self):
         resp = self._get("/projets", **{
@@ -2342,7 +2342,7 @@ class SmokeTestCase(SmokeBase):
             }],
         })
         self.assertEqual(resp.status_code, 200)
-        self.assertIn(">15\u00a0h / 13\u00a0h<", resp.data.decode())
+        self.assertIn(">15\u00a0h · 13\u00a0h<", resp.data.decode())
 
     def test_repartition_heures_aucune_ligne_ne_plante_pas(self):
         """Même précaution que PROJET_SANS_HEURES/TACHE_SANS_HEURES pour
@@ -2978,7 +2978,7 @@ class SmokeTestCase(SmokeBase):
         resp = self._get("/utilisateurs/moi")
         self.assertEqual(resp.status_code, 200)
         self.assertIn(
-            "g\xe9r\xe9s par l'administrateur ou le RH".encode(), resp.data,
+            "g\xe9r\xe9s par l’administrateur ou le RH".encode(), resp.data,
         )
         self.assertIn(">Administrateur<".encode(), resp.data)
 
@@ -3536,7 +3536,7 @@ class TestControlesDAccesStricts(unittest.TestCase):
         # "Tour Meridian", état "bloque") ; lot 13 (décision 1) : plus de
         # choix « Bloqué », l'état découle des tâches.
         self.assertIn('value="Tour Meridian"', body)
-        self.assertIn('value="en_cours" selected>En cours (bloqué : une tâche est bloquée)', body)
+        self.assertIn('value="en_cours" selected>En cours (bloqué\u00a0: une tâche est bloquée)', body)
         self.assertNotIn('value="bloque"', body)
 
     def test_page_projet_bouton_informations_masque_si_ne_peut_pas_gerer(self):
@@ -4127,7 +4127,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
         self.assertIn('href="/fichiers/posts/commentaires/2"', body)
         self.assertIn("plan.pdf", body)
         self.assertIn("Répondre", body)
-        self.assertIn("Reposter", body)
+        self.assertIn("Donner suite", body)
 
     def test_tag_de_soi_meme_ignore(self):
         """"@" dans le texte (2026-09-29) : se taguer soi-même (USER, id=1)
@@ -4311,7 +4311,7 @@ class TestFilCommentairesReseauSocial(unittest.TestCase):
         resp = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [repost]})
         self.assertEqual(resp.status_code, 200)
         body = resp.data.decode()
-        self.assertIn("a reposté", body)
+        self.assertIn("a donné suite", body)
         self.assertIn("Envoi du dossier EXE lot GO.", body)
 
 
@@ -4452,7 +4452,7 @@ class TestInformationEtComposeur(SmokeBase):
         resp = self._get("/accueil")
         self.assertEqual(resp.status_code, 200)
         body = resp.data.decode()
-        self.assertIn("Publier l'information", body)
+        self.assertIn("Publier l’information", body)
         self.assertNotIn("pas encore publiables", body)
         # Projet vide par défaut sur l'onglet Information, marqué optionnel,
         # sans texte d'exemple (Remarques/J.docx).
@@ -4763,8 +4763,8 @@ class TestPostsAutomatiquesEtProjet(SmokeBase):
             {**FEED_POST_MANUEL, "id": 14, "evenement": "etat_projet", "contenu": "En cours → Terminé"},
         ]
         body = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": feed}).data.decode()
-        for phrase in ("a changé l&#39;état d&#39;une tâche", "a renommé une tâche", "a créé le projet",
-                       "a changé l&#39;état du projet", "En cours → Bloqué", "Plan → Plan R+2"):
+        for phrase in ("a changé l’état d’une tâche", "a renommé une tâche", "a créé le projet",
+                       "a changé l’état du projet", "En cours → Bloqué", "Plan → Plan R+2"):
             self.assertIn(phrase, body)
 
     def test_ligne_de_tache_ouvre_sa_fenetre_avec_titre_modifiable(self):
@@ -4914,8 +4914,8 @@ class TestProjetClientHonoraires(SmokeBase):
                 parser_montant(mauvais)
         self.assertEqual(montant_fr(Decimal("12500.00")), "12\u202f500")
         self.assertEqual(montant_fr(None), "")
-        self.assertEqual(heures_interv_chef(8, 5), "8\u00a0h / 5\u00a0h")
-        self.assertEqual(heures_interv_chef(7.25, None), "7\u00a0h\u00a015 / 0\u00a0h")
+        self.assertEqual(heures_interv_chef(8, 5), "8\u00a0h · 5\u00a0h")
+        self.assertEqual(heures_interv_chef(7.25, None), "7\u00a0h\u00a015 · 0\u00a0h")
 
 
 
@@ -4959,7 +4959,7 @@ class TestPagesLot6(SmokeBase):
         self.assertIn('<option value="CM" title="Charpente métallique" data-mode="">CM</option>', body)
         self.assertIn('data-chip-tristate data-name-contient="lot_contient" data-name-egal="lot_egal"', body)
         self.assertIn('id="export-excel" href="/projets/export.xlsx"', body)
-        self.assertIn('title="Rendu : Note de calcul"', body)
+        self.assertIn('title="Rendu client&nbsp;: Note de calcul"', body)
         self.assertIn("filtres-une-ligne", body)
 
     def test_chefs_de_projet_limites_a_ceux_qui_ont_des_projets_actifs(self):
@@ -5114,7 +5114,7 @@ class TestAuditV3(SmokeBase):
                                                        {"id": 5, "nom_fichier": "plan.pdf"}]}
         body = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": [post]}).data.decode()
         self.assertRegex(body, r'<a href="/fichiers/posts/4"[^>]*data-lightbox')
-        self.assertIn('<img src="/fichiers/posts/4" alt="Image jointe : capture.png" class="post-attachment-img"', body)
+        self.assertIn('<img src="/fichiers/posts/4" alt="Image jointe&nbsp;: capture.png" class="post-attachment-img"', body)
         self.assertIn("plan.pdf</span>", body)
 
     def test_migrations_appliquees_au_demarrage(self):
@@ -5457,7 +5457,7 @@ class TestDecisionsLot7(SmokeBase):
         mocks["app.repositories.projets.add_co_chef"].assert_called_once()
         args = mocks["app.repositories.notifications.creer"].call_args.args
         self.assertEqual(args[0], 1)
-        self.assertIn("Sami B a rejoint votre projet « 26099X_Tour Meridian » comme co-chef", args[2])
+        self.assertIn("Sami B a rejoint votre projet «\u00a026099X_Tour Meridian\u00a0» comme co-chef", args[2])
 
 
 

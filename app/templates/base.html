@@ -1,5 +1,6 @@
 {% import "partials/avatar.html" as avatarm %}
 {% import "partials/icones.html" as ic %}
+{% import "partials/logo.html" as logom %}
 <!doctype html>
 <html lang="fr"{% if bandeau_admin and bandeau_admin.mode == 'voir' %} data-lecture-seule{% endif %}>
 <head>
@@ -81,16 +82,10 @@
 <header class="topbar{{ ' topbar-mode-' ~ bandeau_admin.mode if bandeau_admin and bandeau_admin.mode }}">
   <div class="topbar-inner">
   <div class="topbar-gauche">
-    {# Logo en deux versions (retour Fadhel, 2026-09-27) : le PNG d'origine a
-       le mot "KAIROS" en noir plein, invisible sur fond sombre — une
-       variante avec ce texte repassé en blanc (O orange, trait et pastille
-       inchangés) est basculée en thème sombre exactement comme les icônes
-       soleil/lune de #theme-toggle ci-dessous (voir app.css). #}
+    {# Logo en SVG (revue visuelle P1-19) : une seule image nette pour les
+       deux thèmes (lettres en currentColor), voir partials/logo.html. #}
     <a href="{{ url_for('main.accueil') }}" class="lien-logo" aria-label="Kairos, accueil">
-      {# Lot 11 (audit front M8) : logos à la taille d'affichage ×2 (186 × 48,
-         2 Ko) au lieu des 480 × 124 d'origine (28 et 23 Ko). #}
-      <img class="logo-light" src="{{ url_for('static', filename='img/kairos-logo-topbar.png') }}" alt="Kairos" width="93" height="24">
-      <img class="logo-dark" src="{{ url_for('static', filename='img/kairos-logo-dark-topbar.png') }}" alt="Kairos" width="93" height="24">
+      {{ logom.logo(24) }}
     </a>
     {# Icône du projet actif dans la topbar (retour Fadhel, 2026-09-27) —
        rempli par projet_detail.html quand on consulte un projet ; vide
@@ -118,25 +113,29 @@
     <button type="button" class="iconbtn topbar-recherche-btn" data-recherche-ouvrir aria-expanded="false" aria-controls="recherche-globale" title="Rechercher (Ctrl+K)" aria-label="Rechercher">{{ ic.icone('recherche') }}</button>
     {# Ordre de la topbar (retour Fadhel, 2026-09-28) : Accueil, Projet,
        Deadlines, Daily log, Utilisateurs, Journal d'audit (Admin
-       seulement), Notifications, Thème, Déconnexion. Lot 13 : sous 600 px,
-       les liens k-nav-principal passent dans la barre basse. #}
-    <a class="iconbtn k-nav-principal" href="{{ url_for('main.accueil') }}" data-raccourci-g="a" title="Accueil" aria-label="Accueil"{% if request.endpoint == 'main.accueil' %} aria-current="page"{% endif %}>{{ ic.icone('accueil') }}</a>
+       seulement), Notifications, puis le menu du compte. Lot 13 : sous
+       600 px, les liens k-nav-principal passent dans la barre basse ;
+       à partir de 1 200 px, chaque icône porte son libellé (revue produit
+       P1-1) ; la page courante est marquée (aria-current, revue visuelle
+       P0-3). #}
+    <a class="iconbtn topbar-lien k-nav-principal" href="{{ url_for('main.accueil') }}" data-raccourci-g="a" title="Accueil" aria-label="Accueil"{% if request.endpoint == 'main.accueil' %} aria-current="page"{% endif %}>{{ ic.icone('accueil') }}<span class="topbar-libelle" aria-hidden="true">Accueil</span></a>
     {# RH : aucun accès aux projets, ni échéances ni Daily log ; Client : ni
        échéances (pas de tâches) ni Daily log (décisions Fadhel, lot 7). #}
     {% if g.user.role != 'rh' %}
-    <a class="iconbtn k-nav-principal" href="{{ url_for('projets.liste') }}" data-raccourci-g="p" title="Tous les projets" aria-label="Tous les projets"{% if request.endpoint == 'projets.liste' %} aria-current="page"{% elif request.endpoint == 'projets.detail' %} aria-current="true"{% endif %}>{{ ic.icone('projets') }}</a>
+    <a class="iconbtn topbar-lien k-nav-principal" href="{{ url_for('projets.liste') }}" data-raccourci-g="p" title="Tous les projets" aria-label="Tous les projets"{% if request.endpoint == 'projets.liste' %} aria-current="page"{% elif request.endpoint == 'projets.detail' %} aria-current="true"{% endif %}>{{ ic.icone('projets') }}<span class="topbar-libelle" aria-hidden="true">Projets</span></a>
     {% endif %}
     {% if g.user.role not in ('rh', 'client') %}
-    <a class="iconbtn k-nav-principal" href="{{ url_for('deadlines.liste') }}" data-raccourci-g="d" title="Deadlines" aria-label="Deadlines"{% if request.endpoint == 'deadlines.liste' %} aria-current="page"{% endif %}>{{ ic.icone('deadlines') }}</a>
-    <a class="iconbtn k-nav-principal" href="{{ url_for('dailylog.formulaire') }}" data-raccourci-g="l" title="Daily log" aria-label="Daily log"{% if request.endpoint == 'dailylog.formulaire' %} aria-current="page"{% endif %}>{{ ic.icone('dailylog') }}</a>
+    <a class="iconbtn topbar-lien k-nav-principal" href="{{ url_for('deadlines.liste') }}" data-raccourci-g="d" title="Deadlines" aria-label="Deadlines"{% if request.endpoint == 'deadlines.liste' %} aria-current="page"{% endif %}>{{ ic.icone('deadlines') }}<span class="topbar-libelle" aria-hidden="true">Deadlines</span></a>
+    <a class="iconbtn topbar-lien k-nav-principal" href="{{ url_for('dailylog.formulaire') }}" data-raccourci-g="l" title="Daily log" aria-label="Daily log"{% if request.endpoint == 'dailylog.formulaire' %} aria-current="page"{% endif %}>{{ ic.icone('dailylog') }}<span class="topbar-libelle" aria-hidden="true">Daily log</span></a>
     {% endif %}
     {# Le chef de projet a accès à la liste (lecture seule) : lien affiché
-       pour lui aussi (PROMPT_CORRECTIONS.md P3 #27). #}
+       pour lui aussi (PROMPT_CORRECTIONS.md P3 #27). « Équipe » dans la
+       barre, « Utilisateurs » en titre de page (revue produit, § 3). #}
     {% if g.user.role in ('admin', 'rh', 'chef_de_projet') %}
-    <a class="iconbtn" href="{{ url_for('utilisateurs.liste') }}" title="Utilisateurs" aria-label="Utilisateurs"{% if request.endpoint == 'utilisateurs.liste' %} aria-current="page"{% endif %}>{{ ic.icone('utilisateurs') }}</a>
+    <a class="iconbtn topbar-lien" href="{{ url_for('utilisateurs.liste') }}" title="Équipe" aria-label="Équipe"{% if request.endpoint == 'utilisateurs.liste' %} aria-current="page"{% elif request.endpoint in ('utilisateurs.fiche', 'utilisateurs.creer') %} aria-current="true"{% endif %}>{{ ic.icone('utilisateurs') }}<span class="topbar-libelle" aria-hidden="true">Équipe</span></a>
     {% endif %}
     {% if g.user.role == 'admin' %}
-    <a class="iconbtn" href="{{ url_for('admin.journal') }}" title="Journal d'audit" aria-label="Journal d'audit"{% if request.endpoint == 'admin.journal' %} aria-current="page"{% endif %}>{{ ic.icone('journal') }}</a>
+    <a class="iconbtn topbar-lien" href="{{ url_for('admin.journal') }}" title="Journal d’audit" aria-label="Journal d’audit"{% if request.endpoint == 'admin.journal' %} aria-current="page"{% endif %}>{{ ic.icone('journal') }}<span class="topbar-libelle" aria-hidden="true">Journal</span></a>
     {% endif %}
     {# Nom accessible explicite : sans lui, le badge (« 1 ») l'emportait sur le title. #}
     {# Lot 13 : la cloche ouvre l'aperçu des 10 dernières notifications
@@ -144,8 +143,8 @@
        téléphone (barre basse), le lien mène à la page. Badge tenu à jour
        sans recharger (#notifs-nb, /notifications/compte). #}
     <div class="notifs-cloche-zone">
-    <a class="iconbtn k-nav-principal" href="{{ url_for('notifications.liste') }}" id="notifs-cloche" data-notifs-cloche data-raccourci-g="n" title="Notifications" aria-label="{{ libelle_notifs }}" aria-haspopup="dialog" aria-expanded="false" aria-controls="notifs-popover" data-url-compte="{{ url_for('notifications.compte') }}"{% if request.endpoint == 'notifications.liste' %} aria-current="page"{% endif %}>
-      {{ ic.icone('notifications') }}
+    <a class="iconbtn topbar-lien k-nav-principal" href="{{ url_for('notifications.liste') }}" id="notifs-cloche" data-notifs-cloche data-raccourci-g="n" title="Notifications" aria-label="{{ libelle_notifs }}" aria-haspopup="dialog" aria-expanded="false" aria-controls="notifs-popover" data-url-compte="{{ url_for('notifications.compte') }}"{% if request.endpoint == 'notifications.liste' %} aria-current="page"{% endif %}>
+      {{ ic.icone('notifications') }}<span class="topbar-libelle" aria-hidden="true">Notifications</span>
       <span class="iconbtn-badge" aria-hidden="true" data-notifs-badge{% if not nb_notifs %} hidden{% endif %}>{{ nb_notifs if nb_notifs < 10 else '9+' }}</span>
     </a>
     <div class="notifs-popover" id="notifs-popover" role="dialog" aria-labelledby="notifs-apercu-titre" hidden>
@@ -161,20 +160,28 @@
       </div>
     </div>
     </div>
-    <button type="button" class="iconbtn" id="theme-toggle" title="Thème sombre" aria-label="Thème sombre" aria-pressed="false">
-      <svg aria-hidden="true" focusable="false" class="theme-icon-sun" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-      <svg aria-hidden="true" focusable="false" class="theme-icon-moon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
-    </button>
-    {# Déconnexion en POST (PROMPT_CORRECTIONS.md P2 #25) — display:contents
-       garde le bouton aligné dans la barre exactement comme l'ancien lien.
-       Permise en « Voir comme » (data-permis-lecture). #}
-    <form method="post" action="{{ url_for('auth.logout') }}" class="k-contents" data-permis-lecture>
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="iconbtn" title="Déconnexion" aria-label="Déconnexion">
-        <svg aria-hidden="true" focusable="false" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+    {# Menu du compte (revue produit P1-1, revue visuelle P2-33) : Mes
+       informations, Thème sombre, Raccourcis clavier et Se déconnecter,
+       derrière l'avatar — la déconnexion n'est plus à 8 px de l'avatar ni
+       collée au thème. Fenêtre « popover » native : Échap et clic dehors la
+       ferment, sans script ; Tab passe du bouton au menu (ordre du DOM). #}
+    <div class="topbar-compte">
+      <button type="button" class="topbar-compte-btn" popovertarget="menu-compte" aria-label="Mon compte ({{ g.user.prenom }} {{ g.user.nom }})" title="{{ g.user.prenom }} {{ g.user.nom }}">
+        {% with oob_avatar=False %}{% include "partials/topbar_avatar.html" %}{% endwith %}
       </button>
-    </form>
-    {% with oob_avatar=False %}{% include "partials/topbar_avatar.html" %}{% endwith %}
+      <div id="menu-compte" class="menu-compte" popover role="group" aria-label="Mon compte">
+        <p class="menu-compte-tete"><span class="menu-compte-nom">{{ g.user.prenom }} {{ g.user.nom }}</span><span class="menu-compte-sous">{{ g.user.email }}</span></p>
+        <a class="menu-compte-item" href="{{ url_for('utilisateurs.mon_profil') }}"{% if request.endpoint == 'utilisateurs.mon_profil' %} aria-current="page"{% endif %}>{{ ic.icone('personne', 17) }}<span>Mes informations</span></a>
+        <button type="button" class="menu-compte-item" id="theme-toggle" aria-pressed="false">{{ ic.icone('lune', 17) }}<span>Thème sombre</span><span class="menu-compte-bascule" aria-hidden="true"></span></button>
+        <button type="button" class="menu-compte-item menu-compte-raccourcis" data-aide-raccourcis>{{ ic.icone('clavier', 17) }}<span>Raccourcis clavier</span><kbd aria-hidden="true">?</kbd></button>
+        {# Déconnexion en POST (PROMPT_CORRECTIONS.md P2 #25), permise en
+           « Voir comme » (data-permis-lecture). #}
+        <form method="post" action="{{ url_for('auth.logout') }}" class="menu-compte-form" data-permis-lecture>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="menu-compte-item menu-compte-sortie">{{ ic.icone('deconnexion', 17) }}<span>Se déconnecter</span></button>
+        </form>
+      </div>
+    </div>
   </nav>
   </div>
 </header>

@@ -62,7 +62,7 @@ ENDPOINTS_SANS_EMPREINTE = frozenset({
 })
 ENTETE_EMPREINTE = "X-Kairos-Mode"
 CHAMP_EMPREINTE = "_mode"
-MESSAGE_MODE_CHANGE = ("Le mode a changé dans un autre onglet — page rechargée : rien n'a été enregistré. "
+MESSAGE_MODE_CHANGE = ("Le mode a changé dans un autre onglet — page rechargée\u00a0: rien n’a été enregistré. "
                        "Vérifiez le compte et la date affichés, puis recommencez.")
 # Jamais permis en « Agir comme » : changer le mot de passe du compte cible
 # réécrirait l'empreinte de la session de l'Admin (auth.password_fingerprint).
@@ -199,7 +199,7 @@ def appliquer() -> None:
     if mode["mode"] == "agir" and not mode_test_actif():
         purger_rappels_simules(admin["id"], mode["cible"])
         _quitter_mode(admin, mode, None, "mode_test_coupe",
-                      "Le mode test a été coupé : « Agir comme » n'existe plus, retour à votre compte.")
+                      "Le mode test a été coupé\u00a0: «\u00a0Agir comme\u00a0» n’existe plus, retour à votre compte.")
         return
     from .auth import get_user_by_id
 
@@ -320,11 +320,11 @@ def refuser_ecriture():
         return None
     if mode == "voir" and request.endpoint not in ENDPOINTS_PERMIS_EN_LECTURE:
         return reponse_refus(
-            f"Vous voyez Kairos comme {nom_complet(g.user)} : lecture seule, rien n'a été modifié. "
+            f"Vous voyez Kairos comme {nom_complet(g.user)}\u00a0: lecture seule, rien n’a été modifié. "
             "Revenez à votre compte (bandeau orange) pour agir.")
     if mode == "agir" and request.endpoint in ENDPOINTS_INTERDITS_EN_AGIR:
         return reponse_refus(
-            f"Le mot de passe de {nom_complet(g.user)} ne se change pas en « Agir comme ».",
+            f"Le mot de passe de {nom_complet(g.user)} ne se change pas en «\u00a0Agir comme\u00a0».",
             code="interdit")
     return None
 
@@ -367,5 +367,5 @@ def installer(app) -> None:
     app.context_processor(contexte_gabarits)
     if app.config.get("MODE_TEST") is True:
         app.logger.warning(
-            "KAIROS_MODE_TEST=true : « Agir comme » et la date simulée sont disponibles pour les Admins. "
+            "KAIROS_MODE_TEST=true\u00a0: «\u00a0Agir comme\u00a0» et la date simulée sont disponibles pour les Admins. "
             "À couper (KAIROS_MODE_TEST=false) avant la mise en service réelle.")

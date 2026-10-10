@@ -69,7 +69,7 @@ class TestRoles(_Projets):
         self.login(autre)
         r = self.client.post(f"/notifications/{notif['id']}/ouvrir")
         self.assertEqual((r.status_code, r.headers["Location"]), (302, "/notifications"))
-        self.assertIn("Vous n'avez plus accès à ce projet.", self.flash(r))
+        self.assertIn("Vous n’avez plus accès à ce projet.", self.flash(r))
         # Projet toujours visible : la fiche, comme avant.
         self.sql("INSERT INTO notification (utilisateur_id, categorie, message, projet_id) VALUES (%s, 'projet', 'x', %s)",
                  (self.inter, self.p1))
@@ -99,7 +99,7 @@ class TestRoles(_Projets):
                                                                (self.inter,))[0]["email"],
             "role": "intervenant", "equipe_code": "", "fuseau": "Africa/Tunis"})
         self.assertEqual(r.status_code, 200)
-        self.assertIn("Choisissez l'équipe de ce compte", self.visible(r))
+        self.assertIn("Choisissez l’équipe de ce compte", self.visible(r))
         self.assertEqual(self.sql("SELECT equipe_code FROM utilisateur WHERE id = %s", (self.inter,))[0]["equipe_code"],
                          "MIDGARD")
 

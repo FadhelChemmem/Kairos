@@ -17,7 +17,16 @@
   // Recette finale : ombre au bord droit du Gantt tant qu'il reste des
   // jours à droite (panneau de tâche ouvert : la carte rétrécit sans que
   // la fenêtre change de taille — ResizeObserver).
-  var observateur = window.ResizeObserver ? new window.ResizeObserver(function () { majAide(); }) : null;
+  // Gantt défilé jusqu'au bout puis rétréci (le panneau de tâche s'ouvre et
+  // la page se resserre en 240 ms) : il reste au bout, sans ombre.
+  var observateur = window.ResizeObserver ? new window.ResizeObserver(function (entrees) {
+    entrees.forEach(function (e) {
+      if (!e.target._kairosAuBout) return;
+      e.target._kairosRecale = Date.now();
+      e.target.scrollLeft = e.target.scrollWidth;
+    });
+    majAide();
+  }) : null;
   function majAide() {
     var carte = document.getElementById('gantt-carte');
     var aide = document.getElementById('gantt-aide-defilement');
@@ -35,10 +44,20 @@
     var gantt = carte.querySelector('.gantt');
     var hauteur = gantt ? gantt.offsetHeight + 'px' : '';
     if (gantt && carte.style.getPropertyValue('--gantt-h') !== hauteur) carte.style.setProperty('--gantt-h', hauteur);
+    carte._kairosLargeur = carte.clientWidth;
     carte.classList.toggle('k-defile-droite', defile && carte.scrollLeft + carte.clientWidth < carte.scrollWidth - 1);
   }
   document.addEventListener('scroll', function (e) {
-    if (e.target && e.target.id === 'gantt-carte') majAide();
+    var c = e.target;
+    if (!c || c.id !== 'gantt-carte') return;
+    // Défilement posé par le recalage ci-dessus : l'état « au bout » reste.
+    if (!(c._kairosRecale && Date.now() - c._kairosRecale < 150)) {
+      // Largeur d'avant le rétrécissement en cours (dernier relevé) : le
+      // bout visé est celui que l'on voyait au moment du geste.
+      var largeur = Math.max(c.clientWidth, c._kairosLargeur || 0);
+      c._kairosAuBout = c.scrollLeft > 0 && c.scrollLeft + largeur >= c.scrollWidth - 1;
+    }
+    majAide();
   }, true);
 
   function filtrer() {

@@ -27,7 +27,7 @@
     btn.setAttribute('aria-pressed', actif ? 'true' : 'false');
     btn.classList.toggle('est-presse', actif);
     if (reacteurs !== undefined) {
-      if (reacteurs) btn.title = reacteurs; else btn.removeAttribute('title');
+      if (reacteurs) btn.title = reacteurs.indexOf('Vu par') === 0 ? reacteurs : 'Vu par\u00a0: ' + reacteurs; else btn.removeAttribute('title');
     }
     // Prochain clic : l'action opposée.
     form.action = actif ? form.dataset.retirerUrl : form.dataset.reagirUrl;
@@ -102,7 +102,7 @@
     }).catch(function () {
       fin();
       revenir();
-      if (K) K.toast('Connexion au serveur impossible : la validation n’a pas été enregistrée.', { type: 'erreur', action: reessayer(form) });
+      if (K) K.toast('Connexion au serveur impossible\u00a0: la validation n’a pas été enregistrée.', { type: 'erreur', action: reessayer(form) });
     });
   });
 })();

@@ -134,7 +134,14 @@
     if (rendreFocus) declencheur.focus();
   }
   function dehors(e) {
-    if (!popover.contains(e.target) && !declencheur.contains(e.target) && !(e.target.closest && e.target.closest('.k-toasts, .k-confirmation'))) fermer(false);
+    if (popover.contains(e.target) || declencheur.contains(e.target) || (e.target.closest && e.target.closest('.k-toasts, .k-confirmation'))) return;
+    // Revue d'interaction P2-14 : focus dans l'aperçu et clic sur une zone
+    // non focalisable (il tombait sur <main>) : il revient à la cloche.
+    var dedans = popover.contains(document.activeElement);
+    var focalisable = e.target.closest && e.target.closest('a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])');
+    var retour = declencheur;
+    fermer(false);
+    if (dedans && !focalisable) setTimeout(function () { retour.focus({ preventScroll: true }); }, 0);
   }
   function ouvrir(depuis) {
     declencheur = depuis || cloche;

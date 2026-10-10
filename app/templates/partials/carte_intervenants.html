@@ -12,7 +12,7 @@
          2026-10-01). Lot 13 (décision 4) : « Retirer » du projet pour le
          chef, un co-chef ou l'Admin (pas le chef titulaire). #}
       <li id="projet-intervenant-{{ iv.id }}" class="intervenant-ligne">
-        <a href="{{ url_for('utilisateurs.profil_personne', user_id=iv.id) }}" class="lien-personne intervenant-lien" title="Voir la fiche de {{ iv.prenom }} {{ iv.nom }}">
+        <a href="{{ url_for('utilisateurs.profil_personne', user_id=iv.id) }}" class="lien-personne intervenant-lien" title="Voir sa fiche">
           {{ avatarm.avatar(iv.id, iv.prenom, iv.nom, iv.avatar_chemin, css_class='avatar avatar-md') }}
           <span class="intervenant-texte">
             <span class="nom-personne intervenant-nom">{{ iv.prenom }} {{ iv.nom }}</span>
@@ -22,12 +22,12 @@
         {% if peut_gerer and iv.id in intervenants_retirables|default([]) %}
         <form method="post" action="{{ url_for('projets.retirer_intervenant_projet', projet_id=projet.id, utilisateur_id=iv.id) }}" data-partiel="#carte-intervenants" data-focus-apres="#carte-intervenants [data-partiel-titre]">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" id="retirer-intervenant-{{ iv.id }}" class="btn btn-petit" aria-label="Retirer {{ iv.prenom }} {{ iv.nom }} du projet" data-confirmer="Retirer {{ iv.prenom }} {{ iv.nom }} du projet et de ses tâches en cours ?" data-confirmer-ok="Retirer" data-confirmer-danger>Retirer</button>
+          <button type="submit" id="retirer-intervenant-{{ iv.id }}" class="btn btn-petit" aria-label="Retirer {{ iv.prenom }} {{ iv.nom }} du projet" data-confirmer="Retirer {{ iv.prenom }} {{ iv.nom }} du projet et de ses tâches en cours&#8239;?" data-confirmer-ok="Retirer" data-confirmer-danger>Retirer</button>
         </form>
         {% endif %}
       </li>
     {% else %}
-      <li class="intervenant-vide">Aucun intervenant pour l'instant.</li>
+      <li class="intervenant-vide">Aucun intervenant pour l’instant.</li>
     {% endfor %}
   </ul>
   {% if peut_gerer and not projet_clos %}
@@ -64,7 +64,14 @@
   <form method="post" action="{{ url_for('projets.rejoindre', projet_id=projet.id) }}" data-partiel="#carte-intervenants">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {# Un chef de projet rejoint comme co-chef (2026-09-29, PR8). #}
+    {# Revue produit P1-15 : pour qui intervient déjà sur une tâche du
+       projet, « Rejoindre » prêtait à confusion. #}
+    {% set deja_sur_une_tache = taches|default([])|selectattr('intervenants', 'defined')|map(attribute='intervenants')|sum(start=[])|selectattr('id', 'equalto', g.user.id)|list %}
+    {% if deja_sur_une_tache and g.user.role != 'chef_de_projet' %}
+    <button type="submit" id="rejoindre-projet" class="btn btn-pleine-largeur" title="Vous recevrez le Daily log et les notifications de tout le projet">+ Suivre tout le projet</button>
+    {% else %}
     <button type="submit" id="rejoindre-projet" class="btn btn-pleine-largeur">+ Rejoindre ce projet{% if g.user.role == 'chef_de_projet' %} comme co-chef{% endif %}</button>
+    {% endif %}
   </form>
   {% endif %}
 </div>

@@ -29,7 +29,7 @@
 {% endif %}
 {% set ordre = ['en_cours', 'bloque', 'termine', 'verifie', 'arret', 'abandonne'] %}
 <div class="tache-fenetre" id="tache-fenetre-{{ t.id }}" data-tache-fenetre="{{ t.id }}" data-titre="{{ t.titre }}"{% if oob %} data-partiel-oob{% endif %}>
-  <div class="tache-fenetre-entete">
+  <div class="tache-fenetre-entete" data-tache-entete data-partiel-titre tabindex="-1" aria-label="{{ tst.libelle }} — {{ projet.code }} — {{ t.titre }}">
     <span class="pill {{ tst.classe }}" data-tache-pastille>{{ tst.libelle }}</span>
     <span class="tache-fenetre-projet" title="{{ projet.code }}_{{ projet.nom }}" data-url-fiche="{{ url_for('projets.detail', projet_id=projet.id, tache=t.id) }}">{{ projet.code }}</span>
     <span class="tache-panneau-nav k-js-seul">
@@ -48,12 +48,12 @@
   <form method="post" action="{{ url_for('projets.modifier_titre_tache', projet_id=projet.id, tache_id=t.id) }}" class="tache-titre-form" data-partiel="{{ cible }}" data-tache-titre-form>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="tache-titre-{{ t.id }}" class="sr-only">Titre de la tâche</label>
-    <input type="text" id="tache-titre-{{ t.id }}" name="titre" value="{{ t.titre }}" maxlength="255" required autocomplete="off" class="tache-titre-champ" data-valeur-initiale="{{ t.titre }}" data-partiel-titre>
+    <input type="text" id="tache-titre-{{ t.id }}" name="titre" value="{{ t.titre }}" maxlength="255" required autocomplete="off" class="tache-titre-champ" data-valeur-initiale="{{ t.titre }}">
     <button type="submit" class="btn btn-petit k-sans-js">Renommer</button>
     {% if enregistre == 'titre' %}<span class="tache-enregistre" aria-hidden="true">Enregistré</span>{% endif %}
   </form>
   {% else %}
-  <h2 class="tache-fenetre-titre" data-partiel-titre tabindex="-1">{{ t.titre }}</h2>
+  <h2 class="tache-fenetre-titre" tabindex="-1">{{ t.titre }}</h2>
   {% endif %}
 
   <dl class="tache-proprietes">
@@ -88,18 +88,21 @@
         <form method="post" action="{{ url_for('projets.modifier_echeance_tache', projet_id=projet.id, tache_id=t.id) }}" class="tache-echeance-form" id="tache-{{ t.id }}-echeance-form" data-partiel="{{ cible }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="form-row">
-            <label for="tache-{{ t.id }}-date-echeance" class="sr-only">Date d'échéance</label>
+            <label for="tache-{{ t.id }}-date-echeance" class="sr-only">Date d’échéance</label>
             <input type="date" id="tache-{{ t.id }}-date-echeance" name="date_echeance" value="{{ t.date_echeance.isoformat() if t.date_echeance else '' }}"{% if t.date_debut or projet.date_debut %} min="{{ ([t.date_debut, projet.date_debut]|select|max).isoformat() }}"{% endif %} aria-describedby="tache-{{ t.id }}-echeance-aide">
           </div>
           <div class="form-row">
-            <label for="tache-{{ t.id }}-type-echeance" class="sr-only">Type d'échéance</label>
+            <label for="tache-{{ t.id }}-type-echeance" class="sr-only">Type d’échéance</label>
             <select id="tache-{{ t.id }}-type-echeance" name="type_deadline">
               <option value="rendu_client" {{ 'selected' if t.type_deadline == 'rendu_client' }}>Rendu client</option>
               <option value="interne" {{ 'selected' if t.type_deadline == 'interne' }}>Interne</option>
             </select>
           </div>
           <button type="submit" id="tache-{{ t.id }}-echeance-enregistrer" class="btn btn-petit">Enregistrer</button>
-          <p id="tache-{{ t.id }}-echeance-aide" class="aide-champ tache-prop-aide">{% if retard %}<span class="texte-retard">{{ retard|capitalize }}.</span> {% endif %}Date vide : tâche sans échéance.</p>
+          {# Revue visuelle P2-30 : le retard en pastille à côté du champ,
+             l'aide sur sa propre ligne. #}
+          {% if retard %}<span class="pill pill-rouge tache-retard-pastille">{{ retard|capitalize }}</span>{% endif %}
+          <p id="tache-{{ t.id }}-echeance-aide" class="aide-champ tache-prop-aide">{% if retard %}<span class="sr-only">{{ retard|capitalize }}. </span>{% endif %}Laisser la date vide pour une tâche sans échéance.</p>
         </form>
       {% else %}
         <span class="tache-prop-texte">{% if t.date_echeance %}{{ t.date_echeance|date_courte }}{% if t.type_deadline == 'interne' %} · interne{% endif %}{% if retard %} · <span class="texte-retard">{{ retard }}</span>{% endif %}{% else %}Sans échéance{% endif %}</span>
@@ -135,8 +138,8 @@
              sans JavaScript, bouton « Affecter ». #}
           <form method="post" action="{{ url_for('projets.ajouter_intervenants_tache', projet_id=projet.id, tache_id=t.id) }}" class="tache-ajout-intervenant" data-partiel="{{ cible }}" data-soumettre-au-choix data-focus-apres="#tache-{{ t.id }}-ajout-intervenant ~ .search-combobox-wrap .search-combobox-input">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label for="tache-{{ t.id }}-ajout-intervenant" class="sr-only">Affecter quelqu'un à la tâche</label>
-            <select id="tache-{{ t.id }}-ajout-intervenant" name="utilisateur_id" required data-search-combobox data-search-riche data-search-action data-search-placeholder="+ Affecter quelqu'un…" data-search-vide="Aucune personne trouvée">
+            <label for="tache-{{ t.id }}-ajout-intervenant" class="sr-only">Affecter quelqu’un à la tâche</label>
+            <select id="tache-{{ t.id }}-ajout-intervenant" name="utilisateur_id" required data-search-combobox data-search-riche data-search-action data-search-placeholder="+ Affecter quelqu’un…" data-search-vide="Aucune personne trouvée">
               <option value="" disabled selected>Choisir…</option>
               {% for u in candidats %}
                 {% set rs = role_style(u.role) %}
@@ -155,7 +158,7 @@
     {% if t.heures_cumulees %}
     <div class="tache-prop">
       <dt>Heures</dt>
-      <dd><span class="tache-prop-texte tache-fenetre-heures">{{ t.heures_intervenant|heures }} intervenants / {{ t.heures_chef|heures }} chef de projet</span></dd>
+      <dd><span class="tache-prop-texte tache-fenetre-heures">{{ t.heures_intervenant|heures }} intervenants · {{ t.heures_chef|heures }} chef de projet</span></dd>
     </div>
     {% endif %}
   </dl>
@@ -173,7 +176,7 @@
   <form method="post" action="{{ url_for('projets.cloturer_tache', projet_id=projet.id, tache_id=t.id) }}" class="tache-cloture" data-partiel="{{ cible }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="tache-cloture-type">
-      <label for="cloture-tag-{{ t.id }}">Post de clôture</label>
+      <label for="cloture-tag-{{ t.id }}">Type de post</label>
       <select name="type_code" id="cloture-tag-{{ t.id }}">
         <option value="envoi">Envoi</option>
         <option value="reponse">Réponse</option>
@@ -181,7 +184,7 @@
         <option value="requete">Requête</option>
       </select>
     </div>
-    <button type="submit" id="tache-{{ t.id }}-cloturer" class="btn-primaire">Marquer comme terminée</button>
+    <button type="submit" id="tache-{{ t.id }}-cloturer" class="btn-primaire">Terminer et publier</button>
   </form>
   {% endif %}
 

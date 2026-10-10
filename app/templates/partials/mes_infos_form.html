@@ -17,9 +17,9 @@
   <dl class="k-cles">
     <div><dt>E-mail</dt><dd>{{ utilisateur.email }}</dd></div>
     {% if utilisateur.equipe_code %}<div><dt>Équipe</dt><dd>{{ equipe_libelle(utilisateur.equipe_code) }}</dd></div>{% endif %}
-    {% if utilisateur.date_embauche %}<div><dt>Date d'embauche</dt><dd>{{ utilisateur.date_embauche|date_courte(true) }}</dd></div>{% endif %}
+    {% if utilisateur.date_embauche %}<div><dt>Date d’embauche</dt><dd>{{ utilisateur.date_embauche|date_courte(true) }}</dd></div>{% endif %}
   </dl>
-  <p class="k-note">Le prénom, le nom, l'adresse e-mail et le rôle sont gérés par l'administrateur ou le RH. Vous pouvez modifier les champs ci-dessous.</p>
+  <p class="k-note">Le prénom, le nom, l’adresse e-mail et le rôle sont gérés par l’administrateur ou le RH. Vous pouvez modifier les champs ci-dessous.</p>
 
   <form method="post" action="{{ url_for('utilisateurs.mon_profil') }}" enctype="multipart/form-data" id="mes-infos-form"
         data-partiel="#mes-infos" data-focus-apres="#mes-infos-enregistrer" novalidate>

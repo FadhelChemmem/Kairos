@@ -325,19 +325,47 @@
     }).then(function (res) {
       if (!res || res.statut < 200 || res.statut >= 300 || res.redirection) return;
       viderFormulaires();
-      dialog.close();
       // Le bouton qui a ouvert la fenêtre a pu être remplacé (carte des
-      // tâches mise à jour) : le focus va à son homologue.
-      if (!ouvreur || !document.contains(ouvreur)) {
-        var homologue = (ouvreur && ouvreur.id && document.getElementById(ouvreur.id)) || document.querySelector('[data-open-post-dialog]:not([disabled])');
-        if (homologue) homologue.focus();
-      }
+      // tâches mise à jour) : le focus va à son homologue, une fois la
+      // fenêtre fermée (sortie animée).
+      var apres = function () {
+        dialog.close();
+        if (!ouvreur || !document.contains(ouvreur)) {
+          var homologue = (ouvreur && ouvreur.id && document.getElementById(ouvreur.id)) || document.querySelector('[data-open-post-dialog]:not([disabled])');
+          if (homologue) homologue.focus();
+        }
+      };
+      var FW = window.KairosFloatingWindow;
+      if (FW && FW.fermer) FW.fermer(dialog, apres); else apres();
     });
+  });
+
+  // Revue d'interaction P0-8 : Entrée dans un champ d'une ligne passe au
+  // champ suivant (elle publiait la tâche, échéance par défaut et sans
+  // intervenant) ; publier = le bouton, ou Ctrl/⌘ + Entrée.
+  function visibleEtActif(el) {
+    return !el.disabled && el.offsetParent !== null && getComputedStyle(el).visibility !== 'hidden';
+  }
+  dialog.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' || e.isComposing || e.altKey || e.shiftKey) return;
+    var champ = e.target;
+    var form = champ && (champ.form || (champ.closest && champ.closest('form')));
+    if (!form || !form.closest('.intent-panel')) return;
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      if (form.requestSubmit) form.requestSubmit(); else form.submit();
+      return;
+    }
+    if (e.defaultPrevented || champ.tagName !== 'INPUT' || /^(button|submit|reset|checkbox|radio|file|image)$/i.test(champ.type)) return;
+    e.preventDefault();
+    var champs = Array.prototype.filter.call(form.querySelectorAll('input:not([type=hidden]), select, textarea, button'), visibleEtActif);
+    var suivant = champs[champs.indexOf(champ) + 1];
+    if (suivant) suivant.focus();
   });
 
   dialog.querySelectorAll('[data-close-post-dialog]').forEach(function (b) {
     b.addEventListener('click', function () {
-      dialog.close();
+      (window.KairosFloatingWindow && window.KairosFloatingWindow.fermer ? window.KairosFloatingWindow.fermer(dialog) : dialog.close());
     });
   });
   // Clic sur le fond (backdrop) du <dialog> : ferme, SAUF si un champ a
@@ -345,6 +373,8 @@
   // à toutes les fenêtres flottantes). Il faut alors passer par
   // "Annuler"/le X pour fermer explicitement.
   window.KairosFloatingWindow.attacherFermetureAuFond(dialog);
+  // « Abandonner » (question d'Échap ou du fond) vide la saisie (P2-7).
+  dialog.addEventListener('kairos:abandon', viderFormulaires);
 
   // Retour visuel du glisser-déposer pour les pièces jointes — géré par
   // app/static/js/dropzone.js (s'initialise seul sur tout le document).

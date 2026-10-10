@@ -33,7 +33,7 @@
   }
 
   var CLE_MESSAGE = 'kairos-mode-message';
-  var MESSAGE_REFUS = 'Le mode a changé dans un autre onglet — page rechargée : rien n’a été enregistré. '
+  var MESSAGE_REFUS = 'Le mode a changé dans un autre onglet — page rechargée\u00a0: rien n’a été enregistré. '
     + 'Vérifiez le compte et la date affichés, puis recommencez.';
   var surveillants = [];
   window.KairosModes = {
@@ -127,7 +127,7 @@
     }
     placerBarre(barre);
     barre.querySelector('.kairos-mode-change-texte').textContent = refus
-      ? 'Le mode a changé dans un autre onglet : rien n’a été enregistré. Votre saisie reste affichée (copiez-la si besoin).'
+      ? 'Le mode a changé dans un autre onglet\u00a0: rien n’a été enregistré. Votre saisie reste affichée (copiez-la si besoin).'
       : 'Le mode a changé dans un autre onglet. Votre saisie reste affichée tant que vous ne rechargez pas.';
   }
   function recharger(message) {

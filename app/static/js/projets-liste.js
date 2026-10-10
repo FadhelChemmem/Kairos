@@ -36,6 +36,28 @@
     });
   });
 
+  // Revue visuelle P1-17 : filtres repliés sur téléphone derrière
+  // « Filtres · n » (n = puces choisies) ; le repli initial est en CSS
+  // (aucun saut au chargement), ce bouton le déplie ou le replie.
+  var bascule = form.querySelector('[data-filtres-bascule]');
+  var nbFiltres = form.querySelector('[data-filtres-nb]');
+  if (bascule) {
+    var carte = bascule.closest('.projets-filtres');
+    bascule.addEventListener('click', function () {
+      var ouvert = !carte.classList.contains('filtres-ouverts');
+      carte.classList.toggle('filtres-ouverts', ouvert);
+      bascule.setAttribute('aria-expanded', ouvert ? 'true' : 'false');
+    });
+  }
+  function compterFiltres() {
+    if (!nbFiltres) return;
+    var n = form.querySelectorAll('select[data-chip-select] option:checked').length;
+    form.querySelectorAll('select[data-chip-tristate] option').forEach(function (o) { if (o.dataset.mode) n += 1; });
+    nbFiltres.textContent = n ? '· ' + n : '';
+  }
+  form.addEventListener('change', compterFiltres);
+  form.addEventListener('kairos:resynchroniser', compterFiltres, true);
+
   // Titre de l'onglet (audit a11y M9 : pages 1 et 2 distinguées).
   document.addEventListener('kairos:fragment', function (e) {
     var r = e.detail && e.detail.racine;

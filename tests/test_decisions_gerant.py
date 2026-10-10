@@ -287,7 +287,7 @@ class TestDecision3EtatsReserves(_Base):
         self.assertIn(self._choix("bloque"), dialogue)
         for etat in ("verifie", "arret", "abandonne"):
             self.assertNotIn(self._choix(etat), dialogue)
-        self.assertIn("Marquer comme terminée", dialogue)
+        self.assertIn("Terminer et publier", dialogue)
 
     def test_intervenant_sur_tache_terminee_peut_rouvrir_mais_pas_verifier(self):
         dialogue = self._page(INTERVENANT, False, "termine")
@@ -308,7 +308,7 @@ class TestDecision3EtatsReserves(_Base):
             self.assertIn(self._choix(etat), dialogue)
         self.assertRegex(self._page(CHEF, True, "termine"), self._choix("verifie") + r'[^>]*>Vérifiée</button>')
         self.assertIn(">Rouvrir</button>", self._page(CHEF, True, "verifie"))
-        self.assertIn("Marquer comme terminée", self._page(CHEF, True, "arret"))
+        self.assertIn("Terminer et publier", self._page(CHEF, True, "arret"))
 
 
 class TestDecisions1Et4Inchangees(_Base):
@@ -564,7 +564,7 @@ class TestDecision6Interface(_Base):
         m[self.JETON].assert_not_called()
         m[self.SMTP].assert_not_called()
         flashes = self._flashes()
-        self.assertTrue(any("n'a pas pu être envoyé" in f and "mode test" in f
+        self.assertTrue(any("n’a pas pu être envoyé" in f and "mode test" in f
                             and "MAIL_DESTINATAIRES_AUTORISES" in f for f in flashes), flashes)
         self.assertFalse(any("Lien de réinitialisation envoyé" in f for f in flashes), flashes)
 

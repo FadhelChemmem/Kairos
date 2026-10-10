@@ -37,7 +37,9 @@
 {% set sans_projet_possible = vise_toutes_equipes or (g.user.role != 'client' and g.user.equipe_code) %}
 <dialog id="dialog-nouveau-post" class="post-dialog" aria-labelledby="dialog-nouveau-post-titre"{% if fil_cible|default(none) %} data-fil="{{ fil_cible }}"{% endif %}>
   <div class="fenetre-entete">
-    <span id="dialog-nouveau-post-titre" class="fenetre-titre">Nouveau post</span>
+    {# Revue produit P1-6 : le titre suit l'onglet (« + Tâche » ouvre une
+       « Nouvelle tâche », pas un « Nouveau post »), voir lot13-visuel.css. #}
+    <span id="dialog-nouveau-post-titre" class="fenetre-titre"><span class="titre-intent titre-tache">Nouvelle tâche</span><span class="titre-intent titre-information">Nouvelle information</span><span class="titre-intent titre-requete">Nouvelle requête</span></span>
     <button type="button" data-close-post-dialog aria-label="Fermer" class="dialog-fermer">
       <svg aria-hidden="true" focusable="false" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
     </button>
@@ -69,7 +71,7 @@
           <option value="{{ p.id }}" data-gere="{{ '1' if p.mon_role in ('chef_de_projet', 'co_chef') else '0' }}"{% if voient is not none %} data-voient="{{ voient|join(' ') }}"{% endif %}>{{ p.code }}_{{ p.nom }}</option>
         {% endfor %}
         {% if sans_projet_possible %}
-        <option value="aucun" data-sans-projet="1">Aucun projet (information d'équipe)</option>
+        <option value="aucun" data-sans-projet="1">Aucun projet (information d’équipe)</option>
         {% endif %}
       </select>
     </div>
@@ -123,7 +125,7 @@
             <input type="date" id="dialog-echeance-tache" name="date_echeance" value="{{ [today(), debut_projet]|select|max if debut_projet else today() }}"{% if debut_projet %} min="{{ debut_projet.isoformat() }}"{% endif %}>
           </div>
           <div class="form-row">
-            <label for="dialog-type-deadline-tache">Type d'échéance</label>
+            <label for="dialog-type-deadline-tache">Type d’échéance</label>
             <select id="dialog-type-deadline-tache" name="type_deadline">
               <option value="rendu_client">Rendu client</option>
               <option value="interne">Interne</option>
@@ -138,7 +140,7 @@
         </div>
         <div class="fenetre-actions">
           <button type="button" data-close-post-dialog class="btn">Annuler</button>
-          <button type="submit" id="publier-tache" class="btn-primaire">Publier la tâche</button>
+          <button type="submit" id="publier-tache" class="btn-primaire" aria-keyshortcuts="Control+Enter" title="Ctrl + Entrée">Créer la tâche</button>
         </div>
       </form>
     </div>
@@ -154,7 +156,7 @@
         <input type="hidden" name="parent_post_id" value="">
 
         <div class="form-row">
-          <label for="dialog-contenu-information">Texte de l'information</label>
+          <label for="dialog-contenu-information">Texte de l’information</label>
           <textarea id="dialog-contenu-information" name="contenu" maxlength="10000" required></textarea>
         </div>
         {% if projet_id is none and sans_projet_possible %}
@@ -196,7 +198,7 @@
 
         <div class="fenetre-actions">
           <button type="button" data-close-post-dialog class="btn">Annuler</button>
-          <button type="submit" id="publier-information" class="btn-primaire">Publier l'information</button>
+          <button type="submit" id="publier-information" class="btn-primaire" aria-keyshortcuts="Control+Enter" title="Ctrl + Entrée">Publier l’information</button>
         </div>
       </form>
     </div>
@@ -239,7 +241,7 @@
 
         <div class="fenetre-actions">
           <button type="button" data-close-post-dialog class="btn">Annuler</button>
-          <button type="submit" id="publier-requete" class="btn-primaire">Publier la requête</button>
+          <button type="submit" id="publier-requete" class="btn-primaire" aria-keyshortcuts="Control+Enter" title="Ctrl + Entrée">Publier la requête</button>
         </div>
       </form>
     </div>

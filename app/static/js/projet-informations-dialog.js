@@ -40,7 +40,7 @@
 
   // Délégation (lot 13) : le formulaire est remplacé après un envoi.
   dialog.addEventListener('click', function (e) {
-    if (e.target.closest && e.target.closest('[data-close-informations-dialog]')) dialog.close();
+    if (e.target.closest && e.target.closest('[data-close-informations-dialog]')) (window.KairosFloatingWindow && window.KairosFloatingWindow.fermer ? window.KairosFloatingWindow.fermer(dialog) : dialog.close());
     if (e.target.closest && e.target.closest('[data-informations-retour]')) restaurer(true);
   });
 

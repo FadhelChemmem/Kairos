@@ -71,10 +71,12 @@
         throw e;
       });
   }
+  // Un préchargement qui a échoué ne sert jamais au clic : nouvelle
+  // demande (revue d'interaction P0-7, faux « Tâche introuvable »).
   function obtenir(id) {
     var p = precharges[id];
     delete precharges[id];
-    if (p && Date.now() - p.t < DUREE_PRECHARGE) return p.promesse;
+    if (p && Date.now() - p.t < DUREE_PRECHARGE) return p.promesse.catch(function () { return charger(id); });
     return charger(id);
   }
   function precharger(id) {
@@ -126,8 +128,8 @@
     bouton.className = 'btn';
     if (err && (err.code === 'session' || err.code === 404)) {
       msg.textContent = err.code === 'session'
-        ? 'Votre session a expiré : rechargez la page pour vous reconnecter.'
-        : 'Tâche introuvable : elle a peut-être été supprimée, ou vous n’y avez plus accès. Rechargez la page.';
+        ? 'Votre session a expiré\u00a0: rechargez la page pour vous reconnecter.'
+        : 'Tâche introuvable\u00a0: elle a peut-être été supprimée, ou vous n’y avez plus accès. Rechargez la page.';
       bouton.textContent = 'Recharger la page';
       bouton.addEventListener('click', function () { window.location.reload(); });
     } else {
@@ -209,6 +211,7 @@
       // lecture seule « Voir comme »…).
       if (window.KairosSearchCombobox) window.KairosSearchCombobox.init(corps);
       if (K && K.initialiser) K.initialiser(corps);
+      initEcheances(corps);
       nommer();
       lienFiche();
       if (opts.voisine) annoncerPosition(id);
@@ -222,11 +225,11 @@
         if (fleche) { fleche.focus(); return; }
       }
       if ((opts.premier || focusDedans) && perdu) {
-        if (!(FW && FW.focusPremierChamp(corps))) {
-          // Panneau en lecture seule : focus sur son titre.
-          var titre = corps.querySelector('.tache-fenetre-titre');
-          if (titre) { titre.setAttribute('tabindex', '-1'); titre.focus(); }
-        }
+        // Revue d'interaction P1-6 : jamais dans le champ du titre (clavier
+        // virtuel ouvert, frappe involontaire qui renomme la tâche) — sur
+        // l'en-tête (pastille, code) ; le titre reste modifiable au clic.
+        var entete = corps.querySelector('[data-tache-entete]') || corps.querySelector('.tache-fenetre-titre');
+        if (entete) { entete.setAttribute('tabindex', '-1'); entete.focus(); }
       }
     }, function (err) {
       if (n !== seq || !dialog.open) return;
@@ -305,6 +308,9 @@
     if (panneau && typeof dialog.show === 'function') dialog.show();
     else if (typeof dialog.showModal === 'function') dialog.showModal();
     else dialog.setAttribute('open', 'open');
+    // Largeur de la barre de défilement : le contenu garde son bord gauche
+    // quand la page se resserre à côté du panneau (app.css).
+    document.documentElement.style.setProperty('--k-barre', Math.max(0, window.innerWidth - document.documentElement.clientWidth) + 'px');
     document.body.classList.toggle('tache-panneau-ouvert', panneau);
     if (opts.historique === 'push') {
       try { window.history.pushState(etatHistorique(id), '', adresseAvec(id)); entreePoussee = true; } catch (e) { /* */ }
@@ -333,6 +339,10 @@
       fermetureEnCours = true;
       dialog.classList.add('tache-panneau-sortie');
       minuteurFermeture = setTimeout(finir, 180);
+    } else if (FW && FW.fermer && !mouvementReduit()) {
+      // Fenêtre ou feuille : sortie animée (revue d'interaction P1-10).
+      fermetureEnCours = true;
+      FW.fermer(dialog, finir);
     } else {
       finir();
     }
@@ -342,7 +352,7 @@
     if (FW && FW.aEteModifiee(dialog) && K && K.confirmer) {
       if (dialog.querySelector('.k-confirmation')) return;
       var ancre = dialog.contains(document.activeElement) ? document.activeElement : dialog;
-      K.confirmer(ancre, 'Abandonner les modifications ? La saisie sera perdue.', {
+      K.confirmer(ancre, 'Abandonner les modifications\u202f? La saisie sera perdue.', {
         libelleOk: 'Abandonner', libelleAnnuler: 'Continuer la saisie', danger: true
       }).then(function (oui) { if (oui) fermer(false); });
       return;
@@ -350,7 +360,9 @@
     fermer(false);
   }
 
-  if (FW) FW.attacherFermetureAuFond(dialog);
+  if (FW) FW.attacherFermetureAuFond(dialog, { fermeture: function () { fermer(false); } });
+  // Geste « glisser vers le bas » de la feuille : même sortie que le X.
+  dialog._kairosDemanderFermeture = function () { demanderFermeture(); };
   dialog.addEventListener('click', function (e) {
     if (e.target.closest && e.target.closest('[data-close-tache]')) demanderFermeture();
   });
@@ -572,6 +584,32 @@
     if (champ) form.setAttribute('data-titre-envoye', champ.value.trim());
   }, true);
 
+  // Échéance : « Enregistrer » actif seulement après une modification
+  // (revue d'interaction P2-9 : sinon toast « Échéance inchangée »).
+  function valeurEcheance(form) {
+    var d = form.querySelector('input[name="date_echeance"]'), t = form.querySelector('select[name="type_deadline"]');
+    return (d ? d.value : '') + '|' + (t ? t.value : '');
+  }
+  function majEcheance(form) {
+    if (!form || !form.classList || !form.classList.contains('tache-echeance-form')) return;
+    if (form.dataset.initial === undefined) form.dataset.initial = valeurEcheance(form);
+    var b = form.querySelector('button[type="submit"]:not(.k-sans-js)') || form.querySelector('button[type="submit"]');
+    if (!b) return;
+    b.classList.toggle('k-inchange', valeurEcheance(form) === form.dataset.initial);
+  }
+  function initEcheances(racine) {
+    (racine && racine.querySelectorAll ? racine : document).querySelectorAll('.tache-echeance-form').forEach(majEcheance);
+  }
+  ['input', 'change'].forEach(function (type) {
+    document.addEventListener(type, function (e) { if (e.target && e.target.form) majEcheance(e.target.form); });
+  });
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form.classList || !form.classList.contains('tache-echeance-form')) return;
+    if (valeurEcheance(form) === form.dataset.initial) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+  document.addEventListener('kairos:fragment', function (e) { initEcheances(e.detail && e.detail.racine); });
+
   // Choix dans un sélecteur à recherche (« + Affecter quelqu'un… ») :
   // envoi immédiat.
   document.addEventListener('change', function (e) {
@@ -640,7 +678,7 @@
     });
     xhr.addEventListener('error', function () {
       fin();
-      if (K) K.toast('Connexion au serveur impossible : le fichier n’a pas été envoyé. Réessayez.', { type: 'erreur' });
+      if (K) K.toast('Connexion au serveur impossible\u00a0: le fichier n’a pas été envoyé. Réessayez.', { type: 'erreur' });
     });
     xhr.send(new FormData(form));
   }
@@ -761,7 +799,11 @@
     var ligne = e.target.closest && e.target.closest('[data-open-tache]');
     if (!ligne || ligne.contains(e.relatedTarget)) return;
     clearTimeout(minuteur);
-    minuteur = setTimeout(function () { precharger(ligne.getAttribute('data-open-tache')); }, 120);
+    // Adresse du panneau portée par la ligne (Deadlines) lue AVANT le
+    // préchargement : sinon l'adresse modèle (projet 0) répondait 404.
+    var id = ligne.getAttribute('data-open-tache');
+    if (ligne.hasAttribute('data-tache-url')) urlsTaches[id] = ligne.getAttribute('data-tache-url');
+    minuteur = setTimeout(function () { precharger(id); }, 120);
   });
   document.addEventListener('pointerout', function (e) {
     var ligne = e.target.closest && e.target.closest('[data-open-tache]');

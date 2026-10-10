@@ -14,7 +14,8 @@
     <div class="k-vide">
       <span class="k-vide-icone" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 4.2 1.4 5.5 1.4 5.5H4.6S6 13.2 6 9Z"/><path d="M10 19a2 2 0 0 0 4 0"/></svg></span>
       <p class="k-vide-titre">Aucune notification pour l’instant.</p>
-      <p class="k-vide-texte">Vous serez prévenu ici quand on vous affecte une tâche ou qu’on vous mentionne.</p>
+      {# Revue produit P1-8 : le RH et le client n'ont pas de tâches. #}
+      <p class="k-vide-texte">{% if g.user.role in ('rh', 'client') %}Vous serez prévenu ici des informations qui vous concernent.{% else %}Vous serez prévenu ici quand on vous affecte une tâche ou qu’on vous mentionne.{% endif %}</p>
     </div>
   </div>
   {% endfor %}

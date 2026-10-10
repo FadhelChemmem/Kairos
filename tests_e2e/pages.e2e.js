@@ -196,7 +196,7 @@ async function maxAnimation(p, ms = 600) {
     await interaction(p, 'Notifications : « Tout marquer comme lu » (aperçu, optimiste)',
       () => p.click('#notifs-apercu form[data-optimiste="notifs-toutes-lues"] button'),
       async () => await p.locator('#notifs-apercu .notif-ligne.non-lu').count() === 0 && await badge() === ''
-        && await p.locator('#notifs-apercu form[data-optimiste]').count() === 0,
+        && await p.locator('#notifs-apercu form[data-optimiste] button:disabled').count() === 1,
       { focus: '#notifs-apercu-titre' });
     etape('« Tout marquer comme lu » : badge masqué, nom de la cloche à jour, base',
       await p.getAttribute('#notifs-cloche', 'aria-label') === 'Notifications'
@@ -434,7 +434,7 @@ async function maxAnimation(p, ms = 600) {
     await interaction(p, 'Deadlines : barre du Gantt → panneau de la tâche sur place',
       () => p.click('.g-row[data-open-tache="1"] a.g-bar'),
       async () => (await etat(p)).url === '/deadlines?tache=1' && await p.locator('#tache-titre-1').count() === 1,
-      { focus: '#tache-titre-1', sansLatence: true });
+      { focus: '#tache-fenetre-1 [data-tache-entete]', sansLatence: true });
     await interaction(p, 'Deadlines (panneau) : état « Bloquée »',
       () => p.click('#tache-1-etat-bloque'),
       async () => sql('SELECT etat FROM tache WHERE id=1') === 'bloque' && await p.locator('#k-toasts .k-toast-action:has-text("Annuler")').count() === 1,
@@ -584,7 +584,7 @@ async function maxAnimation(p, ms = 600) {
       const pe = await etroit.newPage();
       await pe.goto(BASE + '/utilisateurs/' + RIM);
       const nf3 = await pe.evaluate(() => {
-        const b = Array.from(document.querySelectorAll('main a.btn')).find((a) => /Corriger le Daily log/.test(a.textContent));
+        const b = Array.from(document.querySelectorAll('main a.btn')).find((a) => /Corriger (le|son) Daily log/.test(a.textContent));
         const c = b.closest('.card').getBoundingClientRect(), r = b.getBoundingClientRect();
         return [document.documentElement.scrollWidth - document.documentElement.clientWidth, Math.round(r.right), Math.round(c.right)];
       });
@@ -599,7 +599,11 @@ async function maxAnimation(p, ms = 600) {
       const attente = new Promise((r) => { lacher = r; });
       await pt.route(/chip-select\.[^/]*js/, async (route) => { await attente; route.continue(); });
       await pt.goto(BASE + '/projets', { waitUntil: 'commit' });
-      await pt.waitForSelector('.projets-filtres .filtre-groupe:nth-child(4)');
+      await pt.waitForSelector('.projets-filtres .filtre-groupe:nth-child(4)', { state: 'attached' });
+      // Revue visuelle P1-17 : sur téléphone, les filtres sont repliés dès le
+      // premier rendu ; on les déplie (comme « Filtres · n ») pour mesurer
+      // les places réservées pendant la construction des puces.
+      await pt.evaluate(() => document.querySelector('.projets-filtres').classList.add('filtres-ouverts'));
       await pause(300);
       const positions = () => pt.evaluate(() => Array.from(document.querySelectorAll('.projets-filtres .filtre-groupe'))
         .map((g) => { const r = g.getBoundingClientRect(); return Math.round(r.left) + ',' + Math.round(r.top); }).join(' ')
@@ -610,6 +614,17 @@ async function maxAnimation(p, ms = 600) {
       await pause(200);
       const apresPuces = await positions();
       etape('NF4 : 360 px, filtres de Tous les projets immobiles à la construction des puces', avantPuces === apresPuces, [avantPuces, apresPuces]);
+      // Revue visuelle P1-17 : sur téléphone, filtres repliés dès le premier
+      // rendu derrière « Filtres · n » ; le bouton les déplie (puces prêtes).
+      await pt.evaluate(() => document.querySelector('.projets-filtres').classList.remove('filtres-ouverts'));
+      const replie = await pt.evaluate(() => document.querySelector('.projets-filtres-groupes').getBoundingClientRect().height);
+      await pt.click('[data-filtres-bascule]');
+      const deplie = await pt.evaluate(() => ({ h: Math.round(document.querySelector('.projets-filtres-groupes').getBoundingClientRect().height),
+        expanded: document.querySelector('[data-filtres-bascule]').getAttribute('aria-expanded'),
+        texte: document.querySelector('[data-filtres-bascule]').textContent.replace(/\s+/g, ' ').trim(),
+        puces: document.querySelectorAll('.projets-filtres .chip-opt').length }));
+      etape('P1-17 : 360 px, filtres repliés derrière « Filtres · n », dépliés au clic', replie === 0 && deplie.h > 100
+        && deplie.expanded === 'true' && /^Filtres · \d+$/.test(deplie.texte) && deplie.puces > 0, [replie, deplie]);
 
       // M15 : cibles ≥ 24 px à 375 px (lien du nom des cartes Projets, Journal).
       await pt.setViewportSize({ width: 375, height: 812 });

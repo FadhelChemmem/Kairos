@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "partials/icones.html" as ic %}
 {% block title %}Accueil — Kairos{% endblock %}
 {% block body %}
 
@@ -39,14 +40,17 @@
           <span class="mini-gantt-titre" title="{{ t.titre }}">{{ t.titre }}</span>
           <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" class="mini-gantt-projet" title="{{ t.projet_code }}_{{ t.projet_nom }}">{{ t.projet_code }}_{{ t.projet_nom }}</a>
         </div>
-        <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) if t.id is defined and t.id else url_for('deadlines.liste') }}" class="mini-gantt-track" style="grid-column: 2 / span {{ deadlines_gantt.window_days }};" aria-label="{{ t.titre }} ({{ t.projet_code }}) : {{ t.retard ~ ', échéance le ' if t.en_retard else 'échéance le ' }}{{ t.date_echeance|date_courte }}">
-          <span class="mini-gantt-bar{{ ' mini-gantt-bar-retard' if t.en_retard }}" style="grid-column: 1 / span {{ t.span }}; background:{{ t.couleur }};">{{ t.label_barre }}</span>
+        <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) if t.id is defined and t.id else url_for('deadlines.liste') }}" class="mini-gantt-track" style="grid-column: 2 / span {{ deadlines_gantt.window_days }};" aria-label="{{ t.titre }} ({{ t.projet_code }})&nbsp;: {{ t.retard ~ ', échéance le ' if t.en_retard else 'échéance le ' }}{{ t.date_echeance|date_courte }}">
+          {# Couleur par classe (jetons --gantt-*, revue visuelle P1-6). #}
+          <span class="mini-gantt-bar g-bar-{{ t.niveau }}{{ ' mini-gantt-bar-retard' if t.en_retard }}" style="grid-column: 1 / span {{ t.span }};">{{ t.label_barre }}</span>
           <span class="mini-gantt-date">{{ t.date_echeance|date_courte }}{% if t.en_retard %} · {{ t.retard }}{% endif %}</span>
         </a>
       {% endfor %}
     </div>
   {% else %}
-    <a href="{{ url_for('deadlines.liste') }}" class="deadline-banner-empty lien-discret-bloc">Aucune échéance à venir.</a>
+    {# Revue produit (§ 3) : « à venir » était faux à l'échelle du bureau
+       pour un Admin rattaché à aucun projet. #}
+    <p class="deadline-banner-vide">Aucune échéance sur vos projets.{% if g.user.role == 'admin' %} <a href="{{ url_for('deadlines.liste', vue='tous') }}" class="lien-fort">Voir celles du bureau <span aria-hidden="true">→</span></a>{% endif %}</p>
   {% endif %}
 </section>
 {% endif %}
@@ -76,7 +80,12 @@
             </div>
           </a>
         {% else %}
-          <div class="accueil-vide">Aucun projet pour l'instant.</div>
+          {# Revue visuelle P1-15 : état vide avec une action. #}
+          <div class="k-vide k-vide-mini">
+            <span class="k-vide-icone" aria-hidden="true">{{ ic.icone('projets', 16) }}</span>
+            <p class="k-vide-texte">Aucun projet pour l’instant.</p>
+            {% if g.user.role in ('admin', 'chef_de_projet') %}<a href="{{ url_for('projets.liste') }}" class="btn-fantome">Voir tous les projets</a>{% endif %}
+          </div>
         {% endfor %}
       </div>
     </div>
@@ -98,25 +107,24 @@
     {% set dl_futur = bandeau_admin and bandeau_admin.date_simulee and bandeau_admin.aujourdhui_compte > dl_reel %}
     {% if dl_futur %}{% set dailylog_jours_manques = dailylog_jours_manques|select('le', dl_reel)|list %}{% endif %}
     <div class="card {{ 'card-cta-alert' if dailylog_jours_manques else 'card-cta' }}">
-      {# var(--text-strong), pas un gris fixe : sinon illisible en thème
-         sombre (bug trouvé à la vérification Playwright, 2026-09-28). #}
-      <h2 class="carte-titre" style="font-size:13px; margin-bottom:4px; color:{{ 'var(--text-strong)' if dailylog_jours_manques else '#fff' }};">Daily log</h2>
+      <h2 class="carte-titre">Daily log</h2>
       {% if dailylog_jours_manques %}
         {# Lot 10 (audit front I16) : phrase complète, sans parenthèse ni
            points de suspension ; le plus ancien jour manquant est le premier
            de la liste. #}
-        <div style="font-size:12px; color:var(--text-secondary); margin-bottom:12px; line-height:1.4;">
-          {% set premier_manque = (dailylog_jours_manques|min)|date_courte %}
-          {# Pas de second point après une abréviation (« 23 sept. »). #}
-          {% if dailylog_jours_manques|length > 1 %}{{ dailylog_jours_manques|length }} jours sans saisie, depuis le {{ premier_manque }}{% else %}1 jour sans saisie&nbsp;: le {{ premier_manque }}{% endif %}{{ '' if premier_manque.endswith('.') else '.' }}
-        </div>
+        {% set premier_manque = (dailylog_jours_manques|min)|date_courte %}
+        {# Pas de second point après une abréviation (« 23 sept. »). #}
+        <p class="dl-carte-texte">{% if dailylog_jours_manques|length > 1 %}{{ dailylog_jours_manques|length }} jours sans saisie, depuis le {{ premier_manque }}{% else %}1 jour sans saisie&nbsp;: le {{ premier_manque }}{% endif %}{{ '' if premier_manque.endswith('.') else '.' }}</p>
       {% else %}
-        {# Lot 10 : la route dit si la journée du jour est déjà renseignée
-           (heures ou absence), au fuseau de la personne. Blanc : 4,86:1 sur
-           le vert (#d6efe8 : 4,02). #}
-        <div style="font-size:12px; color:#fff; margin-bottom:12px; line-height:1.4;">{% if dl_futur %}Date simulée future : la journée se consulte, sans saisie.{% elif dailylog_aujourdhui %}Journée du jour renseignée. Vous pouvez encore l’ajuster.{% else %}Répartissez vos heures de la journée par projet.{% endif %}</div>
+        {# Revue produit P1-10 : où en est la journée (heures saisies sur la
+           journée type), et non « renseignée » dès la première ligne. Blanc :
+           4,86:1 sur le vert. #}
+        {% set dl_obj = dailylog_objectif or 480 %}
+        {% set dl_partiel = dailylog_aujourdhui and 0 < dailylog_minutes < dl_obj %}
+        <p class="dl-carte-texte">{% if dl_futur %}Date simulée future&nbsp;: la journée se consulte, sans saisie.{% elif dailylog_aujourdhui and dailylog_minutes >= dl_obj %}Journée complète ({{ (dailylog_minutes / 60)|heures }}).{% elif dl_partiel %}{{ (dailylog_minutes / 60)|heures }} saisies sur {{ (dl_obj / 60)|heures }} aujourd’hui.{% elif dailylog_aujourdhui %}Absence enregistrée aujourd’hui.{% else %}Répartissez vos heures de la journée par projet.{% endif %}</p>
+        {% if dl_partiel and not dl_futur %}<span class="dl-carte-jauge" aria-hidden="true"><span style="width:{{ (100 * dailylog_minutes / dl_obj)|round|int }}%;"></span></span>{% endif %}
       {% endif %}
-      <a href="{{ url_for('dailylog.formulaire') }}" class="btn-primary{{ ' btn-danger' if dailylog_jours_manques }}" style="display:block; text-align:center; text-decoration:none;">{{ 'Voir mon Daily log' if (dl_futur or dailylog_aujourdhui) and not dailylog_jours_manques else 'Remplir mon Daily log' }}</a>
+      <a href="{{ url_for('dailylog.formulaire') }}" class="btn btn-pleine-largeur{{ ' btn-danger' if dailylog_jours_manques }}">{% if dailylog_jours_manques %}Remplir mon Daily log{% elif dl_futur or (dailylog_aujourdhui and not dl_partiel) %}Voir mon Daily log{% elif dl_partiel %}Compléter mon Daily log{% else %}Remplir mon Daily log{% endif %}</a>
     </div>
     {% endif %}
     {% endif %}
@@ -125,11 +133,11 @@
 
   <!-- Fil d'activité -->
   <div class="col-center">
-    <h2 class="sr-only">Fil d'activité</h2>
+    <h2 class="sr-only">Fil d’activité</h2>
     <div class="fil-outils">
       <div class="search-mini fil-filtre">
         <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="search" id="filtre-fil" data-filtre-fil data-filtre-liste="#fil-liste" data-filtre-vide="#fil-vide" data-filtre-message="Aucun résultat pour ce filtre." autocomplete="off" aria-label="Filtrer le fil d'actualité" placeholder="Filtrer le fil d'actualité…" class="fil-filtre-champ">
+        <input type="search" id="filtre-fil" data-filtre-fil data-filtre-liste="#fil-liste" data-filtre-vide="#fil-vide" data-filtre-message="Aucun résultat pour ce filtre." autocomplete="off" aria-label="Filtrer le fil d’activité" placeholder="Filtrer le fil d’activité…" class="fil-filtre-champ">
       </div>
       {% if peut_publier %}
       <button type="button" id="nouveau-post" data-open-post-dialog data-raccourci-n aria-keyshortcuts="N" data-intent="{{ intent_par_defaut }}" class="btn">+ Nouveau post</button>
@@ -144,7 +152,7 @@
           {% include "partials/fil_item.html" %}
         {% endwith %}
       {% else %}
-        <div class="card fil-vide-carte" data-partiel-vide>Aucune activité sur vos projets pour l'instant.</div>
+        <div class="card fil-vide-carte" data-partiel-vide>Aucune activité sur vos projets pour l’instant.</div>
       {% endfor %}
       <div id="fil-vide" class="fil-filtre-vide" role="status"></div>
     </div>
@@ -156,8 +164,10 @@
     {% if not sans_projets and g.user.role != 'client' %}
     <div class="card">
       <div class="carte-entete carte-entete-souple">
-        <h2 class="carte-titre">Mes tâches</h2>
-        <a href="{{ url_for('deadlines.liste') }}" class="lien-carte lien-carte-petit">Toutes les échéances</a>
+        {# Revue produit P1-2 : pour un chef ou l'Admin, la carte liste aussi
+           les tâches qu'il a créées pour d'autres. #}
+        <h2 class="carte-titre">{{ 'Tâches de mes projets' if g.user.role in ('admin', 'chef_de_projet') else 'Mes tâches' }}</h2>
+        <a href="{{ url_for('deadlines.liste') }}" class="lien-carte lien-carte-petit">Tout voir<span class="sr-only"> les échéances</span></a>
       </div>
       <div class="accueil-liste accueil-liste-large">
         {% for t in mes_taches %}
@@ -171,7 +181,11 @@
             </div>
           </a>
         {% else %}
-          <div class="accueil-vide">Aucune tâche en cours.</div>
+          <div class="k-vide k-vide-mini">
+            <span class="k-vide-icone" aria-hidden="true">{{ ic.icone('deadlines', 16) }}</span>
+            <p class="k-vide-texte">Aucune tâche en cours.</p>
+            <a href="{{ url_for('deadlines.liste') }}" class="btn-fantome">Voir les échéances</a>
+          </div>
         {% endfor %}
       </div>
     </div>

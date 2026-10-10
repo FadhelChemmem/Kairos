@@ -141,7 +141,7 @@ class TestFenetreTacheALaDemande(_Base):
         html = self._requete("/projets/1", **{"app.repositories.taches.list_taches_projet": TACHES}).data.decode()
         self.assertEqual(html.count('class="post-dialog tache-dialog"'), 1)
         self.assertNotIn('id="dialog-tache-5"', html)
-        self.assertNotIn("Marquer comme terminée", html)
+        self.assertNotIn("Terminer et publier", html)
         self.assertIn('data-url="/projets/1/taches/0/fenetre"', html)
 
     def test_fragment_meme_contenu_que_l_ancienne_fenetre(self):
@@ -154,7 +154,7 @@ class TestFenetreTacheALaDemande(_Base):
         self.assertIn('data-titre="Plan ferraillage voile R+2"', html)
         self.assertIn('action="/projets/1/taches/5/titre"', html)
         self.assertIn('action="/projets/1/taches/5/etat"', html)
-        self.assertIn("Marquer comme terminée", html)
+        self.assertIn("Terminer et publier", html)
         self.assertIn("note_calcul.pdf", html)
         # Retour après un envoi de fichier sans JavaScript : la fiche, panneau
         # de la tâche rouvert (lot 13), pas le fragment.
@@ -311,8 +311,10 @@ class TestConstatsMineurs(_Base):
 
     def test_logos_reduits_et_lien_projets_courant(self):
         html = self._requete("/projets/1").data.decode()
-        self.assertIn("img/kairos-logo-topbar.png", html)
-        self.assertNotIn("img/kairos-logo.png", html)
+        # Revue visuelle P1-19 : logo en SVG dans la page (net à toute
+        # densité, un seul dessin pour les deux thèmes), plus aucune image.
+        self.assertIn('<svg class="logo-kairos" role="img" aria-label="Kairos"', html)
+        self.assertNotIn("img/kairos-logo", html)
         self.assertRegex(html, r'aria-label="Tous les projets" aria-current="true"')
         import pathlib
         racine = pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / "img"

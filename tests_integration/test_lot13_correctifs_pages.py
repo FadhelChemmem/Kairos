@@ -42,7 +42,7 @@ class TestBandeauDateSimulee(_Temps):
         r = self.client.post("/admin/date-simulee", data={"date": jour.isoformat(), "heure": "09:15", "next": "/deadlines"})
         self.assertEqual(r.headers["Location"], "/deadlines")
         page = self.texte(self.client.get("/deadlines"))
-        self.assertRegex(page, r'<template id="k-toasts-initiaux"><p data-type="succes">Date simulée appliquée : '
+        self.assertRegex(page, r'<template id="k-toasts-initiaux"><p data-type="succes">Date simulée appliquée\u00a0: '
                                r'\w+ \d+ \w+ \d{4} à 09:15 \(Tunis\)\.</p>')
         self.client.post("/admin/date-simulee/effacer", data={"next": "/deadlines"})
         self.assertIn("Retour à la date réelle.", self.texte(self.client.get("/deadlines")))
@@ -62,7 +62,7 @@ class TestDailyLogFuturReel(_Temps):
         self.assertTrue(jour["droits"]["futur_reel"])
         self.assertEqual(jour["aujourdhui_reel"], self.auj.isoformat())
         textes = json.loads(re.search(r'id="dl-textes">(.*?)</script>', page, re.S).group(1))
-        self.assertEqual(textes["aucun_projet_futur"], "Jour à venir : consultation seulement.")
+        self.assertEqual(textes["aucun_projet_futur"], "Jour à venir\u00a0: consultation seulement.")
         # Accueil : les jours après la vraie date ne sont pas « sans saisie »
         # (arrivée aujourd'hui, journée réelle renseignée).
         self.sql("UPDATE utilisateur SET date_embauche = %s WHERE id = %s", (self.auj, self.inter))
@@ -88,7 +88,7 @@ class TestDailyLogDe(_Temps):
         self.assertTrue(re.sub(r"\{#.*?#\}", "", html, flags=re.S).lstrip().startswith('<div class="dl9" id="dl9"'))
         amorce = json.loads(re.search(r'id="dl-amorce">(.*?)</script>', html, re.S).group(1))
         self.assertEqual((amorce["proprietaire"]["id"], amorce["proprietaire"]["soi"]), (self.inter, False))
-        self.assertIn("Correction du Daily log de <b>Rim Inter</b>", html)
+        self.assertIn("Correction du Daily log&nbsp;: <b>Rim Inter</b>", html)
         self.assertIn('id="dl-textes"', html)
         # Sans l'en-tête : la page complète, inchangée.
         self.assertIn("<html", self.client.get(f"/dailylog?utilisateur={self.inter}").get_data(as_text=True))

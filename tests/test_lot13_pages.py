@@ -123,7 +123,9 @@ class TestNotifications(_Base):
         lu.assert_called_once_with(10, 1)
         html = fragment(self, resp)
         self.assertTrue(html.lstrip().startswith('<li class="notif-ligne" id="notif-10">'))
-        self.assertNotIn("notif-lire", html)
+        self.assertNotIn("notif-lire-btn", html)
+        # Place du bouton gardée (revue d'interaction P1-7 : la ligne ne s'élargit pas).
+        self.assertIn('class="notif-lire-vide"', html)
         self.assertIn('value="1" hidden data-partiel-oob', html)
         resp = self._appel("post", "/notifications/10/lue")
         self.assertEqual((resp.status_code, resp.headers["Location"]), (302, "/notifications"))
@@ -316,7 +318,7 @@ class TestUtilisateursFormulaires(_Base):
         html = resp.get_data(as_text=True)
         self.assertRegex(html, r'id="email"[^>]* aria-invalid="true" aria-describedby="err-email" autofocus')
         self.assertNotRegex(html, r'id="prenom"[^>]*autofocus')
-        self.assertIn("Un compte existe déjà avec l&#39;email pris@x.tn.", html)
+        self.assertIn("Un compte existe déjà avec l’email pris@x.tn.", html)
 
     def test_mot_de_passe_actuel_faux(self):
         with patch("app.routes.utilisateurs.verify_password", return_value=False), \
@@ -367,7 +369,7 @@ class TestUtilisateursFormulaires(_Base):
         self.assertIn('id="fiche-actif" class="toggle toggle-liste" role="switch" aria-checked="false"', html)
         self.assertIn('id="utilisateur-reinit"', html)   # carte de réinitialisation, hors cible
         toast = toasts_de(resp)[0]
-        self.assertEqual(toast["texte"], "Compte de Wael Rekik désactivé.")
+        self.assertEqual(toast["texte"], "Compte désactivé\u00a0: Wael Rekik.")
         self.assertEqual((toast["action"]["cible"], toast["action"]["donnees"]["retour"]), ("#utilisateur-actif", "fiche"))
         self.assertEqual((sans_js.status_code, sans_js.headers["Location"]), (302, "/utilisateurs/2"))
 

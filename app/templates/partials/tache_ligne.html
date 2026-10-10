@@ -25,7 +25,7 @@
        formulaire (jeton CSRF) pour toute la page, #form-rejoindre-tache ;
        lot 13 : en partiel (la ligne seule est remplacée), visible au focus
        de la ligne ; au clavier, le même bouton est dans le panneau. #}
-    <button type="submit" form="form-rejoindre-tache" formaction="{{ url_for('projets.rejoindre_tache', projet_id=projet.id, tache_id=t.id) }}" data-partiel="#tache-ligne-{{ t.id }}" data-optimiste="rejoindre" class="task-join-btn" tabindex="-1" title="Rejoindre cette tâche" aria-label="Rejoindre la tâche « {{ t.titre }} »"></button>
+    <button type="submit" form="form-rejoindre-tache" formaction="{{ url_for('projets.rejoindre_tache', projet_id=projet.id, tache_id=t.id) }}" data-partiel="#tache-ligne-{{ t.id }}" data-optimiste="rejoindre" class="task-join-btn" tabindex="-1" title="Rejoindre cette tâche" aria-label="Rejoindre la tâche «&nbsp;{{ t.titre }}&nbsp;»"></button>
     {%- endif %}
   </div>
   <div role="cell" class="taskrow-etat"><span class="pill {{ tst.classe }}" data-tache-pastille>{{ tst.libelle }}</span></div>

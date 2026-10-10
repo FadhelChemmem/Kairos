@@ -263,7 +263,7 @@ def generer_lien_reset(user_id: int, current_user_id: int | None = None) -> str:
     base = current_app.config.get("APP_BASE_URL") or ""
     if not base:
         logger.warning(
-            "APP_BASE_URL n'est pas configuré (voir .env.example) : le lien "
+            "APP_BASE_URL n’est pas configuré (voir .env.example)\u00a0: le lien "
             "envoyé par email est relatif, pas absolu — il ne fonctionnera "
             "pas correctement dans un client mail."
         )
@@ -335,12 +335,12 @@ def login():
                 # celui où l'email existe (voir _HASH_FACTICE) — résultat
                 # ignoré, seul le temps passé compte ici.
                 verify_password(password, _HASH_FACTICE)
-                error = "Email ou mot de passe incorrect."
+                error = "Adresse e-mail ou mot de passe incorrect."
                 if email:
                     securite_repo.enregistrer_tentative("connexion", cle_email_ip)
                 securite_repo.enregistrer_tentative("connexion_ip", ip)
             elif not verify_password(password, user["mot_de_passe_hash"]):
-                error = "Email ou mot de passe incorrect."
+                error = "Adresse e-mail ou mot de passe incorrect."
                 securite_repo.enregistrer_tentative("connexion", cle_email_ip)
                 securite_repo.enregistrer_tentative("connexion_ip", ip)
             elif not user["actif"]:
@@ -439,9 +439,9 @@ def mot_de_passe_oublie():
             # serveur, jamais de l'email saisi — il ne révèle donc pas si
             # un compte existe.
             flash(
-                "Impossible d'envoyer le lien de réinitialisation : l'envoi "
-                "d'e-mails n'est pas configuré sur ce serveur. Contactez "
-                "l'administrateur ou le RH.",
+                "Impossible d’envoyer le lien de réinitialisation\u00a0: l’envoi "
+                "d’e-mails n’est pas configuré sur ce serveur. Contactez "
+                "l’administrateur ou le RH.",
                 "error",
             )
             return redirect(url_for("auth.mot_de_passe_oublie"))
@@ -453,9 +453,9 @@ def mot_de_passe_oublie():
             # l'adresse SAISIE et de la configuration, jamais de la base :
             # elle ne révèle pas si un compte existe.
             flash(
-                "Kairos est en phase de test : les e-mails ne partent que vers "
+                "Kairos est en phase de test\u00a0: les e-mails ne partent que vers "
                 "quelques adresses autorisées, et aucun lien ne peut être envoyé "
-                "à cette adresse. Contactez le RH ou l'administrateur.",
+                "à cette adresse. Contactez le RH ou l’administrateur.",
                 "error",
             )
             return redirect(url_for("auth.mot_de_passe_oublie"))
@@ -482,8 +482,8 @@ def mot_de_passe_oublie():
                         "Bonjour,\n\n"
                         "Une réinitialisation de mot de passe a été demandée pour ce "
                         "compte Kairos.\n\n"
-                        f"Ce lien est valable 1 heure : {lien}\n\n"
-                        "Si vous n'êtes pas à l'origine de cette demande, ignorez cet "
+                        f"Ce lien est valable 1 heure\u00a0: {lien}\n\n"
+                        "Si vous n’êtes pas à l’origine de cette demande, ignorez cet "
                         "email — rien ne change sur votre compte.",
                     )
 
@@ -492,8 +492,8 @@ def mot_de_passe_oublie():
         # message qui ne promet pas que l'e-mail est déjà parti.
         flash(
             "Si un compte actif existe avec cet email, un lien de "
-            "réinitialisation va lui être envoyé. Rien reçu d'ici quelques "
-            "minutes ? Vérifiez vos courriers indésirables ou contactez le RH.",
+            "réinitialisation va lui être envoyé. Rien reçu d’ici quelques "
+            "minutes\u202f? Vérifiez vos courriers indésirables ou contactez le RH.",
             "success",
         )
         return redirect(url_for("auth.login"))

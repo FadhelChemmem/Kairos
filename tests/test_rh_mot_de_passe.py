@@ -136,14 +136,14 @@ class TestEnvoyerLienReinitialisation(_Base):
         self._smtp(None)
         _, m = self._requete("post", LIEN, espions=[(JETON, None)], **{QUI: RH, GET_U: CIBLE})
         flashes = self._flashes()
-        self.assertTrue(any("n'a pas pu être envoyé" in f and "SMTP" in f for f in flashes), flashes)
+        self.assertTrue(any("n’a pas pu être envoyé" in f and "SMTP" in f for f in flashes), flashes)
         self.assertFalse(any("envoyé à" in f for f in flashes), flashes)
 
     def test_smtp_en_panne_pas_de_faux_succes(self):
         self._smtp()
         _, m = self._requete("post", LIEN, espions=[(JETON, None), (ENVOYER, False)], **{QUI: RH, GET_U: CIBLE})
         flashes = self._flashes()
-        self.assertTrue(any("n'a pas pu être envoyé" in f for f in flashes), flashes)
+        self.assertTrue(any("n’a pas pu être envoyé" in f for f in flashes), flashes)
         self.assertFalse(any("envoyé à" in f for f in flashes), flashes)
 
     def test_rh_ne_peut_pas_viser_un_admin(self):
@@ -207,7 +207,7 @@ class TestEmailReserveAdmin(_Base):
                                 espions=[(MAJ, None)], **{QUI: RH, GET_U: CIBLE})
         m[MAJ].assert_not_called()
         html_page = html.unescape(resp.data.decode())
-        self.assertIn("Seul un Admin peut changer l'adresse e-mail", html_page)
+        self.assertIn("Seul un Admin peut changer l’adresse e-mail", html_page)
         # La fiche réaffichée garde l'adresse enregistrée, pas celle saisie.
         self.assertNotIn('value="rh-perso@x.tn"', html_page)
 
@@ -252,7 +252,7 @@ class TestCreationParLeRH(_Base):
                                 espions=[(CREER, 11), (JETON, None)], **{QUI: RH})
         self.assertEqual(resp.status_code, 302)
         flashes = self._flashes()
-        self.assertTrue(any(f.startswith("Compte créé") and "n'a pas pu être envoyé" in f for f in flashes), flashes)
+        self.assertTrue(any(f.startswith("Compte créé") and "n’a pas pu être envoyé" in f for f in flashes), flashes)
         # Le RH ne peut plus fixer de mot de passe : on ne le lui propose pas.
         self.assertFalse(any("définissez-lui un mot de passe" in f for f in flashes), flashes)
         self.assertTrue(any("Envoyer un lien de réinitialisation" in f for f in flashes), flashes)
@@ -279,7 +279,7 @@ class TestCreationParLeRH(_Base):
         self.assertEqual(resp.status_code, 302)
         flashes = self._flashes()
         self.assertFalse(any("Impossible de créer" in f for f in flashes), flashes)
-        self.assertTrue(any(f.startswith("Compte créé") and "n'a pas pu être envoyé" in f for f in flashes), flashes)
+        self.assertTrue(any(f.startswith("Compte créé") and "n’a pas pu être envoyé" in f for f in flashes), flashes)
 
     def test_admin_se_voit_proposer_les_deux_solutions(self):
         self._smtp(None)
@@ -304,8 +304,8 @@ class TestMotDePasseOublieSansFauxSucces(_Base):
         connu = self._demander({**smoke.USER, "actif": True})
         inconnu = self._demander(None)
         self.assertEqual(connu, inconnu)
-        self.assertFalse(any("vient d'être envoyé" in f or "lui est envoyé" in f for f in connu), connu)
-        self.assertTrue(any("Impossible d'envoyer le lien" in f and "pas configuré" in f for f in connu), connu)
+        self.assertFalse(any("vient d’être envoyé" in f or "lui est envoyé" in f for f in connu), connu)
+        self.assertTrue(any("Impossible d’envoyer le lien" in f and "pas configuré" in f for f in connu), connu)
 
     def test_avec_smtp_message_generique_identique(self):
         self._smtp()

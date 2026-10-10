@@ -22,7 +22,7 @@ TYPES_VALIDES = {"envoi", "reponse", "question", "requete", "information"}
 EQUIPES_VALIDES = {code for code, _ in EQUIPE_CHOICES}
 PROJET_CLOS = projets_repo.ETATS_CLOS
 MESSAGE_PROJET_CLOS = (
-    "Ce projet est clos (terminé ou abandonné) : plus aucune intervention n'est "
+    "Ce projet est clos (terminé ou abandonné)\u00a0: plus aucune intervention n’est "
     "possible tant que son chef ou un co-chef ne change pas son état."
 )
 # Un Client n'envoie que des Requêtes et des Informations, sur les projets de
@@ -253,13 +253,13 @@ def creer():
         auteur = f"{g.user['prenom']} {g.user['nom']}"
         notifications_repo.creer_pour_plusieurs(
             mentionne_ids, "projet",
-            f"{auteur} vous a mentionné dans un post.",
+            f"{auteur} vous a mentionné dans un post{_extrait(contenu)}.",
             post_id=post_id, exclure_id=g.user["id"],
         )
 
     if lien_ignore:
         flash(
-            "Post publié, sans le lien : seuls les liens http(s)://, file:, smb: "
+            "Post publié, sans le lien\u00a0: seuls les liens http(s)://, file:, smb: "
             "ou les chemins réseau \\\\serveur\\partage sont acceptés.", "error",
         )
     else:
@@ -380,7 +380,7 @@ def commenter(post_id: int):
     a_notifier = set(mention_ids)
     if mentionne_user_id:
         a_notifier.add(mentionne_user_id)
-    _notifier_tags(sorted(a_notifier), post_id)
+    _notifier_tags(sorted(a_notifier), post_id, contenu)
     _notifier_auteur(post, parent_commentaire, deja=a_notifier)
     if partiel.est_partiel():
         return _reponse_commentaires(post_id, nouveau_commentaire_id=commentaire_id)
@@ -418,12 +418,23 @@ def _tags_du_texte(post: dict, contenu: str) -> list[int]:
     ]
 
 
-def _notifier_tags(user_ids: list[int], post_id: int) -> None:
+def _extrait(texte: str | None, longueur: int = 80) -> str:
+    """Revue produit P1-8 : la notification cite le début du message
+    («\u00a0Oui, 2 bars à l’ELS…\u00a0») ; le code du projet est affiché à côté."""
+    texte = " ".join((texte or "").split())
+    if not texte:
+        return ""
+    if len(texte) > longueur:
+        texte = texte[:longueur - 1].rstrip() + "…"
+    return f"\u00a0: «\u00a0{texte}\u00a0»"
+
+
+def _notifier_tags(user_ids: list[int], post_id: int, contenu: str | None = None) -> None:
     ids = [uid for uid in user_ids if uid != g.user["id"]]
     if ids:
         notifications_repo.creer_pour_plusieurs(
             ids, "projet",
-            f"{g.user['prenom']} {g.user['nom']} vous a mentionné dans un commentaire.",
+            f"{g.user['prenom']} {g.user['nom']} vous a mentionné dans un commentaire{_extrait(contenu)}.",
             post_id=post_id, exclure_id=g.user["id"],
         )
 
@@ -451,7 +462,7 @@ def modifier_commentaire(commentaire_id: int):
     nouveaux = posts_repo.modifier_commentaire(commentaire_id, g.user["id"], contenu, _tags_du_texte(post, contenu))
     if nouveaux is None:
         abort(404)
-    _notifier_tags(nouveaux, commentaire["post_id"])
+    _notifier_tags(nouveaux, commentaire["post_id"], contenu)
     if partiel.est_partiel():
         return _reponse_commentaires(commentaire["post_id"], commentaire_modifie_id=commentaire_id,
                                      toasts=[partiel.toast("Commentaire modifié.")])

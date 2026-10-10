@@ -108,33 +108,33 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
   --focus-ring: #a9dcbb;
-  --control-border: #6b7a62;
+  --control-border: #5d6b62;
   --accent-fill: #4a7c59;
   --accent-fill-hover: #3a6247;
   --on-accent: #ffffff;
   --danger-fill: #b93a1a;
-  --bg: #16180f;
-  --surface: #20241a;
-  --bg-subtle-1: #262b1f;
-  --bg-subtle-2: #262b1f;
-  --bg-subtle-3: #262b1f;
-  --bg-subtle-4: #262b1f;
-  --bg-subtle-5: #262b1f;
-  --hover-bg: #2a3023;
-  --hover-bg-strong: #333a2a;
-  --border: #333a2a;
-  --border-soft: #2a3023;
-  --border-soft-2: #2a3023;
-  --border-2: #333a2a;
-  --border-3: #3c4432;
-  --border-hover: #4c5642;
-  --text: #e9ece3;
-  --text-strong: #f1f3ec;
-  --text-secondary: #b7c0af;
-  --text-muted: #94a08a;
-  --text-muted-2: #94a08a;
-  --text-faint: #8a9680; /* lot 7 : 4.7:1 sur les fonds clairs du thème sombre (était 3.9:1) */
-  --text-disabled: #5c6552;
+  --bg: #111513;
+  --surface: #191e1b;
+  --bg-subtle-1: #1f2622;
+  --bg-subtle-2: #1f2622;
+  --bg-subtle-3: #1f2622;
+  --bg-subtle-4: #1f2622;
+  --bg-subtle-5: #1f2622;
+  --hover-bg: #232b26;
+  --hover-bg-strong: #2b342e;
+  --border: #2a332d;
+  --border-soft: #222a25;
+  --border-soft-2: #222a25;
+  --border-2: #2a332d;
+  --border-3: #36403a;
+  --border-hover: #46524a;
+  --text: #e6ebe7;
+  --text-strong: #f0f3f1;
+  --text-secondary: #b4beb7;
+  --text-muted: #909c94;
+  --text-muted-2: #909c94;
+  --text-faint: #8a968e; /* revue visuelle P1-7 : 5,5:1 sur --surface */
+  --text-disabled: #58635c;
   --brand-bg-soft: #1c3327;
   --brand-text: #7fbb92;
   --brand-text-strong: #a9dcbb;
@@ -153,7 +153,7 @@
   --etat-termine-fond: #1c3327; --etat-termine-texte: #a9dcbb;
   --etat-verifie-fond: #2a2546; --etat-verifie-texte: #b7aef5;
   --etat-requete-fond: #3a2a16; --etat-requete-texte: #f0b07a;
-  --etat-neutre-fond: #2a3023;  --etat-neutre-texte: #b7c0af;
+  --etat-neutre-fond: #262e29;  --etat-neutre-texte: #b4beb7;
 }
 
 /* Lot 13 : police de repli aux mêmes proportions que Plus Jakarta Sans
@@ -174,9 +174,10 @@ body {
   margin: 0;
   background: var(--bg);
   font-family: 'Plus Jakarta Sans', 'Plus Jakarta Sans Repli', system-ui, -apple-system, sans-serif;
-  /* Recette finale (O2) : l'espace de Plus Jakarta Sans (0,17 em) colle
-     les mots en 12–14 px (« Tout voir », « 0 commentaire »). */
-  word-spacing: .03em;
+  /* Revue visuelle (P0-4) : l'espace de Plus Jakarta Sans tombe à 2 px en
+     12,5–14 px (« Mestâches ») ; .08em la porte à ≈ 0,24 em, comme une
+     police d'interface courante. */
+  word-spacing: .08em;
   color: var(--text);
 }
 
@@ -202,8 +203,8 @@ a:hover { color: var(--brand-text-strong); }
 }
 .lien-evitement:focus { top: 8px; }
 main:focus { outline: none; }
-.page-titre { font-size: 14px; font-weight: 700; margin: 0; min-width: 0; overflow-wrap: anywhere; }
-.carte-titre { font-size: 14px; font-weight: 700; margin: 0; }
+.page-titre { font-size: var(--texte-xl); font-weight: 700; letter-spacing: -.01em; line-height: 1.3; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.carte-titre { font-size: var(--texte-l); font-weight: 700; margin: 0; }
 
 .card {
   background: var(--surface);
@@ -2087,14 +2088,13 @@ html.k-js .k-js-seul { display: inline-flex !important; }
   .chip-opt.chip-selected, .tache-etat-choix[aria-pressed="true"] { outline: 2px solid Highlight; outline-offset: 1px; }
 }
 .fil-filtre-vide:not(.card) { font-size: 12px; }
-=======
 /* lot 13 phase 2 D */
 /* ==========================================================================
    Lot 13, phase 2 (D) : Deadlines, Notifications, Journal d'audit,
    Utilisateurs (fiches, création, profils), bandeau des modes, barre du
    haut. Classes utilitaires communes à ces pages (remplacent des style="").
    ========================================================================== */
-.k-page { padding-top: 20px; padding-bottom: 60px; }
+.k-page { padding-top: var(--esp-6); padding-bottom: 60px; }
 .k-muet { color: var(--text-muted); font-weight: var(--graisse-normale); }
 .subbar-compte { font-size: var(--texte-s); color: var(--text-muted); font-variant-numeric: var(--chiffres); }
 .search-mini-champ { flex: 1; min-width: 0; width: auto; border: none; outline: none; background: none; padding: 0; font-size: 13.5px; font-family: inherit; color: var(--text); }
@@ -2456,3 +2456,228 @@ img.avatar, .avatar-apercu { object-fit: cover; }
 
 .radio-opt-icone { flex-shrink: 0; margin-top: 2px; color: var(--accent-fill); }
 .k-option input { flex-shrink: 0; }
+
+/* lot 13 H1 stabilité */
+/* ==========================================================================
+   Stabilité de la mise en page (demande du gérant, revue d'interaction du
+   lot 13) : aucun contrôle ne bouge quand on clique, survole, focalise ou
+   change l'état d'un autre ; un contrôle à libellé variable garde sa
+   largeur. Règles : place réservée pour les coches, graisse identique dans
+   tous les états, désactiver plutôt que masquer, contenu inséré en hauteur
+   animée. Test : tests_e2e/stabilite.e2e.js.
+   ========================================================================== */
+
+/* --- Toucher : pas de surbrillance système (l'appui a son propre retour) --- */
+html { -webkit-tap-highlight-color: transparent; }
+/* Appui sur un contrôle désactivé : pas d'enfoncement (P2-3). */
+:is(.btn, .btn-primaire, .btn-fantome, .btn-secondary, .btn-primary, .quickadd, .post-action, .chip-opt, .iconbtn,
+  .comment-send, .bouton-copier, .toggle):is(:disabled, [aria-disabled="true"]):active { transform: none; }
+
+/* --- Puces de filtre : la coche a sa place réservée en permanence ; elle
+   apparaît en fondu et à l'échelle, le libellé glisse de 6 px dans la puce,
+   la largeur ne change jamais (12 + 8 px de part et d'autre au repos,
+   14 + 26 px choisie : même total). --- */
+.chip-opt:not(.chip-avatar):not(.chip-tristate) {
+  position: relative; padding-left: 20px; padding-right: 20px;
+  transition: background-color var(--duree-rapide) var(--courbe-std), border-color var(--duree-rapide) var(--courbe-std),
+              color var(--duree-rapide) var(--courbe-std), padding var(--duree-rapide) var(--courbe-sortie),
+              transform var(--duree-instant) var(--courbe-std);
+}
+.chip-opt:not(.chip-avatar):not(.chip-tristate)::before {
+  content: "✓"; content: "✓" / ""; position: absolute; left: 9px; top: 50%; width: 12px; margin: 0; text-align: center;
+  font-weight: 700; line-height: 1; opacity: 0; transform: translateY(-50%) scale(.4);
+  transition: opacity var(--duree-rapide) var(--courbe-std), transform var(--duree-rapide) var(--courbe-sortie);
+}
+.chip-opt.chip-selected:not(.chip-avatar):not(.chip-tristate) { padding-left: 26px; padding-right: 14px; }
+.chip-opt.chip-selected:not(.chip-avatar):not(.chip-tristate)::before { margin: 0; opacity: 1; transform: translateY(-50%) scale(1); }
+/* Lots à trois états : symbole (⊇ / =) dans un emplacement de largeur fixe. */
+.chip-opt.chip-tristate .chip-tristate-mode { display: inline-block; width: 1.1em; margin-left: 0; text-align: center; font-weight: 700; }
+/* Graisse identique dans tous les états (choisie, survolée). */
+.chip-opt:not(.chip-avatar), .chip-opt:not(.chip-avatar):hover, .chip-opt.chip-selected:not(.chip-avatar), .chip-opt.chip-tristate.chip-mode-egal { font-weight: 600; }
+/* Réservation avant chip-select.js (CLS, recette NF4) recalculée avec la
+   coche réservée : largeurs mesurées à 1 440 px ; deux lignes quand la
+   carte n'a plus la place (largeur d'écran − 68 px). */
+.projets-filtres select[name="etat"][data-chip-select]:not([data-chip-init]) { width: 410px; }
+.projets-filtres select[name="phase"][data-chip-select]:not([data-chip-init]) { width: 367px; }
+.projets-filtres select[data-chip-tristate]:not([data-chip-init]) { width: 141px; }
+@media (min-width: 435px) and (max-width: 452px) { .projets-filtres select[name="phase"][data-chip-select]:not([data-chip-init]) { height: 30px; } }
+@media (max-width: 477px) { .projets-filtres select[name="etat"][data-chip-select]:not([data-chip-init]) { height: 68px; } }
+
+/* --- États du panneau de tâche : même principe que les puces (la coche
+   occupe une place réservée, la largeur du bouton ne change pas). --- */
+.tache-etat-choix { position: relative; padding: 0 18px;
+  transition: background-color var(--duree-rapide) var(--courbe-std), border-color var(--duree-rapide) var(--courbe-std),
+              color var(--duree-rapide) var(--courbe-std), padding var(--duree-rapide) var(--courbe-sortie),
+              transform var(--duree-instant) var(--courbe-std); }
+.tache-etat-choix::before {
+  content: "✓"; content: "✓" / ""; position: absolute; left: 8px; top: 50%; width: 12px; text-align: center; line-height: 1;
+  opacity: 0; transform: translateY(-50%) scale(.4);
+  transition: opacity var(--duree-rapide) var(--courbe-std), transform var(--duree-rapide) var(--courbe-sortie);
+}
+.tache-etat-choix[aria-pressed="true"] { padding: 0 11px 0 25px; }
+.tache-etat-choix[aria-pressed="true"]::before { content: "✓"; content: "✓" / ""; opacity: 1; transform: translateY(-50%) scale(1); }
+
+/* --- Compteurs dans un bouton : chiffres de même largeur --- */
+.post-reaction-count { display: inline-block; min-width: 1ch; text-align: center; font-variant-numeric: var(--chiffres); }
+
+/* --- Libellés qui alternent dans un même bouton : tous dans la même
+   cellule de grille, un seul visible — largeur du plus long. --- */
+.taches-closes-bascule { display: inline-grid; grid-template-columns: auto auto; column-gap: 6px; }
+.taches-closes-bascule::before { grid-column: 1; grid-row: 1; justify-self: center; }
+.taches-closes-bascule > .si-ferme, .taches-closes-bascule > .si-ouvert { grid-column: 2; grid-row: 1; }
+.taches-closes .si-ouvert, .taches-closes[open] .si-ferme { display: inline; visibility: hidden; }
+.taches-closes[open] .si-ouvert { visibility: visible; }
+.k-pile { display: grid; }
+.k-pile > * { grid-area: 1 / 1; }
+.k-pile > .k-pile-cache { visibility: hidden; }
+
+/* --- Mini-Gantt de l'accueil : le focus d'un lien ne fait plus défiler la
+   carte ni l'étiquette (overflow: hidden se laissait défiler de 2 px). --- */
+.deadline-banner, .mini-gantt-label { overflow: clip; }
+
+/* --- Lien d'évitement interne : par-dessus la carte, sans la pousser (P2-1) --- */
+.carte-taches { position: relative; }
+.lien-evitement-interne:focus { position: absolute; z-index: 5; top: 8px; left: 50%; transform: translateX(-50%); margin: 0; white-space: nowrap; box-shadow: var(--ombre-2); }
+
+/* --- Liste Utilisateurs : la pastille « Inactif » ne change plus la hauteur
+   de la ligne (P2-11). --- */
+.urow-sous .pill { margin-top: -2px; margin-bottom: -2px; }
+
+/* --- Notifications : l'état non lu se voit par la pastille et le fond, sans
+   changer la graisse (le texte ne passe plus à la ligne autrement) ; la
+   place de « Marquer comme lue » reste réservée une fois la notification
+   lue (P1-7). --- */
+.notif-message, .notif-item.non-lu .notif-message { font-weight: var(--graisse-normale); transition: none; }
+.notif-lire-vide { flex-shrink: 0; width: 40px; }
+@media (max-width: 600px) { .notif-lire-vide { width: 52px; } }
+
+/* --- Bandeau des modes : « Mode test » garde UNE place, ouvert ou replié :
+   en tête de la zone des outils, à gauche ; le panneau se déplie à sa
+   droite (ou dessous, faute de place). Plus de margin-left:auto ni d'order
+   qui changent avec [open] (P0-2). --- */
+.bandeau-admin-outils, .bandeau-admin-outils[open] {
+  margin-left: 0; flex: 1 1 0; min-width: 9em; display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; order: 0;
+}
+.bandeau-admin-outils > .bandeau-admin-resume { flex-shrink: 0; }
+html[data-k-outils-replies] .bandeau-admin-outils > .bandeau-admin-panneau { display: none; }
+html[data-k-outils-replies] .bandeau-admin-outils .bandeau-admin-chevron { transform: rotate(-90deg); }
+@media (max-width: 600px) {
+  .bandeau-admin-outils, .bandeau-admin-outils[open], .bandeau-admin-outils:not([open]) { order: 3; flex: 1 1 100%; }
+  /* Étiquette « Mode test » de même taille ouvert ou replié. */
+  .bandeau-admin-outils .bandeau-admin-etiquette { font-size: 11px; white-space: nowrap; letter-spacing: .02em; }
+  /* Deadlines : le compte a sa ligne (il passait à la ligne en « Tous les
+     projets » et poussait le contrôle segmenté de 24 px). */
+  .subbar-inner > #deadlines-compte { flex: 1 1 100%; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* --- Fenêtres : ancrées en haut (le X et les flèches ne bougent plus quand
+   la hauteur change, P1-4) ; « Nouveau post » : barre d'actions collée en
+   bas, « Publier » à la même place d'un onglet à l'autre (P1-2). --- */
+@media (min-width: 601px) {
+  .post-dialog:modal { margin-top: max(6vh, 32px); margin-bottom: auto; }
+}
+@media (max-width: 600px) {
+  #dialog-tache:not(.tache-panneau), #dialog-informations-projet { height: min(88dvh, 760px); }
+}
+#dialog-nouveau-post[open] { display: flex; flex-direction: column; }
+#dialog-nouveau-post .intent-panels { flex: 1 0 auto; display: flex; flex-direction: column; }
+#intent-tache:checked ~ .intent-panels .panel-tache,
+#intent-information:checked ~ .intent-panels .panel-information,
+#intent-requete:checked ~ .intent-panels .panel-requete { display: flex; flex-direction: column; flex: 1 0 auto; }
+#dialog-nouveau-post .intent-panel > form { flex: 1 0 auto; display: flex; flex-direction: column; }
+#dialog-nouveau-post .intent-panel > form > .fenetre-actions {
+  margin-top: auto; position: sticky; bottom: -20px; z-index: 2; background: var(--surface); padding-bottom: 8px; margin-bottom: -8px;
+}
+@media (max-width: 600px) {
+  #dialog-nouveau-post .intent-panel > form > .fenetre-actions { bottom: calc(-20px - env(safe-area-inset-bottom, 0px)); }
+}
+
+/* --- Confirmation dans une fenêtre : par-dessus le haut de la fenêtre, sur
+   toute sa largeur, sans pousser le contenu (marge basse négative posée
+   par le script, P1-1). --- */
+.k-confirmation.k-confirmation-bloc { max-width: none; margin: 0 -6px; box-shadow: var(--ombre-2); animation: k-fondu var(--duree-rapide) var(--courbe-sortie); }
+
+/* --- Feuilles (téléphone) : glisser pour fermer, sortie animée (P1-10) --- */
+dialog.k-sortie { animation: k-fenetre-sortie var(--duree-base) var(--courbe-entree) forwards; }
+dialog.k-sortie::backdrop { animation: k-fondu-sortie var(--duree-base) var(--courbe-entree) forwards; }
+@keyframes k-fenetre-sortie { to { opacity: 0; transform: translateY(8px) scale(.98); } }
+@keyframes k-fondu-sortie { to { opacity: 0; } }
+@media (max-width: 600px) {
+  .post-dialog.k-sortie { animation-name: k-feuille-sortie; }
+  .post-dialog.k-glisse { transition: none; animation: none; }
+  .post-dialog.k-retour { transition: transform var(--duree-base) var(--courbe-sortie); }
+  .post-dialog::before { touch-action: none; cursor: grab; }
+}
+@keyframes k-feuille-sortie { to { transform: translateY(100%); } }
+
+/* --- Panneau de tâche (≥ 1 024 px) : la page se resserre avec la même
+   courbe que le panneau (marge animée), la colonne de gauche garde sa
+   largeur et ses lignes (la colonne du milieu ne bouge pas à 1 440 px), le
+   tableau des tâches garde sa forme sur une ligne (Heures et Intervenants
+   masqués) ; une insertion dans le fil ne fait plus descendre la colonne
+   de droite (P1-3). --- */
+@media (min-width: 1024px) {
+  main, .bandeau-admin { transition: margin-right var(--duree-lente) var(--courbe-sortie); }
+  body.tache-panneau-ouvert:has(.tache-panneau-sortie) main, body.tache-panneau-ouvert:has(.tache-panneau-sortie) .bandeau-admin { transition-duration: var(--duree-base); transition-timing-function: var(--courbe-entree); }
+  body.tache-panneau-ouvert:not(:has(.tache-panneau-sortie)) .page-body:not(.page-body-2col) { grid-template-columns: 252px minmax(0, 1fr); grid-template-rows: auto 1fr; }
+  /* Intervenants et Heures en colonnes de largeur nulle (masquées) : la
+     ligne garde sa hauteur et sa forme. */
+  body.tache-panneau-ouvert .carte-taches .thead, body.tache-panneau-ouvert .carte-taches .taskrow {
+    grid-template-columns: minmax(120px, 1fr) 0 100px 110px 0 24px; grid-template-areas: none; min-width: 0; column-gap: 0; padding-left: 4px; padding-right: 4px; }
+  body.tache-panneau-ouvert .carte-taches .thead { position: static; width: auto; height: auto; overflow: visible; clip: auto; white-space: normal; }
+  /* Même hauteur de ligne que le tableau complet (la requête de conteneur
+     des cartes posait 10 px au lieu de 11 : −2 px par ligne au-dessus). */
+  body.tache-panneau-ouvert .carte-taches .taskrow { padding-top: 11px; padding-bottom: 11px; }
+  body.tache-panneau-ouvert .carte-taches .taskrow > :is(.taskrow-heures, .taskrow-intervenants),
+  body.tache-panneau-ouvert .carte-taches .thead > :is(:nth-child(2), :nth-child(5)) { visibility: hidden; overflow: hidden; min-width: 0; }
+  body.tache-panneau-ouvert .carte-taches :is(.thead, .taskrow) > :is(:nth-child(3), :nth-child(4), :nth-child(6)) { margin-left: 10px; }
+  body.tache-panneau-ouvert .carte-taches .taskrow > * { grid-area: auto; }
+}
+@media (min-width: 861px) and (max-width: 1180px) {
+  .page-body:not(.page-body-2col) { grid-template-rows: auto 1fr; }
+}
+/* Bord gauche du contenu gardé à l'ouverture du panneau (revue visuel P0-5,
+   interaction P1-3) : le contenu, centré dans 1 360 px, ne se recentre pas
+   dans la largeur restante ; --k-barre = largeur de la barre de défilement
+   (posée par tache-dialog.js). */
+@media (min-width: 1024px) {
+  body.tache-panneau-ouvert:not(:has(.tache-panneau-sortie)) :is(main .page-wrap, main .page-body, main .subbar-inner, main .page-etroite, .bandeau-admin-inner) {
+    margin-left: max(0px, calc((100vw - var(--k-barre, 0px) - 1360px) / 2)); margin-right: 0;
+  }
+}
+
+/* --- Toasts : repli en hauteur avant retrait (P2-4) --- */
+.k-toast.k-repli { height: 0 !important; padding-top: 0; padding-bottom: 0; border-width: 0; margin-top: -8px; opacity: 0;
+  transition: height var(--duree-rapide) var(--courbe-entree), padding var(--duree-rapide) var(--courbe-entree), margin var(--duree-rapide) var(--courbe-entree); }
+/* --- View Transition : les clics traversent la capture (P0-1) --- */
+::view-transition { pointer-events: none; }
+
+/* --- Panneau : focus d'ouverture sur l'en-tête (P1-6), coche
+   « Enregistré » posée dans le champ du titre (P2-2). --- */
+.tache-fenetre-entete:focus { outline: none; }
+.tache-fenetre-entete:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--rayon-s); }
+.tache-titre-form .tache-enregistre { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none;
+  background: var(--surface); padding: 2px 4px; border-radius: var(--rayon-s); }
+
+/* --- « Voir comme » : commandes désactivées qui en ont l'air (P1-11) --- */
+html[data-lecture-seule] :is(button, input, select, textarea):disabled { opacity: .5; cursor: not-allowed; }
+
+/* --- Cibles tactiles de 44 px pour les gestes répétés, sans changer le
+   dessin (zone agrandie par ::after, P1-12). --- */
+@media (pointer: coarse) {
+  :is(.post-action, .tache-etat-choix, .chip-opt, .post-comment-action, .k-toast-action, .k-toast-fermer, .tache-panneau-fleche,
+      .dialog-fermer, .tache-intervenant-retirer, .notif-lire-btn) { position: relative; }
+  :is(.post-action, .tache-etat-choix, .chip-opt:not(.chip-avatar), .post-comment-action, .k-toast-action)::after { content: ""; position: absolute; inset: -8px 0; }
+  :is(.k-toast-fermer, .tache-panneau-fleche, .dialog-fermer, .tache-intervenant-retirer, .chip-avatar)::after { content: ""; position: absolute; inset: -7px; }
+}
+/* Échéance du panneau : « Enregistrer » éteint tant que rien n'a changé (P2-9). */
+.tache-echeance-form .k-inchange { opacity: .55; cursor: default; }
+.tache-echeance-form .k-inchange:active { transform: none; }
+/* Bouton occupé : la roue prend la place du libellé, au centre — la
+   largeur du bouton ne change pas. */
+:is(.btn, .btn-primaire, .btn-secondary)[aria-busy="true"] { position: relative; color: transparent !important; }
+:is(.btn, .btn-primaire, .btn-secondary)[aria-busy="true"] > * { visibility: hidden; }
+:is(.btn, .btn-primaire, .btn-secondary)[aria-busy="true"]::before {
+  position: absolute; left: calc(50% - 7px); top: calc(50% - 7px); border-color: var(--text-secondary); border-right-color: transparent;
+}
+.btn-primaire[aria-busy="true"]::before { border-color: var(--on-accent); border-right-color: transparent; }

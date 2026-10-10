@@ -67,7 +67,7 @@
     copier(texte, b).then(function () { afficher('Chemin copié'); }, function () {
       var code = b.parentNode.querySelector('code');
       if (code) { var r = document.createRange(); r.selectNodeContents(code); var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); }
-      afficher('Sélectionné : Ctrl+C pour copier');
+      afficher('Sélectionné\u00a0: Ctrl+C pour copier');
     });
   });
 
@@ -96,7 +96,7 @@
   // restent actifs les formulaires marqués data-permis-lecture (Revenir à
   // mon compte, date simulée, déconnexion). Le Daily log affiche son propre
   // refus (réponse 403 de son API).
-  var TITRE_LS = 'Lecture seule (« Voir comme ») : revenez à votre compte pour agir.';
+  var TITRE_LS = 'Lecture seule («\u00a0Voir comme\u00a0»)\u00a0: revenez à votre compte pour agir.';
   function lectureSeule(racine) {
     if (!document.documentElement.hasAttribute('data-lecture-seule')) return;
     racine = racine && racine.querySelectorAll ? racine : document;
@@ -118,6 +118,20 @@
   }
   lectureSeule(document);
   document.addEventListener('kairos:fragment', function (e) { lectureSeule(e.detail && e.detail.racine); });
+  // Revue d'interaction P1-11 : un appui sur une commande désactivée en
+  // lecture seule le dit (une fois par page), avec « Revenir à mon compte ».
+  var lectureSeuleDite = false;
+  document.addEventListener('pointerdown', function (e) {
+    if (lectureSeuleDite || !document.documentElement.hasAttribute('data-lecture-seule')) return;
+    var c = e.target.closest && e.target.closest('button:disabled, input:disabled, select:disabled, textarea:disabled');
+    if (!c || c.title !== TITRE_LS || !window.Kairos || !window.Kairos.toast) return;
+    lectureSeuleDite = true;
+    var revenir = document.querySelector('.bandeau-admin-voir form[data-permis-lecture] .bandeau-admin-bouton');
+    window.Kairos.toast(window.Kairos.MESSAGE_LECTURE_SEULE, { type: 'info', action: revenir ? {
+      libelle: revenir.textContent.trim(),
+      surClic: function () { var f = revenir.form; if (f.requestSubmit) f.requestSubmit(revenir); else f.submit(); }
+    } : null });
+  }, true);
 
   // --- Contrôle segmenté -------------------------------------------------------
   function actifDe(groupe) {
