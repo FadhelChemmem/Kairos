@@ -11,14 +11,6 @@
       <h2 class="carte-titre">Tâches</h2>
       {% with oob=false %}{% include "partials/taches_compteur.html" %}{% endwith %}
     </div>
-    {% if peut_gerer and not projet_clos %}
-    {# « + Tâche » : raccourci juste au-dessus du tableau qu'il alimente
-       (retour Fadhel, 2026-09-28). #}
-    <button type="button" id="nouvelle-tache" data-open-post-dialog data-intent="tache" data-gere="1" class="btn-primaire btn-petit" title="Créer une tâche sur ce projet">
-      <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-      Tâche
-    </button>
-    {% endif %}
   </div>
   {% if taches %}
   <a href="#posts-projet" class="lien-evitement-interne">Aller aux posts du projet</a>
@@ -54,7 +46,7 @@
   {% else %}
     <div class="k-vide k-vide-compact">
       <p class="k-vide-titre">Aucune tâche pour l’instant</p>
-      {% if peut_gerer and not projet_clos %}<p class="k-vide-texte">Créez la première avec «&nbsp;+ Tâche&nbsp;».</p>{% endif %}
+      {% if peut_gerer and not projet_clos %}<p class="k-vide-texte">Créez la première avec «&nbsp;+ Nouveau post&nbsp;».</p>{% endif %}
     </div>
   {% endif %}
 </div>

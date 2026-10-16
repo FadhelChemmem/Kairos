@@ -97,7 +97,12 @@ def list_mes_projets_recents(user_id: int, limit: int = 5) -> list[dict]:
 _FILTRES_LISTE = """
         WHERE (%(etats)s IS NULL OR p.etat::text = ANY(%(etats)s))
           AND (%(phases)s IS NULL OR p.phase::text = ANY(%(phases)s))
-          AND (%(chef_ids)s IS NULL OR p.chef_projet_id = ANY(%(chef_ids)s))
+          -- Lot 15 (revue : « mes projets » 34 au lieu de 41) : « Chef de
+          -- projet = moi » compte aussi les projets dont je suis co-chef.
+          AND (%(chef_ids)s IS NULL OR p.chef_projet_id = ANY(%(chef_ids)s)
+               OR (%(user_id)s = ANY(%(chef_ids)s) AND EXISTS (
+                     SELECT 1 FROM projet_co_chef ccf
+                     WHERE ccf.projet_id = p.id AND ccf.utilisateur_id = %(user_id)s)))
           -- Filtre lots à TROIS états par lot (retour Fadhel, 2026-10-01),
           -- deux listes indépendantes :
           --   lot_contient : le projet DOIT avoir chacun de ces lots (parmi
@@ -976,7 +981,6 @@ def propose_code(phase: str, annee: int | None = None, phase_liee_code: str | No
     nouvelle phase (26001D → 26001X), s'il est libre ; sinon (APS → APD,
     même lettre P) on retombe sur le numéro suivant de l'année.
     """
-    import datetime
     import re
 
     if phase not in PHASES_VALIDES:
@@ -1071,3 +1075,37 @@ def create_projet(
                 (projet_id, current_user_id),
             )
         return projet_id
+
+
+def list_en_cours_pour_profil(user_id: int, viewer_id: int) -> list[dict]:
+    """Page d'une personne (lot 15) : projets ouverts où elle est chef,
+    co-chef, intervenante du projet ou d'une de ses tâches — seulement ceux
+    que LE VISITEUR voit. Son rôle, le chef, ses tâches ouvertes et leur
+    prochaine échéance ; projets bloqués d'abord."""
+    return db.query_all(
+        """
+        SELECT p.id, p.code, p.nom, p.phase, p.etat,
+               CASE WHEN p.chef_projet_id = %(uid)s THEN 'chef_de_projet'
+                    WHEN EXISTS (SELECT 1 FROM projet_co_chef cc WHERE cc.projet_id = p.id AND cc.utilisateur_id = %(uid)s)
+                      THEN 'co_chef'
+                    ELSE 'intervenant' END AS role_personne,
+               ch.prenom AS chef_prenom, ch.nom AS chef_nom,
+               (SELECT count(*) FROM tache t JOIN tache_intervenant ti ON ti.tache_id = t.id
+                 WHERE t.projet_id = p.id AND ti.utilisateur_id = %(uid)s AND t.etat IN ('en_cours', 'bloque'))
+                 AS nb_taches,
+               (SELECT min(t.date_echeance) FROM tache t JOIN tache_intervenant ti ON ti.tache_id = t.id
+                 WHERE t.projet_id = p.id AND ti.utilisateur_id = %(uid)s AND t.etat = 'en_cours')
+                 AS prochaine
+        FROM projet p
+        JOIN utilisateur ch ON ch.id = p.chef_projet_id
+        WHERE p.etat IN ('en_cours', 'bloque')
+          AND (p.chef_projet_id = %(uid)s
+               OR EXISTS (SELECT 1 FROM projet_co_chef cc WHERE cc.projet_id = p.id AND cc.utilisateur_id = %(uid)s)
+               OR EXISTS (SELECT 1 FROM projet_intervenant pi WHERE pi.projet_id = p.id AND pi.utilisateur_id = %(uid)s)
+               OR EXISTS (SELECT 1 FROM tache t JOIN tache_intervenant ti ON ti.tache_id = t.id
+                          WHERE t.projet_id = p.id AND ti.utilisateur_id = %(uid)s))
+          AND EXISTS (SELECT 1 FROM v_projet_visibilite vv WHERE vv.projet_id = p.id AND vv.utilisateur_id = %(viewer)s)
+        ORDER BY (p.etat = 'bloque') DESC, p.code, p.id
+        """,
+        {"uid": user_id, "viewer": viewer_id},
+    )

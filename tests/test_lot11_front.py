@@ -286,8 +286,11 @@ class TestConstatsMineurs(_Base):
 
     def test_profil_autocomplete(self):
         html = self._requete("/utilisateurs/moi").data.decode()
-        for valeur in ("tel", "organization-title", "street-address"):
+        for valeur in ("tel", "street-address"):
             self.assertIn(f'autocomplete="{valeur}"', html)
+        # Lot 15 : le poste se lit, il ne se modifie plus ici (Admin, RH).
+        self.assertNotIn('name="poste"', html)
+        self.assertIn("<dt>Poste</dt>", html)
 
     def test_accueil_tache_en_retard(self):
         # Intégration lot 11 : le back ne signale le retard que des tâches
@@ -295,7 +298,8 @@ class TestConstatsMineurs(_Base):
         mes_taches = [{**smoke.MES_TACHES[0], "etat": "en_cours"}]
         html = self._requete("/accueil", **{"app.repositories.taches.list_mes_taches": mes_taches}).data.decode()
         # Intégration lot 11 : texte du back (« en retard de N j »), classe du front.
-        self.assertRegex(html, r'<span class="texte-retard">en retard de \d+ j</span>')
+        # Lot 15 : pastille « +N j », le texte complet au survol et lu.
+        self.assertRegex(html, r'title="en retard de \d+ j">\+\d+&nbsp;j<span class="sr-only">, en retard de \d+ j</span>')
 
     def test_scripts_du_fil_seulement_sur_les_pages_a_fil(self):
         for url in ("/utilisateurs", "/notifications", "/deadlines", "/dailylog"):

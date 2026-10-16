@@ -11,7 +11,7 @@
  * suivante en partiel (aucun rechargement, adresse, Retour, focus, aucun
  * bouton ne bouge, « Semaine suivante » indisponible sur la semaine en
  * cours) ; clic sur une case = Daily log de la personne à ce jour (bandeau
- * de correction) ; fiche (10 jours ouvrés, « Corriger ») ; 1440 / 1024 /
+ * de correction) ; page de la personne (jours ouvrés, « Corriger ») ; 1440 / 1024 /
  * 768 / 375 px, clair et sombre (débordement, contrastes, liste par
  * personne sur téléphone) ; aucune erreur JavaScript.
  */
@@ -161,10 +161,14 @@ async function contrastes(p, racine) {
     await p.close();
 
     // --- 4. Fiche d'une personne : 10 derniers jours ouvrés ----------------
+    // Lot 15 : une seule page par personne (le chef y arrive depuis la fiche),
+    // deux semaines : jours ouvrés avec leur état réel, « Corriger ».
     p = await ouvrir(ali, `/utilisateurs/${RIM}`);
-    const jours = await p.$$eval('.dlq-fiche .dl-semaine-jour', (j) => j.length);
-    etape('fiche : « Daily log — 10 derniers jours ouvrés » (10 jours)', jours === 10 && (await p.textContent('.dlq-fiche h2')).includes('10 derniers jours ouvrés'), jours);
-    const vendredi = p.locator(`.dlq-fiche .dl-semaine-jour:has(a[href*="date=${vendrediPrec}"])`);
+    etape('fiche du chef : page de la personne', p.url().endsWith(`/utilisateurs/${RIM}/profil`), p.url());
+    await p.goto(BASE + `/utilisateurs/${RIM}/profil?semaines=2`);
+    const jours = await p.$$eval('#profil-activite .dl-semaine-jour', (j) => j.length);
+    etape('page de la personne : Daily log de deux semaines (jours ouvrés au moins)', jours >= 10 && (await p.textContent('#dailylog')).includes('2 dernières semaines'), jours);
+    const vendredi = p.locator(`#profil-activite .dl-semaine-jour:has(a[href*="date=${vendrediPrec}"])`);
     etape('fiche : vendredi « Non renseigné » avec « Corriger »', (await vendredi.textContent()).includes('Non renseigné') && await vendredi.locator('a:has-text("Corriger")').count() === 1);
     await Promise.all([p.waitForNavigation(), vendredi.locator('a:has-text("Corriger")').click()]);
     etape('« Corriger » ouvre le Daily log de la personne à ce jour', p.url().includes(`date=${vendrediPrec}`) && p.url().includes(`utilisateur=${RIM}`));

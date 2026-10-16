@@ -493,7 +493,6 @@ class TestSessions(_BaseLot10):
             self.assertIsInstance(sess["iat"], int)
 
     def test_rappel_daily_log_une_fois_par_jour_sans_reconnexion(self):
-        import datetime
         from app.repositories import dailylog
         _, m = self._accueil()
         # Lot 10 (Daily log v9) : la personne entière (fuseau, date d'arrivée).

@@ -182,6 +182,27 @@ def list_mes_taches(user_id: int, limit: int = 10) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def list_ouvertes_pour_profil(user_id: int, viewer_id: int, aujourdhui) -> list[dict]:
+    """Page d'une personne (lot 15) : ses tâches ouvertes — en cours ou
+    bloquées — dont elle est intervenante, sur les projets ouverts que LE
+    VISITEUR voit. Retards d'abord, puis bloquées, puis par échéance."""
+    return db.query_all(
+        """
+        SELECT t.id, t.titre, t.etat, t.date_echeance, t.bloque_motif, t.bloque_le,
+               p.id AS projet_id, p.nom AS projet_nom, p.code AS projet_code
+        FROM tache t
+        JOIN projet p ON p.id = t.projet_id
+        WHERE t.etat IN ('en_cours', 'bloque')
+          AND p.etat IN ('en_cours', 'bloque')
+          AND EXISTS (SELECT 1 FROM tache_intervenant ti WHERE ti.tache_id = t.id AND ti.utilisateur_id = %(uid)s)
+          AND EXISTS (SELECT 1 FROM v_projet_visibilite vv WHERE vv.projet_id = p.id AND vv.utilisateur_id = %(viewer)s)
+        ORDER BY (t.etat = 'en_cours' AND t.date_echeance < %(auj)s) DESC,
+                 (t.etat = 'bloque') DESC, t.date_echeance NULLS LAST, t.id
+        """,
+        {"uid": user_id, "viewer": viewer_id, "auj": aujourdhui},
+    )
+
+
 def list_en_cours_pour_profil(user_id: int, viewer_id: int, limit: int = 8) -> list[dict]:
     """Variante de list_mes_taches() pour la page de profil d'une personne
     (Lot 5, retour Fadhel, 2026-09-28) : même sélection de tâches, mais
@@ -932,3 +953,13 @@ def set_echeance(tache_id: int, projet_id: int, date_echeance, type_deadline: st
         )
         return {"post_id": cur.fetchone()["id"], "titre": tache["titre"], "avant": avant, "apres": apres,
                 "date_debut": tache["date_debut"]}
+
+
+def list_ouvertes_choix(projet_id: int) -> list[dict]:
+    """Tâches ouvertes (en cours, bloquées) d'un projet, par titre : choix
+    « Tâche concernée » d'une Requête (lot 15)."""
+    return db.query_all(
+        "SELECT id, titre, etat FROM tache WHERE projet_id = %s AND etat IN ('en_cours', 'bloque') "
+        "ORDER BY lower(titre), id",
+        (projet_id,),
+    )

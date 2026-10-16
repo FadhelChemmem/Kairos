@@ -229,10 +229,21 @@ class TestFil(_Partiel):
         self.assertEqual((r.status_code, list(r.get_json()["champs"])), (422, ["contenu"]))
         r = self.client.post(f"/posts/commentaires/{cid}/modifier", data={"contenu": "Avis modifié"}, headers=cible)
         self.assertIn(f'id="commentaire-{cid}-modifier" data-modifier="{cid}" data-partiel-titre', r.get_data(as_text=True))
-        # Suppression : Admin seulement (403 sinon, JSON).
+        # Lot 15 : l'auteur supprime son commentaire (logique), « Annuler »
+        # (jeton signé du toast) le rétablit ; l'Admin le peut aussi.
         r = self.client.post(f"/posts/commentaires/{cid}/supprimer", headers=cible)
-        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.status_code, 200)
+        t = toasts(r)[0]
+        self.assertEqual((t["texte"], t["action"]["libelle"]), ("Commentaire supprimé.", "Annuler"))
+        self.assertNotIn("Avis modifié", r.get_data(as_text=True))
+        self.assertIsNotNone(self.sql("SELECT supprime_le FROM post_commentaire WHERE id = %s", (cid,))[0]["supprime_le"])
+        r = self.client.post(t["action"]["url"], data=t["action"]["donnees"], headers=cible)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Avis modifié", r.get_data(as_text=True))
+        self.assertIsNone(self.sql("SELECT supprime_le FROM post_commentaire WHERE id = %s", (cid,))[0]["supprime_le"])
         self.login(self.admin)
+        r = self.client.post(t["action"]["url"], data=t["action"]["donnees"], headers=cible)
+        self.assertEqual(r.status_code, 409)                               # jeton d'une autre personne
         r = self.client.post(f"/posts/commentaires/{cid}/supprimer", headers=cible)
         self.assertEqual(r.status_code, 200)
         self.assertEqual(toasts(r)[0]["texte"], "Commentaire supprimé.")

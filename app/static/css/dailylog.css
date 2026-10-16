@@ -68,7 +68,6 @@ html:has(body.page-dailylog) { scroll-padding-bottom: 140px; }
 .dl9 .dl-status[data-s="erreur"] .dl-dot { background: var(--dl-danger); }
 .dl9 .dl-status[data-s="absent"] .dl-dot, .dl9 .dl-status[data-s="lecture"] .dl-dot { background: var(--dl-muted); }
 
-.dl9 .dl-settings { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 14px 0 10px; }
 .dl9 .dl-datenav { display: inline-flex; align-items: center; gap: 2px; position: relative; }
 .dl9 .dl-navbtn { width: 32px; height: 36px; border: 1px solid var(--dl-control-border); background: var(--dl-surface); color: var(--dl-muted);
   font-size: 20px; font-weight: 700; cursor: pointer; display: grid; place-items: center; line-height: 1; padding: 0; }
@@ -403,3 +402,125 @@ html.k-js .dl9:not(.dl-pret) .dl-wrap { visibility: hidden; animation: dl-revele
 /* « + » et « déjà dans la liste » à la même hauteur de ligne : un choix du
    catalogue (resté ouvert) garde sa hauteur après l'ajout. */
 .dl9 .dl-catrow .dl-cadd, .dl9 .dl-catrow .dl-cin { line-height: 18px; }
+
+/* ======================================================================
+   Lot 15 — maquette du gérant : en-tête « Daily log de », bande de la
+   semaine, tableau Tâche | Projet | Heures, colonne de droite (journée,
+   heures réparties, Enregistrer, Copier, Marquer absent, aide). Sur
+   téléphone : une colonne, total et Enregistrer collés en bas.
+   ====================================================================== */
+.dl9 .dl-wrap { max-width: 1360px; padding: 24px 32px 60px; }
+.dl9 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--rayon-l); }
+.dl9 .dl-page-entete { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.dl9 .dl-page-titre { margin: 0; font-size: var(--texte-2xl); font-weight: var(--graisse-titre); color: var(--text-strong); }
+.dl9 .dl-page-outils { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; }
+.dl9 .dl-qui { margin: 0; flex-wrap: nowrap; }
+.dl9 .dl-qui label { white-space: nowrap; }
+.dl9 .dl-qui select { min-width: 260px; }
+.dl9 .dl-lien-equipe { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; }
+
+/* Bande de la semaine */
+.dl9 .dl-bande { display: flex; align-items: center; gap: 10px; padding: 12px 16px; margin-bottom: 14px; }
+.dl9 .dl-bande > .dl-navbtn { border: 1px solid var(--dl-control-border); border-radius: var(--dl-r-ctrl); width: 40px; height: 44px; flex: none; }
+.dl9 .dl-bande .dl-datenav .dl-navbtn { height: 44px; }
+.dl9 .dl-bande-jours { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.dl9 .dl-jour {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 76px; min-width: 0; padding: 8px 4px;
+  border: 1px solid var(--dl-border); border-radius: 12px; background: var(--dl-surface); color: var(--dl-fg); cursor: pointer; font-variant-numeric: tabular-nums;
+}
+.dl9 .dl-jour-nom { font-size: 12px; color: var(--dl-muted); }
+.dl9 .dl-jour-num { font-size: 22px; font-weight: 800; line-height: 1.15; color: var(--text-strong); }
+.dl9 .dl-jour-etat { font-size: 11.5px; font-weight: 600; color: var(--dl-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.dl9 .dl-jour-vide { background: var(--dl-amber-soft); border-color: var(--dl-amber-border); }
+.dl9 .dl-jour-vide :is(.dl-jour-nom, .dl-jour-num, .dl-jour-etat) { color: var(--dl-amber); }
+.dl9 .dl-jour-rempli .dl-jour-etat { color: var(--dl-accent-text); }
+.dl9 .dl-jour-absent .dl-jour-etat { color: var(--dl-blue); }
+.dl9 .dl-jour-futur { background: var(--dl-surface-2); cursor: default; }
+.dl9 .dl-jour-futur :is(.dl-jour-nom, .dl-jour-num, .dl-jour-etat) { color: var(--dl-faint-text); }
+.dl9 .dl-jour-sel { border: 2px solid var(--text-strong); padding: 7px 3px; }
+.dl9 .dl-jour-sel .dl-jour-etat { color: var(--text-strong); }
+.dl9 .dl-bande .dl-datenav { flex: none; margin-left: 6px; padding-left: 16px; border-left: 1px solid var(--dl-border); }
+.dl9 .dl-bande .dl-datebtn { height: 44px; }
+.dl9 .dl-bande .dl-cal { left: auto; right: 0; top: 50px; }
+@media (hover: hover) { .dl9 .dl-jour:hover:not(:disabled):not(.dl-jour-sel) { border-color: var(--dl-accent-text); } }
+
+/* Deux colonnes */
+.dl9 .dl-grille { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; margin-top: 14px; }
+.dl9 .dl-banner { margin-bottom: 0; }
+.dl9 .dl-principal { padding: 20px 0 18px; min-width: 0; }
+.dl9 .dl-principal > .dl-head, .dl9 .dl-principal > .dl-propnote { padding-inline: 24px; }
+.dl9 .dl-principal > .dl-propnote { margin-top: 12px; }
+.dl9 .dl-propnote .bouton-texte { font-weight: 600; white-space: nowrap; padding: 0; margin: 0 0 0 4px; font-size: inherit; min-height: 0; }
+.dl9 .dl-thead, .dl9 .dl-row { display: grid; grid-template-columns: 11px minmax(0, 1fr) 170px 32px; gap: 12px; align-items: center; }
+.dl9 .dl-thead { margin-top: 14px; padding: 10px 24px; background: var(--dl-surface-2); border-block: 1px solid var(--dl-border); font-size: 12.5px; color: var(--dl-muted); }
+.dl9 .dl-th-info, .dl9 .dl-row .dl-pinfo { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 12px; align-items: center; }
+.dl9 .dl-list { gap: 0; margin: 0; }
+.dl9 .dl-list:empty::before { margin: 16px 24px 0; }
+.dl9 .dl-row { border: 0; border-bottom: 1px solid var(--dl-border); border-radius: 0; box-shadow: none; padding: 12px 24px; }
+.dl9 .dl-row.dl-row-err { box-shadow: inset 3px 0 0 var(--dl-danger); }
+.dl9 .dl-row .dl-stepper, .dl9 .dl-row .dl-fixval { order: 3; }
+.dl9 .dl-row .dl-retirer { order: 4; margin: 0; }
+.dl9 .dl-row .dl-pinfo { margin: 0; padding: 2px 0; }
+.dl9 .dl-row .dl-pinfo .dl-pname { font-size: 14.5px; }
+.dl9 .dl-row .dl-pinfo .dl-pcode { margin: 0; font-size: 13px; font-weight: 500; color: var(--dl-muted); white-space: normal; }
+.dl9 .dl-absentcard { margin: 16px 24px 0; }
+.dl9 .dl-principal > .dl-addwrap { margin: 14px 24px 0; }
+
+.dl9 .dl-cote { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 76px; }
+.dl9 .dl-carte-journee { padding: 16px 18px; }
+.dl9 .dl-carte-journee .dl-objctl { margin: 0; width: 100%; justify-content: space-between; }
+.dl9 .dl-objstep { display: inline-flex; align-items: center; gap: 4px; }
+.dl9 .dl-totalbar { position: static; background: none; border: 0; box-shadow: none; padding: 0; margin-top: 14px; }
+.dl9 .dl-totalinner { max-width: none; flex-direction: column; align-items: stretch; gap: 10px; }
+.dl9 .dl-totsum { flex-direction: row; align-items: baseline; justify-content: space-between; min-width: 0; }
+.dl9 .dl-totlabel { font-size: 13px; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--dl-muted); }
+.dl9 .dl-totval { font-size: 16px; }
+.dl9 .dl-mid { min-width: 0; }
+.dl9 .dl-save { width: 100%; }
+.dl9 .dl-cote .dl-daytools { flex-direction: column; gap: 10px; margin: 0; padding: 14px 18px; }
+.dl9 .dl-cote .dl-tool { width: 100%; justify-content: center; padding: 10px 14px; }
+.dl9 .dl-cote .dl-hint { margin: 0; padding: 0 4px; }
+
+@media (max-width: 1000px) {
+  .dl9 .dl-wrap { padding: 16px 16px 170px; }
+  .dl9 .dl-grille { grid-template-columns: minmax(0, 1fr); }
+  .dl9 .dl-cote { position: static; }
+  .dl9 .dl-totalbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; margin: 0; background: var(--dl-surface);
+    border-top: 1px solid var(--dl-border); box-shadow: 0 -6px 24px rgba(20, 40, 28, .07); padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); }
+  .dl9 .dl-totalinner { max-width: 640px; margin: 0 auto; flex-direction: row; align-items: center; gap: 14px; }
+  .dl9 .dl-totsum { flex-direction: column; align-items: flex-start; min-width: 92px; }
+  .dl9 .dl-save { width: auto; }
+}
+@media (max-width: 760px) {
+  .dl9 .dl-bande { flex-wrap: wrap; padding: 10px; gap: 8px; }
+  .dl9 .dl-bande-jours { gap: 6px; order: 1; flex-basis: calc(100% - 112px); }
+  .dl9 .dl-bande > #dl-sem-prec { order: 0; }
+  .dl9 .dl-bande > #dl-sem-suiv { order: 2; }
+  .dl9 .dl-bande .dl-datenav { order: 3; flex-basis: 100%; margin: 0; padding: 8px 0 0; border-left: 0; border-top: 1px solid var(--dl-border); justify-content: center; }
+  .dl9 .dl-bande .dl-cal { left: 50%; right: auto; transform: translateX(-50%); }
+  .dl9 .dl-jour { min-height: 64px; padding: 6px 2px; }
+  .dl9 .dl-jour-sel { padding: 5px 1px; }
+  .dl9 .dl-jour-num { font-size: 18px; }
+  .dl9 .dl-jour-etat { font-size: 10.5px; }
+  .dl9 .dl-thead { display: none; }
+  .dl9 .dl-row { display: flex; flex-wrap: wrap; gap: 8px 10px; padding: 12px 16px; }
+  .dl9 .dl-row .dl-pinfo { display: block; flex: 1 1 0; }
+  .dl9 .dl-row .dl-pinfo .dl-pcode { font-size: 12px; }
+  .dl9 .dl-row .dl-stepper { flex: 1 1 100%; width: auto; }
+  .dl9 .dl-row .dl-retirer { order: 1; }
+  .dl9 .dl-principal > .dl-head, .dl9 .dl-principal > .dl-propnote { padding-inline: 16px; }
+  .dl9 .dl-principal > .dl-addwrap { margin-inline: 16px; }
+  .dl9 .dl-qui { flex-wrap: wrap; width: 100%; }
+  .dl9 .dl-qui select { min-width: 0; }
+  .dl9 .dl-page-outils { width: 100%; }
+}
+@media (max-width: 380px) { .dl9 .dl-jour-etat { display: none; } .dl9 .dl-jour { min-height: 52px; } }
+@media (max-height: 480px) { .dl9 .dl-totalbar { position: static; } }
+/* Lot 15 : jour rempli depuis la bannière, gardé coché à sa place. */
+.dl9 .dl-chip.dl-chip-fait { border-color: color-mix(in srgb, var(--etat-termine-texte) 40%, transparent); color: var(--etat-termine-texte); background: var(--etat-termine-fond); }
+/* Lot 15 : sous 1000 px, « Marquer absent », « Copier » et la barre de total
+   sont en bas de l'écran ; le message se place en haut pour ne jamais les
+   cacher (même règle que la feuille de tâche). */
+@media (max-width: 1000px) {
+  body.page-dailylog .k-toasts { top: calc(12px + env(safe-area-inset-top, 0px)); bottom: auto; }
+}

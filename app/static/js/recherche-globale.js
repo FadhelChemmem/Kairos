@@ -131,7 +131,9 @@
     montrer(true);
   }
 
+  var entreeEnAttente = false;
   input.addEventListener('input', function () {
+    entreeEnAttente = false;
     var q = input.value.trim();
     clearTimeout(timer);
     clearTimeout(attente);
@@ -141,7 +143,12 @@
       attente = setTimeout(function () { if (n === seq) squelettes(); }, 150);
       fetch(url + '?q=' + encodeURIComponent(q), { credentials: 'same-origin' })
         .then(function (r) { return r.json(); })
-        .then(function (data) { clearTimeout(attente); if (n === seq) render(data.resultats || [], q); })
+        .then(function (data) {
+          clearTimeout(attente);
+          if (n !== seq) return;
+          render(data.resultats || [], q);
+          if (entreeEnAttente) { entreeEnAttente = false; var l0 = liens(); if (l0.length) l0[0].click(); }
+        })
         .catch(function () { clearTimeout(attente); if (n === seq) montrer(false); });
     }, 220);
   });
@@ -155,9 +162,12 @@
       e.preventDefault();
       if (e.key === 'ArrowDown') activer(actif < l.length - 1 ? actif + 1 : actif);
       else activer(actif - 1);
-    } else if (e.key === 'Enter' && actif >= 0 && !box.hidden && l[actif]) {
+    } else if (e.key === 'Enter' && input.value.trim().length >= 2) {
+      // Lot 15 (revue UX) : Entrée ouvre le résultat choisi, à défaut le
+      // premier ; résultats pas encore arrivés : ouvert dès leur arrivée.
       e.preventDefault();
-      l[actif].click();
+      if (!box.hidden && l.length) (l[actif >= 0 ? actif : 0]).click();
+      else entreeEnAttente = true;
     }
   });
   // Liste fermée dès que le focus (Tab) ou un clic quitte la recherche.

@@ -290,6 +290,17 @@ def create_app(config_class=Config) -> Flask:
     def _modes_admin_ecriture():
         return modes_admin.refuser_ecriture()
 
+    # Lot 15 : purge des pièces jointes retirées depuis 30 jours (storage.py),
+    # après une page servie à une personne connectée, hors « Voir comme ».
+    @app.after_request
+    def _purge_pieces(reponse):
+        if (request.method == "GET" and reponse.status_code < 400 and request.endpoint != "static" and g.get("user")
+                and not app.config.get("TESTING") and not g.get("lecture_seule")):
+            from .storage import purger_si_du
+
+            purger_si_du()
+        return reponse
+
     @app.errorhandler(db.LectureSeule)
     def _lecture_seule(exc):
         # Dernier rempart (transaction READ ONLY refusée par PostgreSQL) :

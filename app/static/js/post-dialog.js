@@ -139,8 +139,42 @@
     intervenantsTache.dispatchEvent(new Event('change'));
   }
 
+  // Lot 15 : « Tâche concernée » d'une Requête — tâches ouvertes du projet
+  // choisi (chargées à la demande, gardées en mémoire par projet).
+  var tacheRequete = dialog.querySelector('#dialog-tache-requete');
+  var tacheRequeteRow = dialog.querySelector('[data-requete-tache-row]');
+  var tachesParProjet = {};
+  function remplirTaches(pid, liste) {
+    if (!tacheRequete) return;
+    var garde = tacheRequete.value;
+    while (tacheRequete.options.length > 1) tacheRequete.remove(1);
+    (liste || []).forEach(function (t) {
+      var o = document.createElement('option');
+      o.value = String(t.id);
+      o.textContent = t.titre + (t.bloquee ? ' (bloquée)' : '');
+      tacheRequete.appendChild(o);
+    });
+    tacheRequete.value = Array.prototype.some.call(tacheRequete.options, function (o) { return o.value === garde; }) ? garde : '';
+    if (tacheRequeteRow) tacheRequeteRow.hidden = !(liste && liste.length);
+  }
+  function chargerTaches(pid) {
+    if (!tacheRequete || !ouvreur) return;   // seulement fenêtre ouverte
+    if (!pid || pid === AUCUN) { remplirTaches(pid, []); return; }
+    if (tachesParProjet[pid]) { remplirTaches(pid, tachesParProjet[pid]); return; }
+    remplirTaches(pid, []);   // jamais la tâche d'un autre projet pendant le chargement
+    var url = tacheRequete.getAttribute('data-taches-url').replace('999999999', pid);
+    fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : { taches: [] }; })
+      .then(function (d) {
+        tachesParProjet[pid] = d.taches || [];
+        if ((projetCourant() || (tacheRequete.getAttribute('data-projet-fixe'))) === pid) remplirTaches(pid, tachesParProjet[pid]);
+      })
+      .catch(function () { /* liste vide déjà affichée */ });
+  }
+
   function appliquerProjet() {
     var pid = projetCourant();
+    chargerTaches(pid || (tacheRequete && tacheRequete.getAttribute('data-projet-fixe')));
     var valeur = (!pid || pid === AUCUN) ? '' : pid;
     if (tacheForm && tacheActionTemplate && valeur) {
       tacheForm.action = tacheActionTemplate.replace('999999999', valeur);

@@ -607,6 +607,20 @@ def _contexte_fiche(projet: dict, *, fil_limite: int = film.TAILLE_PAGE) -> dict
     return contexte
 
 
+@bp.route("/<int:projet_id>/taches-choix")
+@login_required
+def api_taches_choix(projet_id: int):
+    """Lot 15 : tâches ouvertes d'un projet visible, pour « Tâche concernée »
+    d'une Requête (fenêtre « + Nouveau post », chargées au choix du projet)."""
+    if not projets.user_can_view(projet_id, g.user["id"]):
+        return {"erreur": "introuvable", "message": "Projet introuvable."}, 404
+    rows = taches.list_ouvertes_choix(projet_id)
+    reponse = jsonify({"taches": [{"id": r["id"], "titre": r["titre"], "bloquee": r["etat"] == "bloque"}
+                                  for r in rows]})
+    reponse.headers["Cache-Control"] = "no-store"
+    return reponse
+
+
 @bp.route("/<int:projet_id>")
 @login_required
 def detail(projet_id: int):
@@ -1035,7 +1049,7 @@ def creer_tache(projet_id: int):
     parent_post_id = request.form.get("parent_post_id", type=int)
     if parent_post_id:
         parent = posts.get_post(parent_post_id)
-        if parent is None or parent["projet_id"] != projet_id:
+        if parent is None or parent["projet_id"] != projet_id or parent.get("supprime_le") is not None:
             abort(404)
 
     co_chefs_avant = projets.ids_co_chefs(projet_id)
@@ -1068,7 +1082,18 @@ def creer_tache(projet_id: int):
         )
     co_chefs = _signaler_co_chefs(projet_id, projet, intervenant_ids, co_chefs_avant)
 
-    flash("Tâche créée." + co_chefs + _message_ecartes(ecartes), "success")
+    message_cree = "Tâche créée." + co_chefs + _message_ecartes(ecartes)
+    if partiel.est_partiel() and partiel.est_partiel() != "#fil-posts":
+        # Lot 15 (revue UX) : créée hors de la fiche (accueil), le toast
+        # propose d'ouvrir la tâche.
+        from .posts import reponse_publication
+
+        ouvrir = {"libelle": "Ouvrir", "url": url_for("projets.detail", projet_id=projet_id, tache=tache_id),
+                  "methode": "GET"}
+        post_id = posts.id_post_creation_tache(tache_id)
+        toast = [partiel.toast(message_cree, action=ouvrir)]
+        return reponse_publication(post_id, toasts=toast) if post_id else partiel.rien(toast)
+    flash(message_cree, "success")
     if partiel.est_partiel():
         # Lot 13 (audit UX §2.4) : la fenêtre se ferme, le post de création
         # arrive en tête du fil ; sur la fiche, la ligne est insérée et

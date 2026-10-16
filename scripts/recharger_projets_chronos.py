@@ -63,7 +63,7 @@ from migrate_from_chronos import (  # noqa: E402
 )
 from mysqldump_parser import load_dump  # noqa: E402
 
-MIGRATION_ATTENDUE = "0020_lot14_blocage_et_cloture"
+MIGRATION_ATTENDUE = "0021_lot15_posts_et_preferences"
 
 # Données métier effacées puis rechargées (ou laissées vides) — ordre
 # indifférent pour TRUNCATE. Toute table de la base doit figurer ici ou
@@ -80,7 +80,7 @@ TABLES_EFFACEES = (
 # Jamais modifiées (empreinte comparée avant/après), sauf audit_log qui
 # reçoit une seule ligne de synthèse.
 TABLES_CONSERVEES = (
-    "utilisateur", "utilisateur_session", "dailylog_preference",
+    "utilisateur", "utilisateur_session", "dailylog_preference", "utilisateur_preference",
     "equipe", "lot", "post_type", "reaction_type",
     "audit_log", "tentative_securite", "schema_migrations",
 )
@@ -241,10 +241,10 @@ DECLARE
 BEGIN
   IF to_regclass('public.schema_migrations') IS NULL
      OR NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '{MIGRATION_ATTENDUE}') THEN
-    RAISE EXCEPTION 'Rechargement annulé : la base n''est pas à jour (migration {MIGRATION_ATTENDUE} absente). Déployer le lot 12 (flask migrer) avant de recharger.';
+    RAISE EXCEPTION 'Rechargement annulé : la base n''est pas à jour (migration {MIGRATION_ATTENDUE} absente). Déployer la dernière version de Kairos (flask migrer) avant de recharger.';
   END IF;
   IF EXISTS (SELECT 1 FROM schema_migrations WHERE version > '{MIGRATION_ATTENDUE}') THEN
-    RAISE EXCEPTION 'Rechargement annulé : la base contient des migrations postérieures à {MIGRATION_ATTENDUE} (%). Ce fichier a été préparé pour le lot 12 : régénérer avec un script à jour.',
+    RAISE EXCEPTION 'Rechargement annulé : la base contient des migrations postérieures à {MIGRATION_ATTENDUE} (%). Ce fichier a été préparé pour une version plus ancienne : régénérer avec un script à jour.',
       (SELECT string_agg(version, ', ' ORDER BY version) FROM schema_migrations WHERE version > '{MIGRATION_ATTENDUE}');
   END IF;
   SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO v_inconnues

@@ -59,19 +59,22 @@ def accueil():
     if role == "rh":
         return _accueil_rh(user_id)
     if role == "client":
-        deadlines = []
+        toutes_echeances = []
     elif role == "admin":
         # Vue d'ensemble (revue produit P0-3) : les échéances du bureau.
-        deadlines = taches.list_deadlines_tous(limit=12)
+        toutes_echeances = taches.list_deadlines_tous(limit=500)
     else:
-        deadlines = taches.list_deadlines(user_id, limit=6)
+        toutes_echeances = taches.list_deadlines(user_id, limit=500)
+    deadlines = toutes_echeances[:12 if role == "admin" else 6]
     # « Aujourd'hui » au fuseau de la personne (lot 10 pour le Daily log,
     # lot 11 pour les échéances : Guyane / Tunis).
     aujourdhui_local = dailylog_repo.aujourdhui_pour(g.user)
     # Bannière d'accueil (retour Fadhel, 2026-09-19) : mini-Gantt simplifié
-    # (jours + barres, sans les filtres/légende de la page Deadlines) sur une
-    # fenêtre courte pour ne jamais déborder de la largeur des 3 colonnes.
+    # (jours + barres, sans les filtres/légende de la page Deadlines).
+    # Lot 15 : repliée par défaut en une ligne (résumé), dépliée selon le
+    # choix mémorisé du compte (utilisateur_preference.accueil_deadlines).
     deadlines_gantt = build_gantt(deadlines, aujourdhui_local, window_days=14)
+    deadlines_resume = resume_echeances(toutes_echeances, aujourdhui_local)
     # Lot 14 (revue produit P0-1) : section « Bloquées (n) » sous Mes tâches
     # — celles de mes projets ; pour l'Admin, celles du bureau.
     taches_bloquees = [] if role == "client" else taches.list_bloquees(user_id, tous=role == "admin")
@@ -128,6 +131,9 @@ def accueil():
 
     return render_template(
         "accueil.html",
+        preferences=utilisateurs.get_preferences(user_id),
+        deadlines_resume=deadlines_resume,
+        nb_projets_ouverts=len(projets_postables),
         mes_projets=mes_projets_recents,
         projets_postables=projets_postables,
         voient_par_projet=projets.ids_voient_projets(projets_postables),
@@ -152,13 +158,37 @@ def accueil():
     )
 
 
+def resume_echeances(echeances: list[dict], aujourdhui) -> dict:
+    """Ligne repliée « Deadlines » de l'accueil (lot 15) : en retard, dans
+    les 14 jours, et la prochaine échéance (aujourd'hui ou après)."""
+    import datetime
+
+    fin = aujourdhui + datetime.timedelta(days=14)
+    retard = [t for t in echeances if t["date_echeance"] < aujourdhui]
+    a_venir = [t for t in echeances if aujourdhui <= t["date_echeance"] < fin]
+    return {"retard": len(retard), "a_venir": len(a_venir),
+            "prochaine": a_venir[0]["date_echeance"] if a_venir else None}
+
+
+@bp.route("/preferences", methods=["POST"])
+@login_required
+def preference():
+    """Réglage d'affichage du compte (lot 15) : `cle` parmi
+    utilisateurs.PREFERENCES, `valeur` 1/0. Réponse vide (204)."""
+    cle = request.form.get("cle", "")
+    if cle not in utilisateurs.PREFERENCES:
+        return {"erreur": "invalide", "message": "Réglage inconnu."}, 400
+    utilisateurs.set_preference(g.user["id"], cle, request.form.get("valeur") == "1")
+    return "", 204
+
+
 def _accueil_rh(user_id: int):
     """Accueil du RH (lot 7) : pas de projets, de tâches, d'échéances ni de
     Daily log — le fil de ses Informations d'équipe, et de quoi en publier
     (à n'importe quelle équipe)."""
     return render_template(
         "accueil.html",
-        sans_projets=True,
+        sans_projets=True, preferences=utilisateurs.get_preferences(user_id),
         mes_projets=[], projets_postables=[], intent_par_defaut="information", peut_publier=True,
         utilisateurs_actifs=utilisateurs.list_actifs(),
         collaborateurs_recents=utilisateurs.list_collaborateurs_recents(user_id),

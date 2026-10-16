@@ -58,7 +58,7 @@ def _refus_si_clos(post: dict):
 FILS_PARTIELS = {"#fil-liste": True, "#fil-posts": False}
 
 
-def reponse_publication(post_id: int, **fiche):
+def reponse_publication(post_id: int, toasts: list | None = None, **fiche):
     """Réponse partielle d'une publication (lot 13, audit UX §2.2) : le post
     inséré en tête du fil de la page (cible #fil-liste ou #fil-posts, mode
     « avant »), les messages en toasts ; ailleurs (profil), toasts seuls."""
@@ -69,11 +69,12 @@ def reponse_publication(post_id: int, **fiche):
     # création de tâche pas dans « Échanges »).
     categorie = film.categorie_demandee()
     if post is None or (categorie != "tout" and (categorie == "activite") != bool(post.get("est_activite"))):
-        return partiel.rien()
+        return partiel.rien(toasts)
     show_projet = FILS_PARTIELS[cible]
     next_url = (url_for("main.accueil", fil=categorie) if show_projet
                 else url_for("projets.detail", projet_id=post["projet_id"], fil=categorie))
-    return partiel.repondre("partials/fil_item.html", post=post, show_projet=show_projet, next_url=next_url)
+    return partiel.repondre("partials/fil_item.html", post=post, show_projet=show_projet, next_url=next_url,
+                            toasts=toasts)
 
 
 def _next_sans_ancre() -> str:
@@ -99,7 +100,8 @@ def _post_visible_ou_404(post_id: int) -> dict:
     PROMPT_CORRECTIONS.md P0 #1) — posts de projet comme Informations
     d'équipe sans projet (migration 0009), voir posts_repo.peut_voir."""
     post = posts_repo.get_post(post_id)
-    if post is None or not posts_repo.peut_voir(post["id"], post["projet_id"], g.user["id"]):
+    if (post is None or post.get("supprime_le") is not None
+            or not posts_repo.peut_voir(post["id"], post["projet_id"], g.user["id"])):
         abort(404)
     return post
 
@@ -130,6 +132,8 @@ def creer():
         # pas de colonne dédiée, on les combine dans post.contenu.
         contenu = f"{objet}\n\n{contenu}" if contenu else objet
     parent_post_id = request.form.get("parent_post_id", type=int)
+    # Lot 15 : une Requête de projet peut citer une tâche de ce projet.
+    tache_id = request.form.get("tache_id", type=int) if type_code == "requete" else None
     lien = request.form.get("lien", "").strip() or None
     # Schéma de lien restreint (PROMPT_CORRECTIONS.md P0 #4) : un lien
     # "javascript:..." s'exécuterait au clic pour quiconque ouvre le post
@@ -176,6 +180,12 @@ def creer():
         projet = projets_repo.get_projet(projet_id)
         if projet and projet["etat"] in PROJET_CLOS:
             return _refus(MESSAGE_PROJET_CLOS, 409)
+    if tache_id:
+        from ..repositories import taches as taches_repo
+
+        tache = taches_repo.get_tache(tache_id)
+        if tache is None or not projet_id or tache["projet_id"] != projet_id:
+            return _refus("Cette tâche n’appartient pas au projet choisi.", 422, "tache_id")
 
     # Un rebond doit obligatoirement pointer vers un post du MÊME projet —
     # sinon on pourrait relier deux projets sans lien de visibilité entre
@@ -183,7 +193,7 @@ def creer():
     # post sans projet ne peut répondre qu'à un post sans projet qu'on voit.
     if parent_post_id:
         parent = posts_repo.get_post(parent_post_id)
-        if (parent is None or parent["projet_id"] != projet_id
+        if (parent is None or parent["projet_id"] != projet_id or parent.get("supprime_le") is not None
                 or not posts_repo.peut_voir(parent["id"], parent["projet_id"], g.user["id"])):
             abort(404)
         # "Reposter" (retour Fadhel, 2026-09-29, P2) : bloqué sur un
@@ -245,6 +255,7 @@ def creer():
             type_code=type_code,
             contenu=contenu,
             parent_post_id=parent_post_id,
+            tache_id=tache_id,
             lien=lien,
             mentionne_ids=mentionne_ids,
             piece_jointe=piece_jointe,
@@ -351,6 +362,10 @@ def commenter(post_id: int):
     parent_commentaire = None
     if parent_commentaire_id:
         parent_commentaire = posts_repo.get_commentaire(parent_commentaire_id)
+        if (parent_commentaire is not None and parent_commentaire["post_id"] == post_id
+                and parent_commentaire.get("supprime_le") is not None):
+            # Lot 15 : répondre à un commentaire supprimé entre-temps.
+            return _refus("Ce commentaire vient d’être supprimé : votre réponse n’est pas publiée.", 409)
         if (parent_commentaire is None
                 or parent_commentaire["post_id"] != post_id
                 or parent_commentaire["parent_commentaire_id"] is not None):
@@ -467,33 +482,296 @@ def modifier_commentaire(commentaire_id: int):
         return _refus("Le commentaire ne peut pas être vide.", 422, "contenu")
     if erreur := v.trop_long(contenu, v.MAX_COMMENTAIRE, "Commentaire"):
         return _refus(erreur, 422, "contenu")
+    if commentaire.get("supprime_le") is not None:
+        abort(404)
     post = {"id": commentaire["post_id"], "projet_id": commentaire["projet_id"]}
     nouveaux = posts_repo.modifier_commentaire(commentaire_id, g.user["id"], contenu, _tags_du_texte(post, contenu))
     if nouveaux is None:
         abort(404)
+    # Lot 15 : retirer ou ajouter une pièce jointe en modifiant le commentaire.
+    ajoutees, retirees = [], []
+    fichier = request.files.get("fichier")
+    chemin = None
+    try:
+        if fichier and fichier.filename:
+            nom, chemin = save_upload(fichier, f"posts/{commentaire['post_id']}/commentaires")
+            ajoutees.append((nom, chemin))
+        retirees = posts_repo.pieces_commentaire_modifiees(
+            commentaire_id, g.user["id"], v.ids_entiers(request.form.getlist("retirer_pj")), ajoutees)
+    except Exception:
+        delete_upload(chemin)
+        raise
     _notifier_tags(nouveaux, commentaire["post_id"], contenu)
     if partiel.est_partiel():
+        texte, action = "Commentaire modifié.", None
+        if retirees:
+            texte = "Commentaire modifié\u00a0: fichier retiré."
+            action = _action_annuler("commentaire", commentaire_id, "pj",
+                                     url_for("posts.restaurer_pieces_commentaire", commentaire_id=commentaire_id),
+                                     {"pj": retirees}, f"#post-{commentaire['post_id']}-commentaires")
         return _reponse_commentaires(commentaire["post_id"], commentaire_modifie_id=commentaire_id,
-                                     toasts=[partiel.toast("Commentaire modifié.")])
+                                     toasts=[partiel.toast(texte, action=action)])
+    return _safe_redirect()
+
+
+@bp.route("/commentaires/<int:commentaire_id>/pieces/restaurer", methods=["POST"])
+@login_required
+def restaurer_pieces_commentaire(commentaire_id: int):
+    jeton = _lire_jeton("commentaire", commentaire_id, "pj")
+    commentaire = posts_repo.get_commentaire(commentaire_id)
+    if jeton is None or commentaire is None or not jeton.get("pj") or commentaire.get("supprime_le") is not None:
+        return _refus(MESSAGE_ANNULER_PERIME, 409)
+    refus = _refus_restauration(commentaire)
+    if refus:
+        return refus
+    posts_repo.restaurer_pieces(jeton["pj"], g.user["id"], commentaire_id=commentaire_id)
+    if partiel.est_partiel():
+        return _reponse_commentaires(commentaire["post_id"], toasts=[partiel.toast("Fichier rétabli.")])
+    flash("Fichier rétabli.", "success")
     return _safe_redirect()
 
 
 @bp.route("/commentaires/<int:commentaire_id>/supprimer", methods=["POST"])
 @login_required
 def supprimer_commentaire(commentaire_id: int):
-    """Suppression d'un commentaire (et de ses réponses) — réservée aux
-    admins (retour Fadhel, 2026-09-29). Les fichiers joints sont effacés du
-    disque après la suppression en base."""
-    if g.user["role"] != "admin":
-        abort(403)
+    """Suppression d'un commentaire et de ses réponses (lot 15) : par son
+    auteur, le chef ou un co-chef du projet, ou l'Admin. Suppression
+    logique : « Annuler » la lève (jeton signé, 30 minutes)."""
     commentaire = posts_repo.get_commentaire(commentaire_id)
-    if commentaire is None:
+    if (commentaire is None or commentaire.get("supprime_le") is not None
+            or not posts_repo.peut_voir(commentaire["post_id"], commentaire["projet_id"], g.user["id"])):
         abort(404)
-    for chemin in posts_repo.supprimer_commentaire(commentaire_id, g.user["id"]):
-        delete_upload(chemin)
-    flash("Commentaire supprimé.", "success")
+    if not peut_supprimer(commentaire):
+        abort(403)
+    ids, quand = posts_repo.supprimer_commentaire(commentaire_id, g.user["id"])
     if partiel.est_partiel():
-        return _reponse_commentaires(commentaire["post_id"])
+        action = _action_annuler("commentaire", commentaire_id, "suppr",
+                                 url_for("posts.restaurer_commentaire", commentaire_id=commentaire_id),
+                                 {"c": ids, "t": quand}, f"#post-{commentaire['post_id']}-commentaires")
+        return _reponse_commentaires(commentaire["post_id"],
+                                     toasts=[partiel.toast("Commentaire supprimé.", action=action)])
+    flash("Commentaire supprimé.", "success")
+    return _safe_redirect()
+
+
+@bp.route("/commentaires/<int:commentaire_id>/restaurer", methods=["POST"])
+@login_required
+def restaurer_commentaire(commentaire_id: int):
+    """« Annuler » la suppression d'un commentaire (jeton du toast)."""
+    jeton = _lire_jeton("commentaire", commentaire_id, "suppr")
+    commentaire = posts_repo.get_commentaire(commentaire_id)
+    if jeton is None or commentaire is None or not jeton.get("c") or not jeton.get("t"):
+        return _refus(MESSAGE_ANNULER_PERIME, 409)
+    refus = _refus_restauration(commentaire)
+    if refus:
+        return refus
+    if not posts_repo.restaurer_commentaires(jeton["c"], g.user["id"], jeton["t"]):
+        return _refus(MESSAGE_ANNULER_PERIME, 409)
+    if partiel.est_partiel():
+        return _reponse_commentaires(commentaire["post_id"], toasts=[partiel.toast("Commentaire rétabli.")])
+    flash("Commentaire rétabli.", "success")
+    return _safe_redirect()
+
+
+# --------------------------------------------------------------------------
+# Lot 15 : modifier ou supprimer un post, ses pièces jointes ; « Annuler ».
+# --------------------------------------------------------------------------
+SEL_ANNULER = "kairos-annuler-post"
+DUREE_JETON = 30 * 60
+MESSAGE_ANNULER_PERIME = "«\u00a0Annuler\u00a0» n’est plus possible (délai dépassé ou autre compte)."
+# Posts écrits par une personne (les posts automatiques sont l'historique
+# des tâches et du projet : ni modifiables ni supprimables).
+EVENEMENTS_ECRITS = (None, "repost")
+
+
+def _signeur():
+    from itsdangerous import URLSafeTimedSerializer
+
+    return URLSafeTimedSerializer(current_app.secret_key, salt=SEL_ANNULER)
+
+
+def _jeton(objet: str, objet_id: int, **donnees) -> str:
+    return _signeur().dumps({"o": objet, "i": int(objet_id), "u": g.user["id"], **donnees})
+
+
+def _lire_jeton(objet: str, objet_id: int, action: str) -> dict | None:
+    """Jeton « Annuler » valide pour CET objet, CETTE action (suppression,
+    retrait de pièces) et la personne qui l'a faite ; None sinon."""
+    from itsdangerous import BadData
+
+    brut = request.form.get("jeton") or ""
+    try:
+        jeton = _signeur().loads(brut, max_age=DUREE_JETON) if brut else None
+    except BadData:
+        return None
+    if (not isinstance(jeton, dict)
+            or (jeton.get("o"), jeton.get("i"), jeton.get("u"), jeton.get("a")) != (objet, objet_id, g.user["id"], action)):
+        return None
+    return jeton
+
+
+def _action_annuler(objet: str, objet_id: int, action: str, url: str, donnees: dict, cible: str) -> dict:
+    """Action « Annuler » d'un toast : `donnees` signées dans un jeton (objet,
+    action, personne) ; l'affichage de la carte (projet, page) suit à part."""
+    return {"libelle": "Annuler", "url": url, "methode": "POST", "cible": cible,
+            "donnees": {"jeton": _jeton(objet, objet_id, a=action, **donnees),
+                        "show_projet": "1" if _show_projet() else "0", "next": _next_sans_ancre()}}
+
+
+def _refus_restauration(objet: dict):
+    """« Annuler » : l'objet doit toujours être visible et, sauf pour
+    l'Admin, son projet ouvert."""
+    if not posts_repo.peut_voir(objet["post_id"] if "post_id" in objet else objet["id"],
+                                objet.get("projet_id"), g.user["id"]):
+        return _refus(MESSAGE_ANNULER_PERIME, 409)
+    if g.user["role"] != "admin" and objet.get("projet_etat") in PROJET_CLOS:
+        return _refus(MESSAGE_PROJET_CLOS, 409)
+    return None
+
+
+def peut_modifier(post: dict) -> bool:
+    """L'auteur, sur un post qu'il a écrit, projet ouvert."""
+    return (post.get("auteur_id") == g.user["id"] and post.get("evenement") in EVENEMENTS_ECRITS
+            and post.get("supprime_le") is None and post.get("projet_etat") not in PROJET_CLOS)
+
+
+def peut_supprimer(objet: dict) -> bool:
+    """Post écrit (ou commentaire) : son auteur (projet ouvert), le chef ou
+    un co-chef du projet (projet ouvert), l'Admin (toujours)."""
+    if objet.get("evenement", None) not in EVENEMENTS_ECRITS or objet.get("supprime_le") is not None:
+        return False
+    if g.user["role"] == "admin":
+        return True
+    if objet.get("projet_etat") in PROJET_CLOS:
+        return False
+    if objet.get("auteur_id") == g.user["id"]:
+        return True
+    return bool(objet.get("projet_id")) and projets_repo.user_can_manage(objet["projet_id"], g.user["id"])
+
+
+def _reponse_post(post_id: int, toasts: list[dict]):
+    """La carte du post re-rendue (cible #post-<id>)."""
+    post = posts_repo.get_post_carte(post_id, g.user["id"])
+    if post is None:
+        abort(404)
+    return partiel.repondre("partials/post_card.html", post=post, show_projet=_show_projet(),
+                            next_url=_next_sans_ancre(), toasts=toasts)
+
+
+def _show_projet() -> bool:
+    return request.form.get("show_projet") == "1"
+
+
+@bp.route("/<int:post_id>/modifier", methods=["POST"])
+@login_required
+def modifier(post_id: int):
+    """Texte, lien et pièces jointes d'un post, par son auteur (lot 15).
+    Une Requête garde son objet en première ligne. Pièce retirée :
+    « Annuler » la rétablit (le fichier n'est effacé que 30 jours après)."""
+    post = _post_visible_ou_404(post_id)
+    if not peut_modifier(post):
+        abort(403)
+    objet = request.form.get("objet", "").strip()
+    contenu = request.form.get("contenu", "").strip()
+    lien = request.form.get("lien", "").strip() or None
+    erreur = v.premiere_erreur(
+        v.trop_long(objet, v.MAX_OBJET_REQUETE, "Objet de la requête"),
+        v.trop_long(contenu, v.MAX_CONTENU_POST, "Texte du post"),
+        v.trop_long(lien or "", v.MAX_LIEN, "Lien"),
+    )
+    if erreur:
+        return _refus(erreur, 422, "objet" if "Objet" in erreur else "lien" if erreur.startswith("Lien") else "contenu")
+    if post["type_code"] == "requete" and "objet" in request.form:
+        if not objet:
+            return _refus("L’objet de la requête est obligatoire.", 422, "objet")
+        contenu = f"{objet}\n\n{contenu}" if contenu else objet
+    if not contenu:
+        return _refus("Le texte du post est obligatoire.", 422, "contenu")
+    if lien and not is_lien_valide(lien):
+        return _refus("Lien refusé\u00a0: http(s)://, file:, smb: ou un chemin réseau \\\\serveur\\partage.",
+                      422, "lien")
+    retirees_demandees = v.ids_entiers(request.form.getlist("retirer_pj"))
+    ajoutees, chemins = [], []
+    fichier = request.files.get("fichier")
+    try:
+        if fichier and fichier.filename:
+            nom, chemin = save_upload(fichier, f"posts/projet-{post['projet_id']}" if post["projet_id"]
+                                      else "posts/information")
+            ajoutees.append((nom, chemin))
+            chemins.append(chemin)
+        retirees = posts_repo.modifier_post(post_id, g.user["id"], contenu, lien, retirees_demandees, ajoutees)
+    except Exception:
+        for chemin in chemins:
+            delete_upload(chemin)
+        raise
+    if retirees is None:
+        for chemin in chemins:
+            delete_upload(chemin)
+        abort(404)
+    texte = "Post modifié."
+    if retirees:
+        texte = f"Post modifié\u00a0: {len(retirees)} fichier{'s' if len(retirees) > 1 else ''} retiré{'s' if len(retirees) > 1 else ''}."
+    if partiel.est_partiel():
+        action = (_action_annuler("post", post_id, "pj", url_for("posts.restaurer_pieces", post_id=post_id),
+                                  {"pj": retirees}, f"#post-{post_id}") if retirees else None)
+        return _reponse_post(post_id, [partiel.toast(texte, action=action)])
+    flash(texte, "success")
+    return _safe_redirect()
+
+
+@bp.route("/<int:post_id>/pieces/restaurer", methods=["POST"])
+@login_required
+def restaurer_pieces(post_id: int):
+    jeton = _lire_jeton("post", post_id, "pj")
+    post = _post_visible_ou_404(post_id)
+    if jeton is None or not jeton.get("pj"):
+        return _refus(MESSAGE_ANNULER_PERIME, 409)
+    refus = _refus_restauration(post)
+    if refus:
+        return refus
+    posts_repo.restaurer_pieces(jeton["pj"], g.user["id"], post_id=post_id)
+    if partiel.est_partiel():
+        return _reponse_post(post["id"], [partiel.toast("Fichier rétabli.")])
+    flash("Fichier rétabli.", "success")
+    return _safe_redirect()
+
+
+@bp.route("/<int:post_id>/supprimer", methods=["POST"])
+@login_required
+def supprimer(post_id: int):
+    """Suppression d'un post écrit (lot 15) : l'auteur, le chef ou un
+    co-chef du projet, l'Admin. Logique : « Annuler » le rétablit."""
+    post = _post_visible_ou_404(post_id)
+    if not peut_supprimer(post):
+        abort(403)
+    quand = posts_repo.supprimer_post(post_id, g.user["id"])
+    if partiel.est_partiel():
+        action = _action_annuler("post", post_id, "suppr", url_for("posts.restaurer", post_id=post_id), {"t": quand},
+                                 f"#post-{post_id}")
+        return partiel.repondre("partials/post_supprime.html", post_id=post_id,
+                                toasts=[partiel.toast("Post supprimé.", action=action)])
+    flash("Post supprimé.", "success")
+    return _safe_redirect()
+
+
+@bp.route("/<int:post_id>/restaurer", methods=["POST"])
+@login_required
+def restaurer(post_id: int):
+    """« Annuler » la suppression d'un post (jeton du toast, 30 minutes)."""
+    jeton = _lire_jeton("post", post_id, "suppr")
+    post = posts_repo.get_post(post_id)
+    if jeton is None or post is None or not jeton.get("t"):
+        return _refus(MESSAGE_ANNULER_PERIME, 409)
+    refus = _refus_restauration(post)
+    if refus:
+        return refus
+    # Seulement CETTE suppression (même instant, même personne) : une
+    # suppression faite ensuite par quelqu'un d'autre n'est pas annulable ici.
+    if not posts_repo.restaurer_post(post_id, g.user["id"], jeton["t"]):
+        return _refus(MESSAGE_ANNULER_PERIME, 409)
+    if partiel.est_partiel():
+        return _reponse_post(post_id, [partiel.toast("Post rétabli.")])
+    flash("Post rétabli.", "success")
     return _safe_redirect()
 
 

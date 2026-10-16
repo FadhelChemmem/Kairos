@@ -14,10 +14,8 @@ la ligne, la ponctuation part seule au début de la ligne suivante.
 """
 import ast
 import html.parser
-import io
 import pathlib
 import re
-import tokenize
 import unittest
 
 RACINE = pathlib.Path(__file__).resolve().parent.parent

@@ -1,0 +1,50 @@
+{# Modification d'un post par son auteur (lot 15), dans la carte : le texte
+   (une Requête : objet + description), le lien, les pièces jointes
+   (retirer, ajouter). Masqué tant qu'on n'a pas choisi « Modifier » (menu
+   ⋯) ; sans JavaScript, l'ancre #post-<id>-edition l'affiche (:target).
+   Envoi en partiel : la carte est remplacée (routes/posts.py:modifier). #}
+<form method="post" action="{{ url_for('posts.modifier', post_id=post.id) }}" enctype="multipart/form-data"
+      id="post-{{ post.id }}-edition" class="post-edition" data-post-edition="{{ post.id }}" data-partiel="#post-{{ post.id }}"
+      data-focus-apres="#post-{{ post.id }} .post-menu-bouton">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
+  <input type="hidden" name="show_projet" value="{{ '1' if show_projet else '0' }}">
+  {% if est_requete %}
+  <div class="form-row">
+    <label for="post-{{ post.id }}-objet">Objet de la requête</label>
+    <input type="text" id="post-{{ post.id }}-objet" name="objet" maxlength="200" required value="{{ requete_objet }}">
+  </div>
+  <div class="form-row">
+    <label for="post-{{ post.id }}-texte">Description <span class="label-note">— facultatif</span></label>
+    <textarea id="post-{{ post.id }}-texte" name="contenu" maxlength="10000" rows="3">{{ requete_texte }}</textarea>
+  </div>
+  {% else %}
+  <div class="form-row">
+    <label for="post-{{ post.id }}-texte">Texte</label>
+    <textarea id="post-{{ post.id }}-texte" name="contenu" maxlength="10000" rows="3" required>{{ post.contenu or '' }}</textarea>
+  </div>
+  {% endif %}
+  <div class="form-row">
+    <label for="post-{{ post.id }}-lien">Lien <span class="label-note">— facultatif</span></label>
+    <input type="text" id="post-{{ post.id }}-lien" name="lien" maxlength="2000" value="{{ post.lien or '' }}" placeholder="\\NAS\Projets\...">
+  </div>
+  <fieldset class="form-row post-edition-pj">
+    <legend>Pièces jointes</legend>
+    {% for pj in post.pieces_jointes %}
+    <label class="post-edition-pj-ligne">
+      <input type="checkbox" name="retirer_pj" value="{{ pj.id }}">
+      <span class="post-fichier-nom">{{ pj.nom_fichier }}</span>
+      <span class="post-edition-pj-action">Retirer</span>
+    </label>
+    {% endfor %}
+    <div class="dropzone" data-dropzone>
+      <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+      <span class="dropzone-label" data-dropzone-label>Ajouter un fichier (glisser ici ou cliquer)</span>
+      <input type="file" name="fichier" id="post-{{ post.id }}-fichier" class="dropzone-input" aria-label="Ajouter une pièce jointe">
+    </div>
+  </fieldset>
+  <div class="fenetre-actions">
+    <a href="#post-{{ post.id }}" class="btn" data-post-edition-annuler>Annuler</a>
+    <button type="submit" class="btn-primaire">Enregistrer</button>
+  </div>
+</form>

@@ -30,13 +30,12 @@
        Client n'ont de Daily log : leurs liens menaient à « Accès réservé »). -->
   {% if g.user.role in ('admin', 'chef_de_projet', 'intervenant') %}
   <div class="col-center">
-    {# Lot 14 (revue produit P0-4) : tâches en cours proposées dans le Daily
-       log, activé par défaut — préférence de ce navigateur
-       (dailylog-preferences.js), comme les raccourcis ci-dessus. #}
-        <div class="card" id="daily-log-reglages">
+    {# Lot 14 (P0-4) : tâches en cours proposées dans le Daily log ; lot 15 :
+       réglage du compte (dailylog-preferences.js, /preferences). #}
+    <div class="card" id="daily-log-reglages">
       <h2 class="carte-titre carte-titre-form">Daily log</h2>
-      <label class="k-option"><input type="checkbox" id="pref-dl-proposer" data-pref-dl-proposer="{{ g.user.id }}" checked> <span>Proposer mes tâches en cours dans le Daily log</span></label>
-      <p class="aide-champ k-carte-texte k-marge-haut">Sur une journée vierge, une ligne à 0&nbsp;h par tâche en cours (et par projet que vous gérez)&#8239;; une ligne laissée à 0&nbsp;h n’est pas enregistrée. Désactivé, vous ajoutez vous-même vos projets et tâches. Réglage de ce navigateur.</p>
+      <label class="k-option"><input type="checkbox" id="pref-dl-proposer" data-pref-dl-proposer data-preference-url="{{ url_for('main.preference') }}"{% if preferences.dailylog_proposer %} checked{% endif %}{% if bandeau_admin and bandeau_admin.mode == 'voir' %} disabled{% endif %}> <span>Proposer mes tâches en cours dans le Daily log</span></label>
+      <p class="aide-champ k-carte-texte k-marge-haut">Sur une journée vierge, une ligne à 0&nbsp;h par tâche en cours (et par projet que vous gérez)&#8239;; une ligne laissée à 0&nbsp;h n’est pas enregistrée. Désactivé, vous ajoutez vous-même vos projets et tâches.</p>
     </div>
     <div class="card">
       <h2 class="carte-titre carte-titre-form">Daily log — semaine dernière</h2>

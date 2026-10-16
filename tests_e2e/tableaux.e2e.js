@@ -140,11 +140,12 @@ const debordement = (p) => p.evaluate(() => document.documentElement.scrollWidth
     etape('Admin : chiffres des tuiles (1 en retard, 1 bloquée, 1 projet sans tâche, 2 Daily log manquants)',
       chiffres.retard === 1 && chiffres.bloquees === 1 && chiffres.projets === 1 && chiffres.dailylog === 2, chiffres);
     etape('Admin : chiffres tabulaires', await p.evaluate(() => getComputedStyle(document.querySelector('.ve-tuile-nombre')).fontVariantNumeric === 'tabular-nums'));
-    etape('Admin : échéances du bureau (Gantt)', /Toutes les échéances du bureau/.test(await p.textContent('.deadline-banner'))
-      && await p.locator('.deadline-banner a[href="/projets/2?tache=4"]').count() === 1);
+    // Lot 15 : ligne « Échéances du bureau » repliée, Gantt dans le <details>.
+    etape('Admin : échéances du bureau (Gantt)', /Échéances du bureau/.test(await p.textContent('#acc-deadlines'))
+      && await p.locator('#acc-deadlines a[href="/projets/2?tache=4"]').count() === 1);
     etape('Admin : « Par chef de projet » (Ali, Omar)', await p.locator('.pc-table tbody tr').count() === 2
       && /Ali Chef/.test(await p.textContent('.pc-table')));
-    etape('Admin : carte Daily log masquée (aucune heure saisie)', await p.locator('.card-cta, .card-cta-alert').count() === 0);
+    etape('Admin : rappel Daily log masqué (aucune heure saisie)', await p.locator('.acc-dl').count() === 0);
     await capture(p, 'e2e-14-admin-vue-ensemble.png');
 
     await latence(p, 800);
@@ -195,11 +196,14 @@ const debordement = (p) => p.evaluate(() => document.documentElement.scrollWidth
     etape('Chef : lignes non nulles seulement', JSON.stringify(lignes) === JSON.stringify(
       ['at-retard:1', 'at-bloquees:1', 'at-sans_intervenant:2', 'at-sans_echeance:1', 'at-projets_sans_tache:1',
         'at-dailylog:1']), lignes);
+    // Lot 15 : une pastille par projet — « Bloqué » l'emporte sur le retard.
     etape('Chef : pas de Vue d’ensemble, « Mes projets » avec pastilles', await p.locator('#vue-ensemble').count() === 0
-      && await p.locator('.mp-pastilles .pill:has-text("1 en retard")').count() === 1
-      && await p.locator('.mp-pastilles .pill:has-text("Bloqué")').count() === 1);
+      && await p.locator('.acc-projet .pill:has-text("Bloqué")').count() === 1);
     await capture(p, 'e2e-14-chef-a-traiter.png');
     await latence(p, 800);
+    // Lot 15 : « À traiter » en bas de la colonne de droite — amenée à l'écran
+    // avant la mesure (le défilement automatique du clic n'est pas un saut).
+    await p.locator('#at-sans_intervenant').scrollIntoViewIfNeeded();
     await interaction(p, 'Ligne « sans intervenant » : liste dépliée',
       () => p.click('#at-sans_intervenant'),
       async () => (await etat(p)).url === '/accueil?voir=sans_intervenant' && await p.locator('#at-detail .tb-ligne').count() === 2,
@@ -213,7 +217,7 @@ const debordement = (p) => p.evaluate(() => document.documentElement.scrollWidth
       && await p.getAttribute('#tdp-miennes', 'aria-current') === 'page');
     await interaction(p, '« Toutes »',
       () => p.click('#tdp-toutes'),
-      async () => (await etat(p)).url === '/accueil?voir=sans_intervenant' && await p.locator('#accueil-taches .accueil-tache').count() === 4,
+      async () => (await etat(p)).url === '/accueil?voir=sans_intervenant' && await p.locator('#accueil-taches .acc-tache').count() === 4,
       { focus: '#tdp-toutes' });
     await latence(p, 0);
     // Droits : une cible forgée n'est pas servie.

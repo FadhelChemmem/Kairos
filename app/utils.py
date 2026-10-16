@@ -207,8 +207,6 @@ def il_y_a(dt) -> str:
     Lot 13 (audit temps T-M5) : sous date simulée (mode test), la date
     absolue de l'horodatage RÉEL (« 9 oct. à 13 h 08 », au fuseau de la
     personne) — « il y a 11 min » à côté d'une date simulée trompait."""
-    import datetime
-
     from . import horloge
 
     if dt is None:
@@ -369,8 +367,6 @@ def build_gantt(taches: list[dict], today, window_days: int = 21) -> dict:
     l'échéance (comme dans la maquette) : rouge si échéance imminente/
     dépassée, orange si dans la semaine, vert au-delà.
     """
-    import datetime
-
     days = []
     for i in range(window_days):
         d = today + datetime.timedelta(days=i)

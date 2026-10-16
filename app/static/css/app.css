@@ -214,11 +214,6 @@ main:focus { outline: none; }
   box-shadow: 0 1px 2px rgba(20, 30, 25, 0.04);
 }
 
-.card-cta {
-  background: linear-gradient(160deg, #4a7c59, #14513b);
-  border: none;
-}
-
 .avatar {
   display: flex; align-items: center; justify-content: center;
   border-radius: 999px; color: #ffffff; font-weight: 700;
@@ -741,14 +736,6 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
    voir accueil.html pour les couleurs de texte/bouton associées, qui
    changent aussi entre l'état normal (fond vert, texte blanc) et l'état
    d'alerte (fond blanc, texte sombre). --- */
-.card-cta-alert {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  /* var(--error-text), pas #c23a1a fixe : ce token s'éclaircit déjà en
-     thème sombre (voir :root[data-theme="dark"]) pour rester lisible sur
-     fond sombre — un rouge saturé fixe y serait trop terne/peu contrasté. */
-  border-left: 4px solid var(--error-text);
-}
 
 /* --- Bannière Deadlines pleine largeur (accueil, entre la topbar et les
    trois colonnes — retour Fadhel, 2026-09-19). ---
@@ -761,22 +748,6 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
    bordure à (largeur-1360)/2, 32px plus à l'extérieur). Pour que sa bordure
    s'aligne avec les cartes du dessous, sa boîte doit faire 1360-2×32=1296px
    plutôt que 1360px. */
-.deadline-banner {
-  text-decoration: none; color: inherit;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-  max-width: 1296px; margin: 18px auto 0; padding: 14px 32px;
-  box-sizing: border-box;
-  display: block; overflow: hidden;
-}
-.deadline-banner:hover { border-color: var(--border-hover); }
-.deadline-banner-title {
-  display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700;
-  flex-shrink: 0;
-}
-.deadline-banner-head {
-  display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
-}
-.deadline-banner-empty { font-size: 12.5px; color: var(--text-muted); }
 
 /* Mini-Gantt de la bannière d'accueil (retour Fadhel, 2026-09-19) : version
    simplifiée du Gantt de /deadlines — mêmes couleurs de barre, mais sans
@@ -1120,10 +1091,9 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
    pour les tableaux, sans toucher au visuel desktop existant au-dessus de
    ce seuil. ========================================================== */
 @media (max-width: 860px) {
-  .page-wrap, .topbar-inner, .subbar-inner, .deadline-banner {
+  .page-wrap, .topbar-inner, .subbar-inner {
     padding-left: 16px; padding-right: 16px;
   }
-  .deadline-banner { margin-left: 12px; margin-right: 12px; width: auto; }
 
   /* Colonnes latérales sous le fil central plutôt qu'à côté (l'ordre du
      DOM — colonne gauche, fil, colonne droite — définit l'ordre empilé). */
@@ -1144,11 +1114,10 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
   .subbar { position: static; }
   html { scroll-padding-top: 72px; }
   /* Accueil : le fil (colonne centrale) avant les cartes latérales. */
-  .page-body-accueil > .col-center { order: -1; }
+
   /* Les colonnes qui suivent le fil à l'écran n'apparaissent qu'une fois le
      fil entièrement lu (#fil-vide le termine) : sur réseau lent, la page
      peinte en cours de chargement ne les pousse plus vers le bas (CLS). */
-  .page-body-accueil:not(:has(#fil-vide)) > .col { display: none; }
 
   /* Tableaux à grille (tâches, utilisateurs, "Tous les projets") : on ne
      force plus les colonnes à tenir dans la largeur de l'écran (elles
@@ -1156,8 +1125,7 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
      la carte, dont l'en-tête (nom du projet/tâche) reste, lui, visible. */
   .table-scroll { overflow-x: auto; }
   .page-body-2col { grid-template-columns: 1fr; }
-  .post-upload-form { flex-wrap: wrap; }
-  .post-upload-form input[type=file] { min-width: 0; max-width: 100%; }
+
   .table-scroll .thead, .table-scroll .taskrow { min-width: 600px; }
   .table-scroll .uhead, .table-scroll .urow { min-width: 860px; }
   .table-scroll .ptable-head, .table-scroll .ptable-row { min-width: 820px; }
@@ -1276,7 +1244,7 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
   padding-top: 5px; padding-bottom: 5px; margin-top: -5px; margin-bottom: -5px;
 }
 .post-lien { padding-top: 5px; padding-bottom: 5px; margin-top: -5px; margin-bottom: 1px; }
-.deadline-banner-head { padding-top: 5px; padding-bottom: 5px; margin-top: -5px; margin-bottom: 5px; }
+
 .lien-logo { display: flex; align-items: center; min-height: 32px; }
 /* Onglets Tâche / Information / Requête sur petit téléphone : sans
    icônes, pour que « Requête » ne déborde plus (320 px). */
@@ -1732,9 +1700,9 @@ html.k-js .k-js-seul { display: inline-flex !important; }
 .point-etat-bloque { background: #e3512c; }
 .point-etat-termine, .point-etat-abandonne { background: #c7cdc4; }
 :root[data-theme="dark"] .point-etat-termine, :root[data-theme="dark"] .point-etat-abandonne { background: #6b7a62; }
-.lien-discret-bloc { color: inherit; text-decoration: none; }
+
 .lien-carte-petit { font-size: 12px; font-weight: 600; }
-.deadline-banner-tout { font-size: 11.5px; color: var(--text-muted); }
+
 .page-etroite { max-width: 560px; margin: 0 auto; padding: 24px 32px 60px; }
 .page-titre-espace { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
 .btn-pleine-largeur { width: 100%; }
@@ -1743,7 +1711,7 @@ html.k-js .k-js-seul { display: inline-flex !important; }
 
 /* --- Erreurs de saisie reliées aux champs (audit a11y I5) --- */
 .champ-erreur { margin: 4px 0 0; font-size: 12px; font-weight: 600; color: var(--error-text); }
-[aria-invalid="true"]:not(.k-sans-cadre) { border-color: var(--danger-fill) !important; }
+[aria-invalid="true"] { border-color: var(--danger-fill) !important; }
 .search-combobox-input[aria-invalid="true"], .chip-select-wrap [aria-invalid="true"] { border-color: var(--danger-fill) !important; }
 
 /* --- Fenêtres : en-tête, actions, champs fixes --- */
@@ -1956,9 +1924,9 @@ html.k-js .k-js-seul { display: inline-flex !important; }
 
 /* --- Tous les projets --- */
 .projets-page { padding-top: 24px; padding-bottom: 60px; }
-.projets-entete { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 16px; }
+
 .projets-titre { font-size: 18px; font-weight: 700; }
-.projets-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
 .projets-recherche { margin-bottom: 12px; }
 .projets-recherche-champ { flex: 1; min-width: 0; border: none; outline: none; background: none; padding: 0; font-size: 13.5px; font-family: inherit; }
 .projets-filtres { padding: 14px 18px; margin-bottom: 14px; }
@@ -2068,19 +2036,8 @@ html.k-js .k-js-seul { display: inline-flex !important; }
 
 /* --- Accueil : cartes « Mes projets » et « Mes tâches » --- */
 .carte-entete-souple { gap: 8px; flex-wrap: wrap; }
-.accueil-liste { display: flex; flex-direction: column; gap: 10px; }
-.accueil-liste-large { gap: 12px; }
-.accueil-projet { display: flex; align-items: center; gap: 9px; color: inherit; }
-.accueil-tache { display: flex; align-items: flex-start; gap: 9px; color: inherit; }
-.accueil-tache-etat { flex-shrink: 0; margin-top: 1px; }
-.accueil-texte { min-width: 0; }
-.accueil-projet-nom { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.accueil-tache-titre { font-size: 12.5px; font-weight: 600; line-height: 1.3; }
-.accueil-sous { font-size: 12px; color: var(--text-muted); }
-.accueil-projet .accueil-sous { font-size: 11.5px; }
-.accueil-vide { font-size: 12.5px; color: var(--text-muted); }
+
 /* Audit UX M13 : colonne « Mes tâches » plus large (titres sur 3–4 lignes). */
-@media (min-width: 1181px) { .page-body.page-body-accueil { grid-template-columns: 240px minmax(0, 1fr) 300px; } }
 
 /* --- Puces de filtre : état choisi lisible sans la couleur (a11y M13) --- */
 .chip-opt.chip-selected:not(.chip-avatar):not(.chip-tristate)::before { content: "✓"; content: "✓" / ""; margin-right: 4px; font-weight: 700; }
@@ -2343,13 +2300,7 @@ img.avatar, .avatar-apercu { object-fit: cover; }
 .dl-semaine-ligne > span:last-child { white-space: nowrap; font-variant-numeric: var(--chiffres); }
 /* Cible d'au moins 24 px pour un lien dans du texte (audit UX M15, WCAG 2.5.8). */
 .lien-cible { display: inline-flex; align-items: center; min-height: 24px; padding: 2px 4px; margin: -2px -4px; border-radius: 4px; font-weight: 700; }
-.profil-tache { display: block; padding: 9px 0; border-bottom: 1px solid var(--border-soft); color: inherit; text-decoration: none; }
-.profil-tache:last-child { border-bottom: none; }
-.profil-tache:hover .profil-tache-titre { color: var(--brand-text-strong); text-decoration: underline; }
-.profil-tache-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.profil-tache-titre { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; }
-.profil-tache-tete .pill { flex-shrink: 0; }
-.profil-tache-projet { display: block; margin-top: 2px; font-size: 11.5px; color: var(--text-muted); }
+
 .profil-post { margin-bottom: 12px; }
 .topbar-avatar { display: inline-block; margin-left: 6px; border-radius: 999px; }
 @media (max-width: 480px) { .topbar-avatar { margin-left: 2px; } }
@@ -2427,7 +2378,7 @@ img.avatar, .avatar-apercu { object-fit: cover; }
    barre du haut et de « Voir Kairos comme… » (lot 13, phase 2) --- */
 .topbar-gauche { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .topbar-search-box { position: relative; }
-.k-contents { display: contents; }
+
 .filtres-utilisateurs { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
 .filtres-recherche { flex: 1 1 220px; }
 .filtres-utilisateurs .btn-secondary { width: auto; padding: 9px 16px; }
@@ -2533,7 +2484,7 @@ html { -webkit-tap-highlight-color: transparent; }
 
 /* --- Mini-Gantt de l'accueil : le focus d'un lien ne fait plus défiler la
    carte ni l'étiquette (overflow: hidden se laissait défiler de 2 px). --- */
-.deadline-banner, .mini-gantt-label { overflow: clip; }
+.mini-gantt-label { overflow: clip; }
 
 /* --- Lien d'évitement interne : par-dessus la carte, sans la pousser (P2-1) --- */
 .carte-taches { position: relative; }

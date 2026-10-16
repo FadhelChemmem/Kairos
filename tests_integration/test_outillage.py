@@ -31,10 +31,13 @@ class TestPoolFermeEntreClasses(unittest.TestCase):
         avant = _connexions_ouvertes()
         try:
             # Trois curseurs imbriqués : trois connexions du pool.
+            # Mesure PENDANT les trois curseurs (lot 15 : mesurée après leur
+            # sortie, elle dépendait du délai de fermeture des connexions
+            # rendues au pool au-delà de minconn).
             with Classe.db.get_cursor() as a, Classe.db.get_cursor() as b, Classe.db.get_cursor() as c:
                 for cur in (a, b, c):
                     cur.execute("SELECT 1")
-            self.assertGreaterEqual(_connexions_ouvertes(), avant + 2)
+                self.assertGreaterEqual(_connexions_ouvertes(), avant + 2)
         finally:
             Classe.tearDownClass()
         self.assertLessEqual(_connexions_ouvertes(), avant)

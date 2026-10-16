@@ -39,9 +39,9 @@
 
 /* --- Grille (P0-2) : la bannière Deadlines de l'accueil s'aligne sur les
    cartes à toute largeur, un seul bord gauche de 16 px sur téléphone. --- */
-.deadline-banner { width: calc(100% - 64px); max-width: 1296px; margin: var(--esp-6) auto 0; }
+
 @media (max-width: 860px) {
-  .deadline-banner { width: auto; margin: var(--esp-4) var(--esp-4) 0; }
+
   .topbar-inner { padding-left: 16px; padding-right: 16px; }
 }
 @media (max-width: 370px) { .topbar-inner { padding-left: 12px; padding-right: 12px; } }
@@ -128,13 +128,13 @@
 .post-action, .post-comment-action, .post-comment-meta { font-size: var(--texte-xs); }
 .ptable-lien, .taskrow-titre, .urow-nom, .deadlines-item-titre, .notif-message { font-size: var(--texte-m); }
 .ptable-lots, .ptable-chef, .ptable-heures, .ptable-rendu, .taskrow-date, .taskrow-heures, .ucell-texte,
-.urow-date, .urow-sous, .info-liste, .k-cles, .intervenant-nom, .journal-table, .accueil-tache-titre, .accueil-projet-nom,
-.tache-prop dd, .profil-tache-titre, .dl-semaine-date { font-size: var(--texte-s); }
-.accueil-sous, .accueil-projet .accueil-sous, .intervenant-role, .profil-tache-projet, .g-projet, .mini-gantt-projet, .fiche-heures-libelle,
-.journal-admin-reel, .deadline-banner-tout, .k-interrupteur-note { font-size: var(--texte-xs); }
+.urow-date, .urow-sous, .info-liste, .k-cles, .intervenant-nom, .journal-table,
+.tache-prop dd, .dl-semaine-date { font-size: var(--texte-s); }
+.intervenant-role, .g-projet, .mini-gantt-projet, .fiche-heures-libelle,
+.journal-admin-reel, .k-interrupteur-note { font-size: var(--texte-xs); }
 .fiche-entete-meta, .subbar-ariane, .projets-compte, .taches-compteur, .tache-prop dt { font-size: var(--texte-s); }
 .ptable-head, .thead, .uhead, .journal-table thead th { font-size: var(--texte-xs); }
-.accueil-vide, .intervenant-vide, .taches-vide, .deadline-banner-empty { font-size: var(--texte-s); }
+.intervenant-vide, .taches-vide { font-size: var(--texte-s); }
 /* Pastilles et petits libellés : jamais sous 11,5 px (P2-25). */
 .pill { font-size: var(--texte-xs); }
 .pill-sm, .pill-xs, .ptable-interne { font-size: 11.5px; }
@@ -255,14 +255,6 @@ input[type=file]::file-selector-button:hover { background: var(--surface-survol)
 .deadline-banner-vide { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: var(--texte-s); color: var(--text-muted); }
 
 /* --- Carte Daily log de l'accueil : progression de la journée --------------- */
-.dl-carte-texte { font-size: var(--texte-xs); line-height: 1.4; margin: 0 0 12px; }
-.card-cta .dl-carte-texte { color: #fff; }
-.card-cta-alert .dl-carte-texte { color: var(--text-secondary); }
-.card-cta .carte-titre, .card-cta-alert .carte-titre { font-size: var(--texte-m); margin-bottom: 4px; }
-.card-cta .carte-titre { color: #fff; }
-.card-cta-alert .carte-titre { color: var(--text-strong); }
-.dl-carte-jauge { display: block; height: 6px; margin: -4px 0 12px; border-radius: 999px; background: rgb(255 255 255 / .28); overflow: hidden; }
-.dl-carte-jauge > span { display: block; height: 100%; border-radius: inherit; background: #fff; }
 
 /* --- Tous les projets : point d'état retiré (P2-24), pastille de phase qui
    ne disparaît plus au survol (P2-23), échéance dépassée en rouge. --- */
@@ -346,8 +338,7 @@ input[type=file]::file-selector-button:hover { background: var(--surface-survol)
 /* Sous-barre des pages qui avaient un titre posé dans la page (P1-9). */
 .subbar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .projets-page { padding-top: var(--esp-6); }
-.dl-subbar-inner { max-width: 592px; }
-@media (max-width: 860px) { .dl-subbar-inner { max-width: none; } }
+
 /* Aide du Daily log repliée (P2-27). */
 .dl9 details.dl-aide > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
   min-height: 28px; padding: 4px 0; font-weight: 700; color: var(--brand-text); }

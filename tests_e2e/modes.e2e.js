@@ -147,7 +147,7 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
     etape('contraste du bandeau ≥ 4,5:1', ctr >= 4.5, ctr);
     await capture(p, 'e2e-12-voir-comme.png');
     // Mes tâches -> fenêtre de la tâche.
-    const lienTache = p.locator('a[href="/projets/1?tache=1"]').first();
+    const lienTache = p.locator('a.acc-tache[href="/projets/1?tache=1"]').first();  // lot 15 : carte Mes tâches
     etape('Mes tâches : lien vers la fenêtre de la tâche', await lienTache.count() === 1);
     await Promise.all([p.waitForNavigation(), lienTache.click()]);
     await p.waitForSelector('#dialog-tache [data-tache-fenetre="1"]');

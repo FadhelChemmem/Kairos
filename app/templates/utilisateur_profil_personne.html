@@ -15,11 +15,15 @@
 <div class="subbar">
   <div class="subbar-inner k-moyen">
     <h1 class="page-titre">{{ utilisateur.prenom }} {{ utilisateur.nom }}</h1>
-    <span class="pill pill-neutre subbar-fin">Profil en lecture seule</span>
+    {# Lot 15 : une seule page par personne ; l'Admin et le RH y trouvent
+       le lien vers la fiche modifiable. #}
+    {% if g.user.role in ('admin', 'rh') %}
+      <a href="{{ url_for('utilisateurs.fiche', user_id=utilisateur.id) }}" class="btn btn-petit subbar-fin">{{ 'Modifier la fiche' if peut_modifier_fiche else 'Voir la fiche' }}</a>
+    {% endif %}
   </div>
 </div>
 
-<div class="page-body page-body-2col k-moyen">
+<div class="page-body page-body-2col page-personne k-moyen">
 
   <div class="col">
     <div class="card">
@@ -34,27 +38,69 @@
       <dl class="k-cles">
         <div><dt>Poste</dt><dd>{{ utilisateur.poste or '—' }}</dd></div>
         <div><dt>Équipe</dt><dd>{{ equipe_libelle(utilisateur.equipe_code) }}</dd></div>
+        {% if voir_contact and utilisateur.telephone %}<div><dt>Téléphone</dt><dd><a href="tel:{{ utilisateur.telephone|replace(' ', '') }}" class="lien-discret">{{ utilisateur.telephone }}</a></dd></div>{% endif %}
       </dl>
     </div>
 
-    <div class="card">
-      <h2 class="carte-titre carte-titre-form">Tâches en cours</h2>
-      {% for t in taches_en_cours %}
-        {% set tst = tache_etat_style(t.etat) %}
-        <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) }}" class="profil-tache">
-          <span class="profil-tache-tete">
-            <span class="profil-tache-titre">{{ t.titre }}</span>
-            <span class="pill pill-sm {{ tst.classe }}">{{ tst.libelle }}</span>
-          </span>
-          <span class="profil-tache-projet">{{ t.projet_code }}_{{ t.projet_nom }}{% if t.date_echeance %} · {{ t.date_echeance|date_courte }}{% endif %}</span>
-        </a>
-      {% else %}
-        <p class="k-muet">Aucune tâche en cours (parmi celles que vous pouvez voir).</p>
-      {% endfor %}
-    </div>
+    {# Lot 15 : projets en cours de la personne (parmi ceux que je vois). #}
+    {% if utilisateur.role not in ('rh', 'client') %}
+    <section class="card acc-carte" aria-labelledby="personne-projets-titre">
+      <div class="carte-entete carte-entete-souple">
+        <h2 class="carte-titre" id="personne-projets-titre">Projets en cours <span class="compteur-discret">{{ projets_en_cours|length }}</span></h2>
+      </div>
+      <ul class="acc-projets" role="list">
+        {% for p in projets_en_cours %}
+          {% set role_label = {'chef_de_projet': 'Chef de projet', 'co_chef': 'Co-chef', 'intervenant': 'Intervenant'}.get(p.role_personne, '') %}
+          <li>
+            <a href="{{ url_for('projets.detail', projet_id=p.id) }}" class="acc-projet">
+              <span class="acc-phase">{{ p.phase }}</span>
+              <span class="acc-projet-texte">
+                <span class="acc-projet-nom" title="{{ p.code }}_{{ p.nom }}">{{ p.code }}_{{ p.nom }}</span>
+                <span class="acc-sous">{{ role_label }}{% if p.role_personne != 'chef_de_projet' %} · chef&nbsp;: {{ p.chef_prenom }} {{ p.chef_nom }}{% endif %}{% if p.nb_taches %} · {{ p.nb_taches }} tâche{{ 's' if p.nb_taches > 1 }}{% endif %}{% if p.prochaine %} · éch. {{ p.prochaine|date_courte }}{% endif %}</span>
+              </span>
+              {% if p.etat == 'bloque' %}<span class="pill pill-sm pill-rouge">Bloqué</span>{% endif %}
+            </a>
+          </li>
+        {% else %}
+          <li class="k-muet acc-vide">Aucun projet en cours (parmi ceux que vous pouvez voir).</li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
   </div>
 
-  {% include "partials/profil_activite.html" %}
+  <div class="col-center">
+    {# Lot 15 : tâches ouvertes de la personne — retards, bloquées, à venir. #}
+    {% if utilisateur.role not in ('rh', 'client') %}
+    {% set nb_retard = taches_ouvertes|selectattr('etat', 'equalto', 'en_cours')|selectattr('date_echeance')|selectattr('date_echeance', 'lt', aujourdhui)|list|length %}
+    {% set nb_bloquees = taches_ouvertes|selectattr('etat', 'equalto', 'bloque')|list|length %}
+    <section class="card acc-carte" aria-labelledby="personne-taches-titre">
+      <div class="carte-entete carte-entete-souple">
+        <h2 class="carte-titre" id="personne-taches-titre">Tâches en cours <span class="compteur-discret">{{ taches_ouvertes|length }}</span></h2>
+      </div>
+      {% if taches_ouvertes %}
+      <p class="personne-resume">{{ taches_ouvertes|length - nb_bloquees }} en cours{% if nb_retard %} · <span class="texte-retard">{{ nb_retard }} en retard</span>{% endif %}{% if nb_bloquees %} · {{ nb_bloquees }} bloquée{{ 's' if nb_bloquees > 1 }}{% endif %}</p>
+      {% endif %}
+      <div class="acc-taches">
+        {% for t in taches_ouvertes %}
+          {% set retard_j = (aujourdhui - t.date_echeance).days if t.etat == 'en_cours' and t.date_echeance and t.date_echeance < aujourdhui else 0 %}
+          {% set depuis = depuis_blocage(t.bloque_le|default(none)) if t.etat == 'bloque' else '' %}
+          <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) }}" class="acc-tache">
+            <span class="acc-tache-texte">
+              <span class="acc-tache-titre">{{ t.titre }}</span>
+              <span class="acc-sous">{{ t.projet_code }}_{{ t.projet_nom }}{% if t.date_echeance %} · éch. {{ t.date_echeance|date_courte }}{% endif %}{% if depuis %} · {{ depuis }}{% endif %}</span>
+            </span>
+            {% if t.etat == 'bloque' %}<span class="pill pill-sm pill-rouge">Bloquée</span>
+            {% elif retard_j %}<span class="pill pill-sm pill-rouge acc-retard" title="{{ en_retard_de(t.date_echeance, aujourdhui) }}">+{{ retard_j }}&nbsp;j<span class="sr-only">, {{ en_retard_de(t.date_echeance, aujourdhui) }}</span></span>{% endif %}
+          </a>
+        {% else %}
+          <p class="k-muet acc-vide">Aucune tâche en cours (parmi celles que vous pouvez voir).</p>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+    {% include "partials/profil_activite.html" %}
+  </div>
 
 </div>
 {# Lot 14 : Tout · Échanges · Activité des posts (filtre-fil.js). #}

@@ -162,7 +162,7 @@ class TestVoirComme(_Base):
         self.assertEqual(r.status_code, 200)
         self.assertIn("a changé l’état du projet", r.get_data(as_text=True))
         # Écriture refusée (lecture seule), même forgée.
-        r = self.client.post(f"/posts", data={"projet_id": self.p1, "type_code": "information", "contenu": "x"},
+        r = self.client.post("/posts", data={"projet_id": self.p1, "type_code": "information", "contenu": "x"},
                              headers=partiel("#fil-posts", f"/projets/{self.p1}?fil=tout"))
         self.assertEqual(r.status_code, 403)
 

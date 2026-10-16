@@ -455,6 +455,12 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.taches.search": [],
             "app.repositories.projets.list_ids_visibles": {1},
             "app.repositories.taches.list_en_cours_pour_profil": TACHES_EN_COURS_PROFIL,
+            # Lot 15 : page d'une personne (tâches ouvertes, projets en cours),
+            # réglages du compte.
+            "app.repositories.taches.list_ouvertes_pour_profil": TACHES_EN_COURS_PROFIL,
+            "app.repositories.projets.list_en_cours_pour_profil": [],
+            "app.repositories.utilisateurs.get_preferences": {"accueil_deadlines": False, "dailylog_proposer": True},
+            "app.repositories.utilisateurs.set_preference": None,
             "app.repositories.posts.list_feed_auteur": [],
             "app.repositories.notifications.compter_non_lues": 2,
             "app.repositories.notifications.list_notifications": NOTIFICATIONS,
@@ -1881,22 +1887,31 @@ class SmokeTestCase(SmokeBase):
     # à puces + colonne Deadlines sur "Tous les projets", et page "Infos perso".
 
     def test_accueil_bandeau_deadlines_pleine_largeur(self):
+        """Lot 15 : ligne « Deadlines » repliée par défaut (résumé, mini-Gantt
+        dans le <details>), dépliée selon le réglage du compte."""
         resp = self._get("/accueil")
         self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"deadline-banner", resp.data)
+        self.assertIn(b'id="acc-deadlines"', resp.data)
+        self.assertIn(b'data-preference="accueil_deadlines"', resp.data)
+        self.assertNotIn(b'data-preference-url="/preferences" data-preference-etat="1" open', resp.data)
+        self.assertIn(b"mini-gantt", resp.data)
         self.assertIn(b'href="/deadlines"', resp.data)
+        resp = self._get("/accueil", **{"app.repositories.utilisateurs.get_preferences":
+                                        {"accueil_deadlines": True, "dailylog_proposer": True}})
+        self.assertIn(b'data-preference-url="/preferences" data-preference-etat="1" open', resp.data)
 
     def test_accueil_dailylog_cta_verte_par_defaut(self):
         resp = self._get("/accueil")
         self.assertEqual(resp.status_code, 200)
-        self.assertNotIn(b"card-cta-alert", resp.data)
+        self.assertNotIn(b"acc-dl-alerte", resp.data)
 
     def test_accueil_dailylog_cta_rouge_si_jours_manques(self):
         resp = self._get("/accueil", **{
             "app.repositories.dailylog.jours_manques_recents": [datetime.date(2026, 9, 17)],
         })
         self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"card-cta-alert", resp.data)
+        self.assertIn(b"acc-dl-alerte", resp.data)
+        self.assertIn("Remplir mon Daily log", resp.data.decode())
 
     def test_accueil_mes_projets_suit_lordre_de_list_mes_projets_recents(self):
         """La carte "Mes projets" n'est plus triée par échéance la plus
@@ -1915,8 +1930,8 @@ class SmokeTestCase(SmokeBase):
         resp = self._get("/accueil", **{"app.repositories.projets.list_mes_projets_recents": projets_recents})
         self.assertEqual(resp.status_code, 200)
         body = resp.data.decode()
-        debut = body.index("Mes projets")
-        fin = body.index("Daily log", debut)
+        debut = body.index('id="acc-projets-titre"')
+        fin = body.index("</ul>", debut)
         section_mes_projets = body[debut:fin]
         pos_oliviers = section_mes_projets.index("Résidence Les Oliviers")
         pos_meridian = section_mes_projets.index("Tour Meridian")
@@ -2082,8 +2097,11 @@ class SmokeTestCase(SmokeBase):
                 )
             self.assertEqual(resp.status_code, 302)
             mock_update.assert_called_once()
-            self.assertEqual(mock_update.call_args.kwargs.get("poste"), "Chef de projet")
+            # Lot 15 : le poste n'est plus modifiable par la personne (champ
+            # forgé ignoré : Admin et RH seulement, depuis la fiche).
+            self.assertNotIn("poste", mock_update.call_args.kwargs)
             self.assertEqual(mock_update.call_args.kwargs.get("adresse"), "Tunis")
+            self.assertEqual(mock_update.call_args.kwargs.get("telephone"), "20 000 000")
         finally:
             for p in reversed(patchers):
                 p.stop()
@@ -3235,11 +3253,13 @@ class SmokeTestCase(SmokeBase):
         self.assertNotIn(b'action="/utilisateurs/1/toggle-actif"', resp.data)
 
     def test_fiche_chef_de_projet_vue_en_lecture_seule(self):
-        """Un chef de projet voit le nom, le téléphone et le Daily log de
-        la semaine dernière de n'importe qui, sans rien de modifiable."""
+        """Lot 15 : une seule page par personne — un chef de projet qui ouvre
+        la fiche arrive sur la page de la personne (téléphone, tâches,
+        projets, Daily log), sans rien de modifiable sur la personne."""
         self._login()
+        autre = {**AUTRE_UTILISATEUR, "telephone": "20 111 222"}
         patchers = self._patched(**{
-            "app.repositories.utilisateurs.get_utilisateur": AUTRE_UTILISATEUR,
+            "app.repositories.utilisateurs.get_utilisateur": autre,
         }) + [
             patch("app.auth.get_user_by_id", return_value={**USER, "role": "chef_de_projet"}),
         ]
@@ -3247,19 +3267,19 @@ class SmokeTestCase(SmokeBase):
             p.start()
         try:
             resp = self.client.get("/utilisateurs/2")
+            self.assertEqual(resp.status_code, 302)
+            self.assertTrue(resp.headers["Location"].endswith("/utilisateurs/2/profil"))
+            resp = self.client.get("/utilisateurs/2/profil")
         finally:
             for p in reversed(patchers):
                 p.stop()
         self.assertEqual(resp.status_code, 200, resp.data[:2000])
-        self.assertIn(b"Wael", resp.data)
-        # Lot 11 (audit front M4) : il peut corriger le Daily log, la vue
-        # est donc « restreinte » et non plus « en lecture seule ».
-        self.assertIn("Vue restreinte".encode(), resp.data)
-        # Seul formulaire autorisé : la déconnexion de la barre du haut
-        # (base.html, en POST depuis PROMPT_CORRECTIONS.md P2 #25) — la
-        # fiche elle-même ne doit en contenir aucun.
-        contenu_page = resp.data.split(b'class="page-body', 1)[1]
-        self.assertNotIn(b"<form", contenu_page)
+        html = resp.data.decode()
+        self.assertIn("Wael", html)
+        self.assertIn("20 111 222", html)
+        self.assertNotIn("Modifier la fiche", html)
+        self.assertIn("Tâches en cours", html)
+        self.assertIn("Projets en cours", html)
 
     def test_fiche_chef_de_projet_ne_peut_rien_modifier(self):
         """Un POST forgé vers la fiche par un chef de projet ne doit rien
@@ -3284,7 +3304,8 @@ class SmokeTestCase(SmokeBase):
         finally:
             for p in reversed(patchers):
                 p.stop()
-        self.assertEqual(resp.status_code, 200, resp.data[:2000])
+        # Lot 15 : renvoyé vers la page de la personne, sans écriture.
+        self.assertEqual(resp.status_code, 302, resp.data[:2000])
         mock_update.assert_not_called()
 
 
@@ -3527,15 +3548,19 @@ class TestControlesDAccesStricts(unittest.TestCase):
         """Retour Fadhel, 2026-09-28 (captures annotées) : la carte verte
         "Nouveau post" de la colonne gauche et les boutons rapides
         "+ Information"/"+ Requête" au-dessus du tableau des tâches sont
-        retirés — seuls "+ Tâche" (au-dessus du tableau) et "+ Nouveau
-        post" (près du filtre des posts) restent. Les titres ci-dessous
+        retirés — seul "+ Nouveau post" (près du filtre des posts) reste
+        depuis le lot 15. Les titres ci-dessous
         sont uniques à ces boutons (le rebond de post_card.html, qui a
         lui aussi un "+ Requête", n'a pas d'attribut title)."""
         body = self._get("/projets/1").data.decode()
         self.assertNotIn("Poster une information", body)
         self.assertNotIn('title="Créer une requête sur ce projet"', body)
-        self.assertIn('title="Créer une tâche sur ce projet"', body)
-        self.assertIn("+ Nouveau post", body)
+        # Lot 15 (« même fonction », gérant) : « + Tâche » retiré, « + Nouveau
+        # post » seul, ouvert sur l'onglet Tâche pour qui gère le projet.
+        self.assertNotIn('title="Créer une tâche sur ce projet"', body)
+        self.assertNotIn('id="nouvelle-tache"', body)
+        self.assertEqual(body.count("+ Nouveau post"), 1)
+        self.assertIn('data-intent="tache" data-gere="1" class="btn">+ Nouveau post', body)
 
     def test_projets_liste_bouton_nouveau_projet_ouvre_la_fenetre_flottante(self):
         """Retour Fadhel, 2026-09-28 : "+ Nouveau projet" n'est plus un
@@ -4619,6 +4644,7 @@ class TestCommentairesLot6(SmokeBase):
         try:
             with patch("app.repositories.posts.get_commentaire", return_value=self.COMMENTAIRE), \
                  patch("app.repositories.posts.modifier_commentaire", return_value=[3]) as mock_mod, \
+                 patch("app.repositories.posts.pieces_commentaire_modifiees", return_value=[]) as mock_pj, \
                  patch("app.repositories.notifications.creer_pour_plusieurs") as mock_notif:
                 resp = self.client.post("/posts/commentaires/4/modifier",
                                         data={"contenu": "Après, vu @Omar Aziz", "next": "/accueil#post-1"})
@@ -4629,6 +4655,7 @@ class TestCommentairesLot6(SmokeBase):
         self.assertTrue(resp.headers["Location"].endswith("/accueil#post-1"))
         mock_mod.assert_called_once_with(4, 1, "Après, vu @Omar Aziz", [3])
         self.assertEqual(mock_notif.call_args.args[0], [3])
+        mock_pj.assert_called_once_with(4, 1, [], [])
 
     def test_modifier_le_commentaire_d_un_autre_interdit(self):
         with patch("app.repositories.posts.get_commentaire", return_value={**self.COMMENTAIRE, "auteur_id": 3}), \
@@ -4645,18 +4672,33 @@ class TestCommentairesLot6(SmokeBase):
         self.assertEqual(resp.status_code, 404)
         mock_mod.assert_not_called()
 
-    def test_supprimer_reserve_aux_admins(self):
-        with patch("app.repositories.posts.get_commentaire", return_value=self.COMMENTAIRE), \
-             patch("app.repositories.posts.supprimer_commentaire", return_value=["posts/1/commentaires/a.png"]) as mock_sup, \
+    def test_supprimer_auteur_chef_ou_admin(self):
+        """Lot 15 : l'auteur, le chef ou un co-chef du projet et l'Admin
+        suppriment un commentaire ; suppression logique (« Annuler »), aucun
+        fichier effacé sur le champ. Personne d'autre."""
+        d_un_autre = {**self.COMMENTAIRE, "auteur_id": 3}
+        with patch("app.repositories.posts.get_commentaire", return_value=d_un_autre), \
+             patch("app.repositories.posts.supprimer_commentaire", return_value=([4], "2026-10-16T10:00:00+01:00")) as mock_sup, \
              patch("app.routes.posts.delete_upload") as mock_del:
             resp = self._post("/posts/commentaires/4/supprimer",
-                              **{"app.auth.get_user_by_id": {**USER, "role": "chef_de_projet"}})
+                              **{"app.auth.get_user_by_id": {**USER, "role": "intervenant"},
+                                 "app.repositories.projets.user_can_manage": False})
             self.assertEqual(resp.status_code, 403)
             mock_sup.assert_not_called()
+            resp = self._post("/posts/commentaires/4/supprimer",
+                              **{"app.auth.get_user_by_id": {**USER, "role": "chef_de_projet"}})
+            self.assertEqual(resp.status_code, 302)
             resp = self._post("/posts/commentaires/4/supprimer")
+            self.assertEqual(resp.status_code, 302)
+        with patch("app.repositories.posts.get_commentaire", return_value=self.COMMENTAIRE), \
+             patch("app.repositories.posts.supprimer_commentaire", return_value=([4], "2026-10-16T10:00:00+01:00")) as mock_sup2:
+            resp = self._post("/posts/commentaires/4/supprimer",
+                              **{"app.auth.get_user_by_id": {**USER, "role": "intervenant"},
+                                 "app.repositories.projets.user_can_manage": False})
         self.assertEqual(resp.status_code, 302)
-        mock_sup.assert_called_once_with(4, 1)
-        mock_del.assert_called_once_with("posts/1/commentaires/a.png")
+        mock_sup2.assert_called_once_with(4, 1)
+        self.assertEqual(mock_sup.call_count, 2)
+        mock_del.assert_not_called()
 
     def test_reposter_bloque_sur_projet_termine(self):
         with patch("app.repositories.posts.create_post") as mock_create:
@@ -5145,7 +5187,10 @@ class TestAuditV3(SmokeBase):
         for p in patchers:
             p.start()
         try:
-            body = self.client.get("/utilisateurs/2").data.decode()
+            # Lot 15 : la fiche mène à la page de la personne (deux semaines
+            # pour couvrir le lundi de la semaine dernière).
+            self.assertEqual(self.client.get("/utilisateurs/2").status_code, 302)
+            body = self.client.get("/utilisateurs/2/profil?semaines=2").data.decode()
         finally:
             for p in reversed(patchers):
                 p.stop()

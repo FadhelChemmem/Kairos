@@ -510,7 +510,12 @@ CREATE TABLE post (
                    'blocage_tache', 'deblocage_tache')),
   updated_by     BIGINT REFERENCES utilisateur(id), -- si le post est modifié après publication
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Lot 15 (migration 0021) : texte modifié par l'auteur ; suppression
+  -- LOGIQUE par l'auteur, le chef, un co-chef ou l'Admin (« Annuler »).
+  modifie_le     TIMESTAMPTZ,
+  supprime_le    TIMESTAMPTZ,
+  supprime_par   BIGINT REFERENCES utilisateur(id)
 );
 CREATE TRIGGER trg_post_updated_at
   BEFORE UPDATE ON post
@@ -529,9 +534,13 @@ CREATE TABLE post_piece_jointe (
   nom_fichier    VARCHAR(255) NOT NULL,
   chemin         TEXT NOT NULL,
   uploaded_by    BIGINT REFERENCES utilisateur(id), -- pour cohérence avec tache_piece_jointe
-  uploaded_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  uploaded_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Retrait (migration 0021) : plus téléchargeable, fichier effacé 30 jours après.
+  retire_le      TIMESTAMPTZ,
+  retire_par     BIGINT REFERENCES utilisateur(id)
 );
 CREATE INDEX idx_post_pj_post ON post_piece_jointe(post_id);
+CREATE INDEX idx_post_pj_retiree ON post_piece_jointe (retire_le) WHERE retire_le IS NOT NULL;
 
 -- Personnes taguées sur un post (composeur Requête/Information, demandé
 -- 2026-09-18) — distinct de post_commentaire.mentionne_user_id, qui tague
@@ -579,7 +588,10 @@ CREATE TABLE post_commentaire (
   -- simple (façon Facebook/Twitter, pas de fil imbriqué à l'infini).
   parent_commentaire_id BIGINT REFERENCES post_commentaire(id) ON DELETE CASCADE,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
-  modifie_le            TIMESTAMPTZ -- modifié par son auteur (migration 0009), affiché "modifié"
+  modifie_le            TIMESTAMPTZ, -- modifié par son auteur (migration 0009), affiché "modifié"
+  -- Suppression logique, réponses comprises (migration 0021).
+  supprime_le           TIMESTAMPTZ,
+  supprime_par          BIGINT REFERENCES utilisateur(id)
 );
 CREATE INDEX idx_post_commentaire_post ON post_commentaire(post_id);
 CREATE INDEX idx_post_commentaire_parent ON post_commentaire(parent_commentaire_id);
@@ -593,9 +605,13 @@ CREATE TABLE post_commentaire_piece_jointe (
   nom_fichier    VARCHAR(255) NOT NULL,
   chemin         TEXT NOT NULL,
   uploaded_by    BIGINT REFERENCES utilisateur(id),
-  uploaded_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  uploaded_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  retire_le      TIMESTAMPTZ, -- retrait (migration 0021)
+  retire_par     BIGINT REFERENCES utilisateur(id)
 );
 CREATE INDEX idx_post_commentaire_pj_commentaire ON post_commentaire_piece_jointe(commentaire_id);
+CREATE INDEX idx_commentaire_pj_retiree ON post_commentaire_piece_jointe (retire_le)
+  WHERE retire_le IS NOT NULL;
 
 -- Personnes taguées avec "@Prénom Nom" dans le texte d'un commentaire
 -- (migration 0009) — plusieurs possibles ; mentionne_user_id ci-dessus
@@ -1094,6 +1110,15 @@ CREATE TRIGGER trg_revoquer_sessions_si_desactive
 -- Objectif de journée : réglage PAR PERSONNE (repère 4-10 h, 8 h sans
 -- ligne), non audité.
 -- ---------------------------------------------------------------------
+-- Réglages d'affichage du compte (migration 0021, lot 15) : Deadlines
+-- dépliées sur l'accueil, tâches en cours proposées dans le Daily log.
+CREATE TABLE IF NOT EXISTS utilisateur_preference (
+  utilisateur_id        BIGINT PRIMARY KEY REFERENCES utilisateur(id),
+  accueil_deadlines     BOOLEAN NOT NULL DEFAULT false,
+  dailylog_proposer     BOOLEAN NOT NULL DEFAULT true,
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS dailylog_preference (
   utilisateur_id    BIGINT PRIMARY KEY REFERENCES utilisateur(id),
   objectif_minutes  SMALLINT NOT NULL DEFAULT 480,
@@ -1534,5 +1559,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0017_chef_projet_et_rappels_dailylog'),
   ('0018_modes_admin_et_date_simulee'),
   ('0019_lot13_etat_projet_et_temps'),
-  ('0020_lot14_blocage_et_cloture')
+  ('0020_lot14_blocage_et_cloture'),
+  ('0021_lot15_posts_et_preferences')
 ON CONFLICT (version) DO NOTHING;

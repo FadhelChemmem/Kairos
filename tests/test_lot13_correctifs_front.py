@@ -53,7 +53,9 @@ class TestCorrectifsCss(unittest.TestCase):
     def test_accueil_mobile_colonnes_apres_le_fil_complet(self):
         # CLS sur réseau lent : la page peinte en cours de lecture ne pousse
         # plus « Mes projets » sous le fil qui s'allonge.
-        self.assertIn(".page-body-accueil:not(:has(#fil-vide)) > .col { display: none; }", CSS)
+        # Lot 15 : accueil en deux colonnes (lot15.css).
+        lot15 = (RACINE / "app" / "static" / "css" / "lot15.css").read_text(encoding="utf-8")
+        self.assertIn(".acc-grille:not(:has(#fil-vide)) > .acc-cote { display: none; }", lot15)
         self.assertIn("font-display: optional;", BASE)
 
     def test_emails_coupes_avec_points_de_suspension(self):

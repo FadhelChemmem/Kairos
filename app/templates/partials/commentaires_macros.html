@@ -80,7 +80,9 @@
         {% if c.auteur_id == g.user.id and not clos %}
           <button type="button" class="post-comment-action" id="commentaire-{{ c.id }}-modifier" data-modifier="{{ c.id }}"{% if c.id == commentaire_modifie_id|default(none) %} data-partiel-titre{% endif %}>Modifier</button>
         {% endif %}
-        {% if g.user.role == 'admin' %}
+        {# Lot 15 : l'auteur, le chef ou un co-chef du projet, l'Admin
+           (routes/posts.py:peut_supprimer) ; « Annuler » le rétablit. #}
+        {% if g.user.role == 'admin' or (not clos and (c.auteur_id == g.user.id or post.je_gere)) %}
           <details class="post-comment-supprimer">
             <summary class="post-comment-action">Supprimer</summary>
             <form method="post" action="{{ url_for('posts.supprimer_commentaire', commentaire_id=c.id) }}" data-partiel="#post-{{ post.id }}-commentaires" data-focus-apres="#post-{{ post.id }}-commenter">
@@ -98,12 +100,26 @@
         {% if c.modifie_le %}<span title="Modifié {{ c.modifie_le|il_y_a }}">· modifié</span>{% endif %}
       </div>
       {% if c.auteur_id == g.user.id and post.projet_etat not in ('termine', 'abandonne') %}
-        <form method="post" action="{{ url_for('posts.modifier_commentaire', commentaire_id=c.id) }}" class="comment-composer comment-edit" data-comment-edit="{{ c.id }}" data-partiel="#post-{{ post.id }}-commentaires" hidden>
+        <form method="post" action="{{ url_for('posts.modifier_commentaire', commentaire_id=c.id) }}" enctype="multipart/form-data" class="comment-composer comment-edit" data-comment-edit="{{ c.id }}" data-partiel="#post-{{ post.id }}-commentaires" hidden>
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
           <div class="comment-input">
             <textarea name="contenu" maxlength="5000" rows="1" aria-label="Modifier le commentaire" required data-mention-input>{{ c.contenu }}</textarea>
+            {# Lot 15 : ajouter un fichier en modifiant. #}
+            <label class="comment-attach" title="Joindre un fichier (ou le glisser sur le champ)">
+              <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
+              <input type="file" name="fichier" aria-label="Joindre un fichier" data-comment-file>
+            </label>
           </div>
+          {# Lot 15 : retirer une pièce jointe (« Annuler » la rétablit). #}
+          {% for pj in c.pieces_jointes|default([]) %}
+          <label class="post-edition-pj-ligne">
+            <input type="checkbox" name="retirer_pj" value="{{ pj.id }}">
+            <span class="post-fichier-nom">{{ pj.nom_fichier }}</span>
+            <span class="post-edition-pj-action">Retirer</span>
+          </label>
+          {% endfor %}
+          <div class="comment-file" data-comment-file-chip hidden></div>
           <button type="submit" class="comment-send">Enregistrer</button>
           <button type="button" class="post-comment-action" data-annuler-modif>Annuler</button>
         </form>

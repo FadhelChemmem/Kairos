@@ -46,6 +46,7 @@ _FILTRE_CATEGORIE = {"tout": "TRUE", "echanges": "NOT " + _EST_ACTIVITE, "activi
 
 _FEED_SELECT = """
     SELECT p.id, p.type_code, p.contenu, p.lien, p.created_at, p.tache_id, p.parent_post_id,
+           p.modifie_le, p.supprime_le,
            p.projet_id, proj.code AS projet_code, proj.nom AS projet_nom, proj.etat AS projet_etat,
            -- Équipes destinataires d'une Information sans projet (migration 0009).
            COALESCE(
@@ -86,7 +87,7 @@ _FEED_SELECT = """
               SELECT 1 FROM utilisateur ua WHERE ua.id = %(uid)s AND ua.role = 'admin'
            ))) AND NOT EXISTS (SELECT 1 FROM utilisateur ux WHERE ux.id = %(uid)s AND ux.role IN ('client', 'rh')), false) AS je_gere,
            (SELECT count(*) FROM post_reaction r WHERE r.post_id = p.id) AS nb_reactions,
-           (SELECT count(*) FROM post_commentaire c WHERE c.post_id = p.id) AS nb_commentaires,
+           (SELECT count(*) FROM post_commentaire c WHERE c.post_id = p.id AND c.supprime_le IS NULL) AS nb_commentaires,
            (SELECT pr.reaction_code FROM post_reaction pr
              WHERE pr.post_id = p.id AND pr.utilisateur_id = %(uid)s) AS ma_reaction,
            COALESCE(
@@ -121,20 +122,20 @@ _FEED_SELECT = """
                                   (SELECT json_agg(json_build_object('id', cpj.id, 'nom_fichier', cpj.nom_fichier)
                                                     ORDER BY cpj.uploaded_at)
                                    FROM post_commentaire_piece_jointe cpj
-                                   WHERE cpj.commentaire_id = c.id),
+                                   WHERE cpj.commentaire_id = c.id AND cpj.retire_le IS NULL),
                                   '[]'
                                 ))
                                ORDER BY c.created_at)
               FROM post_commentaire c
               JOIN utilisateur cu ON cu.id = c.auteur_id
               LEFT JOIN utilisateur mu2 ON mu2.id = c.mentionne_user_id
-              WHERE c.post_id = p.id),
+              WHERE c.post_id = p.id AND c.supprime_le IS NULL),
              '[]'
            ) AS commentaires,
            COALESCE(
              (SELECT json_agg(json_build_object('id', pj.id, 'nom_fichier', pj.nom_fichier)
                                ORDER BY pj.uploaded_at)
-              FROM post_piece_jointe pj WHERE pj.post_id = p.id),
+              FROM post_piece_jointe pj WHERE pj.post_id = p.id AND pj.retire_le IS NULL),
              '[]'
            ) AS pieces_jointes,
            -- Personnes ajoutées au post, affichées « avec » + pastilles (retour
@@ -156,6 +157,8 @@ _FEED_SELECT = """
              '[]'
            ) AS mentions,
            parent.contenu AS parent_contenu, parent.type_code AS parent_type_code,
+           (parent.supprime_le IS NOT NULL) AS parent_supprime,
+           parent.evenement AS parent_evenement,
            parent_auteur.prenom AS parent_auteur_prenom, parent_auteur.nom AS parent_auteur_nom,
            parent_tache.titre AS parent_tache_titre
     FROM post p
@@ -219,7 +222,7 @@ def _lire_fil(condition: str, params: dict, limit: int, categorie: str = "tout",
     sql = """
         WITH page AS (
             SELECT p.id, p.created_at FROM post p
-            WHERE (""" + condition + """)
+            WHERE p.supprime_le IS NULL AND (""" + condition + """)
               AND """ + filtre + """
               AND (%(avant_date)s::timestamptz IS NULL
                    OR (p.created_at, p.id) < (%(avant_date)s::timestamptz, %(avant_id)s::bigint))
@@ -266,10 +269,10 @@ def _rang_dans_fil(condition: str, params: dict, categorie: str, post_id: int) -
     sql = """
         WITH ancre AS (
             SELECT p.created_at, p.id FROM post p
-            WHERE p.id = %(ancre)s AND (""" + condition + """) AND """ + filtre + """
+            WHERE p.id = %(ancre)s AND p.supprime_le IS NULL AND (""" + condition + """) AND """ + filtre + """
         )
         SELECT count(*) AS n FROM post p, ancre
-        WHERE (""" + condition + """) AND """ + filtre + """
+        WHERE p.supprime_le IS NULL AND (""" + condition + """) AND """ + filtre + """
           AND (p.created_at, p.id) >= (ancre.created_at, ancre.id)
     """
     ligne = db.query_one(sql, {**params, "ancre": post_id})
@@ -350,6 +353,7 @@ def get_post(post_id: int) -> dict | None:
     return db.query_one(
         """
         SELECT p.id, p.projet_id, p.tache_id, p.parent_post_id, p.auteur_id, p.type_code,
+               p.evenement, p.contenu, p.lien, p.supprime_le, p.supprime_par, p.created_at,
                proj.etat AS projet_etat
         FROM post p LEFT JOIN projet proj ON proj.id = p.projet_id
         WHERE p.id = %s
@@ -558,23 +562,39 @@ def modifier_commentaire(commentaire_id: int, auteur_id: int, contenu: str, ment
         return [uid for uid in mention_ids if uid not in avant]
 
 
-def supprimer_commentaire(commentaire_id: int, current_user_id: int) -> list[str]:
-    """Suppression d'un commentaire (réservée aux admins — contrôlé par la
-    route, retour Fadhel, 2026-09-29), avec ses réponses, leurs @tags et
-    leurs pièces jointes (ON DELETE CASCADE). Retourne les chemins des
-    fichiers à effacer du disque APRÈS la validation de la transaction."""
+def supprimer_commentaire(commentaire_id: int, current_user_id: int) -> tuple[list[int], str | None]:
+    """Suppression LOGIQUE d'un commentaire et de ses réponses (lot 15,
+    migration 0021) : « Annuler » la lève (restaurer_commentaires). Les
+    droits sont contrôlés par la route. Retourne les ids supprimés et
+    l'horodatage de CETTE suppression (lié au jeton « Annuler »)."""
     with db.get_cursor(user_id=current_user_id) as cur:
         cur.execute(
             """
-            SELECT cpj.chemin FROM post_commentaire_piece_jointe cpj
-            JOIN post_commentaire c ON c.id = cpj.commentaire_id
-            WHERE c.id = %(id)s OR c.parent_commentaire_id = %(id)s
+            UPDATE post_commentaire SET supprime_le = now(), supprime_par = %(u)s
+            WHERE (id = %(id)s OR parent_commentaire_id = %(id)s) AND supprime_le IS NULL
+            RETURNING id, supprime_le
             """,
-            {"id": commentaire_id},
+            {"id": commentaire_id, "u": current_user_id},
         )
-        chemins = [r["chemin"] for r in cur.fetchall()]
-        cur.execute("DELETE FROM post_commentaire WHERE id = %s", (commentaire_id,))
-        return chemins
+        lignes = cur.fetchall()
+        if not lignes:
+            return [], None
+        return [int(r["id"]) for r in lignes], lignes[0]["supprime_le"].isoformat()
+
+
+def restaurer_commentaires(ids: list[int], current_user_id: int, quand: str) -> int:
+    """« Annuler » une suppression de commentaire (lot 15) : seulement
+    CELLE-LÀ (même personne, même instant), jamais une suppression
+    ultérieure par quelqu'un d'autre."""
+    with db.get_cursor(user_id=current_user_id) as cur:
+        cur.execute(
+            """
+            UPDATE post_commentaire SET supprime_le = NULL, supprime_par = NULL
+            WHERE id = ANY(%s::bigint[]) AND supprime_le = %s::timestamptz AND supprime_par = %s
+            """,
+            ([int(i) for i in ids], quand, current_user_id),
+        )
+        return cur.rowcount
 
 
 def get_commentaire(commentaire_id: int) -> dict | None:
@@ -584,11 +604,11 @@ def get_commentaire(commentaire_id: int) -> dict | None:
     return db.query_one(
         """
         SELECT c.id, c.post_id, c.parent_commentaire_id, c.auteur_id, c.contenu, p.projet_id,
-               proj.etat AS projet_etat
+               proj.etat AS projet_etat, c.supprime_le
         FROM post_commentaire c
         JOIN post p ON p.id = c.post_id
         LEFT JOIN projet proj ON proj.id = p.projet_id
-        WHERE c.id = %s
+        WHERE c.id = %s AND p.supprime_le IS NULL
         """,
         (commentaire_id,),
     )
@@ -604,7 +624,7 @@ def get_piece_jointe_commentaire(piece_id: int) -> dict | None:
         FROM post_commentaire_piece_jointe cpj
         JOIN post_commentaire c ON c.id = cpj.commentaire_id
         JOIN post p ON p.id = c.post_id
-        WHERE cpj.id = %s
+        WHERE cpj.id = %s AND cpj.retire_le IS NULL AND c.supprime_le IS NULL AND p.supprime_le IS NULL
         """,
         (piece_id,),
     )
@@ -645,9 +665,170 @@ def get_piece_jointe(piece_id: int) -> dict | None:
         SELECT pj.id, pj.post_id, pj.nom_fichier, pj.chemin, p.projet_id
         FROM post_piece_jointe pj
         JOIN post p ON p.id = pj.post_id
-        WHERE pj.id = %s
+        WHERE pj.id = %s AND pj.retire_le IS NULL AND p.supprime_le IS NULL
         """,
         (piece_id,),
     )
 
 
+
+
+# --------------------------------------------------------------------------
+# Lot 15 (migration 0021) : modifier ou supprimer un post, retirer ou
+# ajouter une pièce jointe. Droits contrôlés par la route (routes/posts.py).
+# --------------------------------------------------------------------------
+
+def modifier_post(post_id: int, auteur_id: int, contenu: str, lien: str | None,
+                  pj_retirees: list[int], pj_ajoutees: list[tuple[str, str]],
+                  mention_ids: list[int] | None = None) -> list[int] | None:
+    """Texte, lien et pièces jointes d'un post, PAR SON AUTEUR. Les pièces
+    retirées le sont logiquement (fichier purgé 30 jours après). Retourne
+    les pièces effectivement retirées, None si le post n'est pas modifiable
+    par cette personne (absent, supprimé, autre auteur)."""
+    with db.get_cursor(user_id=auteur_id) as cur:
+        cur.execute(
+            """
+            UPDATE post SET contenu = %s, lien = %s, modifie_le = now()
+            WHERE id = %s AND auteur_id = %s AND supprime_le IS NULL
+            RETURNING id
+            """,
+            (contenu, lien, post_id, auteur_id),
+        )
+        if cur.fetchone() is None:
+            return None
+        retirees = []
+        if pj_retirees:
+            cur.execute(
+                """
+                UPDATE post_piece_jointe SET retire_le = now(), retire_par = %s
+                WHERE post_id = %s AND id = ANY(%s::bigint[]) AND retire_le IS NULL
+                RETURNING id
+                """,
+                (auteur_id, post_id, [int(i) for i in pj_retirees]),
+            )
+            retirees = [int(r["id"]) for r in cur.fetchall()]
+        for nom_fichier, chemin in pj_ajoutees:
+            cur.execute(
+                "INSERT INTO post_piece_jointe (post_id, nom_fichier, chemin, uploaded_by) VALUES (%s, %s, %s, %s)",
+                (post_id, nom_fichier, chemin, auteur_id),
+            )
+        if mention_ids is not None:
+            cur.execute("SELECT utilisateur_id FROM post_mention WHERE post_id = %s", (post_id,))
+            avant = {int(r["utilisateur_id"]) for r in cur.fetchall()}
+            for uid in mention_ids:
+                if uid not in avant:
+                    cur.execute("INSERT INTO post_mention (post_id, utilisateur_id) VALUES (%s, %s) "
+                                "ON CONFLICT DO NOTHING", (post_id, uid))
+        return retirees
+
+
+def supprimer_post(post_id: int, current_user_id: int) -> str | None:
+    """Suppression LOGIQUE (« Annuler » : restaurer_post). Retourne
+    l'horodatage de la suppression (lié au jeton), None si déjà supprimé."""
+    with db.get_cursor(user_id=current_user_id) as cur:
+        cur.execute(
+            "UPDATE post SET supprime_le = now(), supprime_par = %s WHERE id = %s AND supprime_le IS NULL "
+            "RETURNING supprime_le",
+            (current_user_id, post_id),
+        )
+        ligne = cur.fetchone()
+        return ligne["supprime_le"].isoformat() if ligne else None
+
+
+def restaurer_post(post_id: int, current_user_id: int, quand: str) -> bool:
+    """« Annuler » CETTE suppression (même personne, même instant)."""
+    with db.get_cursor(user_id=current_user_id) as cur:
+        cur.execute(
+            "UPDATE post SET supprime_le = NULL, supprime_par = NULL "
+            "WHERE id = %s AND supprime_le = %s::timestamptz AND supprime_par = %s",
+            (post_id, quand, current_user_id),
+        )
+        return cur.rowcount == 1
+
+
+def restaurer_pieces(ids: list[int], current_user_id: int, *, post_id: int | None = None,
+                     commentaire_id: int | None = None) -> int:
+    """« Annuler » le retrait de pièces jointes d'UN post ou d'UN
+    commentaire, retirées par cette personne."""
+    if (post_id is None) == (commentaire_id is None):
+        raise ValueError("post_id ou commentaire_id, exactement un")
+    if commentaire_id is not None:
+        table, colonne, parent = "post_commentaire_piece_jointe", "commentaire_id", commentaire_id
+    else:
+        table, colonne, parent = "post_piece_jointe", "post_id", post_id
+    with db.get_cursor(user_id=current_user_id) as cur:
+        cur.execute(
+            f"UPDATE {table} SET retire_le = NULL, retire_par = NULL "
+            f"WHERE id = ANY(%s::bigint[]) AND {colonne} = %s AND retire_par = %s AND retire_le IS NOT NULL",
+            ([int(i) for i in ids], parent, current_user_id),
+        )
+        return cur.rowcount
+
+
+def pieces_du_post(post_id: int) -> list[dict]:
+    return db.query_all(
+        "SELECT id, nom_fichier FROM post_piece_jointe WHERE post_id = %s AND retire_le IS NULL ORDER BY uploaded_at",
+        (post_id,),
+    )
+
+
+def pieces_du_commentaire(commentaire_id: int) -> list[dict]:
+    return db.query_all(
+        "SELECT id, nom_fichier FROM post_commentaire_piece_jointe "
+        "WHERE commentaire_id = %s AND retire_le IS NULL ORDER BY uploaded_at",
+        (commentaire_id,),
+    )
+
+
+def pieces_commentaire_modifiees(commentaire_id: int, auteur_id: int, retirees: list[int],
+                                 ajoutees: list[tuple[str, str]]) -> list[int]:
+    """Pièces jointes d'un commentaire modifié par son auteur : retraits
+    logiques et ajouts. Retourne les pièces retirées."""
+    with db.get_cursor(user_id=auteur_id) as cur:
+        ids = []
+        if retirees:
+            cur.execute(
+                """
+                UPDATE post_commentaire_piece_jointe SET retire_le = now(), retire_par = %s
+                WHERE commentaire_id = %s AND id = ANY(%s::bigint[]) AND retire_le IS NULL
+                RETURNING id
+                """,
+                (auteur_id, commentaire_id, [int(i) for i in retirees]),
+            )
+            ids = [int(r["id"]) for r in cur.fetchall()]
+        for nom_fichier, chemin in ajoutees:
+            cur.execute(
+                "INSERT INTO post_commentaire_piece_jointe (commentaire_id, nom_fichier, chemin, uploaded_by) "
+                "VALUES (%s, %s, %s, %s)",
+                (commentaire_id, nom_fichier, chemin, auteur_id),
+            )
+        return ids
+
+
+DELAI_PURGE_JOURS = 30
+
+
+def purger_pieces_retirees(jours: int = DELAI_PURGE_JOURS) -> list[str]:
+    """Pièces jointes retirées depuis plus de `jours` jours : lignes
+    supprimées, chemins rendus pour effacer les fichiers (après la
+    transaction). Idempotent."""
+    with db.get_cursor() as cur:
+        chemins = []
+        p = {"j": int(jours)}
+        for sql in (
+            "DELETE FROM post_piece_jointe WHERE retire_le < now() - make_interval(days => %(j)s) RETURNING chemin",
+            "DELETE FROM post_commentaire_piece_jointe WHERE retire_le < now() - make_interval(days => %(j)s) "
+            "RETURNING chemin",
+            # Pièces d'un post ou d'un commentaire supprimé depuis 30 jours.
+            "DELETE FROM post_piece_jointe pj USING post po WHERE po.id = pj.post_id "
+            "AND po.supprime_le < now() - make_interval(days => %(j)s) RETURNING pj.chemin",
+            "DELETE FROM post_commentaire_piece_jointe cpj USING post_commentaire c WHERE c.id = cpj.commentaire_id "
+            "AND c.supprime_le < now() - make_interval(days => %(j)s) RETURNING cpj.chemin",
+            # Pièces des commentaires d'un post supprimé depuis 30 jours.
+            "DELETE FROM post_commentaire_piece_jointe cpj USING post_commentaire c, post po "
+            "WHERE c.id = cpj.commentaire_id AND po.id = c.post_id "
+            "AND po.supprime_le < now() - make_interval(days => %(j)s) RETURNING cpj.chemin",
+        ):
+            cur.execute(sql, p)
+            chemins += [r["chemin"] for r in cur.fetchall()]
+        return chemins

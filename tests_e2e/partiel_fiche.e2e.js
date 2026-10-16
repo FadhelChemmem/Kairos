@@ -276,18 +276,19 @@ module.exports = async function scenarioFiche(h) {
     await p.click('#fil-filtre-projet-tout');
     await attendre(() => p.evaluate(() => !!document.querySelector('#fil-posts[data-fil-categorie="tout"]')));
   }
-  await p.click('#carte-taches [data-open-post-dialog]');
+  // Lot 15 : « + Tâche » retiré (doublon) : « + Nouveau post », onglet Tâche.
+  await p.click('#nouveau-post');
   await p.fill('#dialog-titre-tache', 'Tâche créée en partiel');
   await mesurer(p, c, '« + Tâche » publiée',
     () => p.click('#publier-tache'),
     async () => sql("SELECT count(*) FROM tache WHERE titre='Tâche créée en partiel'") === '1'
       && !(await p.evaluate(() => document.getElementById('dialog-nouveau-post').open))
       && await p.locator('#carte-taches .taskrow.k-surligne:has-text("Tâche créée en partiel")').count() === 1,
-    '#nouvelle-tache', { dy: false });
+    '#nouveau-post', { dy: false });
   etape('« + Tâche » : post de création en tête du fil, surligné',
     await p.locator('#fil-posts .fil-item').first().locator(':text("Tâche créée en partiel")').count() >= 1);
   // Titre manquant : champ signalé, fenêtre ouverte.
-  await p.click('#carte-taches [data-open-post-dialog]');
+  await p.click('#nouveau-post');
   await p.evaluate(() => { const t = document.getElementById('dialog-titre-tache'); t.removeAttribute('required'); t.value = '  '; });
   await p.click('#publier-tache');
   await attendre(() => p.evaluate(() => document.getElementById('dialog-titre-tache').getAttribute('aria-invalid') === 'true'));
@@ -466,9 +467,14 @@ module.exports = async function scenarioFiche(h) {
   await p.click(`#commentaire-${premier} .post-comment-supprimer summary`);
   await mesurer(p, c, 'suppression d’un commentaire (Admin)',
     () => p.click(`#commentaire-${premier} [data-confirmer-suppression]`),
-    async () => sql(`SELECT count(*) FROM post_commentaire WHERE id=${premier}`) === '0'
+    // Lot 15 : suppression logique (« Annuler » dans le toast).
+    async () => sql(`SELECT count(*) FROM post_commentaire WHERE id=${premier} AND supprime_le IS NOT NULL`) === '1'
       && await p.locator(`#commentaire-${premier}`).count() === 0,
     '#post-50-commenter');
+  await p.keyboard.press('Control+z');
+  await attendre(async () => await p.locator(`#commentaire-${premier}`).count() === 1);
+  etape('suppression d’un commentaire : Ctrl+Z le rétablit', await p.locator(`#commentaire-${premier}`).count() === 1
+    && sql(`SELECT count(*) FROM post_commentaire WHERE id=${premier} AND supprime_le IS NULL`) === '1');
 
   // --- « Voir comme » : aucune écriture active sur la fiche ----------------
   const voir = await adm.newPage();

@@ -49,7 +49,7 @@ class TestVueEnsemble(_Base):
         self.assertIn('href="/accueil?voir=retard"', html)
         self.assertIn('aria-expanded="false" aria-controls="ve-detail"', html)
         self.assertIn('<span class="ve-tuile-nombre">9</span>', html)
-        self.assertIn("Toutes les échéances du bureau", html)
+        self.assertIn("Échéances du bureau", html)  # lot 15 : ligne repliée
         self.assertIn("Par chef de projet", html)
         self.assertIn('href="/deadlines?vue=tous&amp;chef=2"', html)
         self.assertIn("12 h 30", html)
@@ -74,7 +74,8 @@ class TestVueEnsemble(_Base):
         self.assertIn('id="ve-detail-titre"', html)
         self.assertIn('href="/projets/7?tache=41"', html)
         self.assertIn("Ali Chef", html)
-        self.assertIn("+9&nbsp;j", html)
+        # Retard compté depuis l'échéance de la fixture (date du jour réelle).
+        self.assertIn(f"+{(datetime.date.today() - RETARD[0]['date_echeance']).days}&nbsp;j", html)
 
     def test_voir_inconnu_ignore(self):
         liste = espion("app.repositories.tableaux.liste", RETARD)
@@ -84,9 +85,9 @@ class TestVueEnsemble(_Base):
 
     def test_dailylog_masque_pour_admin_sans_heures(self):
         html = self._appel("get", "/accueil", **{"app.repositories.tableaux.saisit_des_heures": False}).get_data(as_text=True)
-        self.assertNotIn("Remplir mon Daily log", html)
+        self.assertNotIn('class="acc-dl', html)
         html = self._appel("get", "/accueil", **{"app.repositories.tableaux.saisit_des_heures": True}).get_data(as_text=True)
-        self.assertIn("mon Daily log", html)
+        self.assertIn('class="acc-dl', html)
 
     def test_vue_ensemble_refusee_hors_admin(self):
         for user in (CHEF, INTERV):
@@ -249,15 +250,20 @@ class TestTachesDeMesProjets(_Base):
         self.assertIn(">Voir toutes les tâches</a>", html)
 
     def test_pastilles_de_mes_projets(self):
-        projets = [{"id": 1, "code": "26099X", "nom": "Tour", "phase": "EXE", "etat": "bloque", "mon_role": "chef_de_projet"}]
+        # Lot 15 (sobriété) : une seule pastille par projet — « Bloqué »,
+        # sinon le nombre de tâches en retard ; plus de prochaine échéance.
+        projets = [{"id": 1, "code": "26099X", "nom": "Tour", "phase": "EXE", "etat": "bloque", "mon_role": "chef_de_projet"},
+                   {"id": 2, "code": "26100X", "nom": "Pont", "phase": "APS", "etat": "en_cours", "mon_role": "co_chef"}]
         html = self._appel("get", "/accueil", **{
             "app.auth.get_user_by_id": CHEF, "app.repositories.projets.list_mes_projets_recents": projets,
-            "app.repositories.tableaux.pastilles_projets": {1: {"retard": 2, "prochaine": datetime.date(2026, 10, 14)}},
+            "app.repositories.tableaux.pastilles_projets": {1: {"retard": 2, "prochaine": datetime.date(2026, 10, 14)},
+                                                            2: {"retard": 3, "prochaine": None}},
         }).get_data(as_text=True)
-        self.assertIn('<span class="pill pill-sm pill-rouge">2 en retard</span>', html)
+        self.assertIn('<span class="pill pill-sm pill-rouge">3 en retard</span>', html)
         self.assertIn('<span class="pill pill-sm pill-rouge">Bloqué</span>', html)
-        self.assertIn("Prochaine échéance&nbsp;: </span>", html)
-        self.assertIn("14 oct.", html)
+        self.assertNotIn("2 en retard", html)
+        self.assertNotIn("Prochaine échéance", html)
+        self.assertIn('<span class="acc-phase">APS</span>', html)
 
 
 class TestDeadlinesAdmin(_Base):

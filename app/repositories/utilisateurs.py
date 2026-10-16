@@ -232,22 +232,23 @@ def create_utilisateur(
 
 
 def update_profil(
-    user_id: int, *, telephone: str | None, poste: str | None, adresse: str | None,
+    user_id: int, *, telephone: str | None, adresse: str | None,
     current_user_id: int,
 ) -> None:
     """Modification de ses propres informations depuis la page "Infos
     perso" (demandé par Fadhel, 2026-09-19) — volontairement limité à
-    téléphone/poste/adresse : l'identité (prénom, nom, email) et le rôle
-    restent gérés par l'admin/RH via la page Utilisateurs. La photo de
+    téléphone/adresse : l'identité (prénom, nom, email) et le rôle
+    restent gérés par l'admin/RH via la page Utilisateurs (le poste aussi
+    depuis le lot 15). La photo de
     profil se change séparément (set_avatar) : on ne veut jamais l'effacer
     juste parce que ce formulaire-ci a été soumis sans nouveau fichier."""
     db.execute(
         """
         UPDATE utilisateur
-        SET telephone = %s, poste = %s, adresse = %s
+        SET telephone = %s, adresse = %s
         WHERE id = %s
         """,
-        (telephone, poste, adresse, user_id),
+        (telephone, adresse, user_id),
         user_id=current_user_id,
     )
 
@@ -400,4 +401,29 @@ def get_par_reset_token_hash(token_hash: str) -> dict | None:
         WHERE reset_token_hash = %s AND reset_token_expires_at > now()
         """,
         (token_hash,),
+    )
+
+
+# Lot 15 (migration 0021) : réglages d'affichage du compte.
+PREFERENCES = {"accueil_deadlines": False, "dailylog_proposer": True}
+
+
+def get_preferences(user_id: int) -> dict:
+    row = db.query_one(
+        "SELECT accueil_deadlines, dailylog_proposer FROM utilisateur_preference WHERE utilisateur_id = %s",
+        (user_id,),
+    )
+    return {**PREFERENCES, **(dict(row) if row else {})}
+
+
+def set_preference(user_id: int, cle: str, valeur: bool) -> None:
+    if cle not in PREFERENCES:
+        raise ValueError(cle)
+    db.execute(
+        f"""
+        INSERT INTO utilisateur_preference (utilisateur_id, {cle}) VALUES (%s, %s)
+        ON CONFLICT (utilisateur_id) DO UPDATE SET {cle} = EXCLUDED.{cle}, updated_at = now()
+        """,
+        (user_id, bool(valeur)),
+        user_id=user_id,
     )

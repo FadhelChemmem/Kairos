@@ -204,7 +204,7 @@ class TestSqlGenere(unittest.TestCase):
         self.assertLess(controle, self.sql.index("TRUNCATE TABLE "))
         self.assertLess(self.sql.index("absent de Kairos"), self.sql.index("TRUNCATE TABLE "))
         self.assertIn("RAISE EXCEPTION 'Rechargement annulé : la base n''est pas à jour (migration "
-                      "0020_lot14_blocage_et_cloture absente)", self.sql)
+                      "0021_lot15_posts_et_preferences absente)", self.sql)
 
     def test_truncate_exactement_les_tables_metier(self):
         (ligne,) = [l for l in self.sql.splitlines() if l.startswith("TRUNCATE")]

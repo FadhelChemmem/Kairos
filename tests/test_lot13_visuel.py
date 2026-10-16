@@ -43,7 +43,9 @@ class TestFeuilleVisuelle(unittest.TestCase):
     def test_feuille_dans_le_paquet_apres_les_autres(self):
         # Lot 14 : les feuilles des nouvelles fonctionnalités (lot14-*.css)
         # viennent après ; lot13-visuel.css reste après toutes les autres.
-        feuilles = [f for f in paquets.PAQUETS["app.css"] if not f.startswith("css/lot14-")]
+        # Lot 15 : lot15.css (sobriété) en tout dernier.
+        self.assertEqual(paquets.PAQUETS["app.css"][-1], "css/lot15.css")
+        feuilles = [f for f in paquets.PAQUETS["app.css"] if not f.startswith(("css/lot14-", "css/lot15"))]
         self.assertEqual(feuilles[-1], "css/lot13-visuel.css")
 
     def test_regle_k_page_valide(self):
@@ -122,13 +124,15 @@ class TestLibelles(_Base):
                  "app.repositories.taches.list_deadlines_tous": [],
                  "app.repositories.tableaux.taches_de_mes_projets": []}
         html = self._appel("get", "/accueil", **vides).get_data(as_text=True)
-        self.assertIn('<p class="k-vide-texte">Aucun projet pour l’instant.</p>', html)
-        # Lot 14 : l'Admin voit les échéances du bureau et les tâches de ses projets.
+        # Lot 15 : l'Admin rattaché à aucun projet n'a plus de cartes vides
+        # « Mes projets » / « Tâches de mes projets » (Vue d'ensemble).
+        self.assertNotIn("Aucun projet pour l’instant.", html)
+        self.assertNotIn("Aucune tâche en cours sur vos projets.", html)
         self.assertIn("Aucune échéance en cours dans le bureau.", html)
-        self.assertIn("Aucune tâche en cours sur vos projets.", html)
         html = self._appel("get", "/accueil", **vides, **{
             "app.auth.get_user_by_id": {**smoke.USER, "role": "intervenant"}}).get_data(as_text=True)
-        self.assertIn(">Voir les échéances</a>", html)
+        self.assertIn('<p class="k-vide-texte">Aucun projet pour l’instant.</p>', html)
+        self.assertIn("Aucune tâche en cours à votre nom.", html)
         self.assertIn("Aucune échéance sur vos projets.", html)
 
 

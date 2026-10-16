@@ -220,6 +220,14 @@
           <label for="dialog-description-requete">Description <span class="label-note">— facultatif</span></label>
           <textarea id="dialog-description-requete" name="contenu" maxlength="10000" placeholder="Détaillez la demande…"></textarea>
         </div>
+        {# Lot 15 : la requête peut citer une tâche ouverte du projet (liste
+           chargée au choix du projet, post-dialog.js). #}
+        <div class="form-row" data-requete-tache-row hidden>
+          <label for="dialog-tache-requete">Tâche concernée <span class="label-note">— facultatif</span></label>
+          <select id="dialog-tache-requete" name="tache_id" data-taches-url="{{ url_for('projets.api_taches_choix', projet_id=999999999) }}"{% if projet_id is not none %} data-projet-fixe="{{ projet_id }}"{% endif %}>
+            <option value="">Aucune</option>
+          </select>
+        </div>
         <div class="form-row">
           <label for="dialog-mentions-requete">Personnes mentionnées <span class="label-note">— facultatif</span></label>
           <select id="dialog-mentions-requete" name="mentions" multiple data-chip-select data-chip-filter="1" data-chip-recent="1" data-chip-filter-placeholder="Rechercher une autre personne…">

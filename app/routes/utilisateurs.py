@@ -306,11 +306,21 @@ def _dix_jours_ouvres(utilisateur: dict, projets_visibles_ids: set | None) -> li
 def _fenetre_7_jours(utilisateur: dict, projets_visibles_ids: set, nb_jours: int = 7) -> list[dict]:
     """Daily log glissant (aujourd'hui inclus, en remontant, au fuseau de la
     personne), pour la page de profil d'une personne (Lot 5, retour Fadhel,
-    2026-09-28 : "fenêtre 7 jours") ; week-ends inclus. Du plus récent au
-    plus ancien : « Voir + » ajoute les semaines précédentes en dessous."""
+    2026-09-28 : "fenêtre 7 jours"). Du plus récent au plus ancien : « Voir
+    + » ajoute les semaines précédentes en dessous. Lot 15 : un samedi ou un
+    dimanche sans heures n'est plus listé (« 0 h · Corriger » sans objet)."""
     aujourdhui = dailylog_repo.aujourdhui_pour(utilisateur)
     jours = [aujourdhui - datetime.timedelta(days=i) for i in range(nb_jours)]
-    return _jours_daily_log(utilisateur, jours, projets_visibles_ids)
+    sortie = [j for j in _jours_daily_log(utilisateur, jours, projets_visibles_ids)
+              if j["date"].weekday() < 5 or j.get("entrees") or j.get("absent")]
+    # Lot 15 (page unique, reprise de la fiche du lot 14) : état réel de
+    # chaque jour ouvré (rempli, non renseigné, pas encore saisi…), calculé
+    # sur TOUTES les heures du jour ; les lignes restent filtrées.
+    synthese = dailylog_repo.synthese_periode([utilisateur["id"]], min(jours), max(jours))
+    for jour in sortie:
+        if jour["date"].weekday() < 5:
+            jour["etat"] = dailylog_repo.etat_case(utilisateur, jour["date"], synthese.get((utilisateur["id"], jour["date"])))
+    return sortie
 
 
 @bp.route("/<int:user_id>/profil")
@@ -362,7 +372,8 @@ def profil_personne(user_id: int):
     # gérant, fin du lot 10 — le Client voit heures, honoraires et pièces
     # jointes des projets qu'il voit), limité à ces projets comme pour
     # tout le monde (projets_visibles_ids).
-    voir_daily_log = user_id == viewer_id or g.user["role"] in ("admin", "chef_de_projet", "client")
+    voir_daily_log = (utilisateur.get("role") in ("admin", "chef_de_projet", "intervenant")
+                      and (user_id == viewer_id or g.user["role"] in ("admin", "chef_de_projet", "client")))
     jours = (_fenetre_7_jours(utilisateur, projets_visibles_ids, nb_jours=7 * semaines)
              if voir_daily_log else None)
     if jours is not None and g.user["role"] == "client" and user_id != viewer_id:
@@ -371,7 +382,13 @@ def profil_personne(user_id: int):
         jours = [{**j, "absent": False} for j in jours if j["entrees"]]
 
     # Premier jour qu'ajoutera « Voir la semaine précédente » (focus).
-    jour_suivant = (jours[-1]["date"] - datetime.timedelta(days=1)) if jours else None
+    # Lot 15 : les samedis et dimanches sans heures n'étant plus listés, le
+    # premier jour ajouté est le dernier jour ouvré avant la fenêtre.
+    jour_suivant = None
+    if jours:
+        jour_suivant = jours[-1]["date"] - datetime.timedelta(days=1)
+        while jour_suivant.weekday() >= 5:
+            jour_suivant -= datetime.timedelta(days=1)
     if partiel.est_partiel():
         # Lot 13 : « Voir la semaine précédente » — Daily log et posts
         # remplacés en place (#profil-activite), l'adresse suit.
@@ -388,7 +405,13 @@ def profil_personne(user_id: int):
         jours=jours,
         peut_corriger=voir_daily_log and _peut_corriger(utilisateur),
         semaines=semaines,
-        taches_en_cours=taches_repo.list_en_cours_pour_profil(user_id, viewer_id, limit=8),
+        # Lot 15 : une seule page par personne — ses tâches ouvertes (retards,
+        # bloquées) et ses projets en cours, le contact pour qui gère.
+        taches_ouvertes=taches_repo.list_ouvertes_pour_profil(user_id, viewer_id, dailylog_repo.aujourdhui_pour(g.user)),
+        projets_en_cours=projets_repo.list_en_cours_pour_profil(user_id, viewer_id),
+        aujourdhui=dailylog_repo.aujourdhui_pour(g.user),
+        voir_contact=g.user["role"] in ("admin", "rh", "chef_de_projet") or user_id == viewer_id,
+        peut_modifier_fiche=g.user["role"] in ("admin", "rh") and not _cible_protegee(utilisateur),
         **fil_posts,
         # Lot 5 (retour Fadhel, 2026-09-28) : "@ Taguer" dans le
         # composeur de commentaire de post_card.html a besoin de la même
@@ -564,13 +587,14 @@ def _rendre_mon_profil(erreurs_infos=None, erreurs_mdp=None, statut=200):
     utilisateur = utilisateurs_repo.get_utilisateur(g.user["id"])
     if erreurs_infos:
         # Saisie réaffichée telle quelle, à corriger.
-        utilisateur = {**utilisateur, **{c: request.form.get(c, "") for c in ("telephone", "poste", "adresse")}}
+        utilisateur = {**utilisateur, **{c: request.form.get(c, "") for c in ("telephone", "adresse")}}
     # Daily log de la semaine dernière (lundi → vendredi — voir
     # _semaine_derniere), demandé par Fadhel (2026-09-19), affiché en
     # lecture seule ici (la saisie reste sur /dailylog ; chaque ligne y
     # renvoie directement, voir utilisateur_profil.html).
     return render_template(
         "utilisateur_profil.html", utilisateur=utilisateur, semaine_derniere=_semaine_derniere(utilisateur),
+        preferences=utilisateurs_repo.get_preferences(g.user["id"]),
         erreurs_infos=erreurs_infos or {}, erreurs_mdp=erreurs_mdp or {},
     ), statut
 
@@ -581,12 +605,12 @@ def mon_profil():
     user_id = g.user["id"]
 
     if request.method == "POST":
+        # Lot 15 : le poste n'est plus modifiable par la personne (Admin et
+        # RH seulement, fiche Utilisateurs) ; un champ envoyé est ignoré.
         telephone = request.form.get("telephone", "").strip() or None
-        poste = request.form.get("poste", "").strip() or None
         adresse = request.form.get("adresse", "").strip() or None
         erreurs = {c: m for c, m in (
             ("telephone", v.telephone_invalide(telephone)),
-            ("poste", v.trop_long(poste, v.MAX_POSTE, "Poste")),
             ("adresse", v.trop_long(adresse, v.MAX_ADRESSE, "Adresse")),
         ) if m}
         if erreurs:
@@ -594,13 +618,13 @@ def mon_profil():
             # la saisie n'est plus perdue (redirection auparavant).
             if partiel.est_partiel():
                 utilisateur = {**utilisateurs_repo.get_utilisateur(user_id),
-                               "telephone": telephone, "poste": poste, "adresse": adresse}
+                               "telephone": telephone, "adresse": adresse}
                 return partiel.repondre("partials/mes_infos_form.html", statut=422, utilisateur=utilisateur,
                                         erreurs_infos=erreurs)
             flash(next(iter(erreurs.values())), "error")
             return _rendre_mon_profil(erreurs_infos=erreurs)
         utilisateurs_repo.update_profil(
-            user_id, telephone=telephone, poste=poste, adresse=adresse,
+            user_id, telephone=telephone, adresse=adresse,
             current_user_id=user_id,
         )
         photo = bool(request.files.get("avatar") and request.files["avatar"].filename)
@@ -681,14 +705,11 @@ def fiche(user_id: int):
         flash("Utilisateur introuvable.", "error")
         return redirect(url_for("utilisateurs.liste"))
 
+    # Lot 15 : une seule page par personne. Le chef de projet (lecture
+    # seule) arrive sur la page de la personne, qui montre aussi son
+    # téléphone, ses tâches, ses projets et son Daily log.
     if g.user["role"] == "chef_de_projet":
-        return render_template(
-            "utilisateur_voir.html",
-            utilisateur=utilisateur,
-            dix_jours=(_dix_jours_ouvres(utilisateur, projets_repo.list_ids_visibles(g.user["id"]))
-                       if utilisateur.get("role") in ("admin", "chef_de_projet", "intervenant") else []),
-            peut_corriger=_peut_corriger(utilisateur),
-        )
+        return redirect(url_for("utilisateurs.profil_personne", user_id=user_id))
 
     enregistre = utilisateur
     if request.method == "POST" and _cible_protegee(utilisateur):

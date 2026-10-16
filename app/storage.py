@@ -6,10 +6,14 @@ Chaque fichier est sauvegardé sous un nom généré (uuid) pour éviter toute
 collision ou tout risque lié à un nom de fichier fourni par l'utilisateur,
 tout en gardant le nom d'origine affiché dans l'interface.
 """
+import logging
 import os
+import time
 import uuid
 
 from flask import current_app
+
+logger = logging.getLogger(__name__)
 
 # Photos de profil (retour Fadhel, 2026-09-20) : mêmes contraintes de
 # format que n'importe quel avatar web classique — on ne veut pas qu'un
@@ -96,3 +100,34 @@ def delete_upload(rel_path: str | None) -> None:
         os.remove(abs_path)
     except OSError:
         pass
+
+
+# Lot 15 : pièces jointes retirées (ou d'un post supprimé) effacées du
+# disque 30 jours après. Pas de planificateur : la purge part d'une requête
+# ordinaire (GET réussi d'une personne connectée), au plus une fois toutes les
+# 6 heures par processus ; idempotente si deux processus la font en même temps.
+INTERVALLE_PURGE = 6 * 3600
+_derniere_purge = None
+
+
+def purger_pieces_retirees() -> int:
+    from .repositories import posts as posts_repo
+
+    chemins = posts_repo.purger_pieces_retirees()
+    for chemin in chemins:
+        delete_upload(chemin)
+    return len(chemins)
+
+
+def purger_si_du() -> None:
+    global _derniere_purge
+    maintenant = time.monotonic()
+    if _derniere_purge is not None and maintenant - _derniere_purge < INTERVALLE_PURGE:
+        return
+    _derniere_purge = maintenant
+    try:
+        n = purger_pieces_retirees()
+        if n:
+            logger.info("Purge : %s pièce(s) jointe(s) retirée(s) depuis 30 jours effacée(s).", n)
+    except Exception:  # jamais d'erreur visible pour la personne
+        logger.exception("Purge des pièces jointes retirées impossible")

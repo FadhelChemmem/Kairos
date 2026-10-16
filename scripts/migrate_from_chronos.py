@@ -817,7 +817,7 @@ def emit_credentials(path, credentials):
 def emit_rapport(path, report, counts, args):
     lines = []
     a = lines.append
-    a(f"# Rapport de migration Kairos (ancien) -> Kairos (nouveau)\n")
+    a("# Rapport de migration Kairos (ancien) -> Kairos (nouveau)\n")
     a(f"Généré le {datetime.now().isoformat(timespec='seconds')} à partir de `{args.dump.name}`.\n")
 
     a("## Résumé des volumes migrés\n")
@@ -943,7 +943,7 @@ def emit_rapport(path, report, counts, args):
 
     a("## Pour rejouer cette migration plus tard (nouvel export)\n")
     a("```\n"
-      f"python3 scripts/migrate_from_chronos.py nouveau_export.sql --out-dir migration_YYYY-MM-DD\n"
+      "python3 scripts/migrate_from_chronos.py nouveau_export.sql --out-dir migration_YYYY-MM-DD\n"
       "```\n"
       "Puis, sur une base FRAÎCHE (schema.sql tout juste appliqué, aucune donnée dedans) :\n"
       "```\n"

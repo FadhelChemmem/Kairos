@@ -214,28 +214,38 @@ class TestEquipe(_Base):
 
 
 class TestFiche(_Base):
-    def test_dix_derniers_jours_ouvres_chef_et_admin(self):
+    """Lot 15 : une seule page par personne. Le chef qui ouvre la fiche
+    arrive sur la page de la personne (Daily log avec l'état réel de chaque
+    jour ouvré) ; l'Admin garde la fiche modifiable (10 derniers jours)."""
+
+    def test_daily_log_sur_la_page_de_la_personne_chef_et_admin(self):
         hier = self.ouvre_precedent()
         with self.db.get_cursor() as cur:
             cur.execute("SET LOCAL kairos.reprise_historique = 'on'")
             cur.execute("INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (%s, %s, %s, 4)",
                         (self.moi, hier, self.pa))
-        for uid in (self.chef, self.admin):
-            self.login(uid)
-            html = self.client.get(f"/utilisateurs/{self.moi}").get_data(as_text=True)
-            self.assertIn("Daily log — 10 derniers jours ouvrés", html)
-            self.assertEqual(html.count('class="dl-semaine-jour'), 10)
-            self.assertIn(f'/dailylog?date={hier.isoformat()}&amp;utilisateur={self.moi}', html)
-            self.assertIn("Non renseigné", html)
-            self.assertIn('href="/dailylog/equipe"', html)
-
-    def test_rien_pour_le_rh_ni_sur_la_fiche_d_un_rh(self):
-        self.login(self.rh)
-        self.assertNotIn("Daily log — 10 derniers", self.client.get(f"/utilisateurs/{self.moi}").get_data(as_text=True))
         self.login(self.chef)
-        html = self.client.get(f"/utilisateurs/{self.rh}").get_data(as_text=True)
-        self.assertNotIn("Daily log — 10 derniers", html)
-        self.assertIn("nom et téléphone uniquement", html)
+        r = self.client.get(f"/utilisateurs/{self.moi}")
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(r.headers["Location"].endswith(f"/utilisateurs/{self.moi}/profil"))
+        html = self.client.get(f"/utilisateurs/{self.moi}/profil?semaines=2").get_data(as_text=True)
+        self.assertIn("Daily log — 2 dernières semaines", html)
+        self.assertIn(f'/dailylog?date={hier.isoformat()}&amp;utilisateur={self.moi}', html)
+        self.assertIn("Non renseigné", html)
+        self.assertIn("Tâches en cours", html)
+        self.assertIn("Projets en cours", html)
+        self.login(self.admin)
+        html = self.client.get(f"/utilisateurs/{self.moi}").get_data(as_text=True)
+        self.assertIn("Daily log — 10 derniers jours ouvrés", html)
+        self.assertEqual(html.count('class="dl-semaine-jour'), 10)
+
+    def test_rien_pour_le_rh_ni_sur_la_page_d_un_rh(self):
+        self.login(self.rh)
+        self.assertNotIn("Daily log —", self.client.get(f"/utilisateurs/{self.moi}/profil").get_data(as_text=True))
+        self.login(self.chef)
+        html = self.client.get(f"/utilisateurs/{self.rh}/profil").get_data(as_text=True)
+        self.assertNotIn("Daily log —", html)
+        self.assertNotIn("Tâches en cours", html)
 
     def test_chef_ne_voit_que_les_lignes_de_ses_projets_mais_l_etat_reel(self):
         hier = self.ouvre_precedent()
@@ -245,15 +255,21 @@ class TestFiche(_Base):
             cur.execute("INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (%s, %s, %s, 4)",
                         (self.autre, hier, self.pc))
         self.login(self.chef)
-        html = self.client.get(f"/utilisateurs/{self.autre}").get_data(as_text=True)
+        html = self.client.get(f"/utilisateurs/{self.autre}/profil?semaines=2").get_data(as_text=True)
         self.assertNotIn("Projet 26003C", html)
-        bloc = html[html.index(f"/dailylog?date={hier.isoformat()}") - 600:html.index(f"/dailylog?date={hier.isoformat()}")]
-        self.assertNotIn("Non renseigné", bloc)                            # rempli, même si rien n'est détaillé
+        debut = html.index(f'id="profil-jour-{hier.isoformat()}"')
+        tete = html[debut:html.index("</div>", debut)]
+        self.assertNotIn("Non renseigné", tete)                            # rempli, même si rien n'est détaillé
 
     def test_preference_dans_mes_informations(self):
         self.login(self.moi)
         html = self.client.get("/utilisateurs/moi").get_data(as_text=True)
-        self.assertIn(f'data-pref-dl-proposer="{self.moi}" checked', html)
+        # Lot 15 : réglage du compte (utilisateur_preference), coché par défaut.
+        self.assertIn('data-pref-dl-proposer data-preference-url="/preferences" checked', html)
+        utilisateurs = __import__("app.repositories.utilisateurs", fromlist=["x"])
+        utilisateurs.set_preference(self.moi, "dailylog_proposer", False)
+        html = self.client.get("/utilisateurs/moi").get_data(as_text=True)
+        self.assertIn('data-pref-dl-proposer data-preference-url="/preferences">', html)
         self.assertIn("dailylog-preferences.js", html)
         self.login(self.rh)
         self.assertNotIn("data-pref-dl-proposer", self.client.get("/utilisateurs/moi").get_data(as_text=True))

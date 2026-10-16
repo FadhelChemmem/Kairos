@@ -2,224 +2,197 @@
 {% import "partials/icones.html" as ic %}
 {% block title %}Accueil — Kairos{% endblock %}
 {% block body %}
+{#
+  Accueil (lot 15, maquettes validées par le gérant le 16/10/2026) : sobre,
+  en deux colonnes — le fil à gauche, la colonne de travail à droite (Mes
+  projets, Tâches de mes projets, Bloquées, À traiter, Par chef de projet).
+  En tête : salutation, rappel du Daily log et « + Nouveau post » (seul
+  bouton de publication de la page) ; puis la Vue d'ensemble de l'Admin et
+  la ligne « Deadlines », repliée par défaut (choix mémorisé du compte).
+  Téléphone : une colonne, le fil d'abord, la colonne de droite ensuite.
+#}
+{% set dl_visible = not sans_projets and g.user.role != 'client' and not masquer_dailylog %}
+<div class="page-wrap accueil">
 
-<!-- Bannière Deadlines pleine largeur, entre la topbar et les trois
-     colonnes (retour Fadhel, 2026-09-19) : mini-Gantt simplifié (jours +
-     barres, sans les filtres/légende de la page /deadlines — juste un
-     aperçu ; on y va en cliquant, comme avant). Fenêtre courte (8 jours) +
-     colonnes en largeur flexible (1fr) pour ne jamais déborder de la
-     largeur des 3 colonnes, quelle que soit la taille de l'écran. -->
-{# Div (pas <a>) depuis le retour Fadhel du 2026-09-28 : le nom du projet
-   doit mener directement au projet, alors que le reste de la bannière
-   (titre, "Voir tout", chaque ligne) mène toujours à /deadlines — un <a>
-   ne peut pas en contenir un autre, il fallait donc arrêter d'envelopper
-   toute la bannière dans un unique lien. #}
-{# Lot 14 : en tête, la Vue d'ensemble de l'Admin (tuiles, puis échéances
-   du bureau et tableau « Par chef de projet » côte à côte) ou la carte
-   « À traiter » du chef de projet (routes/tableaux.py). #}
-{% if ve or at %}<div class="accueil-tableaux">
-  {% if ve %}{% include "partials/vue_ensemble.html" %}{% else %}{% include "partials/a_traiter.html" %}{% endif %}
-  {% if par_chef %}<div class="accueil-haut-admin">{% endif %}
-{% endif %}
-{# Ni RH ni Client : pas d'échéances (lot 7). #}
-{% if not sans_projets and g.user.role != 'client' %}
-<section class="deadline-banner" aria-labelledby="accueil-deadlines-titre">
-  {# Lot 13 (audit a11y M8) : bloc titré, barres vers la tâche elle-même. #}
-  <h2 class="sr-only" id="accueil-deadlines-titre">{{ 'Toutes les échéances du bureau' if ve else 'Deadlines' }}</h2>
-  <a href="{{ url_for('deadlines.liste') }}" class="deadline-banner-head lien-discret-bloc">
-    <span class="deadline-banner-title">
-      <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>
-      {{ 'Toutes les échéances du bureau' if ve else 'Deadlines' }}
-    </span>
-    <span class="deadline-banner-tout">Tout voir<span class="sr-only"> les deadlines</span> <span aria-hidden="true">→</span></span>
-  </a>
-  {% if deadlines_gantt.rows %}
-    <div class="mini-gantt" style="--mg-days:{{ deadlines_gantt.window_days }};">
-      <div class="mini-gantt-label mini-gantt-coin" aria-hidden="true"></div>
-      {% for d in deadlines_gantt.days %}
-        <div class="mini-gantt-daycell{{ ' mini-gantt-weekend' if d.est_weekend and d.date != deadlines_gantt.days[0].date }}" aria-hidden="true" style="color:{{ 'var(--brand-text-strong)' if d.date == deadlines_gantt.days[0].date else 'var(--text-faint)' }};">{{ d.lettre }} {{ d.label }}</div>
-      {% endfor %}
-      {% for t in deadlines_gantt.rows %}
-        {# Lot 10 (audit front I15) : le titre de la tâche d'abord (il était
-           coupé derrière le nom du projet), le projet en dessous ; barre
-           nommée en entier pour les lecteurs d'écran. #}
-        <div class="mini-gantt-label">
-          <span class="mini-gantt-titre" title="{{ t.titre }}">{{ t.titre }}</span>
-          <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" class="mini-gantt-projet" title="{{ t.projet_code }}_{{ t.projet_nom }}">{{ t.projet_code }}_{{ t.projet_nom }}</a>
-        </div>
-        <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) if t.id is defined and t.id else url_for('deadlines.liste') }}" class="mini-gantt-track" style="grid-column: 2 / span {{ deadlines_gantt.window_days }};" aria-label="{{ t.titre }} ({{ t.projet_code }})&nbsp;: {{ t.retard ~ ', échéance le ' if t.en_retard else 'échéance le ' }}{{ t.date_echeance|date_courte }}">
-          {# Couleur par classe (jetons --gantt-*, revue visuelle P1-6). #}
-          <span class="mini-gantt-bar g-bar-{{ t.niveau }}{{ ' mini-gantt-bar-retard' if t.en_retard }}" style="grid-column: 1 / span {{ t.span }};">{{ t.label_barre }}</span>
-          <span class="mini-gantt-date">{{ t.date_echeance|date_courte }}{% if t.en_retard %} · {{ t.retard }}{% endif %}</span>
-        </a>
-      {% endfor %}
+  <header class="acc-entete">
+    <div class="acc-salut">
+      <p class="acc-sur-titre">{{ date_fr(aujourdhui or today())|capitalize }}{% if not sans_projets and nb_projets_ouverts %} · {{ nb_projets_ouverts }} projet{{ 's' if nb_projets_ouverts > 1 }} ouvert{{ 's' if nb_projets_ouverts > 1 }}{% endif %}</p>
+      <h1 class="acc-titre">Bonjour {{ g.user.prenom }}</h1>
     </div>
-  {% else %}
-    {# Revue produit (§ 3) : « à venir » était faux à l'échelle du bureau
-       pour un Admin rattaché à aucun projet. #}
-    <p class="deadline-banner-vide">{% if ve %}Aucune échéance en cours dans le bureau.{% else %}Aucune échéance sur vos projets.{% if g.user.role == 'admin' %} <a href="{{ url_for('deadlines.liste', vue='tous') }}" class="lien-fort">Voir celles du bureau <span aria-hidden="true">→</span></a>{% endif %}{% endif %}</p>
-  {% endif %}
-</section>
-{% endif %}
-{% if ve or at %}
-  {% if par_chef %}{% include "partials/par_chef.html" %}</div>{% endif %}
-</div>{% endif %}
-
-<h1 class="sr-only">Accueil</h1>
-<div class="page-body page-body-accueil">
-
-  <!-- Colonne gauche -->
-  <div class="col">
-    {# RH (lot 7) : ni projets ni Daily log. #}
-    {% if not sans_projets %}
-
-    <div class="card">
-      <div class="carte-entete carte-entete-souple">
-        <h2 class="carte-titre">Mes projets</h2>
-        <a href="{{ url_for('projets.liste') }}" class="lien-carte lien-carte-petit">Tout voir<span class="sr-only"> mes projets</span></a>
-      </div>
-      <div class="accueil-liste">
-        {% for p in mes_projets %}
-          {% set st = projet_etat_style(p.etat) %}
-          {% set role_label = {'chef_de_projet': 'Chef de projet', 'co_chef': 'Co-chef', 'intervenant': 'Intervenant'}.get(p.mon_role, '') %}
-          <a href="{{ url_for('projets.detail', projet_id=p.id) }}" class="accueil-projet">
-            <span aria-hidden="true" class="point-etat point-etat-{{ p.etat }}"></span>
-            <div class="accueil-texte">
-              <div class="accueil-projet-nom" title="{{ p.code }}_{{ p.nom }}">{{ p.code }}_{{ p.nom }}</div>
-              <div class="accueil-sous">{{ p.phase }}{% if role_label %} · {{ role_label }}{% endif %}</div>
-              {# Lot 14 (revue produit P1-2) : retards, blocage, prochaine échéance. #}
-              {% set pa = (pastilles or {}).get(p.id) %}
-              {% if (pa and (pa.retard or pa.prochaine)) or p.etat == 'bloque' %}
-              <div class="mp-pastilles">
-                {% if pa and pa.retard %}<span class="pill pill-sm pill-rouge">{{ pa.retard }} en retard</span>{% endif %}
-                {% if p.etat == 'bloque' %}<span class="pill pill-sm pill-rouge">Bloqué</span>{% endif %}
-                {% if pa and pa.prochaine %}<span class="pill pill-sm pill-neutre mp-echeance"><span class="sr-only">Prochaine échéance&nbsp;: </span><svg aria-hidden="true" focusable="false" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>{{ pa.prochaine|date_courte }}</span>{% endif %}
-              </div>
-              {% endif %}
-            </div>
-          </a>
-        {% else %}
-          {# Revue visuelle P1-15 : état vide avec une action. #}
-          <div class="k-vide k-vide-mini">
-            <span class="k-vide-icone" aria-hidden="true">{{ ic.icone('projets', 16) }}</span>
-            <p class="k-vide-texte">Aucun projet pour l’instant.</p>
-            {% if g.user.role in ('admin', 'chef_de_projet') %}<a href="{{ url_for('projets.liste') }}" class="btn-fantome">Voir tous les projets</a>{% endif %}
-          </div>
-        {% endfor %}
-      </div>
-    </div>
-
-    {# Bug corrigé (2026-09-27, retour Fadhel) : cette carte "Deadlines" en
-       colonne gauche faisait doublon avec la bannière pleine largeur
-       ci-dessus (même liste d'échéances, deux largeurs différentes). La
-       bannière (mini-Gantt, ajoutée le 2026-09-19) est conservée seule. #}
-
-    {# Variante B (retour Fadhel, 2026-09-28) : carte blanche + liseré rouge
-       en alerte, au lieu de l'ancien dégradé rouge plein — donc texte/bouton
-       sombres sur fond blanc en alerte, plutôt que blancs sur fond coloré. #}
-    {# Pas de Daily log pour un Client (lot 7). #}
-    {# Lot 14 (revue produit P2-1) : masquée pour un Admin qui ne saisit pas d'heures. #}
-    {% if g.user.role != 'client' and not masquer_dailylog %}
-    {# Lot 13 (verif-temps N5) : sous une date simulée après la vraie date
-       du compte, la journée se consulte seulement — ni « Remplir », ni jours
-       à venir comptés comme manquants. #}
-    {% set dl_reel = bandeau_admin.aujourdhui_reel if bandeau_admin else none %}
-    {% set dl_futur = bandeau_admin and bandeau_admin.date_simulee and bandeau_admin.aujourdhui_compte > dl_reel %}
-    {% if dl_futur %}{% set dailylog_jours_manques = dailylog_jours_manques|select('le', dl_reel)|list %}{% endif %}
-    <div class="card {{ 'card-cta-alert' if dailylog_jours_manques else 'card-cta' }}">
-      <h2 class="carte-titre">Daily log</h2>
-      {% if dailylog_jours_manques %}
-        {# Lot 10 (audit front I16) : phrase complète, sans parenthèse ni
-           points de suspension ; le plus ancien jour manquant est le premier
-           de la liste. #}
-        {% set premier_manque = (dailylog_jours_manques|min)|date_courte %}
-        {# Pas de second point après une abréviation (« 23 sept. »). #}
-        <p class="dl-carte-texte">{% if dailylog_jours_manques|length > 1 %}{{ dailylog_jours_manques|length }} jours sans saisie, depuis le {{ premier_manque }}{% else %}1 jour sans saisie&nbsp;: le {{ premier_manque }}{% endif %}{{ '' if premier_manque.endswith('.') else '.' }}</p>
-      {% else %}
-        {# Revue produit P1-10 : où en est la journée (heures saisies sur la
-           journée type), et non « renseignée » dès la première ligne. Blanc :
-           4,86:1 sur le vert. #}
+    <div class="acc-actions">
+      {% if dl_visible %}
+        {# Lot 13 (verif-temps N5) : sous une date simulée après la vraie
+           date du compte, la journée se consulte seulement. #}
+        {% set dl_reel = bandeau_admin.aujourdhui_reel if bandeau_admin else none %}
+        {% set dl_futur = bandeau_admin and bandeau_admin.date_simulee and bandeau_admin.aujourdhui_compte > dl_reel %}
+        {% if dl_futur %}{% set dailylog_jours_manques = dailylog_jours_manques|select('le', dl_reel)|list %}{% endif %}
         {% set dl_obj = dailylog_objectif or 480 %}
         {% set dl_partiel = dailylog_aujourdhui and 0 < dailylog_minutes < dl_obj %}
-        <p class="dl-carte-texte">{% if dl_futur %}Date simulée future&nbsp;: la journée se consulte, sans saisie.{% elif dailylog_aujourdhui and dailylog_minutes >= dl_obj %}Journée complète ({{ (dailylog_minutes / 60)|heures }}).{% elif dl_partiel %}{{ (dailylog_minutes / 60)|heures }} saisies sur {{ (dl_obj / 60)|heures }} aujourd’hui.{% elif dailylog_aujourdhui %}Absence enregistrée aujourd’hui.{% else %}Répartissez vos heures de la journée par projet.{% endif %}</p>
-        {% if dl_partiel and not dl_futur %}<span class="dl-carte-jauge" aria-hidden="true"><span style="width:{{ (100 * dailylog_minutes / dl_obj)|round|int }}%;"></span></span>{% endif %}
-      {% endif %}
-      <a href="{{ url_for('dailylog.formulaire') }}" class="btn btn-pleine-largeur{{ ' btn-danger' if dailylog_jours_manques }}">{% if dailylog_jours_manques %}Remplir mon Daily log{% elif dl_futur or (dailylog_aujourdhui and not dl_partiel) %}Voir mon Daily log{% elif dl_partiel %}Compléter mon Daily log{% else %}Remplir mon Daily log{% endif %}</a>
-    </div>
-    {% endif %}
-    {% endif %}
-
-  </div>
-
-  <!-- Fil d'activité -->
-  <div class="col-center">
-    <h2 class="sr-only">Fil d’activité</h2>
-    <div class="fil-outils">
-      <div class="search-mini fil-filtre">
-        <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="search" id="filtre-fil" data-filtre-fil data-filtre-liste="#fil-liste" data-filtre-vide="#fil-vide" data-filtre-message="Aucun résultat pour ce filtre." autocomplete="off" aria-label="Filtrer le fil d’activité" placeholder="Filtrer le fil d’activité…" class="fil-filtre-champ">
-      </div>
-      {% if peut_publier %}
-      <button type="button" id="nouveau-post" data-open-post-dialog data-raccourci-n aria-keyshortcuts="N" data-intent="{{ intent_par_defaut }}" class="btn">+ Nouveau post</button>
-      {% endif %}
-    </div>
-
-    {% import "partials/fil_filtres.html" as film %}
-    <div class="fil-barre">{{ film.filtres('accueil', fil_categorie, '#fil-liste', 'main.accueil', {}) }}</div>
-
-    {# Lot 13 : un post publié depuis « + Nouveau post » arrive en tête de
-       cette liste, sans recharger la page (posts.reponse_publication).
-       Lot 14 : catégorie (Tout · Échanges · Activité), regroupements et
-       « Afficher plus ». #}
-    {% include "partials/fil_accueil.html" %}
-    {% include "partials/fil_suite.html" %}
-    <div id="fil-vide" class="fil-filtre-vide" role="status"></div>
-  </div>
-
-  <!-- Colonne droite -->
-  <div class="col">
-    {# Ni RH ni Client : pas de tâches (lot 7). #}
-    {% if not sans_projets and g.user.role != 'client' %}
-    <div class="card">
-      <div class="carte-entete carte-entete-souple">
-        {# Revue produit P1-2 : pour un chef, un co-chef ou l'Admin, les tâches
-           de ses projets, « Les miennes | Toutes » (lot 14). #}
-        <h2 class="carte-titre" id="accueil-taches-titre">{{ 'Tâches de mes projets' if tdp else 'Mes tâches' }}</h2>
-        <a href="{{ url_for('deadlines.liste', vue='mes') if g.user.role == 'admin' else url_for('deadlines.liste') }}" class="lien-carte lien-carte-petit">Tout voir<span class="sr-only"> les échéances</span></a>
-      </div>
-      {% if tdp %}
-      <nav class="k-segmente tdp-bascule" aria-label="Tâches affichées" data-tdp-bascule>
-        <a href="{{ tdp.liens.miennes }}" id="tdp-miennes" data-partiel="#accueil-taches" data-partiel-historique="replace" data-optimiste="courant" data-tableau-param="taches" data-tableau-valeur="miennes"{% if tdp.mode == 'miennes' %} aria-current="page"{% endif %}>Les miennes</a>
-        <a href="{{ tdp.liens.toutes }}" id="tdp-toutes" data-partiel="#accueil-taches" data-partiel-historique="replace" data-optimiste="courant" data-tableau-param="taches" data-tableau-valeur=""{% if tdp.mode == 'toutes' %} aria-current="page"{% endif %}>Toutes</a>
-      </nav>
-      {% include "partials/accueil_taches.html" %}
-      {% else %}
-      <div class="accueil-liste accueil-liste-large">
-        {% for t in mes_taches %}
-          {% set st = tache_etat_style(t.etat) %}
-          {# Lot 12 : ouvre la fenêtre de la tâche sur la fiche projet. #}
-          <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) }}" class="accueil-tache">
-            <span class="pill pill-sm {{ st.classe }} accueil-tache-etat">{{ st.libelle }}</span>
-            <div class="accueil-texte">
-              <div class="accueil-tache-titre">{{ t.titre }}</div>
-              <div class="accueil-sous">{{ t.projet_nom }}{% if t.date_echeance %} · échéance le {{ t.date_echeance|date_courte }}{% set retard = en_retard_de(t.date_echeance, aujourdhui) if t.etat == 'en_cours' else '' %}{% if retard %} · <span class="texte-retard">{{ retard }}</span>{% endif %}{% endif %}</div>
-            </div>
+        {% if dailylog_jours_manques %}
+          {% set premier_manque = (dailylog_jours_manques|min)|date_courte %}
+          <a href="{{ url_for('dailylog.formulaire') }}" class="acc-dl acc-dl-alerte">
+            <span class="acc-dl-texte">
+              <strong>Daily log · {{ dailylog_jours_manques|length }} jour{{ 's' if dailylog_jours_manques|length > 1 }} sans saisie</strong>
+              <span>{{ 'depuis le' if dailylog_jours_manques|length > 1 else 'le' }} {{ premier_manque }}</span>
+            </span>
+            <span class="btn btn-danger acc-dl-bouton">Remplir mon Daily log</span>
           </a>
         {% else %}
-          <div class="k-vide k-vide-mini">
-            <span class="k-vide-icone" aria-hidden="true">{{ ic.icone('deadlines', 16) }}</span>
-            <p class="k-vide-texte">Aucune tâche en cours.</p>
-            <a href="{{ url_for('deadlines.liste') }}" class="btn-fantome">Voir les échéances</a>
-          </div>
-        {% endfor %}
-      </div>
+          <a href="{{ url_for('dailylog.formulaire') }}" class="acc-dl">
+            <span class="acc-dl-texte">
+              <strong>Daily log</strong>
+              <span>{% if dl_futur %}date simulée future&nbsp;: consultation seule{% elif dailylog_aujourdhui and dailylog_minutes >= dl_obj %}journée complète ({{ (dailylog_minutes / 60)|heures }}){% elif dl_partiel %}{{ (dailylog_minutes / 60)|heures }} sur {{ (dl_obj / 60)|heures }} aujourd’hui{% elif dailylog_aujourdhui %}absence enregistrée aujourd’hui{% else %}à remplir aujourd’hui{% endif %}</span>
+            </span>
+            <span class="acc-dl-fleche" aria-hidden="true">→</span>
+          </a>
+        {% endif %}
+      {% endif %}
+      {% if peut_publier %}
+      <button type="button" id="nouveau-post" data-open-post-dialog data-raccourci-n aria-keyshortcuts="N" data-intent="{{ intent_par_defaut }}" class="btn-primaire acc-nouveau">+ Nouveau post</button>
       {% endif %}
     </div>
-    {# Lot 14 (revue produit P0-1) : les tâches bloquées, avec leur motif. #}
-    {% include "partials/taches_bloquees.html" %}
-    {% endif %}
-  </div>
+  </header>
 
+  {# Vue d'ensemble de l'Admin (lot 14) : tuiles, liste dépliée dessous. #}
+  {% if ve %}{% include "partials/vue_ensemble.html" %}{% endif %}
+
+  {# Deadlines (lot 15) : une ligne de résumé ; « Afficher » déplie le
+     mini-Gantt (même contenu qu'avant), choix gardé pour le compte. #}
+  {% if not sans_projets and g.user.role != 'client' %}
+  {% set dr = deadlines_resume %}
+  <details class="acc-deadlines" id="acc-deadlines" data-preference="accueil_deadlines" data-preference-url="{{ url_for('main.preference') }}" data-preference-etat="{{ '1' if preferences.accueil_deadlines else '0' }}"{% if preferences.accueil_deadlines %} open{% endif %}>
+    <summary class="acc-deadlines-ligne">
+      <span class="acc-deadlines-titre">
+        <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>
+        <span>{{ 'Échéances du bureau' if ve else 'Deadlines' }}</span>
+      </span>
+      <span class="acc-deadlines-resume">
+        {% if dr.retard %}<span class="pill pill-sm pill-rouge">{{ dr.retard }} en retard</span>{% endif %}
+        <span>{{ dr.a_venir }} sous 14&nbsp;jours</span>
+        {% if dr.prochaine %}<span class="acc-deadlines-prochaine">prochaine&nbsp;: <strong>{{ 'aujourd’hui' if dr.prochaine == aujourdhui else dr.prochaine|date_courte }}</strong></span>{% endif %}
+      </span>
+      <span class="acc-deadlines-bascule"><span class="acc-deadlines-afficher">Afficher</span><span class="acc-deadlines-masquer">Masquer</span><svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+    </summary>
+    <div class="acc-deadlines-corps">
+      {% if deadlines_gantt.rows %}
+        <div class="mini-gantt" style="--mg-days:{{ deadlines_gantt.window_days }};">
+          <div class="mini-gantt-label mini-gantt-coin" aria-hidden="true"></div>
+          {% for d in deadlines_gantt.days %}
+            <div class="mini-gantt-daycell{{ ' mini-gantt-weekend' if d.est_weekend and d.date != deadlines_gantt.days[0].date }}{{ ' mini-gantt-jour' if d.date == deadlines_gantt.days[0].date }}" aria-hidden="true">{{ d.lettre }} {{ d.label }}</div>
+          {% endfor %}
+          {% for t in deadlines_gantt.rows %}
+            <div class="mini-gantt-label">
+              <span class="mini-gantt-titre" title="{{ t.titre }}">{{ t.titre }}</span>
+              <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" class="mini-gantt-projet" title="{{ t.projet_code }}_{{ t.projet_nom }}">{{ t.projet_code }}_{{ t.projet_nom }}</a>
+            </div>
+            <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) if t.id is defined and t.id else url_for('deadlines.liste') }}" class="mini-gantt-track" style="grid-column: 2 / span {{ deadlines_gantt.window_days }};" aria-label="{{ t.titre }} ({{ t.projet_code }})&nbsp;: {{ t.retard ~ ', échéance le ' if t.en_retard else 'échéance le ' }}{{ t.date_echeance|date_courte }}">
+              <span class="mini-gantt-bar g-bar-{{ t.niveau }}{{ ' mini-gantt-bar-retard' if t.en_retard }}" style="grid-column: 1 / span {{ t.span }};">{{ t.label_barre }}</span>
+              <span class="mini-gantt-date">{{ t.date_echeance|date_courte }}{% if t.en_retard %} · {{ t.retard }}{% endif %}</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="deadline-banner-vide">{% if ve %}Aucune échéance en cours dans le bureau.{% else %}Aucune échéance sur vos projets.{% endif %}</p>
+      {% endif %}
+      <a href="{{ url_for('deadlines.liste') }}" class="lien-carte lien-carte-petit acc-deadlines-tout">Toutes les deadlines <span aria-hidden="true">→</span></a>
+    </div>
+  </details>
+  {% endif %}
+
+  <div class="acc-grille{{ ' acc-grille-seule' if sans_projets }}">
+
+    {# Fil (colonne principale). #}
+    <section class="acc-fil" aria-labelledby="acc-fil-titre">
+      <div class="acc-fil-entete">
+        <h2 class="acc-section-titre" id="acc-fil-titre">Fil d’équipe</h2>
+        {% import "partials/fil_filtres.html" as film %}
+        {{ film.filtres('accueil', fil_categorie, '#fil-liste', 'main.accueil', {}) }}
+      </div>
+      <div class="card acc-fil-carte">
+        <div class="search-mini fil-filtre acc-fil-filtre">
+          <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="search" id="filtre-fil" data-filtre-fil data-filtre-liste="#fil-liste" data-filtre-vide="#fil-vide" data-filtre-message="Aucun résultat pour ce filtre." autocomplete="off" aria-label="Filtrer le fil d’activité" placeholder="Filtrer le fil d’activité…" class="fil-filtre-champ">
+        </div>
+        {% include "partials/fil_accueil.html" %}
+        {% include "partials/fil_suite.html" %}
+        <div id="fil-vide" class="fil-filtre-vide" role="status"></div>
+      </div>
+    </section>
+
+    {% if not sans_projets %}
+    <aside class="acc-cote" aria-label="Mes projets et mes tâches">
+
+      {# L'Admin rattaché à aucun projet : ni « Mes projets » ni « Tâches de
+         mes projets » vides (la Vue d'ensemble les remplace). #}
+      {% set admin_sans_projet = g.user.role == 'admin' and not mes_projets %}
+      {% if not admin_sans_projet %}
+      <section class="card acc-carte" aria-labelledby="acc-projets-titre">
+        <div class="carte-entete carte-entete-souple">
+          <h2 class="carte-titre" id="acc-projets-titre">Mes projets</h2>
+          <a href="{{ url_for('projets.liste') }}" class="lien-carte lien-carte-petit">Tout voir<span class="sr-only"> mes projets</span></a>
+        </div>
+        <ul class="acc-projets" role="list">
+          {% for p in mes_projets %}
+            {% set role_label = {'chef_de_projet': 'Chef de projet', 'co_chef': 'Co-chef', 'intervenant': 'Intervenant'}.get(p.mon_role, '') %}
+            {% set pa = (pastilles or {}).get(p.id) %}
+            <li>
+              <a href="{{ url_for('projets.detail', projet_id=p.id) }}" class="acc-projet">
+                <span class="acc-phase">{{ p.phase }}</span>
+                <span class="acc-projet-texte">
+                  <span class="acc-projet-nom" title="{{ p.code }}_{{ p.nom }}">{{ p.code }}_{{ p.nom }}</span>
+                  {% if role_label %}<span class="acc-sous">{{ role_label }}</span>{% endif %}
+                </span>
+                {% if p.etat == 'bloque' %}<span class="pill pill-sm pill-rouge">Bloqué</span>
+                {% elif pa and pa.retard %}<span class="pill pill-sm pill-rouge">{{ pa.retard }} en retard</span>{% endif %}
+              </a>
+            </li>
+          {% else %}
+            <li class="k-vide k-vide-mini">
+              <span class="k-vide-icone" aria-hidden="true">{{ ic.icone('projets', 16) }}</span>
+              <p class="k-vide-texte">Aucun projet pour l’instant.</p>
+              {% if g.user.role in ('admin', 'chef_de_projet') %}<a href="{{ url_for('projets.liste') }}" class="btn-fantome">Voir tous les projets</a>{% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+
+      {# Ni RH ni Client : pas de tâches (lot 7). #}
+      {% if g.user.role != 'client' and not (admin_sans_projet and tdp and not tdp.nb_toutes) %}
+      <section class="card acc-carte" aria-labelledby="accueil-taches-titre">
+        <div class="carte-entete carte-entete-souple">
+          {# Chef, co-chef, Admin : « Tâches de mes projets », « Les miennes |
+             Toutes » (lot 14). #}
+          <h2 class="carte-titre" id="accueil-taches-titre">{{ 'Tâches de mes projets' if tdp else 'Mes tâches' }}</h2>
+          <a href="{{ url_for('deadlines.liste', vue='mes') if g.user.role == 'admin' else url_for('deadlines.liste') }}" class="lien-carte lien-carte-petit">Tout voir<span class="sr-only"> les échéances</span></a>
+        </div>
+        {% if tdp %}
+        <nav class="k-segmente tdp-bascule" aria-label="Tâches affichées" data-tdp-bascule>
+          <a href="{{ tdp.liens.miennes }}" id="tdp-miennes" data-partiel="#accueil-taches" data-partiel-historique="replace" data-optimiste="courant" data-tableau-param="taches" data-tableau-valeur="miennes"{% if tdp.mode == 'miennes' %} aria-current="page"{% endif %}>Les miennes</a>
+          <a href="{{ tdp.liens.toutes }}" id="tdp-toutes" data-partiel="#accueil-taches" data-partiel-historique="replace" data-optimiste="courant" data-tableau-param="taches" data-tableau-valeur=""{% if tdp.mode == 'toutes' %} aria-current="page"{% endif %}>Toutes</a>
+        </nav>
+        {% include "partials/accueil_taches.html" %}
+        {% else %}
+        {% with tdp={'taches': mes_taches, 'mode': 'miennes', 'nb': mes_taches|length, 'nb_toutes': 0} %}
+          {% include "partials/accueil_taches.html" %}
+        {% endwith %}
+        {% endif %}
+      </section>
+      {% endif %}
+      {% if g.user.role != 'client' %}
+      {# Lot 14 (revue produit P0-1) : les tâches bloquées, avec leur motif
+         (repliées : la carte se masque d'un clic). #}
+      {% include "partials/taches_bloquees.html" %}
+      {% endif %}
+
+      {# Chef de projet et co-chef : « À traiter » en bas de la colonne
+         (lot 15, maquette validée). #}
+      {% if at %}{% include "partials/a_traiter.html" %}{% endif %}
+      {% if par_chef %}{% include "partials/par_chef.html" %}{% endif %}
+    </aside>
+    {% endif %}
+
+  </div>
 </div>
 <script src="{{ url_for('static', filename='js/filtre-fil.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/accueil-tableaux.js') }}" defer></script>

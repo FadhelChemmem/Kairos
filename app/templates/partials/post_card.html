@@ -11,6 +11,15 @@
    (lightbox.js), et "Reposter" qui ouvre la fenêtre "Nouveau post" liée à
    ce post (post_dialog.html). #}
 {% import "partials/avatar.html" as avatarm %}
+{# Lot 15 : un post ÉCRIT (pas un évènement automatique) se modifie par son
+   auteur, se supprime par lui, le chef, un co-chef ou l'Admin (mêmes règles
+   que routes/posts.py : peut_modifier, peut_supprimer). #}
+{% set projet_clos = post.projet_etat in ('termine', 'abandonne') %}
+{% set post_ecrit = post.evenement|default(none) in (none, 'repost') %}
+{% set peut_modifier = post_ecrit and post.auteur_id == g.user.id and not projet_clos %}
+{% set peut_supprimer = post_ecrit and (g.user.role == 'admin' or (not projet_clos and (post.auteur_id == g.user.id or post.je_gere))) %}
+{% set est_requete = post.type_code == 'requete' %}
+{% set requete_objet, requete_texte = (post.contenu or '').partition('\n\n')[0], (post.contenu or '').partition('\n\n')[2] %}
 
 <div class="card post-card" id="post-{{ post.id }}">
   <div class="post-entete">
@@ -54,9 +63,10 @@
       <div class="post-meta">
         {# Information d'équipe sans projet (migration 0009) : ses équipes
            destinataires à la place du projet. #}
-        {% if post.projet_id is none %}<span>{{ 'Équipes' if post.equipes|default([])|length > 1 else 'Équipe' }}&nbsp;: {{ post.equipes|default([])|join(', ') }}</span> · {% elif show_projet %}<a href="{{ url_for('projets.detail', projet_id=post.projet_id) }}" class="lien-discret">{{ post.projet_code }}_{{ post.projet_nom }}</a> · {% endif %}{% if post.created_at %}<time datetime="{{ post.created_at.isoformat() }}" title="{{ 'Horodatage réel : ' if g.date_simulee }}{{ date_fr(post.created_at) }} à {{ post.created_at.strftime('%H:%M') }}">{{ post.created_at|il_y_a }}</time>{% endif %}
+        {% if post.projet_id is none %}<span>{{ 'Équipes' if post.equipes|default([])|length > 1 else 'Équipe' }}&nbsp;: {{ post.equipes|default([])|join(', ') }}</span> · {% elif show_projet %}<a href="{{ url_for('projets.detail', projet_id=post.projet_id) }}" class="lien-discret">{{ post.projet_code }}_{{ post.projet_nom }}</a> · {% endif %}{% if post.created_at %}<time datetime="{{ post.created_at.isoformat() }}" title="{{ 'Horodatage réel : ' if g.date_simulee }}{{ date_fr(post.created_at) }} à {{ post.created_at.strftime('%H:%M') }}">{{ post.created_at|il_y_a }}</time>{% endif %}{% if post.modifie_le %} · <span title="Modifié {{ post.modifie_le|il_y_a }}">modifié</span>{% endif %}
       </div>
     </div>
+    <div class="post-entete-droite">
     {% if post.est_creation_tache or post.evenement|default(none) in ('etat_tache', 'titre_tache', 'intervenant_tache', 'echeance_tache', 'blocage_tache', 'deblocage_tache') %}
       <span class="pill {{ post_tache_pill.classe }}">{{ post_tache_pill.label }}</span>
     {% elif post.evenement|default(none) in ('creation_projet', 'etat_projet', 'chef_projet', 'intervenant_projet') %}
@@ -73,6 +83,28 @@
       {% set st = post_type_style(post.type_code) %}
       <span class="pill {{ st.classe }}">{{ st.label }}</span>
     {% endif %}
+    {% if peut_modifier or peut_supprimer %}
+      {# Menu « ⋯ » (lot 15) : posé en surimpression, rien ne bouge à l'ouverture. #}
+      <details class="post-menu">
+        <summary class="iconbtn post-menu-bouton" aria-label="Actions du post" title="Modifier ou supprimer">
+          <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+        </summary>
+        <div class="post-menu-liste">
+          {% if peut_modifier %}
+          <a href="#post-{{ post.id }}-edition" class="post-menu-item" data-post-modifier="{{ post.id }}">Modifier</a>
+          {% endif %}
+          {% if peut_supprimer %}
+          <form method="post" action="{{ url_for('posts.supprimer', post_id=post.id) }}" data-partiel="#post-{{ post.id }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="{{ next_url }}">
+            <button type="submit" class="post-menu-item danger" data-confirmer-danger data-confirmer-ok="Supprimer"
+                    data-confirmer="Supprimer ce post{{ ' de ' ~ post.auteur_prenom ~ ' ' ~ post.auteur_nom if post.auteur_id != g.user.id }}&#8239;?">Supprimer</button>
+          </form>
+          {% endif %}
+        </div>
+      </details>
+    {% endif %}
+    </div>
   </div>
 
   {% if post.evenement|default(none) in ('etat_tache', 'titre_tache', 'intervenant_tache', 'echeance_tache', 'deblocage_tache') %}
@@ -97,8 +129,20 @@
     <div class="post-texte post-corps post-corps-serre post-corps-second">{{ post.contenu }}</div>
   {% elif post.est_creation_tache or post.evenement|default(none) == 'creation_projet' %}
     <div class="post-texte post-corps post-corps-serre post-corps-fort">{{ post.contenu or post.tache_titre }}</div>
+  {% elif est_requete and requete_texte %}
+    <div class="post-corps post-corps-serre">
+      <div class="post-corps-fort post-texte">{{ requete_objet }}</div>
+      <div class="post-texte post-corps-second">{{ requete_texte }}</div>
+    </div>
   {% else %}
     <div class="post-texte post-corps">{{ post.contenu }}</div>
+  {% endif %}
+  {# Lot 15 : tâche citée par une Requête. #}
+  {% if post_ecrit and post.tache_id and post.tache_titre %}
+    <a href="{{ url_for('projets.detail', projet_id=post.projet_id, tache=post.tache_id) }}" class="post-tache-citee">
+      <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      <span class="sr-only">Tâche concernée&nbsp;: </span><span class="post-tache-citee-titre">{{ post.tache_titre }}</span>
+    </a>
   {% endif %}
 
   {# « avec » + pastilles des personnes ajoutées au post (retour Fadhel,
@@ -167,7 +211,10 @@
         <span class="post-meta">En réponse à <a href="#post-{{ post.parent_post_id }}" class="post-auteur-lien">{{ post.parent_auteur_prenom }} {{ post.parent_auteur_nom }}</a></span>
       </div>
       <div class="post-parent-corps">
-        {% if post.parent_tache_titre %}
+        {% if post.parent_supprime %}
+          <span class="post-parent-titre texte-discret">Post supprimé.</span>
+        {% elif post.parent_tache_titre and post.parent_evenement and post.parent_evenement != 'repost' %}
+          {# Post automatique d'une tâche ; une requête qui CITE une tâche garde son texte. #}
           <span class="pill pill-sm {{ post_tache_pill.classe }}">{{ post_tache_pill.label }}</span>
           <span class="post-parent-titre">{{ post.parent_tache_titre }}</span>
         {% else %}
@@ -179,10 +226,11 @@
     </div>
   {% endif %}
 
+  {% if peut_modifier %}{% include "partials/post_edition.html" %}{% endif %}
+
   {# Projet terminé ou abandonné : plus de réaction, de commentaire ni de
      repost, pour personne (décision Fadhel, lot 7 — vérifié aussi par le
      serveur, routes/posts.py). #}
-  {% set projet_clos = post.projet_etat in ('termine', 'abandonne') %}
   <div class="divider"></div>
   <div class="post-actions">
     {# Le formulaire pointe vers "retirer" quand on a déjà réagi, vers

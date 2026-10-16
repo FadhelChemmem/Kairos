@@ -20,18 +20,6 @@
 }
 
 /* --- Bloc du haut de l'accueil : même grille que la bannière Deadlines --- */
-.accueil-tableaux {
-  width: calc(100% - 64px); max-width: 1296px; margin: var(--esp-6) auto 0;
-  display: flex; flex-direction: column; gap: var(--esp-4);
-}
-.accueil-tableaux .deadline-banner { width: auto; max-width: none; margin: 0; }
-.accueil-haut-admin { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: var(--esp-4); align-items: start; }
-.accueil-haut-admin > .deadline-banner { padding-left: var(--esp-5); padding-right: var(--esp-5); }
-@media (max-width: 1180px) { .accueil-haut-admin { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 860px) {
-  .accueil-tableaux { width: auto; margin: var(--esp-4) var(--esp-4) 0; gap: var(--esp-3); }
-  .accueil-haut-admin { gap: var(--esp-3); }
-}
 
 /* --- Vue d'ensemble : en-tête et tuiles --- */
 .ve { display: flex; flex-direction: column; gap: var(--esp-3); }
@@ -184,9 +172,7 @@
 }
 
 /* --- « Mes projets » : pastilles ; « Tâches de mes projets » : bascule --- */
-.mp-pastilles { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.mp-pastilles .pill { font-variant-numeric: var(--chiffres); }
-.mp-echeance { gap: 4px; }
+
 .tdp-bascule { display: flex; width: 100%; margin: -2px 0 var(--esp-3); }
 .tdp-bascule > a {
   flex: 1 1 0; justify-content: center; text-align: center; padding: 5px 10px; border-radius: 8px;

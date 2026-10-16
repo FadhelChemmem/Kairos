@@ -534,15 +534,26 @@ async function contrastes(p) {
   etape('Mes informations : réglage activé par défaut', await pr.isChecked('#pref-dl-proposer'));
   await pr.click('#pref-dl-proposer');
   await attendre(async () => (await pr.locator('#k-toasts .k-toast').count()) > 0);
-  etape('réglage décoché : toast, mémorisé sur ce navigateur', /ne seront plus proposées/.test(await pr.textContent('#k-toasts')) &&
-    await pr.evaluate((id) => localStorage.getItem('kairos-dl-proposer-' + id), RIM) === 'non');
+  // Lot 15 : réglage du compte (utilisateur_preference), plus du navigateur.
+  etape('réglage décoché : toast, gardé pour le compte', /ne seront plus proposées/.test(await pr.textContent('#k-toasts')) &&
+    await attendre(async () => sql(`SELECT dailylog_proposer FROM utilisateur_preference WHERE utilisateur_id=${RIM}`) === 'f'));
   await pr.goto(BASE + '/dailylog?date=' + jPrec); await pret(pr);
   etape('journée vierge sans propositions (réglage désactivé)', (await etat(pr)).rows.length === 0 && await pr.isHidden('#dl-propositions'),
     (await etat(pr)).rows.map((r) => r.cle));
   await pr.goto(BASE + '/utilisateurs/moi');
+  etape('Mes informations : réglage décoché affiché', !(await pr.isChecked('#pref-dl-proposer')));
   await pr.click('#pref-dl-proposer');
+  await attendre(async () => sql(`SELECT dailylog_proposer FROM utilisateur_preference WHERE utilisateur_id=${RIM}`) === 't');
   await pr.goto(BASE + '/dailylog?date=' + jPrec); await pret(pr);
   etape('réactivé : propositions de retour', (await etat(pr)).rows.some((r) => r.propose));
+  // « Ne plus proposer » dans le Daily log même, puis « Annuler ».
+  await pr.click('#dl-ne-plus-proposer');
+  await attendre(async () => sql(`SELECT dailylog_proposer FROM utilisateur_preference WHERE utilisateur_id=${RIM}`) === 'f');
+  etape('« Ne plus proposer » : lignes proposées retirées, réglage du compte coupé',
+    !(await etat(pr)).rows.some((r) => r.propose) && await pr.isHidden('#dl-propositions'));
+  await pr.click('#dl-toast .dl-undo');
+  await attendre(async () => sql(`SELECT dailylog_proposer FROM utilisateur_preference WHERE utilisateur_id=${RIM}`) === 't');
+  etape('« Annuler » : propositions revenues', (await etat(pr)).rows.some((r) => r.propose));
   await pr.close();
 
   etape('aucune erreur JavaScript', erreursJs.length === 0, erreursJs);

@@ -793,20 +793,19 @@ class TestAutresPages(_BaseDailyLog):
         html = self.appel("get", "/accueil", **{"app.repositories.dailylog.jour_renseigne": True,
                                                  "app.repositories.dailylog.list_entrees_jour": [entree(2), entree(1.5)],
                                                  "app.repositories.dailylog.get_objectif": 480}).data.decode()
-        self.assertIn("3\u00a0h\u00a030 saisies sur 8\u00a0h aujourd’hui.", html)
-        self.assertIn("Compléter mon Daily log", html)
+        # Lot 15 : rappel compact dans l'en-tête de l'accueil.
+        self.assertIn("3\u00a0h\u00a030 sur 8\u00a0h aujourd’hui", html)
         html = self.appel("get", "/accueil", **{"app.repositories.dailylog.jour_renseigne": True,
                                                  "app.repositories.dailylog.list_entrees_jour": [entree(8)],
                                                  "app.repositories.dailylog.get_objectif": 480}).data.decode()
-        self.assertIn("Journée complète (8\u00a0h).", html)
-        self.assertIn("Voir mon Daily log", html)
+        self.assertIn("journée complète (8\u00a0h)", html)
         html = self.appel("get", "/accueil", **{"app.repositories.dailylog.jour_renseigne": True,
                                                  "app.repositories.dailylog.list_entrees_jour": [],
                                                  "app.repositories.dailylog.get_objectif": 480}).data.decode()
-        self.assertIn("Absence enregistrée aujourd’hui.", html)
+        self.assertIn("absence enregistrée aujourd’hui", html)
         html = self.appel("get", "/accueil", **{"app.repositories.dailylog.jour_renseigne": False}).data.decode()
-        self.assertIn("Répartissez vos heures de la journée par projet.", html)
-        self.assertIn("Remplir mon Daily log", html)
+        self.assertIn("à remplir aujourd’hui", html)
+        self.assertIn('class="acc-dl"', html)
 
     def test_profil_absent_et_lien_corriger(self):
         jour = dl.aujourdhui_pour(EMPLOYE)

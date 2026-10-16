@@ -170,5 +170,24 @@
     if (g) setTimeout(function () { placer(g); }, 0);
   });
 
+  // Lot 15 : <details data-preference="cle" data-preference-url="…"> — l'état
+  // ouvert ou replié est gardé pour le compte (utilisateur_preference).
+  K.enregistrerPreference = function (url, cle, valeur) {
+    var corps = new URLSearchParams();
+    corps.set('cle', cle);
+    corps.set('valeur', valeur ? '1' : '0');
+    return fetch(url, { method: 'POST', body: corps, credentials: 'same-origin' }).catch(function () { /* réglage non gardé */ });
+  };
+  document.addEventListener('toggle', function (e) {
+    var d = e.target;
+    if (!d || !d.hasAttribute || !d.hasAttribute('data-preference') || lectureSeule()) return;
+    // « toggle » part aussi au chargement d'un <details open> : on n'écrit
+    // que si l'état diffère de celui gardé pour le compte.
+    var etat = d.open ? '1' : '0';
+    if (d.getAttribute('data-preference-etat') === etat) return;
+    d.setAttribute('data-preference-etat', etat);
+    K.enregistrerPreference(d.getAttribute('data-preference-url'), d.getAttribute('data-preference'), d.open);
+  }, true);
+
   K.lectureSeuleUI = lectureSeule;
 })();

@@ -1,0 +1,207 @@
+/* Lot 15 — sobriété : accueil en deux colonnes, Daily log, posts modifiables. */
+
+/* --- Post : menu « ⋯ », modification, suppression --------------------- */
+.post-entete-droite { display: flex; align-items: center; gap: var(--esp-1); flex: none; margin-left: auto; }
+.post-menu { position: relative; }
+.post-menu > summary { list-style: none; }
+.post-menu > summary::-webkit-details-marker { display: none; }
+.post-menu-bouton { width: 28px; height: 28px; color: var(--text-muted); }
+.post-menu-liste {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 168px;
+  display: flex; flex-direction: column; padding: var(--esp-1);
+  background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--rayon-m); box-shadow: var(--ombre-2);
+}
+.post-menu-liste form { margin: 0; }
+.post-menu-item {
+  display: block; width: 100%; padding: 7px 10px; border: 0; border-radius: var(--rayon-s); background: none;
+  font: inherit; font-size: var(--texte-m); color: var(--text); text-align: left; text-decoration: none; cursor: pointer;
+}
+.post-menu-item:hover, .post-menu-item:focus-visible { background: var(--surface-survol); }
+.post-menu-item.danger { color: var(--danger-texte); }
+
+.post-edition { display: none; margin: var(--esp-3) 0 var(--esp-3) 46px; }
+@media (max-width: 640px) { .post-tache-citee, .post-edition { margin-left: 0; max-width: 100%; } }
+.post-en-edition .post-edition, .post-edition:target { display: block; }
+.post-en-edition > :is(.post-corps, .post-texte, .post-lien, .post-fichier-lien, .post-image-lien, .post-tache-citee),
+.post-card:has(.post-edition:target) > :is(.post-corps, .post-texte, .post-lien, .post-fichier-lien, .post-image-lien, .post-tache-citee) { display: none; }
+.post-edition-pj { border: 0; padding: 0; margin: 0 0 var(--esp-3); display: flex; flex-direction: column; gap: var(--esp-1); }
+.post-edition-pj legend { font-size: var(--texte-s); font-weight: var(--graisse-forte); color: var(--text-secondary); margin-bottom: var(--esp-1); }
+.post-edition-pj-ligne {
+  display: flex; align-items: center; gap: var(--esp-2); padding: 6px 8px; border: 1px solid var(--border);
+  border-radius: var(--rayon-s); font-size: var(--texte-s); cursor: pointer;
+}
+.post-edition-pj-ligne .post-fichier-nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.post-edition-pj-action { color: var(--text-muted); }
+.post-edition-pj-ligne:has(input:checked) .post-fichier-nom { text-decoration: line-through; color: var(--text-muted); }
+.post-edition-pj-ligne:has(input:checked) .post-edition-pj-action { color: var(--danger-texte); font-weight: var(--graisse-forte); }
+.comment-edit .post-edition-pj-ligne { margin-top: var(--esp-1); flex-basis: 100%; }
+
+.post-supprime {
+  padding: var(--esp-3) var(--esp-5); color: var(--text-muted); font-size: var(--texte-m);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.post-tache-citee {
+  display: inline-flex; align-items: center; gap: 6px; max-width: calc(100% - 46px); margin: 0 0 10px 46px;
+  padding: 4px 10px; border: 1px solid var(--border-2); border-radius: var(--rayon-pilule);
+  font-size: var(--texte-s); color: var(--text-secondary); text-decoration: none;
+}
+.post-tache-citee:hover { background: var(--surface-survol); color: var(--text); }
+.post-tache-citee-titre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- Accueil sobre en deux colonnes ------------------------------------ */
+.accueil { padding-top: var(--esp-6); padding-bottom: 60px; display: flex; flex-direction: column; gap: var(--esp-4); }
+.acc-entete { display: flex; align-items: center; justify-content: space-between; gap: var(--esp-4); flex-wrap: wrap; }
+.acc-sur-titre {
+  margin: 0 0 2px; font-size: var(--texte-xs); font-weight: var(--graisse-forte); letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-muted); font-variant-numeric: var(--chiffres);
+}
+.acc-titre { margin: 0; font-size: var(--texte-2xl); font-weight: var(--graisse-titre); letter-spacing: -.01em; color: var(--text-strong); }
+.acc-actions { display: flex; align-items: center; gap: var(--esp-3); flex-wrap: wrap; }
+.acc-nouveau { min-height: 44px; padding-inline: var(--esp-5); }
+
+.acc-dl {
+  display: flex; align-items: center; gap: var(--esp-3); min-height: 44px; padding: 6px 8px 6px 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--rayon-m);
+  color: var(--text); text-decoration: none;
+}
+.acc-dl:hover { border-color: var(--border-hover); }
+.acc-dl-texte { display: flex; flex-direction: column; line-height: var(--interligne-serre); font-size: var(--texte-s); color: var(--text-muted); }
+.acc-dl-texte strong { font-size: var(--texte-m); color: var(--text-strong); font-weight: var(--graisse-forte); }
+.acc-dl-alerte { border-color: color-mix(in srgb, var(--danger-fill) 35%, var(--border)); }
+.acc-dl-alerte .acc-dl-texte strong { color: var(--error-text); }
+.acc-dl-bouton { pointer-events: none; white-space: nowrap; }
+.acc-dl-fleche { padding-right: 6px; color: var(--text-muted); }
+
+/* Deadlines repliées en une ligne. */
+.acc-deadlines { background: var(--surface); border: 1px solid var(--border); border-radius: var(--rayon-l); }
+.acc-deadlines-ligne {
+  display: flex; align-items: center; gap: var(--esp-3) var(--esp-4); flex-wrap: wrap; min-height: 52px;
+  padding: 8px var(--esp-5); list-style: none; cursor: pointer; border-radius: var(--rayon-l);
+}
+.acc-deadlines-ligne::-webkit-details-marker { display: none; }
+.acc-deadlines-ligne:hover { background: var(--surface-survol); }
+.acc-deadlines-titre { display: inline-flex; align-items: center; gap: var(--esp-2); font-weight: var(--graisse-titre); color: var(--text-strong); }
+.acc-deadlines-resume { display: inline-flex; align-items: center; gap: var(--esp-3); flex-wrap: wrap; font-size: var(--texte-s); color: var(--text-muted); font-variant-numeric: var(--chiffres); }
+.acc-deadlines-prochaine strong { color: var(--text-strong); font-weight: var(--graisse-forte); }
+.acc-deadlines-bascule {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px;
+  border: 1px solid var(--border-3); border-radius: var(--rayon-m); font-size: var(--texte-s); font-weight: var(--graisse-forte); color: var(--text-strong);
+}
+.acc-deadlines-bascule svg { transition: transform var(--duree-rapide) var(--courbe-std); }
+.acc-deadlines[open] .acc-deadlines-bascule svg { transform: rotate(180deg); }
+.acc-deadlines-masquer, .acc-deadlines[open] .acc-deadlines-afficher { display: none; }
+.acc-deadlines[open] .acc-deadlines-masquer { display: inline; }
+.acc-deadlines[open] > .acc-deadlines-ligne { border-bottom: 1px solid var(--border-soft); border-radius: var(--rayon-l) var(--rayon-l) 0 0; }
+.acc-deadlines-corps { padding: var(--esp-4) var(--esp-5); display: flex; flex-direction: column; gap: var(--esp-3); }
+.acc-deadlines-tout { align-self: flex-end; }
+.mini-gantt-daycell { color: var(--text-faint); }
+.mini-gantt-daycell.mini-gantt-jour { color: var(--brand-text-strong); }
+
+/* Deux colonnes : le fil, la colonne de travail. */
+.acc-grille { display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: var(--esp-6); align-items: start; }
+.acc-grille-seule { grid-template-columns: minmax(0, 1fr); max-width: 860px; }
+.acc-fil { min-width: 0; display: flex; flex-direction: column; gap: var(--esp-3); }
+.acc-fil-entete { display: flex; align-items: center; justify-content: space-between; gap: var(--esp-3); flex-wrap: wrap; min-height: 40px; }
+.acc-section-titre { margin: 0; font-size: var(--texte-xl); font-weight: var(--graisse-titre); color: var(--text-strong); }
+.acc-fil-entete .fil-filtres { margin: 0; }
+.acc-fil-carte { padding: 0; overflow: visible; }
+.acc-fil-filtre { margin: var(--esp-4) var(--esp-5) var(--esp-2); }
+.acc-fil-carte .fil-liste { gap: 0; }
+.acc-fil-carte .post-card { padding-bottom: 10px !important; border: 0; border-top: 1px solid var(--border-soft); border-radius: 0; box-shadow: none; margin: 0; padding: var(--esp-4) var(--esp-5); background: none; }
+.acc-fil-carte .fil-item:first-child > .post-card { border-top: 0; }
+.acc-fil-carte .post-card > .divider { display: none; }
+.acc-fil-carte .fil-suite { padding: 0 var(--esp-5) var(--esp-4); }
+.acc-fil-carte .fil-suite:empty { display: none; }
+.acc-fil-carte .fil-filtre-vide:empty { display: none; }
+.acc-fil-carte .k-vide, .acc-fil-carte .fil-vide { margin: var(--esp-4) var(--esp-5); }
+
+.acc-cote { display: flex; flex-direction: column; gap: var(--esp-4); min-width: 0; }
+.acc-carte { padding: var(--esp-4) 0 var(--esp-2); }
+.acc-carte > .carte-entete, .acc-carte > .tdp-bascule { margin-left: var(--esp-5); margin-right: var(--esp-5); }
+.acc-carte > .tdp-bascule { margin-bottom: var(--esp-2); width: auto; }
+.acc-projets { list-style: none; margin: var(--esp-2) 0 0; padding: 0; }
+.acc-projet, .acc-tache {
+  display: flex; align-items: center; gap: var(--esp-3); min-height: 52px; padding: 8px var(--esp-5);
+  color: var(--text); text-decoration: none; border-top: 1px solid var(--border-soft);
+}
+.acc-projets li:first-child .acc-projet, .acc-taches .acc-tache:first-child { border-top: 0; }
+.acc-projet:hover, .acc-tache:hover { background: var(--surface-survol); }
+.acc-phase {
+  flex: none; min-width: 38px; padding: 2px 6px; border: 1px solid var(--border-2); border-radius: var(--rayon-s);
+  font-size: 10.5px; font-weight: var(--graisse-forte); letter-spacing: .04em; text-align: center; color: var(--text-secondary); background: var(--bg-subtle-1);
+}
+.acc-projet-texte, .acc-tache-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: var(--interligne-serre); }
+.acc-projet-nom, .acc-tache-titre { font-weight: var(--graisse-forte); font-size: var(--texte-m); color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acc-sous { font-size: var(--texte-s); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acc-taches { display: flex; flex-direction: column; }
+.acc-taches .tdp-suite { margin: var(--esp-2) var(--esp-5) 0; }
+.acc-taches .k-vide { margin: var(--esp-2) var(--esp-5); }
+.acc-retard { flex: none; font-variant-numeric: var(--chiffres); }
+.acc-cote .taches-bloquees, .acc-cote .at, .acc-cote .pc { margin: 0; }
+.acc-cote .at-lignes { grid-template-columns: minmax(0, 1fr); }
+
+@media (max-width: 1100px) {
+  .acc-grille { grid-template-columns: minmax(0, 1fr) 320px; gap: var(--esp-4); }
+}
+@media (max-width: 900px) {
+  .accueil { padding-left: var(--esp-4); padding-right: var(--esp-4); padding-top: var(--esp-4); gap: var(--esp-3); }
+  .acc-grille { grid-template-columns: minmax(0, 1fr); gap: var(--esp-4); }
+  /* La colonne qui suit le fil n'apparaît qu'une fois le fil lu (#fil-vide
+     le termine) : sur réseau lent, rien ne la pousse vers le bas (CLS). */
+  .acc-grille:not(:has(#fil-vide)) > .acc-cote { display: none; }
+  .acc-actions { width: 100%; }
+  .acc-dl { flex: 1; }
+  .acc-nouveau { flex: none; }
+  .acc-deadlines-ligne { padding: 8px var(--esp-4); }
+  .acc-deadlines-resume { order: 3; flex-basis: 100%; }
+  .acc-deadlines-corps { padding: var(--esp-3) var(--esp-4); }
+  .acc-fil-carte .post-card { padding: var(--esp-3) var(--esp-4); }
+  .acc-fil-filtre { margin: var(--esp-3) var(--esp-4) var(--esp-2); }
+}
+@media (max-width: 520px) {
+  .acc-actions { flex-direction: column; align-items: stretch; }
+  .acc-nouveau { width: 100%; }
+  .acc-dl-bouton { display: none; }
+  .acc-dl-alerte::after { content: "→"; margin-left: auto; padding-right: 6px; color: var(--error-text); }
+  .acc-fil-entete .fil-filtres, .fil-projet-entete .fil-filtres { width: 100%; }
+}
+/* Par chef de projet dans la colonne de droite : en-têtes courts. */
+.acc-cote .pc-long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.acc-cote .pc-court { display: inline; }
+.acc-cote .pc-table th, .acc-cote .pc-table td { padding-inline: 6px; }
+
+/* --- Fiche projet en deux colonnes (lot 15) --------------------------- */
+.page-body.page-body-fiche { grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto; gap: var(--esp-6); }
+.page-body.page-body-fiche > .col-center { grid-column: 1; grid-row: 1; }
+.page-body.page-body-fiche > .fiche-cote { grid-column: 2; grid-row: 1; }
+.fil-projet-entete { display: flex; align-items: center; justify-content: space-between; gap: var(--esp-3); flex-wrap: wrap; min-height: 40px; margin-top: var(--esp-2); }
+.fil-projet-entete .fil-filtres { margin: 0; }
+/* Panneau d'une tâche ouvert (≥ 1 024 px) : la colonne de droite s'efface,
+   les tâches et le fil gardent leur place à gauche (revue lot 15, P0-1). */
+@media (min-width: 1024px) {
+  body.tache-panneau-ouvert:not(:has(.tache-panneau-sortie)) .page-body.page-body-fiche { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+  body.tache-panneau-ouvert:not(:has(.tache-panneau-sortie)) .page-body.page-body-fiche > .col-center { grid-column: 1; grid-row: 1; order: 0; }
+  body.tache-panneau-ouvert:not(:has(.tache-panneau-sortie)) .page-body.page-body-fiche > .fiche-cote { display: none; }
+}
+@media (max-width: 1180px) {
+  .page-body.page-body-fiche { grid-template-columns: minmax(0, 1fr) 300px; gap: var(--esp-4); }
+}
+@media (max-width: 860px) {
+  .page-body.page-body-fiche { grid-template-columns: minmax(0, 1fr); }
+  .page-body.page-body-fiche > .col-center, .page-body.page-body-fiche > .fiche-cote { grid-column: 1; grid-row: auto; }
+}
+
+/* --- Page d'une personne (lot 15) ------------------------------------- */
+.page-personne { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
+@media (max-width: 860px) { .page-personne { grid-template-columns: minmax(0, 1fr); } }
+.page-personne > .col-center > #profil-activite { gap: var(--esp-4); }
+.compteur-discret { margin-left: 6px; padding: 1px 8px; border-radius: var(--rayon-pilule); background: var(--bg-subtle-1); border: 1px solid var(--border-soft);
+  font-size: var(--texte-xs); font-weight: var(--graisse-forte); color: var(--text-muted); font-variant-numeric: var(--chiffres); vertical-align: middle; }
+.personne-resume { margin: 2px var(--esp-5) var(--esp-2); font-size: var(--texte-s); color: var(--text-muted); }
+.acc-vide { margin: var(--esp-2) var(--esp-5) var(--esp-2); font-size: var(--texte-s); list-style: none; }
+.page-personne .acc-sous { white-space: normal; }
+/* Revue lot 15 : « Commenter » garde sa largeur au premier commentaire. */
+.post-commenter-nb:empty { min-width: 2ch; }
+/* « Voir comme » (lecture seule) : pas de menu Modifier / Supprimer. */
+html[data-lecture-seule] .post-menu { display: none; }

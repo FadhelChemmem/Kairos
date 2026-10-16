@@ -69,10 +69,10 @@ class TestDailyLogFuturReel(_Temps):
         self.sql("INSERT INTO dailylog_jour (utilisateur_id, date, absent) VALUES (%s, %s, true) "
                  "ON CONFLICT (utilisateur_id, date) DO UPDATE SET absent = true", (self.inter, self.auj))
         accueil = self.visible(self.client.get("/accueil"))
-        self.assertIn("Voir mon Daily log", accueil)
+        # Lot 15 : rappel compact dans l'en-tête de l'accueil.
         self.assertNotIn("Remplir mon Daily log", accueil)
-        self.assertIn("Date simulée future : la journée se consulte, sans saisie.", accueil)
-        self.assertNotIn("sans saisie, depuis", accueil)
+        self.assertIn("date simulée future : consultation seule", accueil)
+        self.assertNotIn("sans saisie", accueil)
 
 
 class TestDailyLogDe(_Temps):

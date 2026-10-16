@@ -4,7 +4,7 @@
 
 /* --- Contrôle segmenté au-dessus du fil : segments de largeur fixe (le
    choix ne change ni leur taille ni leur place). --- */
-.fil-barre { display: flex; align-items: center; margin: 2px 0 -2px; }
+
 .fil-filtres a { justify-content: center; min-width: 84px; }
 .fil-filtres a:focus-visible { outline-offset: 1px; }
 .profil-posts-entete { flex-wrap: wrap; gap: 8px 12px; }
@@ -38,7 +38,7 @@ html.k-js .post-commenter[data-replie] { display: none; }
 .fil-vide-texte { margin: 0; }
 
 @media (max-width: 400px) {
-  .fil-barre .fil-filtres { display: flex; width: 100%; }
+
   .fil-filtres a { flex: 1 1 0; min-width: 0; }
   .fil-groupe-details { margin-left: 0; }
   .fil-groupe-posts { margin-left: 0; }

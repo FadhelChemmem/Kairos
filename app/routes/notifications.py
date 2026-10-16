@@ -5,7 +5,7 @@ en a un."""
 import datetime
 import re
 
-from flask import Blueprint, abort, flash, jsonify, redirect, g, render_template, request, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, g, render_template, url_for
 
 from .. import horloge, modes_admin, partiel
 from ..auth import login_required

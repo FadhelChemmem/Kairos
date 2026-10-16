@@ -346,12 +346,14 @@ async function maxAnimation(p, ms = 600) {
     const lien = p.locator('#profil-activite a:has-text("Voir la semaine précédente")');
     await lien.scrollIntoViewIfNeeded();
     await lien.focus();
+    // Lot 15 : samedis et dimanches sans heures non listés (5 à 7 jours par semaine).
+    const jours1 = await p.locator('#profil-activite .dl-semaine-jour').count();
     await interaction(p, 'Profil : « Voir la semaine précédente »',
       () => p.keyboard.press('Enter'),
-      async () => (await etat(p)).url === `/utilisateurs/${RIM}/profil?semaines=2` && await p.locator('#profil-activite .dl-semaine-jour').count() === 14,
+      async () => (await etat(p)).url === `/utilisateurs/${RIM}/profil?semaines=2` && await p.locator('#profil-activite .dl-semaine-jour').count() >= jours1 + 5,
       { focus: '[id^="profil-jour-"]' });
     await retour(p, 'Profil : semaine précédente', async () => (await etat(p)).url === `/utilisateurs/${RIM}/profil`
-      && await p.locator('#profil-activite .dl-semaine-jour').count() === 7);
+      && await p.locator('#profil-activite .dl-semaine-jour').count() === jours1);
     await p.close();
 
     // --- 5. Daily log : le focus reste après Enregistrer et Marquer absent ---

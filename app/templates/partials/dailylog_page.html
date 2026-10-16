@@ -6,24 +6,38 @@
 <div class="dl9" id="dl9" data-mode="{{ amorce.jour.droits.mode }}">
   <div class="dl-wrap">
 
-    {% if personnes %}
-    {# Chef de projet / Admin : ouvrir le Daily log d'un employé pour le
-       corriger (lignes de ses projets pour un chef, tout pour l'Admin). #}
-    {# Lot 13 (correctifs, verif-ux) : champ à recherche ; le choix charge
-       le Daily log de la personne sans recharger la page (dailylog.js,
-       fragment #dl9) ; « Ouvrir » reste pour le repli sans JavaScript. #}
-    <form class="dl-qui" method="get" action="{{ url_for('dailylog.formulaire') }}" data-dl-qui>
-      <label for="dl-qui-select">Daily log de</label>
-      <select id="dl-qui-select" name="utilisateur" data-search-combobox data-search-placeholder="Rechercher une personne…" data-search-vide="Aucune personne trouvée">
-        <option value="" {{ 'selected' if soi }}>Moi</option>
-        {% for p in personnes %}
-          <option value="{{ p.id }}" {{ 'selected' if p.id == proprio.id }}>{{ p.nom }}</option>
-        {% endfor %}
-      </select>
-      <input type="hidden" name="date" value="{{ date.isoformat() }}" id="dl-qui-date">
-      <button type="submit" class="dl-tool k-sans-js">Ouvrir</button>
-    </form>
-    {% endif %}
+    {# Lot 15 (maquette du gérant) : en-tête « Daily log » ; à droite, pour le
+       chef et l'Admin, « Daily log de » (recherche d'une personne) et
+       « Daily log de l'équipe ». #}
+    <header class="dl-page-entete">
+      <h1 class="page-titre dl-page-titre">Daily log</h1>
+      {% if personnes or g.user.role in ('admin', 'chef_de_projet') %}
+      <div class="dl-page-outils">
+        {% if personnes %}
+        {# Lot 13 : le choix charge le Daily log de la personne sans recharger
+           la page (dailylog.js, fragment #dl9) ; « Ouvrir » reste pour le
+           repli sans JavaScript. #}
+        <form class="dl-qui" method="get" action="{{ url_for('dailylog.formulaire') }}" data-dl-qui>
+          <label for="dl-qui-select">Daily log de</label>
+          <select id="dl-qui-select" name="utilisateur" data-search-combobox data-search-placeholder="Rechercher une personne…" data-search-vide="Aucune personne trouvée">
+            <option value="" {{ 'selected' if soi }}>Moi</option>
+            {% for p in personnes %}
+              <option value="{{ p.id }}" {{ 'selected' if p.id == proprio.id }}>{{ p.nom }}</option>
+            {% endfor %}
+          </select>
+          <input type="hidden" name="date" value="{{ date.isoformat() }}" id="dl-qui-date">
+          <button type="submit" class="dl-tool k-sans-js">Ouvrir</button>
+        </form>
+        {% endif %}
+        {% if g.user.role in ('admin', 'chef_de_projet') %}
+        <a class="btn dl-lien-equipe" id="dl-equipe" href="{{ url_for('dailylog.equipe') }}">
+          <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Daily log de l’équipe
+        </a>
+        {% endif %}
+      </div>
+      {% endif %}
+    </header>
 
     {% if not soi %}
     <p class="dl-note dl-note-correction" id="dl-correction" role="note">
@@ -31,17 +45,13 @@
     </p>
     {% endif %}
 
-    <div class="dl-head">
-      <div>
-        {# Le titre de page (h1 « Daily log ») est dans la sous-barre
-           (revue visuelle P1-9) ; celui-ci nomme la journée affichée. #}
-        <h2 class="dl-title" id="dl-titre">Journée du {{ date_fr(date)|lower }}</h2>
-        <p class="dl-subtitle">{% if soi %}Répartissez vos heures entre vos projets.{% else %}Daily log de {{ proprio.prenom }} {{ proprio.nom }}.{% endif %}</p>
-      </div>
-      <span class="dl-status" id="dl-status" data-s="nouveau"><span class="dl-dot" aria-hidden="true"></span><span id="dl-status-texte">Nouvelle saisie</span></span>
-    </div>
-
-    <div class="dl-settings">
+    {# Lot 15 : la semaine en cours d'un coup d'œil (jours manquants, remplis,
+       à venir) ; ‹ › changent de semaine ; le calendrier pour aller plus
+       loin. Rendue par dailylog.js. #}
+    <section class="card dl-bande" aria-label="Semaine">
+      <button type="button" class="dl-navbtn dl-sem" id="dl-sem-prec" aria-label="Semaine précédente">‹</button>
+      <div class="dl-bande-jours" id="dl-bande-jours" role="group" aria-label="Jours de la semaine"></div>
+      <button type="button" class="dl-navbtn dl-sem" id="dl-sem-suiv" aria-label="Semaine suivante">›</button>
       <div class="dl-datenav" id="dl-datenav">
         <button type="button" class="dl-navbtn dl-l" id="dl-prec" aria-label="Jour ouvré précédent">‹</button>
         <button type="button" class="dl-datebtn" id="dl-date" aria-haspopup="dialog" aria-expanded="false" aria-controls="dl-cal">
@@ -51,13 +61,7 @@
         <button type="button" class="dl-navbtn dl-r" id="dl-suiv" aria-label="Jour ouvré suivant">›</button>
         <div class="dl-cal" id="dl-cal" role="dialog" aria-label="Choisir une date" hidden></div>
       </div>
-      <div class="dl-objctl" role="group" aria-labelledby="dl-obj-lbl">
-        <span class="dl-lbl" id="dl-obj-lbl">Journée</span>
-        <button type="button" class="dl-mini" id="dl-obj-moins" aria-label="Diminuer la journée type de 30 minutes"{% if not soi %} hidden{% endif %}>−</button>
-        <b id="dl-obj-val">8 h</b>
-        <button type="button" class="dl-mini" id="dl-obj-plus" aria-label="Augmenter la journée type de 30 minutes"{% if not soi %} hidden{% endif %}>+</button>
-      </div>
-    </div>
+    </section>
 
     <p class="dl-note" id="dl-lecture" role="note" hidden></p>
 
@@ -66,64 +70,87 @@
       <div class="dl-btxt" id="dl-banniere-texte"></div>
     </div>
 
-    <div class="dl-daytools" id="dl-outils">
-      <button type="button" class="dl-tool" id="dl-copier"></button>
-      <button type="button" class="dl-tool" id="dl-absent">Marquer absent</button>
-    </div>
-
-    {# Lot 14 (revue produit P0-4) : journée vierge, tâches en cours
-       proposées à 0 h (dailylog.js) ; réglage dans « Mes informations ». #}
-    <p class="dl-propnote" id="dl-propositions" hidden>
-      <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-      <span>Vos tâches en cours sont proposées&nbsp;: tapez les heures, retirez (×) les autres. Une ligne laissée à 0&nbsp;h n’est pas enregistrée. <a href="{{ url_for('utilisateurs.mon_profil') }}#daily-log-reglages" class="lien-cible">Ne plus proposer</a></span>
-    </p>
-
-    <div class="dl-list" id="dl-liste" data-vide="Aucun projet pour ce jour — ajoutez-en un ou copiez une journée précédente."></div>
-
-    <div class="dl-addwrap" id="dl-ajout">
-      <button type="button" class="dl-add" id="dl-ajouter" aria-expanded="false" aria-controls="dl-catalogue">+ Ajouter un projet</button>
-      <div class="dl-addpanel" id="dl-catalogue" role="group" aria-label="Ajouter un projet" hidden>
-        {# Lot 14 : le catalogue reste ouvert après un ajout (projet seul
-           ou ses tâches, l'un après l'autre) ; « Terminé » le ferme et
-           rend le focus à la dernière ligne ajoutée. #}
-        <div class="dl-cattete">
-          <input class="dl-catsearch" id="dl-recherche" type="text" placeholder="Code ou nom du projet…" aria-label="Rechercher un projet" autocomplete="off" maxlength="100">
-          <button type="button" class="dl-tool dl-catfini" id="dl-catalogue-fini">Terminé</button>
+    <div class="dl-grille">
+      <section class="card dl-principal" aria-labelledby="dl-titre">
+        <div class="dl-head">
+          <div>
+            <h2 class="dl-title" id="dl-titre">Journée du {{ date_fr(date)|lower }}</h2>
+            <p class="dl-subtitle">{% if soi %}Répartissez vos heures entre vos projets.{% else %}Daily log de {{ proprio.prenom }} {{ proprio.nom }}.{% endif %}</p>
+          </div>
+          <span class="dl-status" id="dl-status" data-s="nouveau"><span class="dl-dot" aria-hidden="true"></span><span id="dl-status-texte">Nouvelle saisie</span></span>
         </div>
-        {# Lot 13 (audit a11y I8) : la liste n'est plus une région live ; une
-           annonce courte du nombre de résultats seulement. #}
-        <p class="sr-only" id="dl-catalogue-statut" role="status"></p>
-        <div id="dl-catalogue-corps"></div>
-      </div>
-    </div>
 
-    {# Revue produit P2-3, revue visuelle P2-27 : l'aide se replie derrière
-       « Comment saisir ? » ; la règle la plus utile reste visible. #}
-    <details class="dl-hint dl-aide" id="dl-aide">
-      <summary>Comment saisir&#8239;? <span class="dl-aide-court">Touchez un nombre pour le taper (<kbd>2,5</kbd> · <kbd>2h30</kbd>).</span></summary>
-      <p>
-        <kbd>−</kbd>/<kbd>+</kbd> par 30&nbsp;min, ou touchez le nombre et tapez
-        (<kbd>2,5</kbd>, <kbd>2h30</kbd>, <kbd>45min</kbd>)&#8239;; <kbd>↑</kbd>/<kbd>↓</kbd> pour ajuster au clavier.
-        Touchez le <b>nom d’un projet</b> pour le désactiver ou le réactiver&#8239;; × retire une ligne pas encore enregistrée.
-        Sur une journée vierge, vos tâches en cours sont proposées à 0&nbsp;h (réglage dans «&nbsp;Mes informations&nbsp;»)&#8239;:
-        une ligne laissée à 0&nbsp;h n’est pas enregistrée. Pour des heures sur un projet sans tâche précise, «&nbsp;+ Ajouter un projet&nbsp;». La <b>journée</b> est un repère&#8239;:
-        l’enregistrement reste possible en dessous. «&nbsp;Copier&nbsp;» reprend la répartition du dernier jour rempli&#8239;;
-        «&nbsp;Marquer absent&nbsp;» pour un congé ou un férié. Les flèches ‹ › sautent le week-end (un samedi reste
-        accessible depuis le calendrier). Saisie libre aujourd’hui et les 14&nbsp;jours précédents.
-      </p>
-    </details>
+        {# Lot 14 (P0-4) : journée vierge, tâches en cours proposées à 0 h ;
+           lot 15 : réglage du compte, « Ne plus proposer » ici même. #}
+        <p class="dl-propnote" id="dl-propositions" hidden>
+          <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <span>Vos tâches en cours sont proposées&nbsp;: tapez les heures, retirez (×) les autres. Une ligne laissée à 0&nbsp;h n’est pas enregistrée. <button type="button" class="bouton-texte lien-cible" id="dl-ne-plus-proposer">Ne plus proposer</button></span>
+        </p>
+
+        <div class="dl-thead" aria-hidden="true">
+          <span></span><span class="dl-th-info"><span>Tâche</span><span>Projet</span></span><span class="dl-th-heures">Heures</span><span></span>
+        </div>
+        <div class="dl-list" id="dl-liste" data-vide="Aucun projet pour ce jour — ajoutez-en un ou copiez une journée précédente."></div>
+
+        <div class="dl-addwrap" id="dl-ajout">
+          <button type="button" class="dl-add" id="dl-ajouter" aria-expanded="false" aria-controls="dl-catalogue">+ Ajouter un projet</button>
+          <div class="dl-addpanel" id="dl-catalogue" role="group" aria-label="Ajouter un projet" hidden>
+            <div class="dl-cattete">
+              <input class="dl-catsearch" id="dl-recherche" type="text" placeholder="Code ou nom du projet…" aria-label="Rechercher un projet" autocomplete="off" maxlength="100">
+              <button type="button" class="dl-tool dl-catfini" id="dl-catalogue-fini">Terminé</button>
+            </div>
+            <p class="sr-only" id="dl-catalogue-statut" role="status"></p>
+            <div id="dl-catalogue-corps"></div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="dl-cote" aria-label="Journée">
+        <div class="card dl-carte-journee">
+          <div class="dl-objctl" role="group" aria-labelledby="dl-obj-lbl">
+            <span class="dl-lbl" id="dl-obj-lbl">Journée</span>
+            <span class="dl-objstep">
+              <button type="button" class="dl-mini" id="dl-obj-moins" aria-label="Diminuer la journée type de 30 minutes"{% if not soi %} hidden{% endif %}>−</button>
+              <b id="dl-obj-val">8 h</b>
+              <button type="button" class="dl-mini" id="dl-obj-plus" aria-label="Augmenter la journée type de 30 minutes"{% if not soi %} hidden{% endif %}>+</button>
+            </span>
+          </div>
+          {# Total, jauge et « Enregistrer » : dans la colonne (ordinateur), en
+             barre collée en bas de l'écran (téléphone). #}
+          <div class="dl-totalbar" id="dl-barre">
+            <div class="dl-totalinner">
+              <div class="dl-totsum"><span class="dl-totlabel">Heures réparties</span><span class="dl-totval" id="dl-total">0 h</span></div>
+              <div class="dl-mid">
+                <div class="dl-gauge" id="dl-jauge" role="meter" aria-label="Total de la journée" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0"><i></i></div>
+                <span class="dl-reste" id="dl-reste"></span>
+              </div>
+              <button type="button" class="dl-save" id="dl-enregistrer">Enregistrer</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card dl-daytools" id="dl-outils">
+          <button type="button" class="dl-tool" id="dl-copier"></button>
+          <button type="button" class="dl-tool" id="dl-absent">Marquer absent</button>
+        </div>
+
+        {# L'aide reste repliée derrière « Comment saisir ? ». #}
+        <details class="dl-hint dl-aide" id="dl-aide">
+          <summary>Comment saisir&#8239;? <span class="dl-aide-court">Touchez un nombre pour le taper (<kbd>2,5</kbd> · <kbd>2h30</kbd>).</span></summary>
+          <p>
+            <kbd>−</kbd>/<kbd>+</kbd> par 30&nbsp;min, ou touchez le nombre et tapez
+            (<kbd>2,5</kbd>, <kbd>2h30</kbd>, <kbd>45min</kbd>)&#8239;; <kbd>↑</kbd>/<kbd>↓</kbd> pour ajuster au clavier.
+            Touchez le <b>nom d’un projet</b> pour le désactiver ou le réactiver&#8239;; × retire une ligne pas encore enregistrée.
+            Sur une journée vierge, vos tâches en cours sont proposées à 0&nbsp;h (réglage dans «&nbsp;Mes informations&nbsp;»)&#8239;:
+            une ligne laissée à 0&nbsp;h n’est pas enregistrée. Pour des heures sur un projet sans tâche précise, «&nbsp;+ Ajouter un projet&nbsp;». La <b>journée</b> est un repère&#8239;:
+            l’enregistrement reste possible en dessous. «&nbsp;Copier&nbsp;» reprend la répartition du dernier jour rempli&#8239;;
+            «&nbsp;Marquer absent&nbsp;» pour un congé ou un férié. Les flèches de la date sautent le week-end (un samedi reste
+            accessible depuis le calendrier)&#8239;; celles de la semaine changent de semaine. Saisie libre aujourd’hui et les 14&nbsp;jours précédents.
+          </p>
+        </details>
+      </aside>
+    </div>
     <noscript><p class="dl-note">Le Daily log a besoin de JavaScript.</p></noscript>
-  </div>
-
-  <div class="dl-totalbar" id="dl-barre">
-    <div class="dl-totalinner">
-      <div class="dl-totsum"><span class="dl-totlabel">Total</span><span class="dl-totval" id="dl-total">0 h</span></div>
-      <div class="dl-mid">
-        <div class="dl-gauge" id="dl-jauge" role="meter" aria-label="Total de la journée" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0"><i></i></div>
-        <span class="dl-reste" id="dl-reste"></span>
-      </div>
-      <button type="button" class="dl-save" id="dl-enregistrer">Enregistrer</button>
-    </div>
   </div>
 
   <div class="sr-only" id="dl-live" role="status" aria-live="polite"></div>

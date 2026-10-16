@@ -14,19 +14,22 @@
   {% include "partials/projet_entete.html" %}
 </div>
 
-<div class="page-body">
+{# Lot 15 : deux colonnes, comme l'accueil — tâches et fil à gauche,
+   Informations et Intervenants à droite. Le panneau d'une tâche ouvert, la
+   colonne de droite s'efface : les tâches et le fil restent à leur place. #}
+<div class="page-body page-body-fiche">
 
-  <!-- Colonne gauche -->
-  <div class="col">
-    {% include "partials/carte_informations.html" %}
-  </div>
-
-  <!-- Centre : tâches + fil -->
+  <!-- Tâches + fil -->
   <div class="col-center">
     {% include "partials/carte_taches.html" %}
 
     <section class="fil-projet" id="posts-projet" tabindex="-1" aria-labelledby="posts-projet-titre">
-      <h2 class="sr-only" id="posts-projet-titre">Posts du projet</h2>
+      <div class="fil-projet-entete">
+        <h2 class="acc-section-titre" id="posts-projet-titre">Fil du projet</h2>
+        {# Lot 14 (revue produit P1-3) : Tout · Échanges · Activité. #}
+        {% import "partials/fil_filtres.html" as film %}
+        {{ film.filtres('projet', fil_categorie, '#fil-posts', 'projets.detail', {'projet_id': projet.id}) }}
+      </div>
       <div class="fil-outils">
         {# Vrai champ de filtre (audit n°2) : masque, côté navigateur, les
            posts qui ne contiennent pas le texte saisi. #}
@@ -34,20 +37,19 @@
           <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input type="search" id="filtre-posts" class="fil-filtre-champ" data-filtre-fil data-filtre-liste="#fil-posts" data-filtre-vide="#filtre-posts-vide" data-filtre-message="Aucun post ne correspond à ce filtre." placeholder="Filtrer les posts de ce projet…" aria-label="Filtrer les posts de ce projet">
         </label>
+        {# Lot 15 : seul bouton de publication de la fiche (« + Tâche » de la
+           carte Tâches faisait doublon : même fenêtre). #}
         {% include "partials/fil_outils.html" %}
       </div>
-      {# Lot 14 (revue produit P1-3) : Tout · Échanges · Activité, regroupements
-         et « Afficher plus » (au-delà de 30 posts). #}
-      {% import "partials/fil_filtres.html" as film %}
-      <div class="fil-barre">{{ film.filtres('projet', fil_categorie, '#fil-posts', 'projets.detail', {'projet_id': projet.id}) }}</div>
       {% include "partials/fil_projet.html" %}
       {% include "partials/fil_suite.html" %}
       <div id="filtre-posts-vide" class="fil-filtre-vide" role="status"></div>
     </section>
   </div>
 
-  <!-- Colonne droite -->
-  <div class="col">
+  <!-- Informations, intervenants -->
+  <div class="col fiche-cote">
+    {% include "partials/carte_informations.html" %}
     {% include "partials/carte_intervenants.html" %}
   </div>
 

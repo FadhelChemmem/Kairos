@@ -147,6 +147,11 @@ TEXTES_DAILYLOG = {
                 "verrouille": "Non renseigné, verrouillé (au-delà de 14 jours)"},
     "statut_jour": {"rempli": "rempli", "absent": "absent", "vide": "non renseigné",
                     "verrouille": "non renseigné, verrouillé au-delà de 14 jours"},
+    # Lot 15 : bande de la semaine et « Ne plus proposer ».
+    "aujourdhui_maj": "Aujourd’hui",
+    "a_venir": "À venir",
+    "etat_semaine": {"rempli": "Rempli", "absent": "Absent", "vide": "Manquant", "verrouille": "Verrouillé"},
+    "propositions_coupees": "Vos tâches en cours ne seront plus proposées (réglage dans «\u00a0Mes informations\u00a0»).",
     "banniere": "{x} sans saisie",
     "banniere_jour": "jour",
     "banniere_jours": "jours",
@@ -473,7 +478,10 @@ def formulaire():
             "recherche": url_for("dailylog.api_recherche_projets"),
             "taches": url_for("dailylog.api_taches"),
             "connexion": url_for("auth.login"),
+            "preference": url_for("main.preference"),
         },
+        # Lot 15 : réglage du compte de la personne dont c'est le Daily log.
+        "proposer": utilisateurs_repo.get_preferences(proprio["id"])["dailylog_proposer"],
         "suffixe": suffixe,
     }
     personnes = []

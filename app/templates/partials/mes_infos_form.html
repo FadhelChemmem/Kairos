@@ -16,10 +16,12 @@
 
   <dl class="k-cles">
     <div><dt>E-mail</dt><dd>{{ utilisateur.email }}</dd></div>
+    {# Lot 15 : le poste se lit ici, il se change par l'Admin ou le RH. #}
+    <div><dt>Poste</dt><dd>{{ utilisateur.poste or '—' }}</dd></div>
     {% if utilisateur.equipe_code %}<div><dt>Équipe</dt><dd>{{ equipe_libelle(utilisateur.equipe_code) }}</dd></div>{% endif %}
     {% if utilisateur.date_embauche %}<div><dt>Date d’embauche</dt><dd>{{ utilisateur.date_embauche|date_courte(true) }}</dd></div>{% endif %}
   </dl>
-  <p class="k-note">Le prénom, le nom, l’adresse e-mail et le rôle sont gérés par l’administrateur ou le RH. Vous pouvez modifier les champs ci-dessous.</p>
+  <p class="k-note">Le prénom, le nom, l’adresse e-mail, le poste et le rôle sont gérés par l’administrateur ou le RH. Vous pouvez modifier les champs ci-dessous.</p>
 
   <form method="post" action="{{ url_for('utilisateurs.mon_profil') }}" enctype="multipart/form-data" id="mes-infos-form"
         data-partiel="#mes-infos" data-focus-apres="#mes-infos-enregistrer" novalidate>
@@ -32,11 +34,6 @@
       <label for="telephone">Téléphone</label>
       <input type="tel" id="telephone" name="telephone" maxlength="30" autocomplete="tel" value="{{ utilisateur.telephone or '' }}" placeholder="55 555 555"{{ ch.attrs(erreurs_infos, 'telephone') }}>
       {{ ch.message(erreurs_infos, 'telephone') }}
-    </div>
-    <div class="form-row">
-      <label for="poste">Poste</label>
-      <input type="text" id="poste" name="poste" maxlength="150" autocomplete="organization-title" value="{{ utilisateur.poste or '' }}" placeholder="Ingénieur, Technicien…"{{ ch.attrs(erreurs_infos, 'poste') }}>
-      {{ ch.message(erreurs_infos, 'poste') }}
     </div>
     <div class="form-row form-row-fin">
       <label for="adresse">Adresse</label>

@@ -184,7 +184,9 @@
         catCorps = $('dl-catalogue-corps'), copierBtn = $('dl-copier'), absentBtn = $('dl-absent'),
         outilsEl = $('dl-outils'), aideEl = $('dl-aide'), lectureEl = $('dl-lecture'), liveEl = $('dl-live'),
         barreEl = $('dl-barre'), quiDate = $('dl-qui-date'), catStatut = $('dl-catalogue-statut'),
-        propNote = $('dl-propositions'), catFini = $('dl-catalogue-fini');
+        propNote = $('dl-propositions'), catFini = $('dl-catalogue-fini'),
+        semaineEl = $('dl-bande-jours'), nePlusProposer = $('dl-ne-plus-proposer'),
+        semPrec = $('dl-sem-prec'), semSuiv = $('dl-sem-suiv');
 
     // --- état -------------------------------------------------------------
     var jour = null;            // état serveur du jour affiché (format `Jour`)
@@ -200,7 +202,8 @@
     etatsMois[A.mois.mois] = A.mois.jours;
     var calMois = N.moisDe(sel);
     var catalogue = A.catalogue || { mine: [], recentes: [] };
-    var seqJour = 0, seqMois = 0, seqRech = 0;
+    var seqJour = 0, seqRech = 0;
+    var moisDemandes = {};      // mois déjà demandés pour la bande de la semaine (lot 15)
     var fileEcriture = Promise.resolve();
     var dernierEchec = false;
     var revKeepalive = -1;     // révision déjà envoyée en keepalive (fermeture / arrière-plan)
@@ -209,12 +212,9 @@
     var resultatsRecherche = null, rechercheMotif = '', tachesOuvertes = {}, tachesChargees = {};
     var cleBrouillon = 'kairos-dl-brouillon-' + A.acteur.id + '-' + A.proprietaire.id + '-';
     // Lot 14 (revue produit P0-4) : tâches en cours proposées sur une
-    // journée vierge, sauf si la personne l'a désactivé (« Mes informations »,
-    // préférence de ce navigateur : dailylog-preferences.js).
-    var clePropositions = 'kairos-dl-proposer-' + A.proprietaire.id;
-    function proposerActif() {
-      try { return localStorage.getItem(clePropositions) !== 'non'; } catch (e) { return true; }
-    }
+    // journée vierge, sauf si la personne l'a désactivé ; lot 15 : réglage
+    // du compte (A.proposer), « Ne plus proposer » ici ou « Mes informations ».
+    function proposerActif() { return A.proposer !== false; }
     var ajoutsCatalogue = [];   // clés ajoutées depuis l'ouverture du catalogue (« Terminé » : focus sur la dernière)
 
     // « Voir comme » (lecture seule, lot 13) : aucune commande d'écriture
@@ -1039,6 +1039,7 @@
       try { sessionStorage.removeItem(cleBrouillon + d.date); } catch (e) { /* stockage indisponible */ }
       renderBanner(d.date);
       renderCal();
+      renderSemaine();
     }
     function fusionnerApresEnregistrement(d) {
       // garde les lignes à 0 h affichées ; met à jour droits et lignes gardées par le serveur
@@ -1234,7 +1235,40 @@
       titreEl.textContent = tr(T.titre_jour, dateLongue(sel) + ' ' + N.versDate(sel).getUTCFullYear());
       var suivant = N.jourOuvre(sel, 1);
       suivBtn.disabled = suivant > TODAY;
+      if (semSuiv) semSuiv.disabled = N.ajouterJours(sel, 7 - N.jourSemaine(sel)) > TODAY;
       if (quiDate) quiDate.value = sel;
+      renderSemaine();
+    }
+    // Lot 15 (maquette du gérant) : les cinq jours ouvrés de la semaine du
+    // jour affiché, avec leur état (manquant, rempli, absent, à venir).
+    function renderSemaine() {
+      if (!semaineEl) return;
+      var lundi = N.ajouterJours(sel, -N.jourSemaine(sel));
+      var mois = [N.moisDe(lundi), N.moisDe(N.ajouterJours(lundi, 4))];
+      mois.forEach(function (mo) { if (!etatsMois[mo] && !moisDemandes[mo] && mo <= N.moisDe(TODAY)) { moisDemandes[mo] = true; chargerMois(mo); } });
+      var frag = document.createDocumentFragment();
+      for (var i = 0; i < 5; i++) {
+        var k = N.ajouterJours(lundi, i), st = (etatsMois[N.moisDe(k)] || {})[k] || '', futur = k > TODAY;
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'dl-jour' + (st ? ' dl-jour-' + st : '') + (futur ? ' dl-jour-futur' : '') + (k === sel ? ' dl-jour-sel' : '') + (k === TODAY ? ' dl-jour-auj' : '');
+        b.setAttribute('data-jour', k);
+        b.setAttribute('aria-pressed', String(k === sel));
+        if (k === TODAY) b.setAttribute('aria-current', 'date');
+        b.disabled = futur;
+        var etat = k === TODAY ? T.aujourdhui_maj : futur ? T.a_venir : (T.etat_semaine[st] || '');
+        var d = N.versDate(k);
+        b.setAttribute('aria-label', T.jours_longs[N.jourSemaine(k)] + ' ' + jourNum(d.getUTCDate()) + ' ' + T.mois[d.getUTCMonth()] + (etat ? ', ' + etat.toLowerCase() : ''));
+        var nom = document.createElement('span'); nom.className = 'dl-jour-nom'; nom.textContent = T.jours_courts[i];
+        var num = document.createElement('span'); num.className = 'dl-jour-num'; num.textContent = String(d.getUTCDate());
+        var et = document.createElement('span'); et.className = 'dl-jour-etat'; et.textContent = etat || '\u00a0';
+        b.appendChild(nom); b.appendChild(num); b.appendChild(et);
+        frag.appendChild(b);
+      }
+      var avaitFocus = semaineEl.contains(document.activeElement) ? document.activeElement.getAttribute('data-jour') : null;
+      semaineEl.textContent = '';
+      semaineEl.appendChild(frag);
+      if (avaitFocus) { var f2 = semaineEl.querySelector('[data-jour="' + avaitFocus + '"]'); if (f2) f2.focus(); }
     }
     function renderLecture() {
       var d = droits(), textes = [];
@@ -1359,6 +1393,15 @@
       banniere.hidden = false;
       banniere.classList.remove('dl-banner-ok');
       var affiches = manques.slice(-5), autres = manques.length - affiches.length;
+      // Lot 15 (revue UX) : après un enregistrement, les jours déjà affichés
+      // gardent leur place ; un jour rempli reste, coché, jusqu'au prochain
+      // changement de jour (les puces ne glissent plus sous le doigt).
+      var avant = ecrit && banniere.dataset.affiches ? banniere.dataset.affiches.split(',') : null;
+      if (avant && avant.some(function (k) { return manques.indexOf(k) < 0; })) {
+        affiches = avant.filter(function (k) { return manques.indexOf(k) >= 0 || k === ecrit; });
+        autres = manques.length - affiches.filter(function (k) { return manques.indexOf(k) >= 0; }).length;
+      }
+      banniere.dataset.affiches = affiches.join(',');
       banniereTexte.textContent = '';
       var b = document.createElement('b');
       b.textContent = tr(T.banniere, manques.length + ' ' + (manques.length > 1 ? T.banniere_jours : T.banniere_jour));
@@ -1366,7 +1409,10 @@
       banniereTexte.appendChild(document.createTextNode(T.banniere_suite));
       affiches.forEach(function (k) {
         var c = document.createElement('button');
-        c.type = 'button'; c.className = 'dl-chip'; c.dataset.g = k; c.textContent = dateCourte(k);
+        var fait = manques.indexOf(k) < 0;
+        c.type = 'button'; c.className = 'dl-chip' + (fait ? ' dl-chip-fait' : ''); c.dataset.g = k;
+        c.textContent = (fait ? '✓ ' : '') + dateCourte(k);
+        if (fait) c.setAttribute('aria-label', dateCourte(k) + ', ' + T.statut_jour.rempli);
         if (k === sel) c.setAttribute('aria-current', 'date');
         banniereTexte.appendChild(c);
       });
@@ -1386,10 +1432,11 @@
     // --- calendrier (popover non modal, flèches clavier) ----------------------
     function chargerMois(mo) {
       if (etatsMois[mo] || mo > N.moisDe(TODAY)) { if (!calEl.hidden) renderCal(); return; }
-      var s = ++seqMois;
       requete('GET', url(A.urls.mois, mo)).then(function (r) {
         if (r.status === 200 && r.data) etatsMois[mo] = r.data.jours || {};
-        if (s === seqMois && !calEl.hidden && calMois === mo) renderCal();
+        renderSemaine();
+        // Le mois affiché seul compte : la bande de la semaine charge aussi des mois.
+        if (!calEl.hidden && calMois === mo) renderCal();
       });
     }
     function renderCal() {
@@ -1450,6 +1497,33 @@
       if (suivBtn.disabled) return;
       goDay(N.jourOuvre(sel, 1));
       if (suivBtn.disabled) dateBtn.focus();
+    });
+    // Lot 15 : ‹ › de la bande changent de semaine (même jour de la
+    // semaine, jamais après aujourd'hui) ; un clic sur un jour l'ouvre.
+    if (semPrec) semPrec.addEventListener('click', function () { goDay(N.ajouterJours(sel, -7)); });
+    if (semSuiv) semSuiv.addEventListener('click', function () {
+      if (semSuiv.disabled) return;
+      var cible = N.ajouterJours(sel, 7);
+      if (cible > TODAY) cible = N.estWeekEnd(TODAY) ? N.jourOuvre(TODAY, -1) : TODAY;
+      goDay(cible);
+    });
+    if (semaineEl) semaineEl.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-jour]');
+      if (!b || b.disabled || b.getAttribute('data-jour') === sel) return;
+      goDay(b.getAttribute('data-jour'));
+    });
+    if (nePlusProposer) nePlusProposer.addEventListener('click', function () {
+      var reactiver = function () {
+        A.proposer = true;
+        if (K && K.enregistrerPreference) K.enregistrerPreference(A.urls.preference, 'dailylog_proposer', true);
+        if (jour) appliquerJour(jour, { garderToast: true });
+      };
+      A.proposer = false;
+      if (K && K.enregistrerPreference) K.enregistrerPreference(A.urls.preference, 'dailylog_proposer', false);
+      rows = rows.filter(function (r) { return !r.propose || r.m > 0; });
+      if (propNote) propNote.hidden = true;
+      render();
+      toast(T.propositions_coupees, { actions: [{ texte: T.annuler, fn: reactiver }], back: listeEl });
     });
     calEl.addEventListener('click', function (e) {
       e.stopPropagation();
