@@ -11,7 +11,7 @@
       <span class="pill {{ petat.classe }}" id="projet-etat-pastille">{{ petat.label }}</span>
     </div>
     <div class="fiche-entete-meta">
-      <span>Lot{{ 's' if lots|length > 1 }} {% for l in lots %}<strong>{{ l.code }}</strong>{% if not loop.last %} · {% endif %}{% endfor %}</span>
+      {% if lots %}<span>Lot{{ 's' if lots|length > 1 }} {% for l in lots %}<strong>{{ l.code }}</strong>{% if not loop.last %} · {% endif %}{% endfor %}</span>{% endif %}
       {# Revue produit P2-12 : un projet clos affiche sa date de clôture, et
          non une « échéance » qui n'a plus de sens. #}
       <span>{% if projet.date_debut %}Début {{ projet.date_debut|date_courte(true) }}{% endif %}{% if projet.date_fin and not (projet_clos and projet.date_cloture) %} → Échéance {{ projet.date_fin|date_courte(true) }}{% endif %}{% if projet_clos and projet.date_cloture %}{{ ' · ' if projet.date_debut }}Clôturé le {{ projet.date_cloture|date_courte(true) }}{% endif %}</span>

@@ -10,7 +10,7 @@
 // nombre (data-pj-max), extension (data-pj-extensions), 25 Mo au total.
 (function () {
   'use strict';
-  var TOTAL_MAX = 25 * 1024 * 1024;
+  var TOTAL_MAX = 25 * 1024 * 1024 - 64 * 1024; // marge pour les champs et en-têtes multipart (lot 18)
 
   function K() { return window.Kairos || {}; }
   function annoncer(t) { var k = K(); if (k.annoncer) k.annoncer(t); }

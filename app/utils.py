@@ -33,6 +33,8 @@ def is_lien_valide(lien: str | None) -> bool:
     if not lien:
         return False
     lien = lien.strip()
+    if any(ord(c) < 32 or ord(c) == 127 for c in lien):
+        return False  # lot 18 : ni saut de ligne ni caractère de contrôle
     if lien.startswith("\\\\"):
         return True
     return lien.lower().startswith(LIENS_SCHEMES_VALIDES)
@@ -54,6 +56,10 @@ def is_safe_next(url: str | None) -> bool:
     révèle ni schéma ni netloc (protège aussi contre des variantes moins
     connues, ex. "/\t/evil.tld" selon le navigateur)."""
     if not url or not url.startswith("/") or url.startswith("//") or url.startswith("/\\"):
+        return False
+    # Lot 18 : ni caractère de contrôle (un saut de ligne faisait lever une
+    # ValueError à Werkzeug : erreur 500 après connexion) ni « \\ ».
+    if "\\" in url or any(ord(c) < 32 or ord(c) == 127 for c in url):
         return False
     parsed = urlparse(url)
     return not parsed.scheme and not parsed.netloc

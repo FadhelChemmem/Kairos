@@ -658,7 +658,18 @@ def mon_mot_de_passe():
     hash_actuel = utilisateurs_repo.get_mot_de_passe_hash(user_id)
 
     erreurs = {}
-    if hash_actuel is None or not verify_password(actuel, hash_actuel):
+    # Lot 18 (audit sécurité) : même freinage que la connexion — avec un
+    # cookie volé ou un poste laissé ouvert, l'ancien mot de passe ne se
+    # devine plus à la chaîne. Compté sous le type « connexion » avec une
+    # clé propre (pas de migration).
+    from ..auth import FENETRE_TENTATIVES_MINUTES, MAX_TENTATIVES
+    from ..repositories import securite as securite_repo
+
+    cle_mdp = f"changement-mdp|{user_id}"
+    if securite_repo.compter_tentatives_recentes("connexion", cle_mdp, FENETRE_TENTATIVES_MINUTES) >= MAX_TENTATIVES:
+        erreurs["mot_de_passe_actuel"] = "Trop de tentatives. Réessayez dans quelques minutes."
+    elif hash_actuel is None or not verify_password(actuel, hash_actuel):
+        securite_repo.enregistrer_tentative("connexion", cle_mdp)
         erreurs["mot_de_passe_actuel"] = "Mot de passe actuel incorrect."
     elif nouveau != confirmation:
         erreurs["confirmation"] = "Les deux nouveaux mots de passe ne correspondent pas."

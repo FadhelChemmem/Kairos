@@ -1255,9 +1255,10 @@ def changer_etat_tache(projet_id: int, tache_id: int):
                 return _refus(erreur, 422, projet_id, tache_id, vers_tache=True, champs={"motif": erreur})
 
     avant = taches.get_tache(tache_id)
+    remplace: dict = {}
     try:
         trouvee = taches.set_etat(tache_id, projet_id, etat, g.user["id"], peut_gerer=peut_gerer,
-                                  annulation=annulation, **({"motif": motif} if etat == "bloque" else {}),
+                                  annulation=annulation, remplace=remplace, **({"motif": motif} if etat == "bloque" else {}),
                                   **({"version_attendue": jeton.get("v")} if annulation else {}))
     except taches.MotifBlocageRequis:
         return _refus(MESSAGE_MOTIF_REQUIS, 422, projet_id, tache_id, vers_tache=True,
@@ -1272,6 +1273,8 @@ def changer_etat_tache(projet_id: int, tache_id: int):
         return _refus("Tâche introuvable sur ce projet.", 404, projet_id)
 
     avant = avant if isinstance(avant, dict) else {}
+    # Lot 18 : l'état remplacé est celui lu sous verrou par set_etat.
+    avant = {**avant, **remplace}
     etat_avant = avant.get("etat")
     texte = None
     notifications_creees: list[int] = []
@@ -1412,10 +1415,13 @@ def cloturer_tache(projet_id: int, tache_id: int):
         cree = tache_avant.get("created_at")
         debut = cree.astimezone(horloge.ZoneInfo(g.user.get("fuseau") or "Africa/Tunis")).date() \
             if hasattr(cree, "astimezone") else None
-        if date_fin > dl.aujourdhui_pour(g.user):
+        aujourdhui = dl.aujourdhui_pour(g.user)
+        if date_fin > aujourdhui:
             return _refus("La date de fin ne peut pas être dans le futur.", 422, projet_id,
                           champs={"date_fin": "La date de fin ne peut pas être dans le futur."})
-        if debut and date_fin < debut:
+        # Lot 18 : même borne basse que le champ de la fenêtre (date simulée
+        # antérieure à la création, en mode test).
+        if debut and date_fin < min(debut, aujourdhui):
             message = f"La tâche a été créée le {debut.strftime('%d/%m/%Y')}\u00a0: date de fin trop ancienne."
             return _refus(message, 422, projet_id, champs={"date_fin": message})
 
@@ -1715,7 +1721,9 @@ def rejoindre(projet_id: int):
     fiche est rechargée."""
     if not projets.user_can_view(projet_id, g.user["id"]):
         abort(404)
-    if g.user["role"] in ("rh", "client"):
+    if g.user["role"] in ("rh", "client", "admin"):
+        # Lot 18 : l'Admin gère déjà tous les projets (le bouton ne lui est
+        # pas montré) ; un POST forgé ne l'inscrit plus comme intervenant.
         return _refus("Votre rôle ne permet pas de rejoindre un projet.", 403, projet_id)
     refus = _refus_si_clos(projet_id)
     if refus:

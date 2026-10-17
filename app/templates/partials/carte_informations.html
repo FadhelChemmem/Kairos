@@ -14,7 +14,7 @@
     <div><dt>Heures intervenants</dt><dd>{{ projet.heures_intervenant|heures }}</dd></div>
     <div><dt>Heures chef de projet</dt><dd>{{ projet.heures_chef|heures }}</dd></div>
     <div><dt>Phase</dt><dd>{{ projet.phase }}</dd></div>
-    <div><dt>Lot{{ 's' if lots|length > 1 }}</dt><dd>{{ lots|map(attribute='code')|join(' · ') }}</dd></div>
+    <div><dt>Lot{{ 's' if lots|length > 1 }}</dt><dd>{{ lots|map(attribute='code')|join(' · ') or '—' }}</dd></div>
     <div><dt>État</dt><dd><span class="point-etat point-etat-{{ projet.etat }}" aria-hidden="true"></span>{{ petat.label }}</dd></div>
     {% if projet.date_debut %}<div><dt>Début</dt><dd>{{ projet.date_debut|date_courte(true) }}</dd></div>{% endif %}
     {% if projet.date_fin %}<div><dt>Échéance</dt><dd>{{ projet.date_fin|date_courte(true) }}</dd></div>{% endif %}

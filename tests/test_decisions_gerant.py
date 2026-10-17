@@ -17,7 +17,7 @@ import datetime
 import io
 import pathlib
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 try:  # python -m unittest discover -s tests
     import test_smoke as smoke
@@ -180,7 +180,7 @@ class TestDecision3EtatsReserves(_Base):
                                      **self.INTERVENANT_DE_LA_TACHE)
                 attendu = {"motif": "Attente des plans"} if etat == "bloque" else {}
                 m["app.repositories.taches.set_etat"].assert_called_once_with(5, 1, etat, 1, peut_gerer=False, annulation=False,
-                                                                             **attendu)
+                                                                             remplace=ANY, **attendu)
 
     def test_intervenant_ne_rouvre_pas_une_tache_reservee(self):
         """La tâche est Vérifiée (lu sous verrou par set_etat) : refus propre."""
@@ -219,7 +219,8 @@ class TestDecision3EtatsReserves(_Base):
                                          espions=[("app.repositories.taches.set_etat", True)],
                                          **{"app.auth.get_user_by_id": {**smoke.USER, "role": role},
                                             "app.repositories.projets.user_can_manage": True})
-                    m["app.repositories.taches.set_etat"].assert_called_once_with(5, 1, etat, 1, peut_gerer=True, annulation=False)
+                    m["app.repositories.taches.set_etat"].assert_called_once_with(5, 1, etat, 1, peut_gerer=True, annulation=False,
+                                                                                 remplace=ANY)
         _, m = self._requete("post", "/projets/1/taches/5/cloturer", {"type_code": "envoi"},
                              espions=[("app.repositories.taches.close_tache", 100)])
         self.assertEqual(m["app.repositories.taches.close_tache"].call_args.kwargs, {"peut_gerer": True, "date_fin": None})

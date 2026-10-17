@@ -39,6 +39,27 @@ def is_image_filename(filename: str) -> bool:
     return os.path.splitext(filename or "")[1].lower() in AVATAR_EXTENSIONS
 
 
+def refus_fichier(file_storage) -> str | None:
+    """Lot 18 (audit sécurité) : message de refus d'un fichier à joindre, ou
+    None s'il est acceptable — extension hors de la liste blanche, ou fichier
+    vide. Appelé AVANT save_upload() par toutes les routes qui reçoivent une
+    pièce jointe (posts, commentaires, tâches)."""
+    nom = (file_storage.filename or "").replace("\x00", "")
+    if os.path.splitext(nom)[1].lower() not in PIECE_JOINTE_EXTENSIONS:
+        return f"Type de fichier non accepté\u00a0: «\u00a0{nom[:80]}\u00a0»."
+    flux = file_storage.stream
+    try:
+        position = flux.tell()
+        flux.seek(0, os.SEEK_END)
+        taille = flux.tell()
+        flux.seek(position)
+    except (OSError, ValueError, AttributeError):
+        return None
+    if taille == 0:
+        return f"Le fichier «\u00a0{nom[:80]}\u00a0» est vide."
+    return None
+
+
 def save_upload(file_storage, subdir: str) -> tuple[str, str]:
     """Enregistre un fichier uploadé sous UPLOAD_DIR/<subdir>/<uuid>.<ext>.
     Retourne (nom_fichier_original, chemin_relatif) à stocker en base.

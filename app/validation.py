@@ -10,6 +10,7 @@ garde la main sur l'ordre des contrôles et la redirection.
 """
 import datetime
 import re
+import unicodedata
 
 # Longueurs maximales (schema.sql).
 MAX_NOM_PROJET = 200
@@ -39,6 +40,16 @@ DATE_MAX = datetime.date(2099, 12, 31)
 
 _EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 _TELEPHONE = re.compile(r"[0-9+ ().\-/]*")
+
+
+def texte_net(valeur: str | None) -> str:
+    """Texte saisi sans espaces autour ; vide s'il ne contient que des
+    espaces, caractères de contrôle ou de format invisibles (largeur nulle,
+    U+200B…) — lot 18, revue QA : un post « invisible » était accepté."""
+    texte = (valeur or "").strip()
+    if all(unicodedata.category(c) in ("Cf", "Cc", "Zs", "Zl", "Zp") or c.isspace() for c in texte):
+        return ""
+    return texte
 
 
 def trop_long(valeur: str | None, maximum: int, libelle: str) -> str | None:

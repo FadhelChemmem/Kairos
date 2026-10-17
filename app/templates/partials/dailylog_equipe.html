@@ -7,9 +7,9 @@
 <section class="dlq" id="dlq" aria-labelledby="dlq-titre">
   <div class="dlq-barre">
     <nav class="dlq-nav" aria-label="Choisir la semaine">
-      <a class="btn btn-petit dlq-navbtn" id="dlq-prec"{% if prec_url %} href="{{ prec_url }}" data-partiel="#dlq"{% else %} aria-disabled="true" tabindex="0"{% endif %}><span aria-hidden="true">‹</span> <span class="dlq-long">Semaine </span>précédente</a>
-      <a class="btn btn-petit dlq-navbtn" id="dlq-suiv"{% if suiv_url %} href="{{ suiv_url }}" data-partiel="#dlq"{% else %} aria-disabled="true" tabindex="0"{% endif %}><span class="dlq-long">Semaine </span>suivante <span aria-hidden="true">›</span></a>
-      <a class="btn btn-petit btn-fantome dlq-navbtn" id="dlq-courante"{% if not est_courante %} href="{{ url_for('dailylog.equipe') }}" data-partiel="#dlq"{% else %} aria-disabled="true" tabindex="0" aria-current="date"{% endif %}>Cette semaine</a>
+      <a class="btn btn-petit dlq-navbtn" id="dlq-prec"{% if prec_url %} href="{{ prec_url }}" data-partiel="#dlq"{% else %} aria-disabled="true" tabindex="0" role="link"{% endif %}><span aria-hidden="true">‹</span> <span class="dlq-long">Semaine </span>précédente</a>
+      <a class="btn btn-petit dlq-navbtn" id="dlq-suiv"{% if suiv_url %} href="{{ suiv_url }}" data-partiel="#dlq"{% else %} aria-disabled="true" tabindex="0" role="link"{% endif %}><span class="dlq-long">Semaine </span>suivante <span aria-hidden="true">›</span></a>
+      <a class="btn btn-petit btn-fantome dlq-navbtn" id="dlq-courante"{% if not est_courante %} href="{{ url_for('dailylog.equipe') }}" data-partiel="#dlq"{% else %} aria-disabled="true" tabindex="0" role="link" aria-current="date"{% endif %}>Cette semaine</a>
     </nav>
     <h2 class="dlq-titre" id="dlq-titre" tabindex="-1" data-partiel-titre>{{ titre_semaine }}</h2>
   </div>

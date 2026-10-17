@@ -109,13 +109,14 @@ const toastTexte = (p) => p.locator('#k-toasts .k-toast .k-toast-texte').last().
     await p.fill('#tache-1-motif', 'brouillon');
     await p.keyboard.press('Escape');
     await pause(200);
-    etape('Échap ferme la question (saisie vidée), le panneau reste ouvert, focus rendu à « Bloquée »',
+    etape('Échap ferme la question (saisie gardée), le panneau reste ouvert, focus rendu à « Bloquée »',
       await p.locator('#tache-1-blocage[hidden]').count() === 1 && await p.evaluate(() => document.getElementById('dialog-tache').open)
-      && await focusSur(p, '#tache-1-etat-bloque') && await p.inputValue('#tache-1-motif') === '', await focusDecrit(p));
+      && await focusSur(p, '#tache-1-etat-bloque') && await p.inputValue('#tache-1-motif') === 'brouillon', await focusDecrit(p));
     // Motif vide : refusé sans requête (champ obligatoire).
     let posts = 0;
     p.on('request', (r) => { if (r.method() === 'POST' && /\/taches\/1\/etat$/.test(r.url())) posts++; });
     await p.click('#tache-1-etat-bloque');
+    await p.fill('#tache-1-motif', '');
     await p.click('#tache-1-blocage-valider');
     await pause(300);
     etape('motif vide : aucun envoi, la question reste ouverte', posts === 0 && await p.locator('#tache-1-blocage:not([hidden])').count() === 1);

@@ -22,18 +22,31 @@ def contexte_fil_accueil(user_id: int) -> dict:
     (Tout · Échanges · Activité), page à partir du curseur `avant`,
     évènements automatiques regroupés, adresse de la page suivante."""
     categorie = film.categorie_demandee()
+    instant = _instant_lecture()
     taille = film.taille_jusqua(TAILLE_FIL_ACCUEIL,
                                 lambda post_id: posts.rang_dans_fil_mes_projets(user_id, categorie, post_id))
     lus = posts.list_feed_mes_projets(user_id, limit=taille + 1, categorie=categorie,
                                       avant=film.curseur_demande())
     fil, curseur = film.page(lus, taille)
-    non_vus = marquer_nouveaux(user_id, categorie, fil)
+    non_vus = marquer_nouveaux(user_id, categorie, fil, instant)
     return dict(fil=fil, fil_entrees=film.regrouper(fil), fil_categorie=categorie, fil_non_vus=non_vus,
                 fil_suite_id="fil-suite", fil_suite_cible="#fil-liste",
                 fil_suite_url=url_for("main.accueil", fil=categorie, avant=curseur) if curseur else None)
 
 
-def marquer_nouveaux(user_id: int, categorie: str, fil: list[dict]) -> dict:
+def _instant_lecture():
+    """Horloge de la base avant la lecture du fil (posts arrivés pendant la
+    lecture : ils restent « nouveaux »)."""
+    if film.curseur_demande():
+        return None
+    try:
+        return posts.instant_base()
+    except Exception:
+        current_app.logger.exception("Posts non vus\u00a0: horloge illisible")
+        return None
+
+
+def marquer_nouveaux(user_id: int, categorie: str, fil: list[dict], instant=None) -> dict:
     """Lot 17 (demande du gérant) : posts arrivés depuis la dernière visite
     de leur catégorie (hors les siens) marqués « nouveau » ; nombre de
     nouveautés des AUTRES catégories pour leurs onglets ; la catégorie
@@ -55,7 +68,7 @@ def marquer_nouveaux(user_id: int, categorie: str, fil: list[dict]) -> dict:
     # consomme pas les nouveautés de la personne.
     if not g.get("lecture_seule") and not g.get("mode_admin"):
         try:
-            posts.marquer_fil_vu(user_id, vues)
+            posts.marquer_fil_vu(user_id, vues, instant)
         except Exception:
             current_app.logger.exception("Posts non vus : enregistrement impossible")
     return {c: n for c, n in non_vus.items() if c not in vues and n}

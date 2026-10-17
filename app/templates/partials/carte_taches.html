@@ -11,6 +11,11 @@
       <h2 class="carte-titre">Tâches</h2>
       {% with oob=false %}{% include "partials/taches_compteur.html" %}{% endwith %}
     </div>
+    {# Lot 18 (revue UX) : la création d'une tâche se trouvait seulement sous
+       « + Nouveau post » du fil ; elle s'ouvre aussi d'ici. #}
+    {% if peut_gerer and not projet_clos %}
+    <button type="button" class="btn btn-petit carte-taches-ajout" data-open-post-dialog data-intent="tache" data-gere="1">+ Nouvelle tâche</button>
+    {% endif %}
   </div>
   {% if taches %}
   <a href="#posts-projet" class="lien-evitement-interne">Aller aux posts du projet</a>

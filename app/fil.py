@@ -65,9 +65,17 @@ def curseur_demande():
     brut = request.args.get("avant") or ""
     date, _, ident = brut.rpartition("_")
     try:
-        return datetime.datetime.fromisoformat(date), int(ident)
+        instant, numero = datetime.datetime.fromisoformat(date), int(ident)
     except ValueError:
         return None
+    # Lot 18 (revue QA) : un curseur forgé hors des bornes de PostgreSQL
+    # (bigint, fuseau ±14 h, années 1 à 9999) donnait une erreur 500.
+    if not 0 < numero < 2 ** 63:
+        return None
+    decalage = instant.utcoffset()
+    if decalage is not None and abs(decalage) > datetime.timedelta(hours=14):
+        return None
+    return instant, numero
 
 
 def curseur_de(post: dict) -> str:

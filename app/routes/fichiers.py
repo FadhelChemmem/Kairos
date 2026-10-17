@@ -7,7 +7,7 @@ from ..repositories import posts as posts_repo
 from ..repositories import projets as projets_repo
 from ..repositories import taches as taches_repo
 from ..repositories import utilisateurs as utilisateurs_repo
-from ..storage import delete_upload, is_image_filename, save_upload
+from ..storage import delete_upload, is_image_filename, refus_fichier, save_upload
 from ..utils import avatar_version, redirect_vers_next
 
 bp = Blueprint("fichiers", __name__, url_prefix="/fichiers")
@@ -48,6 +48,8 @@ def upload_tache(tache_id: int):
     fichier = request.files.get("fichier")
     if not fichier or not fichier.filename:
         return _refus("Aucun fichier sélectionné.", 422)
+    if refus := refus_fichier(fichier):
+        return _refus(refus, 422)
 
     nom_fichier, chemin = save_upload(fichier, f"taches/{tache_id}")
     # Fichier orphelin sur disque si l'INSERT échoue juste après (audit

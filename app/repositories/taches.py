@@ -174,7 +174,9 @@ def list_mes_taches(user_id: int, limit: int = 10) -> list[dict]:
                      WHERE ti.tache_id = t.id AND ti.utilisateur_id = %(uid)s
                    )
               )
-        ORDER BY t.date_echeance NULLS LAST
+          -- Lot 18 : « créée par moi » ne suffit plus si je ne vois plus le projet.
+          AND EXISTS (SELECT 1 FROM v_projet_visibilite vv WHERE vv.projet_id = p.id AND vv.utilisateur_id = %(uid)s)
+        ORDER BY (t.date_echeance < CURRENT_DATE - 90), t.date_echeance NULLS LAST  -- lot 18 : le stock très en retard après le reste
         LIMIT %(limit)s
     """
     with db.get_cursor() as cur:
@@ -240,7 +242,8 @@ def list_deadlines(user_id: int, limit: int = 20) -> list[dict]:
     (chef, co-chef, intervenant projet, ou intervenant tâche)."""
     sql = """
         SELECT DISTINCT t.id, t.titre, t.etat, t.date_echeance, t.type_deadline,
-               p.id AS projet_id, p.code AS projet_code, p.nom AS projet_nom
+               p.id AS projet_id, p.code AS projet_code, p.nom AS projet_nom,
+               (t.date_echeance < CURRENT_DATE - 90) AS ancienne
         FROM tache t
         JOIN projet p ON p.id = t.projet_id
         LEFT JOIN projet_co_chef cc ON cc.projet_id = p.id AND cc.utilisateur_id = %(uid)s
@@ -262,7 +265,10 @@ def list_deadlines(user_id: int, limit: int = 20) -> list[dict]:
                 OR pi.utilisateur_id IS NOT NULL
                 OR ti.utilisateur_id IS NOT NULL
               )
-        ORDER BY t.date_echeance
+        -- Lot 18 (revue métier) : les retards de plus de 90 jours (stock repris
+        -- de Chronos) passent après le reste, sinon ils masquent l'échéance de
+        -- demain dans les listes plafonnées (accueil : 6 ou 12 lignes).
+        ORDER BY ancienne, t.date_echeance
         LIMIT %(limit)s
     """
     with db.get_cursor() as cur:
@@ -289,7 +295,7 @@ def list_deadlines_tous(chef_id: int | None = None, equipe_code: str | None = No
           AND t.date_echeance IS {'NULL' if sans_echeance else 'NOT NULL'}
           AND (%(chef)s::bigint IS NULL OR p.chef_projet_id = %(chef)s::bigint)
           AND (%(equipe)s::text IS NULL OR p.equipe_code = %(equipe)s::text)
-        ORDER BY {'p.code, t.titre, t.id' if sans_echeance else 't.date_echeance, p.code, t.id'}
+        ORDER BY {'p.code, t.titre, t.id' if sans_echeance else '(t.date_echeance < CURRENT_DATE - 90), t.date_echeance, p.code, t.id'}
         LIMIT %(limit)s
     """
     with db.get_cursor() as cur:
@@ -322,6 +328,7 @@ def list_bloquees(user_id: int | None = None, *, tous: bool = False, chef_id: in
                OR EXISTS (SELECT 1 FROM projet_co_chef cc WHERE cc.projet_id = p.id AND cc.utilisateur_id = %(uid)s)
                OR EXISTS (SELECT 1 FROM projet_intervenant pi WHERE pi.projet_id = p.id AND pi.utilisateur_id = %(uid)s)
                OR EXISTS (SELECT 1 FROM tache_intervenant ti WHERE ti.tache_id = t.id AND ti.utilisateur_id = %(uid)s))
+          AND (%(tous)s OR EXISTS (SELECT 1 FROM v_projet_visibilite vv WHERE vv.projet_id = p.id AND vv.utilisateur_id = %(uid)s))
           AND (%(chef)s::bigint IS NULL OR p.chef_projet_id = %(chef)s::bigint)
           AND (%(equipe)s::text IS NULL OR p.equipe_code = %(equipe)s::text)
         ORDER BY t.bloque_le NULLS FIRST, p.code, t.id
@@ -604,7 +611,8 @@ def version(tache_id: int) -> str | None:
 
 
 def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, peut_gerer: bool = False,
-             annulation: bool = False, motif: str | None = None, version_attendue: str | None = None) -> bool:
+             annulation: bool = False, motif: str | None = None, version_attendue: str | None = None,
+             remplace: dict | None = None) -> bool:
     """Changement d'état simple (En cours / Bloqué / Vérifié / Arrêt /
     Abandonné) — avec un post automatique "ancien état → nouvel état"
     depuis le 2026-09-29 (P1) ; la clôture ("Terminé", voir close_tache)
@@ -646,20 +654,28 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, 
 
     `version_attendue` (« Annuler », recette du lot 14 n° 5) : version de
     la tâche (voir `version`) produite par le geste annulé ; si la tâche a
-    changé depuis, TacheModifiee est levée et rien n'est écrit."""
+    changé depuis, TacheModifiee est levée et rien n'est écrit.
+
+    `remplace` (lot 18, revue QA) : dictionnaire que la fonction remplit avec
+    l'état RÉELLEMENT remplacé (lu sous verrou : etat, titre, bloque_motif,
+    bloque_par). La route s'en sert pour les notifications et le jeton
+    « Annuler » plutôt que de la lecture faite avant le verrou, qui pouvait
+    être périmée si deux gestes arrivaient en même temps."""
     from ..utils import tache_etat_style
 
     motif = normaliser_motif(motif)
     with db.get_cursor(user_id=current_user_id) as cur:
         _verrouiller_projet(cur, projet_id)
         cur.execute(
-            """SELECT etat, bloque_motif, extract(epoch FROM updated_at)::text AS version
+            """SELECT etat, titre, bloque_motif, bloque_par, extract(epoch FROM updated_at)::text AS version
                FROM tache WHERE id = %s AND projet_id = %s FOR UPDATE""",
             (tache_id, projet_id),
         )
         avant = cur.fetchone()
         if avant is None:
             return False
+        if remplace is not None:
+            remplace.update({k: avant[k] for k in ("etat", "titre", "bloque_motif", "bloque_par")})
         if version_attendue is not None and avant["version"] != version_attendue:
             raise TacheModifiee()
         if not peut_gerer and (etat in ETATS_RESERVES_GESTION or avant["etat"] in ETATS_RESERVES_GESTION):

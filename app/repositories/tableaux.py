@@ -51,7 +51,7 @@ def compteurs(uid: int, tous: bool, aujourdhui, jour) -> dict:
           (SELECT count(*) FROM ouvertes WHERE etat = 'bloque') AS bloquees,
           (SELECT count(DISTINCT projet_id) FROM ouvertes WHERE etat = 'bloque') AS projets_bloques,
           (SELECT count(*) FROM ouvertes o
-            WHERE NOT EXISTS (SELECT 1 FROM tache_intervenant ti WHERE ti.tache_id = o.id)) AS sans_intervenant,
+            WHERE NOT EXISTS (SELECT 1 FROM tache_intervenant ti JOIN utilisateur ia ON ia.id = ti.utilisateur_id AND ia.actif WHERE ti.tache_id = o.id)) AS sans_intervenant,
           (SELECT count(*) FROM ouvertes WHERE etat = 'en_cours' AND date_echeance IS NULL) AS sans_echeance,
           (SELECT count(*) FROM perim
             WHERE NOT EXISTS (SELECT 1 FROM ouvertes o WHERE o.projet_id = perim.id)) AS projets_sans_tache
@@ -83,7 +83,7 @@ _LISTES = {
     # Même ordre que la section « Bloquées » (taches.list_bloquees, recette
     # du lot 14 n° 10) : le blocage le plus ancien d'abord.
     "bloquees": ("o.etat = 'bloque'", "o.bloque_le NULLS FIRST, perim.code, o.id"),
-    "sans_intervenant": ("NOT EXISTS (SELECT 1 FROM tache_intervenant ti WHERE ti.tache_id = o.id)",
+    "sans_intervenant": ("NOT EXISTS (SELECT 1 FROM tache_intervenant ti JOIN utilisateur ia ON ia.id = ti.utilisateur_id AND ia.actif WHERE ti.tache_id = o.id)",
                          "o.date_echeance NULLS LAST, perim.code, o.id"),
     "sans_echeance": ("o.etat = 'en_cours' AND o.date_echeance IS NULL", "perim.code, o.titre, o.id"),
 }
@@ -205,7 +205,9 @@ def taches_de_mes_projets(uid: int, limit: int = 200) -> list[dict]:
                OR t.created_by = %(uid)s
                OR EXISTS (SELECT 1 FROM projet_co_chef cc WHERE cc.projet_id = p.id AND cc.utilisateur_id = %(uid)s)
                OR EXISTS (SELECT 1 FROM tache_intervenant ti WHERE ti.tache_id = t.id AND ti.utilisateur_id = %(uid)s))
-        ORDER BY t.date_echeance NULLS LAST, p.code, t.id
+          -- Lot 18 : « créée par moi » ne suffit plus si je ne vois plus le projet.
+          AND EXISTS (SELECT 1 FROM v_projet_visibilite vv WHERE vv.projet_id = p.id AND vv.utilisateur_id = %(uid)s)
+        ORDER BY (t.date_echeance < CURRENT_DATE - 90), t.date_echeance NULLS LAST, p.code, t.id
         LIMIT %(limit)s
         """,
         {"uid": uid, "limit": limit},

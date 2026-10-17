@@ -14,7 +14,7 @@ from ..repositories import utilisateurs as utilisateurs_repo
 from .. import fil as film
 from .. import partiel
 from .. import validation as v
-from ..storage import delete_upload, save_upload
+from ..storage import delete_upload, refus_fichier, save_upload
 from ..utils import EQUIPE_CHOICES, is_lien_valide, redirect_vers_next
 
 bp = Blueprint("posts", __name__, url_prefix="/posts")
@@ -34,6 +34,14 @@ REACTIONS_VALIDES = {"ok", "pouce"}
 
 def _safe_redirect(default_endpoint="main.accueil"):
     return redirect_vers_next(default_endpoint)
+
+
+def _id_form(nom: str) -> int | None:
+    """Identifiant optionnel d'un formulaire : entier strictement positif et
+    tenant dans un bigint, sinon None (lot 18, revue QA : « 0 » ou un
+    nombre énorme forgé donnait une erreur 500 à l'INSERT)."""
+    valeur = request.form.get(nom, type=int)
+    return valeur if valeur is not None and 0 < valeur < 2 ** 63 else None
 
 
 def _refus(message: str, statut: int = 422, champ: str | None = None):
@@ -116,9 +124,9 @@ def creer():
     `lien`, `mentions` (personnes taguées, plusieurs ids) et `fichier`
     (pièce jointe) sont optionnels — champs du composeur "Nouveau post",
     panneau Requête (ajoutés 2026-09-18, voir spec)."""
-    projet_id = request.form.get("projet_id", type=int)
+    projet_id = _id_form("projet_id")
     type_code = request.form.get("type_code", "envoi")
-    contenu = request.form.get("contenu", "").strip()
+    contenu = v.texte_net(request.form.get("contenu"))
     objet = request.form.get("objet", "").strip()
     # Longueurs (lot 8), objet et description séparément (chacun sa limite
     # dans le formulaire), avant de les réunir.
@@ -131,9 +139,9 @@ def creer():
         # Composeur Requête : "Objet" + "Description" (voir maquette) —
         # pas de colonne dédiée, on les combine dans post.contenu.
         contenu = f"{objet}\n\n{contenu}" if contenu else objet
-    parent_post_id = request.form.get("parent_post_id", type=int)
+    parent_post_id = _id_form("parent_post_id")
     # Lot 15 : une Requête de projet peut citer une tâche de ce projet.
-    tache_id = request.form.get("tache_id", type=int) if type_code == "requete" else None
+    tache_id = _id_form("tache_id") if type_code == "requete" else None
     lien = request.form.get("lien", "").strip() or None
     # Schéma de lien restreint (PROMPT_CORRECTIONS.md P0 #4) : un lien
     # "javascript:..." s'exécuterait au clic pour quiconque ouvre le post
@@ -318,17 +326,14 @@ def fichiers_postes() -> tuple[list, str | None]:
     (liste, message de refus). Au plus 10 ; extension de la liste blanche
     (storage.PIECE_JOINTE_EXTENSIONS) — un fichier refusé est nommé, plus
     rien n'est enregistré sans extension en silence."""
-    import os
-
-    from ..storage import PIECE_JOINTE_EXTENSIONS
+    from ..storage import refus_fichier
 
     fichiers = [f for f in request.files.getlist("fichier") if f and f.filename]
     if len(fichiers) > MAX_FICHIERS_POST:
         return [], f"Au plus {MAX_FICHIERS_POST} fichiers par post."
     for f in fichiers:
-        ext = os.path.splitext(f.filename)[1].lower()
-        if ext not in PIECE_JOINTE_EXTENSIONS:
-            return [], f"Type de fichier non accepté\u00a0: «\u00a0{f.filename[:80]}\u00a0»."
+        if refus := refus_fichier(f):
+            return [], refus
     return fichiers, None
 
 
@@ -411,14 +416,14 @@ def commenter(post_id: int):
     refus = _refus_si_clos(post)
     if refus:
         return refus
-    contenu = request.form.get("contenu", "").strip()
+    contenu = v.texte_net(request.form.get("contenu"))
     if not contenu:
         return _refus("Le commentaire ne peut pas être vide.", 422, "contenu")
     if erreur := v.trop_long(contenu, v.MAX_COMMENTAIRE, "Commentaire"):
         return _refus(erreur, 422, "contenu")
 
     # Ancien champ "@ Taguer" séparé (avant le 2026-09-29) — encore accepté.
-    mentionne_user_id = request.form.get("mentionne_user_id", type=int)
+    mentionne_user_id = _id_form("mentionne_user_id")
     if mentionne_user_id and not posts_repo.peut_voir(post["id"], post["projet_id"], mentionne_user_id):
         mentionne_user_id = None
     # Tags "@Prénom Nom" écrits dans le texte (retour Fadhel, 2026-09-29).
@@ -428,7 +433,7 @@ def commenter(post_id: int):
     # visé DOIT appartenir à CE post (pas un id deviné d'un autre post/
     # projet), et être lui-même de premier niveau — un seul niveau de
     # profondeur, imposé ici plutôt qu'en base (voir schema.sql).
-    parent_commentaire_id = request.form.get("parent_commentaire_id", type=int)
+    parent_commentaire_id = _id_form("parent_commentaire_id")
     parent_commentaire = None
     if parent_commentaire_id:
         parent_commentaire = posts_repo.get_commentaire(parent_commentaire_id)
@@ -455,6 +460,8 @@ def commenter(post_id: int):
     piece_jointe = None
     chemin = None
     if fichier and fichier.filename:
+        if refus := refus_fichier(fichier):
+            return _refus(refus, 422, "fichier")
         nom_fichier, chemin = save_upload(fichier, f"posts/{post_id}/commentaires")
         piece_jointe = (nom_fichier, chemin)
 
@@ -547,13 +554,16 @@ def modifier_commentaire(commentaire_id: int):
     refus = _refus_si_clos(commentaire)
     if refus:
         return refus
-    contenu = request.form.get("contenu", "").strip()
+    contenu = v.texte_net(request.form.get("contenu"))
     if not contenu:
         return _refus("Le commentaire ne peut pas être vide.", 422, "contenu")
     if erreur := v.trop_long(contenu, v.MAX_COMMENTAIRE, "Commentaire"):
         return _refus(erreur, 422, "contenu")
     if commentaire.get("supprime_le") is not None:
         abort(404)
+    nouveau_fichier = request.files.get("fichier")
+    if nouveau_fichier and nouveau_fichier.filename and (refus := refus_fichier(nouveau_fichier)):
+        return _refus(refus, 422, "fichier")
     post = {"id": commentaire["post_id"], "projet_id": commentaire["projet_id"]}
     nouveaux = posts_repo.modifier_commentaire(commentaire_id, g.user["id"], contenu, _tags_du_texte(post, contenu))
     if nouveaux is None:
@@ -742,7 +752,7 @@ def modifier(post_id: int):
     if not peut_modifier(post):
         abort(403)
     objet = request.form.get("objet", "").strip()
-    contenu = request.form.get("contenu", "").strip()
+    contenu = v.texte_net(request.form.get("contenu"))
     lien = request.form.get("lien", "").strip() or None
     erreur = v.premiere_erreur(
         v.trop_long(objet, v.MAX_OBJET_REQUETE, "Objet de la requête"),
@@ -765,6 +775,11 @@ def modifier(post_id: int):
     fichiers, refus_pj = fichiers_postes()
     if refus_pj:
         return _refus(refus_pj, 422, "fichier")
+    # Lot 18 : la limite de 10 est cumulative (pièces déjà jointes, moins
+    # celles qu'on retire, plus les nouvelles).
+    conservees = [pj for pj in posts_repo.pieces_du_post(post_id) if pj["id"] not in retirees_demandees]
+    if len(conservees) + len(fichiers) > MAX_FICHIERS_POST:
+        return _refus(f"Au plus {MAX_FICHIERS_POST} fichiers par post.", 422, "fichier")
     try:
         for fichier in fichiers:
             nom, chemin = save_upload(fichier, f"posts/projet-{post['projet_id']}" if post["projet_id"]

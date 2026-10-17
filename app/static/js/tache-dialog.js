@@ -561,7 +561,7 @@
   /* « Qu'est-ce qui bloque ? » (lot 14, revue produit P0-1)            */
   /* ---------------------------------------------------------------- */
   // « Bloquée » ouvre la question par-dessus le panneau (rien ne bouge) ;
-  // le motif est obligatoire. Annuler ou Échap la ferment (saisie vidée),
+  // le motif est obligatoire. Annuler ou Échap la ferment (saisie gardée),
   // le focus revient à « Bloquée » ; Entrée envoie, Maj+Entrée va à la ligne.
   function questionBlocage(bouton) {
     var id = bouton && bouton.getAttribute('data-blocage-ouvrir');
@@ -570,8 +570,7 @@
   function fermerBlocage(pop, rendreFocus) {
     if (!pop || pop.hidden) return;
     pop.hidden = true;
-    var champ = pop.querySelector('textarea');
-    if (champ) champ.value = '';
+    // Lot 18 : le motif saisi est gardé (Échap ou Annuler ne le jette plus).
     if (K && K.effacerErreurs) K.effacerErreurs(pop);
     var bouton = document.querySelector('[data-blocage-ouvrir="' + pop.id + '"]');
     if (bouton) {

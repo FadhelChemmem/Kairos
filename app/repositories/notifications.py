@@ -70,7 +70,14 @@ def list_notifications(user_id: int, limit: int = 50, avec_simulees: bool = Fals
         SELECT n.id, n.categorie,
                -- Lot 16 (revue sécurité) : l'extrait d'un post supprimé ne
                -- reste pas lisible dans les notifications.
-               CASE WHEN p.supprime_le IS NOT NULL
+               -- Lot 18 (audit droits) : plus d'extrait si le projet n'est plus
+               -- visible par la personne (retirée du projet, changée d'équipe).
+               CASE WHEN COALESCE(n.projet_id, p.projet_id, t.projet_id) IS NOT NULL
+                         AND NOT EXISTS (SELECT 1 FROM v_projet_visibilite vv
+                                         WHERE vv.projet_id = COALESCE(n.projet_id, p.projet_id, t.projet_id)
+                                           AND vv.utilisateur_id = n.utilisateur_id)
+                    THEN 'Notification d’un projet auquel vous n’avez plus accès.'
+                    WHEN p.supprime_le IS NOT NULL
                     THEN regexp_replace(n.message, '[[:space:] ]*:[[:space:] ]*«.*$', '') || ' (post supprimé).'
                     ELSE n.message END AS message,
                n.lu, n.created_at,

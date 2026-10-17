@@ -158,7 +158,7 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     await p.keyboard.press('Escape');
     await p.unroute(/\/taches\/5\/fenetre$/);
     // Chargement lent : état « Chargement… » visible, réponse ignorée si fermée.
-    await p.route(/\/taches\/6\/fenetre$/, async (r) => { await pause(600); await r.continue(); });
+    await p.route(/\/taches\/6\/fenetre$/, async (r) => { await pause(600); await r.continue().catch(() => {}); });
     await p.click('[data-open-tache="6"] [data-ouvrir-tache]');
     etape('état « Chargement de la tâche… »', (await p.locator('#dialog-tache .tache-dialog-chargement').innerText()).includes('Chargement de la tâche'));
     await p.keyboard.press('Escape');

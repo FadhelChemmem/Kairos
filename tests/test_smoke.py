@@ -21,7 +21,7 @@ import sys
 import tempfile
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 
 def _install_fake_psycopg2():
@@ -427,6 +427,9 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.posts.fil_vu": {},
             "app.repositories.posts.compter_non_vus": {"echanges": 0, "activite": 0},
             "app.repositories.posts.marquer_fil_vu": None,
+            "app.repositories.posts.instant_base": None,
+            "app.repositories.securite.compter_tentatives_recentes": 0,
+            "app.repositories.securite.enregistrer_tentative": None,
             "app.repositories.taches.derniere_cloture": None,
             "app.repositories.utilisateurs.list_actifs": UTILISATEURS_ACTIFS,
             "app.repositories.utilisateurs.list_collaborateurs_recents": [3],
@@ -1196,7 +1199,8 @@ class SmokeTestCase(SmokeBase):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         self.assertIn("/projets/1", resp.headers["Location"])
-        set_etat.assert_called_once_with(5, 1, "bloque", 1, peut_gerer=False, annulation=False, motif="Plans archi")
+        set_etat.assert_called_once_with(5, 1, "bloque", 1, peut_gerer=False, annulation=False, remplace=ANY,
+                                         motif="Plans archi")
 
     def test_changer_etat_tache_introuvable_ne_plante_pas(self):
         """set_etat() renvoie False quand la tâche n'appartient pas à ce
@@ -3457,8 +3461,15 @@ class TestControlesDAccesStricts(unittest.TestCase):
     # validation d'un chef/co-chef — à la différence de ajouter_intervenant
     # ci-dessus (qui ajoute quelqu'un d'autre et exige user_can_manage). ---
     def test_rejoindre_projet_ajoute_lutilisateur_connecte(self):
-        _, add = self._requete("post", "/projets/1/rejoindre", "app.repositories.projets.add_intervenant")
+        _, add = self._requete("post", "/projets/1/rejoindre", "app.repositories.projets.add_intervenant",
+                               **{"app.auth.get_user_by_id": {**USER, "role": "intervenant"}})
         add.assert_called_once_with(1, USER["id"], USER["id"])
+
+    def test_rejoindre_projet_refuse_a_ladmin(self):
+        # Lot 18 : l'Admin gère déjà tous les projets ; un POST forgé ne l'inscrit pas.
+        resp, add = self._requete("post", "/projets/1/rejoindre", "app.repositories.projets.add_intervenant")
+        add.assert_not_called()
+        self.assertEqual(resp.status_code, 302)
 
     def test_rejoindre_projet_deja_rattache_nexecute_rien(self):
         _, add = self._requete(

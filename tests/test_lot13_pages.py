@@ -322,6 +322,8 @@ class TestUtilisateursFormulaires(_Base):
 
     def test_mot_de_passe_actuel_faux(self):
         with patch("app.routes.utilisateurs.verify_password", return_value=False), \
+             patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
+             patch("app.repositories.securite.enregistrer_tentative"), \
              patch("app.repositories.utilisateurs.set_password") as changer:
             resp = self._appel("post", "/utilisateurs/moi/mot-de-passe", partiel("#mot-de-passe"),
                                data={"mot_de_passe_actuel": "x", "nouveau_mot_de_passe": "abcdefghij", "confirmation": "abcdefghij"})
@@ -335,6 +337,8 @@ class TestUtilisateursFormulaires(_Base):
 
     def test_mot_de_passe_change_champs_vides(self):
         with patch("app.routes.utilisateurs.verify_password", return_value=True), \
+             patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
+             patch("app.repositories.securite.enregistrer_tentative"), \
              patch("app.repositories.utilisateurs.set_password") as changer:
             resp = self._appel("post", "/utilisateurs/moi/mot-de-passe", partiel("#mot-de-passe"),
                                data={"mot_de_passe_actuel": "x", "nouveau_mot_de_passe": "abcdefghij", "confirmation": "abcdefghij"})

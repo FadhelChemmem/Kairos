@@ -101,3 +101,24 @@ html.k-js .pj-champ textarea { padding-bottom: 42px; min-height: 96px; }
 }
 .search-combobox-effacer:hover { background: var(--hover-bg); color: var(--text-strong); }
 .search-combobox-effacer:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 1px; }
+
+/* ===== Lot 18 : corrections de la revue UX ===== */
+/* Bouton Fermer du panneau de tâche : le bloc « pointer: coarse » de app.css
+   lui retirait sa position absolue (il passait sur la pastille d'état). */
+.dialog-fermer.tache-dialog-fermer { position: absolute; top: 14px; right: 14px; }
+/* Daily log, téléphone : la barre de total reste au-dessus de la navigation
+   basse (la règle ≤ 1000 px remettait bottom: 0 et rognait « Enregistrer »). */
+@media (max-width: 1000px) {
+  .dl9 .dl-totalbar { bottom: calc(var(--nav-basse-h, 0px) + env(safe-area-inset-bottom, 0px)); }
+}
+@media (max-width: 600px) and (min-height: 481px) {
+  .dl9 .dl-totalbar { padding-bottom: 12px; }
+}
+/* Bordures de champ et interrupteur éteint : 3:1 au moins (WCAG 1.4.11). */
+:root { --control-border: #818c84; }
+:root[data-theme="dark"] { --control-border: #66746b; }
+/* Accueil, téléphone : lien vers « Mes tâches », sous le fil. */
+.acc-lien-taches { display: none; font-size: 13px; font-weight: 600; }
+@media (max-width: 900px) { .acc-lien-taches { display: inline-block; } }
+/* « + Nouvelle tâche » dans l'en-tête de la carte Tâches. */
+.carte-taches-entete { display: flex; align-items: center; justify-content: space-between; gap: var(--esp-3); flex-wrap: wrap; }

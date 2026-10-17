@@ -343,18 +343,26 @@ def compter_non_vus(user_id: int, vus: dict) -> dict:
         {"echanges": 0, "activite": 0}
 
 
-def marquer_fil_vu(user_id: int, categories) -> None:
-    """La personne vient de regarder ces catégories du fil."""
+def instant_base():
+    """Horloge de la base, à relever AVANT de lire le fil (lot 18, revue QA) :
+    un post validé pendant la lecture n'est alors pas compté comme vu."""
+    ligne = db.query_one("SELECT clock_timestamp() AS t")
+    return ligne["t"] if ligne else None
+
+
+def marquer_fil_vu(user_id: int, categories, instant=None) -> None:
+    """La personne vient de regarder ces catégories du fil (à `instant`, relevé
+    avant la lecture du fil ; maintenant par défaut)."""
     cats = [c for c in categories if c in CATEGORIES_VUES]
     if not cats:
         return
     db.execute(
         """
         INSERT INTO utilisateur_fil_vu (utilisateur_id, categorie, vu_le)
-        SELECT %s, c, now() FROM unnest(%s::text[]) AS c
+        SELECT %s, c, COALESCE(%s::timestamptz, now()) FROM unnest(%s::text[]) AS c
         ON CONFLICT (utilisateur_id, categorie) DO UPDATE SET vu_le = EXCLUDED.vu_le
         """,
-        (user_id, cats),
+        (user_id, instant, cats),
         user_id=user_id,
     )
 
