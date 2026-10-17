@@ -1119,6 +1119,16 @@ CREATE TABLE IF NOT EXISTS utilisateur_preference (
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- 0022 (lot 17) : dernière consultation du fil de l'accueil par catégorie.
+CREATE TABLE IF NOT EXISTS utilisateur_fil_vu (
+  utilisateur_id  BIGINT NOT NULL REFERENCES utilisateur(id),
+  categorie       TEXT NOT NULL CHECK (categorie IN ('echanges', 'activite')),
+  vu_le           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (utilisateur_id, categorie)
+);
+COMMENT ON TABLE utilisateur_fil_vu IS
+  'Dernière consultation du fil de l''accueil par catégorie (0022) : les posts plus récents sont « nouveaux ».';
+
 CREATE TABLE IF NOT EXISTS dailylog_preference (
   utilisateur_id    BIGINT PRIMARY KEY REFERENCES utilisateur(id),
   objectif_minutes  SMALLINT NOT NULL DEFAULT 480,
@@ -1560,5 +1570,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0018_modes_admin_et_date_simulee'),
   ('0019_lot13_etat_projet_et_temps'),
   ('0020_lot14_blocage_et_cloture'),
-  ('0021_lot15_posts_et_preferences')
+  ('0021_lot15_posts_et_preferences'),
+  ('0022_lot17_fil_vu')
 ON CONFLICT (version) DO NOTHING;

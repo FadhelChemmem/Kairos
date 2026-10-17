@@ -63,7 +63,7 @@ from migrate_from_chronos import (  # noqa: E402
 )
 from mysqldump_parser import load_dump  # noqa: E402
 
-MIGRATION_ATTENDUE = "0021_lot15_posts_et_preferences"
+MIGRATION_ATTENDUE = "0022_lot17_fil_vu"
 
 # Données métier effacées puis rechargées (ou laissées vides) — ordre
 # indifférent pour TRUNCATE. Toute table de la base doit figurer ici ou
@@ -80,7 +80,7 @@ TABLES_EFFACEES = (
 # Jamais modifiées (empreinte comparée avant/après), sauf audit_log qui
 # reçoit une seule ligne de synthèse.
 TABLES_CONSERVEES = (
-    "utilisateur", "utilisateur_session", "dailylog_preference", "utilisateur_preference",
+    "utilisateur", "utilisateur_session", "dailylog_preference", "utilisateur_preference", "utilisateur_fil_vu",
     "equipe", "lot", "post_type", "reaction_type",
     "audit_log", "tentative_securite", "schema_migrations",
 )
