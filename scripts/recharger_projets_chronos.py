@@ -63,7 +63,7 @@ from migrate_from_chronos import (  # noqa: E402
 )
 from mysqldump_parser import load_dump  # noqa: E402
 
-MIGRATION_ATTENDUE = "0022_lot17_fil_vu"
+MIGRATION_ATTENDUE = "0023_equipes_vd_et_etat_projet"
 
 # Données métier effacées puis rechargées (ou laissées vides) — ordre
 # indifférent pour TRUNCATE. Toute table de la base doit figurer ici ou

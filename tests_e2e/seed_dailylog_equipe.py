@@ -27,7 +27,7 @@ INSERT INTO utilisateur (id, email, mot_de_passe_hash, prenom, nom, role, equipe
  (6, 'omar@x.tn', '{H}', 'Omar', 'Urbs', 'chef_de_projet', 'URBS', now() - interval '200 days', true, 'Africa/Tunis'),
  (7, 'lina@x.tn', '{H}', 'Lina', 'Urbs', 'intervenant', 'URBS', now() - interval '200 days', true, 'America/Cayenne'),
  (8, 'rh@x.tn', '{H}', 'Rania', 'RH', 'rh', NULL, now() - interval '200 days', true, 'Africa/Tunis'),
- (9, 'client@x.tn', '{H}', 'Cli', 'Ent', 'client', 'IPCO', now() - interval '200 days', true, 'Africa/Tunis'),
+ (9, 'client@x.tn', '{H}', 'Cli', 'Ent', 'client', 'VD', now() - interval '200 days', true, 'Africa/Tunis'),
  (10, 'ancien@x.tn', '{H}', 'Ancien', 'Compte', 'intervenant', 'MIDGARD', now() - interval '200 days', true, 'Africa/Tunis');
 UPDATE utilisateur SET actif = false WHERE id = 10;
 SELECT setval(pg_get_serial_sequence('utilisateur','id'), 10);

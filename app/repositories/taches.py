@@ -363,9 +363,11 @@ def _verrouiller_projet(cur, projet_id: int) -> None:
     d'une tâche (audit données lot 10, I2). Sans ce verrou, deux tâches
     bloquées clôturées en même temps voient chacune l'autre encore bloquée
     (instantanés concurrents) : aucune ne débloque le projet, qui reste
-    « Bloqué » sans tâche bloquée. Pris au début et en NO KEY UPDATE : pas
-    d'interblocage avec les verrous FOR KEY SHARE que posent les clés
-    étrangères des posts insérés dans la même transaction."""
+    « Bloqué » sans tâche bloquée (ou l'inverse, avec la règle du lot 18 : une
+    tâche En cours créée après un blocage remet le projet En cours). Pris au
+    début et en NO KEY UPDATE : pas d'interblocage avec les verrous FOR KEY
+    SHARE que posent les clés étrangères des posts insérés dans la même
+    transaction."""
     cur.execute("SELECT 1 FROM projet WHERE id = %s FOR NO KEY UPDATE", (projet_id,))
 
 
@@ -412,12 +414,13 @@ def _retirer_post_annule(cur, projet_id: int, auteur_id: int, evenement: str, co
 def recalculer_etat_projet(cur, projet_id: int, current_user_id: int | None,
                            annulation: bool = False) -> tuple[str, str] | None:
     """État d'un projet OUVERT recalculé d'après ses tâches (décision 1 du
-    lot 13, règle du lot 11) : Bloqué si et seulement si une de ses tâches
-    est bloquée, En cours sinon ; un projet Terminé ou Abandonné ne bouge
+    lot 13, précisée au lot 18) : Bloqué si une de ses tâches bloquées n'a
+    pas été suivie d'une tâche En cours créée après son blocage, En cours
+    sinon ; un projet Terminé ou Abandonné ne bouge
     pas. Fonction unique, appelée dans la transaction de TOUTE écriture de
     tâche ou de projet (création, changement d'état, clôture, informations
     du projet), sous le verrou du projet (_verrouiller_projet ou FOR
-    UPDATE) — même règle que fn_etat_projet_recalcule (migration 0019), qui
+    UPDATE) — même règle que fn_etat_projet_recalcule (migrations 0019 et 0023), qui
     sert ici. Un changement donne le post automatique habituel « En cours →
     Bloqué » au nom de l'acteur. Renvoie (avant, après), None sans
     changement.
@@ -496,8 +499,8 @@ def create_tache(
             """,
             (projet_id, tache_id, parent_post_id, current_user_id, titre),
         )
-        # Lot 13 : l'état du projet suit TOUTES ses tâches (une nouvelle tâche
-        # ne débloque plus un projet qui garde une tâche bloquée).
+        # L'état du projet suit ses tâches (fn_etat_projet_recalcule, 0023) :
+        # une tâche En cours créée APRÈS un blocage remet le projet En cours.
         recalculer_etat_projet(cur, projet_id, current_user_id)
         return tache_id
 

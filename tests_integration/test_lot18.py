@@ -345,3 +345,145 @@ class TestMatriceDesRoles(BaseIntegration):
         for role in ("inter_r", "inter_t", "client_m"):
             with self.subTest(role=role):
                 self.assertEqual(self.statut(getattr(self, role), f"/projets/{apd}"), 200)
+
+
+class TestRegleDeBlocageDuProjet(_Base):
+    """Décision du gérant (17/10) : une tâche bloquée bloque le projet ; la
+    création d'une autre tâche, En cours, APRÈS le blocage le remet En cours."""
+
+    def etat(self):
+        return self.sql("SELECT etat FROM projet WHERE id = %s", (self.p,))[0]["etat"]
+
+    def etat_tache(self, tid):
+        return self.sql("SELECT etat FROM tache WHERE id = %s", (tid,))[0]["etat"]
+
+    def bloquer(self, tid, qui=None):
+        self.login(qui or self.inter)
+        r = self.client.post(f"/projets/{self.p}/taches/{tid}/etat",
+                             data={"etat": "bloque", "motif": "Attente des plans"}, headers=partiel("#x"))
+        self.assertEqual(r.status_code, 200)
+
+    def creer(self, titre="Nouvelle tâche"):
+        self.login(self.chef)
+        self.client.post(f"/projets/{self.p}/taches", data={"titre": titre, "type_deadline": "interne"})
+        return self.sql("SELECT id FROM tache WHERE projet_id = %s AND titre = %s ORDER BY id DESC LIMIT 1",
+                        (self.p, titre))[0]["id"]
+
+    def posts_etat(self):
+        return [x["contenu"] for x in self.sql(
+            "SELECT contenu FROM post WHERE projet_id = %s AND evenement = 'etat_projet' ORDER BY id", (self.p,))]
+
+    def test_une_tache_bloquee_bloque_le_projet(self):
+        self.bloquer(self.t)
+        self.assertEqual(self.etat(), "bloque")
+        self.assertEqual(self.posts_etat(), ["En cours → Bloqué"])
+
+    def test_une_tache_en_cours_creee_apres_le_blocage_remet_le_projet_en_cours(self):
+        self.bloquer(self.t)
+        neuve = self.creer()
+        self.assertEqual(self.etat_tache(neuve), "en_cours")
+        self.assertEqual(self.etat_tache(self.t), "bloque")      # la tâche reste bloquée
+        self.assertEqual(self.etat(), "en_cours")
+        self.assertEqual(self.posts_etat(), ["En cours → Bloqué", "Bloqué → En cours"])
+
+    def test_la_tache_neuve_close_le_projet_redevient_bloque(self):
+        self.bloquer(self.t)
+        neuve = self.creer()
+        self.login(self.chef)
+        self.client.post(f"/projets/{self.p}/taches/{neuve}/cloturer", data={"type_code": "envoi"}, headers=partiel("#x"))
+        self.assertEqual(self.etat(), "bloque")
+
+    def test_un_nouveau_blocage_apres_la_tache_neuve_rebloque_le_projet(self):
+        self.bloquer(self.t)
+        self.creer()
+        self.assertEqual(self.etat(), "en_cours")
+        autre = self.tache(self.p, self.chef, intervenants=(self.inter,))
+        self.sql("UPDATE tache SET created_at = now() - interval '1 day' WHERE id = %s", (autre,))
+        self.bloquer(autre)
+        self.assertEqual(self.etat(), "bloque")
+
+    def test_une_tache_ancienne_remise_en_cours_ne_debloque_pas(self):
+        ancienne = self.tache(self.p, self.chef, intervenants=(self.inter,))
+        self.sql("UPDATE tache SET created_at = now() - interval '2 days' WHERE id = %s", (ancienne,))
+        self.bloquer(self.t)
+        self.bloquer(ancienne)
+        self.login(self.inter)
+        self.client.post(f"/projets/{self.p}/taches/{ancienne}/etat", data={"etat": "en_cours"}, headers=partiel("#x"))
+        self.assertEqual(self.etat(), "bloque")
+
+    def test_debloquer_la_tache_remet_le_projet_en_cours(self):
+        self.bloquer(self.t)
+        self.login(self.inter)
+        self.client.post(f"/projets/{self.p}/taches/{self.t}/etat", data={"etat": "en_cours"}, headers=partiel("#x"))
+        self.assertEqual(self.etat(), "en_cours")
+
+    def test_projet_termine_ou_abandonne_nest_jamais_recalcule(self):
+        for etat in ("termine", "abandonne"):
+            with self.subTest(etat=etat):
+                r = self.sql("SELECT fn_etat_projet_recalcule(%s::projet_etat_enum, %s) AS e", (etat, self.p))
+                self.assertEqual(r[0]["e"], etat)
+
+    def test_fonction_sql_applique_la_meme_regle(self):
+        self.sql("UPDATE tache SET etat = 'bloque', bloque_motif = 'x', bloque_le = now() - interval '1 hour', "
+                 "bloque_par = %s WHERE id = %s", (self.inter, self.t))
+        fn = lambda: self.sql("SELECT fn_etat_projet_recalcule('en_cours', %s) AS e", (self.p,))[0]["e"]
+        self.assertEqual(fn(), "bloque")
+        self.tache(self.p, self.chef)                      # créée maintenant, donc après le blocage
+        self.assertEqual(fn(), "en_cours")
+
+
+class TestEquipes(_Base):
+    """Équipes en vigueur : MIDGARD, URBS, VD, SS, Q (IPCO retirée, lot 18)."""
+
+    def test_equipes_proposees_par_l_appli(self):
+        from app.utils import EQUIPE_CHOICES
+        self.assertEqual([code for code, _ in EQUIPE_CHOICES], ["MIDGARD", "URBS", "VD", "SS", "Q"])
+
+    def test_equipes_en_base_apres_migration(self):
+        lignes = {x["code"]: x["actif"] for x in self.sql("SELECT code, actif FROM equipe")}
+        self.assertNotIn("IPCO", lignes)
+        for code in ("MIDGARD", "URBS", "VD", "SS", "Q"):
+            self.assertTrue(lignes.get(code), code)
+
+    def test_migration_rejouable_et_ipco_utilisee_reste_inactive(self):
+        from pathlib import Path
+        sql = (Path(__file__).resolve().parent.parent / "migrations" /
+               "0023_equipes_vd_et_etat_projet.sql").read_text(encoding="utf-8")
+        self.sql("INSERT INTO equipe (code, libelle) VALUES ('IPCO', 'IPCO') ON CONFLICT DO NOTHING")
+        u = self.user("intervenant", equipe="IPCO")
+        with self.db.get_cursor() as cur:
+            cur.execute(sql)
+            cur.execute(sql)
+        ipco = self.sql("SELECT actif FROM equipe WHERE code = 'IPCO'")
+        self.assertEqual([x["actif"] for x in ipco], [False])    # gardée : un utilisateur y est rattaché
+        self.sql("UPDATE utilisateur SET equipe_code = 'VD' WHERE id = %s", (u,))
+        with self.db.get_cursor() as cur:
+            cur.execute(sql)
+        self.assertEqual(self.sql("SELECT 1 FROM equipe WHERE code = 'IPCO'"), [])
+        self.assertTrue(self.sql("SELECT actif FROM equipe WHERE code = 'VD'")[0]["actif"])
+
+    def test_un_client_voit_tous_les_projets_de_son_equipe_et_seulement_ceux_la(self):
+        client = self.user("client", equipe="VD")
+        vd1 = self.projet(self.chef, equipe="VD")
+        vd2 = self.projet(self.chef, equipe="VD")
+        midgard = self.projet(self.chef, equipe="MIDGARD")
+        self.login(client)
+        for pid, attendu in ((vd1, 200), (vd2, 200), (midgard, (302, 403, 404))):
+            with self.subTest(projet=pid):
+                code = self.client.get(f"/projets/{pid}").status_code
+                if isinstance(attendu, tuple):
+                    self.assertIn(code, attendu)
+                else:
+                    self.assertEqual(code, attendu)
+
+    def test_un_client_ne_poste_que_information_et_requete(self):
+        client = self.user("client", equipe="MIDGARD")
+        self.login(client)
+        for type_code, ok in (("information", True), ("requete", True), ("question", False),
+                              ("envoi", False), ("reponse", False)):
+            with self.subTest(type=type_code):
+                avant = self.sql("SELECT count(*) AS n FROM post WHERE projet_id = %s", (self.p,))[0]["n"]
+                self.client.post("/posts", data={"projet_id": self.p, "type_code": type_code, "objet": "Objet", "contenu": "Bonjour"},
+                                 headers=partiel("#x"))
+                apres = self.sql("SELECT count(*) AS n FROM post WHERE projet_id = %s", (self.p,))[0]["n"]
+                self.assertEqual(apres - avant, 1 if ok else 0)

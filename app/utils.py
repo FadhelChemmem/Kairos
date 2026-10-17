@@ -132,14 +132,14 @@ _ROLE_STYLE = {
 
 # Équipes de référence (table `equipe`, schema.sql) — codes stockés en
 # base, non requêtés ici (liste fixe et stable, comme ailleurs dans
-# l'appli, voir partials/post_dialog.html). ISBG renommé en URBS + ajout d'IPCO
-# (retour Fadhel, 2026-09-20).
+# l'appli, voir partials/post_dialog.html). ISBG renommé en URBS (2026-09-20) ;
+# IPCO retirée et VD ajoutée (lot 18, migration 0023).
 EQUIPE_CHOICES = [
     ("MIDGARD", "Midgard"),
     ("URBS", "URBS"),
+    ("VD", "VD"),
     ("SS", "SS"),
     ("Q", "Q"),
-    ("IPCO", "IPCO"),
 ]
 
 

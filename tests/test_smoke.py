@@ -4811,8 +4811,10 @@ class TestPostsAutomatiquesEtProjet(SmokeBase):
         self.assertEqual(len(recalculs(cur)), 1)
         self.assertIn("fn_etat_projet_recalcule(p.etat, p.id)", recalculs(cur)[0].args[0])
         self.assertEqual(self._inserts_post(cur)[-1].args[1], (1, 1, "En cours → Bloqué"))
-        # Une nouvelle tâche ne débloque plus un projet qui garde une tâche
-        # bloquée (audit rôles I2) : recalcul sans changement, pas de post.
+        # Création d'une tâche : le projet est recalculé (migration 0023, lot 18 :
+        # une tâche En cours créée après un blocage remet le projet En cours ;
+        # la règle est dans la fonction SQL, testée sur PostgreSQL). Ici l'état
+        # ne change pas : pas de post.
         cur = self._cur([{"id": 9}, None])
         taches_repo.create_tache(1, "Nouvelle", 1)
         self.assertEqual(len(recalculs(cur)), 1)

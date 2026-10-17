@@ -226,7 +226,7 @@ class TestClotureAvecMessage(_Blocage):
 class TestDroitsDuBlocage(_Blocage):
     def test_requetes_forgees_refusees(self):
         autre = self.user("intervenant")
-        client = self.user("client", "IPCO")
+        client = self.user("client", "VD")
         self.sql("INSERT INTO projet_intervenant (projet_id, utilisateur_id) VALUES (%s, %s)", (self.p1, autre))
         cas = [
             (autre, self.url_etat(), 403),                       # voit le projet, pas intervenant de la tâche

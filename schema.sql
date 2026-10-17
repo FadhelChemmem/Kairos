@@ -13,7 +13,7 @@
 --    état tâche, type de deadline, rôle utilisateur).
 --  - Table de référence (au lieu d'ENUM) pour tout ce qui est amené à
 --    s'étendre sans migration lourde : lot (CM/GO/...), équipe/bureau
---    (Midgard/URBS/SS/Q/IPCO/...), type de post (Envoi/Réponse/Question/
+--    (Midgard/URBS/VD/SS/Q/...), type de post (Envoi/Réponse/Question/
 --    Requête/[Information]), type de réaction.
 --  - "heures cumulées" (projet et tâche) ne sont PAS des colonnes stockées :
 --    ce sont des vues calculées à partir du DailyLog, pour éviter toute
@@ -114,8 +114,9 @@ CREATE TYPE role_enum AS ENUM ('admin', 'chef_de_projet', 'intervenant', 'rh', '
 -- TABLES DE RÉFÉRENCE (extensibles sans migration de type)
 -- =====================================================================
 
--- Bureaux / entités du groupe (Midgard, URBS, SS, Q, IPCO, ...)
--- ISBG renommé en URBS + ajout d'IPCO (retour Fadhel, 2026-09-20) — sur une
+-- Bureaux / entités du groupe (Midgard, URBS, VD, SS, Q)
+-- ISBG renommé en URBS (2026-09-20) ; IPCO retirée et VD ajoutée (lot 18,
+-- migration 0023) — sur une
 -- base déjà installée, ce INSERT ne joue aucun rôle (il ne tourne qu'à la
 -- création du schéma) : voir migrations/0001, appliquée par `flask migrer`.
 CREATE TABLE equipe (
@@ -126,9 +127,9 @@ CREATE TABLE equipe (
 INSERT INTO equipe (code, libelle) VALUES
   ('MIDGARD', 'Midgard'),
   ('URBS',    'URBS'),
+  ('VD',      'VD'),
   ('SS',      'SS'),
-  ('Q',       'Q'),
-  ('IPCO',    'IPCO');
+  ('Q',       'Q');
 
 -- Lots techniques (CM = Charpente Métallique, GO = Gros Œuvre, ...)
 CREATE TABLE lot (
@@ -1494,7 +1495,15 @@ CREATE OR REPLACE FUNCTION fn_etat_projet_recalcule(p_etat projet_etat_enum, p_p
 RETURNS projet_etat_enum AS $$
   SELECT CASE
     WHEN p_etat NOT IN ('en_cours', 'bloque') THEN p_etat
-    WHEN EXISTS (SELECT 1 FROM tache t WHERE t.projet_id = p_projet AND t.etat = 'bloque') THEN 'bloque'::projet_etat_enum
+    -- Lot 18 (migration 0023) : Bloqué tant qu'une tâche bloquée n'a pas été
+    -- suivie d'une tâche En cours créée après son blocage.
+    WHEN EXISTS (
+      SELECT 1 FROM tache b
+      WHERE b.projet_id = p_projet AND b.etat = 'bloque'
+        AND NOT EXISTS (SELECT 1 FROM tache c
+                        WHERE c.projet_id = p_projet AND c.etat = 'en_cours'
+                          AND c.created_at > COALESCE(b.bloque_le, b.updated_at))
+    ) THEN 'bloque'::projet_etat_enum
     ELSE 'en_cours'::projet_etat_enum
   END
 $$ LANGUAGE sql STABLE;
@@ -1571,5 +1580,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0019_lot13_etat_projet_et_temps'),
   ('0020_lot14_blocage_et_cloture'),
   ('0021_lot15_posts_et_preferences'),
-  ('0022_lot17_fil_vu')
+  ('0022_lot17_fil_vu'),
+  ('0023_equipes_vd_et_etat_projet')
 ON CONFLICT (version) DO NOTHING;

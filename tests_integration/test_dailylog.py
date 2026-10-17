@@ -275,7 +275,7 @@ class TestFenetreEtCorrection(_BaseDL):
         d'une autre équipe sans rattachement, se corrige à la baisse (Admin,
         chef du projet) — elle ne pouvait jusque-là qu'être supprimée."""
         admin = self.user("admin", equipe=None)
-        autre = self.projet(self.chef, equipe="IPCO", code="26070X")
+        autre = self.projet(self.chef, equipe="VD", code="26070X")
         d = self.jour(60)
         self.sql("UPDATE projet SET etat='termine', date_cloture=%s WHERE id=%s", (d - datetime.timedelta(days=5), self.p1))
         self.historique(self.moi, d, [(self.p1, 2.67), (autre, 4)])

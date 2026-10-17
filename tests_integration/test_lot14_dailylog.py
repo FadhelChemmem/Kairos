@@ -132,7 +132,7 @@ class TestEquipe(_Base):
             r = self.page(uid)
             self.assertEqual(r.status_code, 302)
             self.assertNotIn("/dailylog/equipe", r.headers["Location"])
-        client_ipco = self.user("client", equipe="IPCO")
+        client_ipco = self.user("client", equipe="VD")
         self.assertEqual(self.page(client_ipco).status_code, 302)
         r = self.page(self.moi, headers=PARTIEL)                         # requête partielle forgée
         self.assertNotEqual(r.status_code, 200)

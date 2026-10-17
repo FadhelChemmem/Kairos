@@ -26,7 +26,7 @@ class TestEquipeDesProjets(BaseIntegration):
         p_midgard = self.projet(chef_midgard, equipe=None)
         p_urbs = self.projet(chef_urbs, equipe=None)
         p_sans = self.projet(chef_sans, equipe=None)
-        p_garde = self.projet(chef_urbs, equipe="IPCO")  # équipe déjà choisie : intacte
+        p_garde = self.projet(chef_urbs, equipe="VD")  # équipe déjà choisie : intacte
         self.sql("ALTER TABLE projet DISABLE TRIGGER trg_projet_updated_at;"
                  "UPDATE projet SET updated_at = '2024-05-01 10:00+01';"
                  "ALTER TABLE projet ENABLE TRIGGER trg_projet_updated_at")
@@ -34,7 +34,7 @@ class TestEquipeDesProjets(BaseIntegration):
 
         self.migrer()
         equipes = {r["id"]: r["equipe_code"] for r in self.sql("SELECT id, equipe_code FROM projet")}
-        self.assertEqual(equipes, {p_midgard: "MIDGARD", p_urbs: "URBS", p_sans: "MIDGARD", p_garde: "IPCO"})
+        self.assertEqual(equipes, {p_midgard: "MIDGARD", p_urbs: "URBS", p_sans: "MIDGARD", p_garde: "VD"})
         self.assertEqual(self.sql("SELECT count(*) AS n FROM projet WHERE updated_at <> '2024-05-01 10:00+01'")[0]["n"], 0)
         # Une ligne d'audit par projet modifié ; le trigger updated_at est rétabli.
         self.assertEqual(self.sql("SELECT count(*) AS n FROM audit_log WHERE table_cible = 'projet'")[0]["n"],

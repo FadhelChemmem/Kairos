@@ -49,15 +49,13 @@ class TestEtatDuProjet(_Projets):
         self.login(self.inter)
         self.client.post(f"/projets/{self.p1}/taches/{t_bloquee}/etat", data={"etat": "bloque", "motif": "Attente des plans"})
         self.assertEqual(self.etat(self.p1), "bloque")
-        # Une autre tâche bloquée puis remise En cours : le projet reste Bloqué.
+        # Une autre tâche, plus ancienne, bloquée puis remise En cours : le projet reste Bloqué
+        # (elle n'a pas été créée après le blocage).
         self.client.post(f"/projets/{self.p1}/taches/{self.t1}/etat", data={"etat": "bloque", "motif": "Attente des plans"})
         self.client.post(f"/projets/{self.p1}/taches/{self.t1}/etat", data={"etat": "en_cours"})
         self.assertEqual(self.etat(self.p1), "bloque")
-        # Création d'une tâche : le projet reste Bloqué (audit : il repassait En cours).
-        self.login(self.chef)
-        self.client.post(f"/projets/{self.p1}/taches", data={"titre": "Nouvelle", "type_deadline": "interne"})
-        self.assertEqual(self.etat(self.p1), "bloque")
         # Dernière tâche bloquée close : le projet se débloque, post « Bloqué → En cours ».
+        self.login(self.chef)
         self.client.post(f"/projets/{self.p1}/taches/{t_bloquee}/cloturer", data={"type_code": "envoi"})
         self.assertEqual(self.etat(self.p1), "en_cours")
         self.assertEqual(self.posts(self.p1, "etat_projet")[-1]["contenu"], "Bloqué → En cours")
@@ -221,7 +219,7 @@ class TestCreationDeProjet(_Projets):
             with self.subTest(uid=uid):
                 self.login(uid)
                 self.assertEqual(self.client.get("/projets/code-propose?phase=EXE").status_code, attendu)
-        client = self.user("client", "IPCO")
+        client = self.user("client", "VD")
         self.login(client)
         self.assertEqual(self.client.get("/projets/code-propose?phase=EXE").status_code, 403)
 
@@ -235,7 +233,7 @@ class TestTacheExistante(_Projets):
         self.inter2 = self.user("intervenant")
         self.sql("UPDATE utilisateur SET prenom = 'Omar', nom = 'Deux' WHERE id = %s", (self.inter2,))
         self.urbs = self.user("intervenant", "URBS")
-        self.client_ipco = self.user("client", "IPCO")
+        self.client_ipco = self.user("client", "VD")
 
     def test_ajouter_et_retirer_un_intervenant(self):
         self.login(self.cochef)
@@ -455,19 +453,19 @@ class TestNotificationsEtDroits(_Projets):
         self.assertNotIn("4 mars 2021", page)
 
     def test_client_profil_et_information_d_equipe(self):
-        client = self.user("client", "IPCO")
-        self.sql("UPDATE utilisateur SET equipe_code = 'IPCO' WHERE id = %s", (self.inter,))
+        client = self.user("client", "VD")
+        self.sql("UPDATE utilisateur SET equipe_code = 'VD' WHERE id = %s", (self.inter,))
         self.sql("INSERT INTO dailylog_jour (utilisateur_id, date, absent, version) VALUES (%s, %s, true, 1)",
                  (self.inter, self.auj - datetime.timedelta(days=1)))
         self.login(client)
         page = self.visible(self.client.get(f"/utilisateurs/{self.inter}/profil"))
         self.assertNotIn("Absent", page)
-        inactif = self.user("intervenant", "IPCO", actif=False)
+        inactif = self.user("intervenant", "VD", actif=False)
         self.assertEqual(self.client.get(f"/utilisateurs/{inactif}/profil").status_code, 404)
         # Information « toutes les équipes » : jamais chez le client.
         self.login(self.admin)
         self.client.post("/posts", data={"type_code": "information", "contenu": "Info RH interne",
-                                         "equipes": ["MIDGARD", "URBS", "IPCO"]})
+                                         "equipes": ["MIDGARD", "URBS", "VD"]})
         self.login(client)
         self.assertNotIn("Info RH interne", self.visible(self.client.get("/accueil")))
         self.login(self.inter)
