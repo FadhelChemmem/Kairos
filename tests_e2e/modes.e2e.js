@@ -49,7 +49,8 @@ function isoTunis(decalage) {
   const d = new Date(Date.now() + (decalage || 0) * 86400000);
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Tunis' }).format(d);
 }
-const T = isoTunis(0);
+// Lot 16 : le week-end, le Daily log s'ouvre sur le dernier jour ouvré.
+const T = (() => { let k = 0; while ([0, 6].includes(new Date(isoTunis(-k) + 'T12:00:00Z').getUTCDay())) k++; return isoTunis(-k); })();
 const heures = (uid, date) => sql(`SELECT coalesce(sum(heures),0) FROM dailylog_entree WHERE utilisateur_id=${uid} AND date='${date}'`);
 
 async function contexte(navigateur, email, opts = {}) {
@@ -211,8 +212,8 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
     await p.locator('#voir-comme-compte ~ .search-combobox-wrap .search-combobox-input').fill('rim');
     await p.keyboard.press('Enter');
     await Promise.all([p.waitForNavigation(), p.click('button:has-text("Agir comme (mode test)")')]);
-    etape('bandeau rouge « Vous agissez comme … (mode test) »',
-      (await texteBandeau(p)).startsWith('Vous agissez comme Rim Inter (Intervenant) (mode test) — Revenir à mon compte')
+    etape('bandeau rouge « Vous agissez comme … »',
+      (await texteBandeau(p)).startsWith('Vous agissez comme Rim Inter (Intervenant) — Revenir à mon compte')
       && (await p.getAttribute('#bandeau-admin', 'class')).includes('bandeau-admin-agir'), await texteBandeau(p));
     await capture(p, 'e2e-12-agir-comme.png');
     // Post au nom de l'intervenante.
@@ -272,7 +273,7 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
     await p.click('#dl-enregistrer');
     await attendre(async () => (await p.textContent('#dl-status-texte')) === 'Enregistré');
     etape('ligne à J−1 enregistrée sous date simulée', heures(RIM, J1) !== '0', heures(RIM, J1));
-    etape('horodatage réel (créée aujourd’hui)', sql(`SELECT max((created_at AT TIME ZONE 'Africa/Tunis')::date) FROM dailylog_entree WHERE utilisateur_id=${RIM} AND date='${J1}'`) === T);
+    etape('horodatage réel (créée aujourd’hui)', sql(`SELECT max((created_at AT TIME ZONE 'Africa/Tunis')::date) FROM dailylog_entree WHERE utilisateur_id=${RIM} AND date='${J1}'`) === isoTunis(0));
     p = await ouvrir(adm, '/dailylog?date=' + J11);
     await pretDailyLog(p);
     etape('fenêtre décalée : J−11 (= date simulée − 14) modifiable', await p.isHidden('#dl-lecture'));
@@ -292,7 +293,7 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
     await Promise.all([p.waitForNavigation(), p.click('#bandeau-admin button:has-text("Revenir à aujourd’hui")')]);
     etape('retour à aujourd’hui', /^mode test/i.test(await texteBandeau(p)), await texteBandeau(p));
     const r = await p.goto(BASE + '/dailylog?date=' + J3);
-    etape('J+3 de nouveau refusé (redirigé vers aujourd’hui)', new URL(r.url()).searchParams.get('date') === T, r.url());
+    etape('J+3 de nouveau refusé (redirigé vers aujourd’hui)', new URL(r.url()).searchParams.get('date') === isoTunis(0), r.url());
     etape('aucun rappel Daily log créé pendant les modes', sql(`SELECT count(*) FROM notification WHERE utilisateur_id=${RIM} AND rappel_jours IS NOT NULL`) === '0');
 
     // --- 5. Deadlines : vue Admin -------------------------------------------

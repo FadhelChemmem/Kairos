@@ -180,12 +180,15 @@ def creer():
         projet = projets_repo.get_projet(projet_id)
         if projet and projet["etat"] in PROJET_CLOS:
             return _refus(MESSAGE_PROJET_CLOS, 409)
+    tache = None
     if tache_id:
         from ..repositories import taches as taches_repo
 
         tache = taches_repo.get_tache(tache_id)
         if tache is None or not projet_id or tache["projet_id"] != projet_id:
             return _refus("Cette tâche n’appartient pas au projet choisi.", 422, "tache_id")
+        if tache["etat"] not in ("en_cours", "bloque"):
+            return _refus("Cette tâche est close : choisissez une tâche en cours.", 422, "tache_id")
 
     # Un rebond doit obligatoirement pointer vers un post du MÊME projet —
     # sinon on pourrait relier deux projets sans lien de visibilité entre
@@ -274,6 +277,9 @@ def creer():
             post_id=post_id, exclure_id=g.user["id"],
         )
 
+    if type_code == "requete" and projet_id:
+        _notifier_requete(post_id, projet_id, tache, contenu, deja=set(mentionne_ids or []))
+
     if lien_ignore:
         flash(
             "Post publié, sans le lien\u00a0: seuls les liens http(s)://, file:, smb: "
@@ -285,6 +291,31 @@ def creer():
     if partiel.est_partiel():
         return reponse_publication(post_id)
     return _safe_redirect()
+
+
+def _notifier_requete(post_id: int, projet_id: int, tache: dict | None, contenu: str, deja: set) -> None:
+    """Lot 16 (scénario du 17/10) : une Requête arrive toujours au chef, aux
+    co-chefs et aux intervenants de la tâche citée — sans @mention, elle ne
+    prévenait personne. Jamais l'auteur ni une personne déjà mentionnée."""
+    try:
+        projet = projets_repo.get_projet(projet_id) or {}
+        ids = [projet.get("chef_projet_id")] + sorted(projets_repo.ids_co_chefs(projet_id))
+        if tache:
+            from ..repositories import taches as taches_repo
+
+            ids += taches_repo.ids_intervenants(tache["id"])
+        destinataires = [uid for uid in dict.fromkeys(ids) if uid and uid != g.user["id"] and uid not in deja]
+        if not destinataires:
+            return
+        sur = f" sur « {tache['titre']} »" if tache else ""
+        notifications_repo.creer_pour_plusieurs(
+            destinataires, "projet",
+            f"{g.user['prenom']} {g.user['nom']} a publié une requête{sur} ({projet.get('code') or ''})"
+            f"{_extrait((contenu or '').split(chr(10))[0])}.",
+            post_id=post_id, exclure_id=g.user["id"],
+        )
+    except Exception:
+        current_app.logger.exception("Notification de la requête impossible (post %s)", post_id)
 
 
 @bp.route("/<int:post_id>/reagir", methods=["POST"])

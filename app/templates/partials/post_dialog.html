@@ -180,7 +180,9 @@
         <div class="form-row">
           <label for="dialog-mentions-information">Personnes mentionnées <span class="label-note">— facultatif</span></label>
           <select id="dialog-mentions-information" name="mentions" multiple data-chip-select data-chip-filter="1" data-chip-recent="1" data-chip-filter-placeholder="Rechercher une autre personne…">
-            {{ options_personnes() }}
+            {# Lot 16 : seulement les personnes qui voient le projet (sinon la
+               mention était retirée sans le dire). #}
+            {{ options_personnes(parmi=ids_voient_projet|default(none) if projet_id is not none else none) }}
           </select>
         </div>
         <div class="form-row">
@@ -231,7 +233,9 @@
         <div class="form-row">
           <label for="dialog-mentions-requete">Personnes mentionnées <span class="label-note">— facultatif</span></label>
           <select id="dialog-mentions-requete" name="mentions" multiple data-chip-select data-chip-filter="1" data-chip-recent="1" data-chip-filter-placeholder="Rechercher une autre personne…">
-            {{ options_personnes() }}
+            {# Lot 16 : seulement les personnes qui voient le projet (sinon la
+               mention était retirée sans le dire). #}
+            {{ options_personnes(parmi=ids_voient_projet|default(none) if projet_id is not none else none) }}
           </select>
         </div>
         <div class="form-row">

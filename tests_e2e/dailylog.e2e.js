@@ -135,7 +135,8 @@ async function contrastes(p) {
 }
 
 (async () => {
-  const T = isoTunis(0);
+  // Lot 16 : le week-end, le Daily log s'ouvre sur le dernier jour ouvré.
+  const T = (() => { let k = 0; while ([0, 6].includes(new Date(isoTunis(-k) + 'T12:00:00Z').getUTCDay())) k++; return isoTunis(-k); })();
   const navigateur = await chromium.launch();
   const rim = await contexte(navigateur, 'rim@x.tn');
   let p = await ouvrir(rim, '/dailylog');

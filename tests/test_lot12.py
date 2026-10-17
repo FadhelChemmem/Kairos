@@ -106,14 +106,17 @@ class TestHorloge(unittest.TestCase):
         with self.app.test_request_context("/"):
             g.date_simulee = simulee
             self.assertEqual(horloge.aujourdhui(), simulee)
-            self.assertEqual(horloge.aujourdhui("America/Cayenne"), simulee)
             maintenant = horloge.maintenant("Africa/Tunis")
+            # Même instant simulé, vu de Cayenne (la veille entre 0 h et 4 h à Tunis).
+            self.assertEqual(horloge.aujourdhui("America/Cayenne"),
+                             maintenant.astimezone(horloge.ZoneInfo("America/Cayenne")).date())
             self.assertEqual(maintenant.date(), simulee)
             reel = datetime.datetime.now(datetime.timezone.utc).astimezone(horloge.ZoneInfo("Africa/Tunis"))
             self.assertLess(abs((maintenant.hour * 60 + maintenant.minute) - (reel.hour * 60 + reel.minute)), 2)
             # Le Daily log et tout ce qui passe par aujourdhui_pour suivent.
             self.assertEqual(dl.aujourdhui_pour(INTER), simulee)
-            self.assertEqual(dl.aujourdhui_pour({"fuseau": "America/Cayenne"}), simulee)
+            self.assertEqual(dl.aujourdhui_pour({"fuseau": "America/Cayenne"}),
+                             maintenant.astimezone(horloge.ZoneInfo("America/Cayenne")).date())
             # Un `maintenant` injecté (tests) garde la priorité.
             self.assertEqual(dl.aujourdhui_pour(INTER, datetime.datetime(2026, 1, 2, 12, 0)), datetime.date(2026, 1, 2))
             # Valeur posée qui n'est pas une date : ignorée.
@@ -401,7 +404,7 @@ class TestModeTestRoutes(_Base):
     def test_agir_comme_bandeau_rouge_et_mot_de_passe_refuse(self):
         self.session(mode_admin={"admin": 1, "cible": 3, "mode": "agir"})
         resp, _ = self.requete("get", "/accueil")
-        self.assertIn("Vous agissez comme Rim Inter (Intervenant) (mode test) — Revenir à mon compte", self.visible(resp))
+        self.assertIn("Vous agissez comme Rim Inter (Intervenant) — Revenir à mon compte", self.visible(resp))
         self.assertIn('<header class="topbar topbar-mode-agir">', self.texte(resp))
         resp, m = self.requete("post", "/utilisateurs/moi/mot-de-passe", data={"mot_de_passe_actuel": "x"},
                                espions=[("app.repositories.utilisateurs.set_password", None)])

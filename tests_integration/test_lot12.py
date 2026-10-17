@@ -367,7 +367,7 @@ class TestModeTest(_Base):
         self.entrer(self.inter, mode="agir")
         r = self.client.get("/accueil")
         self.assertIn('class="bandeau-admin bandeau-admin-agir" role="region"', self.texte(r))
-        self.assertIn("Vous agissez comme Rim Inter (Intervenant) (mode test) — Revenir à mon compte", self.visible(r))
+        self.assertIn("Vous agissez comme Rim Inter (Intervenant) — Revenir à mon compte", self.visible(r))
         r = self.client.post("/posts", data={"projet_id": str(self.p1), "type_code": "information",
                                              "contenu": "Post au nom de Rim", "next": "/accueil"})
         self.assertEqual(r.status_code, 302)

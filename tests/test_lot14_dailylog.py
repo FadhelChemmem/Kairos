@@ -90,7 +90,9 @@ class TestApiEtPages(tdl._BaseDailyLog):
     PROPOSEES = [{"projet_id": 1, "code": "P1", "nom": "Projet 1", "tache_id": 5, "tache_titre": "Plans"}]
 
     def test_journee_vierge_de_son_daily_log_seulement(self):
-        resp = self.appel("get", f"/dailylog/api/jour/{self.aujourdhui}", user=tdl.INTERVENANT,
+        # Lot 16 : rien de proposé le week-end ; on prend le dernier jour ouvré.
+        jour = self.aujourdhui - datetime.timedelta(days=max(0, self.aujourdhui.weekday() - 4))
+        resp = self.appel("get", f"/dailylog/api/jour/{jour}", user=tdl.INTERVENANT,
                           **{"app.repositories.dailylog.lignes_proposees": self.PROPOSEES})
         self.assertEqual(resp.get_json()["proposees"], self.PROPOSEES)
         rempli = {**smoke.DAILYLOG_JOUR_VIDE, "version": 1, "lignes": [

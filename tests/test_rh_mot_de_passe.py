@@ -32,7 +32,7 @@ RH = lot10.RH
 CIBLE = {**smoke.AUTRE_UTILISATEUR, "id": 10}
 CIBLE_INACTIVE = {**CIBLE, "actif": False}
 ADMIN_CIBLE = lot10.ADMIN_CIBLE
-FICHE = {"prenom": "Wael", "nom": "Rekik", "email": CIBLE["email"], "role": "intervenant",
+FICHE = {"prenom": "Wael", "nom": "Testeur", "email": CIBLE["email"], "role": "intervenant",
          "equipe_code": "URBS"}
 
 CREER = "app.repositories.utilisateurs.create_utilisateur"

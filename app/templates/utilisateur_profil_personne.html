@@ -56,7 +56,7 @@
               <span class="acc-phase">{{ p.phase }}</span>
               <span class="acc-projet-texte">
                 <span class="acc-projet-nom" title="{{ p.code }}_{{ p.nom }}">{{ p.code }}_{{ p.nom }}</span>
-                <span class="acc-sous">{{ role_label }}{% if p.role_personne != 'chef_de_projet' %} · chef&nbsp;: {{ p.chef_prenom }} {{ p.chef_nom }}{% endif %}{% if p.nb_taches %} · {{ p.nb_taches }} tâche{{ 's' if p.nb_taches > 1 }}{% endif %}{% if p.prochaine %} · éch. {{ p.prochaine|date_courte }}{% endif %}</span>
+                <span class="acc-sous">{{ role_label }}{% if p.role_personne != 'chef_de_projet' %} · chef&nbsp;: {{ p.chef_prenom }}&nbsp;{{ p.chef_nom }}{% endif %}{% if p.nb_taches %} · {{ p.nb_taches }}&nbsp;tâche{{ 's' if p.nb_taches > 1 }}{% endif %}{% if p.prochaine %} · éch.&nbsp;{{ (p.prochaine|date_courte)|replace(' ', ' ') }}{% endif %}</span>
               </span>
               {% if p.etat == 'bloque' %}<span class="pill pill-sm pill-rouge">Bloqué</span>{% endif %}
             </a>
@@ -76,7 +76,7 @@
     {% set nb_bloquees = taches_ouvertes|selectattr('etat', 'equalto', 'bloque')|list|length %}
     <section class="card acc-carte" aria-labelledby="personne-taches-titre">
       <div class="carte-entete carte-entete-souple">
-        <h2 class="carte-titre" id="personne-taches-titre">Tâches en cours <span class="compteur-discret">{{ taches_ouvertes|length }}</span></h2>
+        <h2 class="carte-titre" id="personne-taches-titre">Tâches ouvertes <span class="compteur-discret">{{ taches_ouvertes|length }}</span></h2>
       </div>
       {% if taches_ouvertes %}
       <p class="personne-resume">{{ taches_ouvertes|length - nb_bloquees }} en cours{% if nb_retard %} · <span class="texte-retard">{{ nb_retard }} en retard</span>{% endif %}{% if nb_bloquees %} · {{ nb_bloquees }} bloquée{{ 's' if nb_bloquees > 1 }}{% endif %}</p>
@@ -91,7 +91,7 @@
               <span class="acc-sous">{{ t.projet_code }}_{{ t.projet_nom }}{% if t.date_echeance %} · éch. {{ t.date_echeance|date_courte }}{% endif %}{% if depuis %} · {{ depuis }}{% endif %}</span>
             </span>
             {% if t.etat == 'bloque' %}<span class="pill pill-sm pill-rouge">Bloquée</span>
-            {% elif retard_j %}<span class="pill pill-sm pill-rouge acc-retard" title="{{ en_retard_de(t.date_echeance, aujourdhui) }}">+{{ retard_j }}&nbsp;j<span class="sr-only">, {{ en_retard_de(t.date_echeance, aujourdhui) }}</span></span>{% endif %}
+            {% elif retard_j %}<span class="pill pill-sm pill-rouge acc-retard" title="{{ en_retard_de(t.date_echeance, aujourdhui) }}">{{ retard_j }}&nbsp;j de retard<span class="sr-only">, {{ en_retard_de(t.date_echeance, aujourdhui) }}</span></span>{% endif %}
           </a>
         {% else %}
           <p class="k-muet acc-vide">Aucune tâche en cours (parmi celles que vous pouvez voir).</p>

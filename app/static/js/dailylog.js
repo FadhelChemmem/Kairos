@@ -449,7 +449,9 @@
       }
       btn.disabled = flag;
     }
-    function libelleCode(r) { return r.code + ' · ' + (r.tache_titre ? r.nom : T.sans_tache); }
+    // Lot 16 : colonnes « Tâche · Projet » respectées pour une ligne sans
+    // tâche (« Sans tâche » | code · projet), au lieu du projet sous « Tâche ».
+    function libelleCode(r) { return r.code + ' · ' + r.nom; }
     function libelleLigne(r) { return r.tache_titre ? r.tache_titre + ' (' + r.code + ' · ' + r.nom + ')' : r.nom; }
     function patchRow(row, r, i, tot) {
       var off = r.m <= 0, plein = tot >= MAXJ;
@@ -458,7 +460,8 @@
       row.querySelector('.dl-pdot').style.background = /^#[0-9a-f]{6}$/i.test(r.couleur) ? r.couleur : '#6f8278';
       var info = row.querySelector('.dl-pinfo');
       info.querySelector('.dl-pcode').textContent = r.masquee ? '' : libelleCode(r);
-      info.querySelector('.dl-pname').textContent = r.masquee ? r.nom : (r.tache_titre || r.nom);
+      info.querySelector('.dl-pname').textContent = r.masquee ? r.nom : (r.tache_titre || T.sans_tache_titre);
+      info.querySelector('.dl-pname').classList.toggle('dl-pname-vide', !r.masquee && !r.tache_titre);
       info.title = r.masquee ? '' : libelleLigne(r);
       if (row.dataset.fixe === '1') {
         row.querySelector('.dl-fixtexte').textContent = f(r.m);

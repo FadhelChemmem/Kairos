@@ -39,7 +39,9 @@ _POST_VISIBLE = """
 # Lot 14 (fusion) : le signalement d'un blocage porte le motif écrit par la
 # personne (« Échanges ») ; une clôture sans message (texte automatique
 # « Tâche terminée. », TEXTE_CLOTURE_SANS_MESSAGE) reste de l'« Activité ».
-_EST_ACTIVITE = """(p.evenement IS NOT NULL AND p.evenement NOT IN ('repost', 'blocage_tache')
+# Lot 16 : la levée d'un blocage va aussi dans « Échanges » (sinon la carte
+# du blocage laissait croire la tâche toujours bloquée).
+_EST_ACTIVITE = """(p.evenement IS NOT NULL AND p.evenement NOT IN ('repost', 'blocage_tache', 'deblocage_tache')
     AND NOT (p.evenement = 'cloture_tache'
              AND COALESCE(btrim(p.contenu), '') NOT IN ('', 'Tâche terminée.')))"""
 _FILTRE_CATEGORIE = {"tout": "TRUE", "echanges": "NOT " + _EST_ACTIVITE, "activite": _EST_ACTIVITE}
@@ -589,10 +591,15 @@ def restaurer_commentaires(ids: list[int], current_user_id: int, quand: str) -> 
     with db.get_cursor(user_id=current_user_id) as cur:
         cur.execute(
             """
-            UPDATE post_commentaire SET supprime_le = NULL, supprime_par = NULL
-            WHERE id = ANY(%s::bigint[]) AND supprime_le = %s::timestamptz AND supprime_par = %s
+            UPDATE post_commentaire c SET supprime_le = NULL, supprime_par = NULL
+            WHERE c.id = ANY(%(ids)s::bigint[]) AND c.supprime_le = %(t)s::timestamptz AND c.supprime_par = %(u)s
+              -- Lot 16 : jamais une réponse dont le commentaire parent a été
+              -- supprimé entre-temps (réponse orpheline).
+              AND (c.parent_commentaire_id IS NULL OR c.parent_commentaire_id = ANY(%(ids)s::bigint[])
+                   OR NOT EXISTS (SELECT 1 FROM post_commentaire par
+                                  WHERE par.id = c.parent_commentaire_id AND par.supprime_le IS NOT NULL))
             """,
-            ([int(i) for i in ids], quand, current_user_id),
+            {"ids": [int(i) for i in ids], "t": quand, "u": current_user_id},
         )
         return cur.rowcount
 

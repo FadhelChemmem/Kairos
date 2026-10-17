@@ -578,9 +578,10 @@ def _contexte_fiche(projet: dict, *, fil_limite: int = film.TAILLE_PAGE) -> dict
         utilisateurs_actifs=utilisateurs_actifs,
         utilisateurs_affectables=[u for u in utilisateurs_actifs if u.get("role") != "client"],
         collaborateurs_recents=utilisateurs.list_collaborateurs_recents(g.user["id"]),
-        # Intervenants proposés pour une nouvelle tâche : ceux qui voient le
-        # projet (lot 13, audit rôles I7).
-        ids_voient_projet=projets.ids_utilisateurs_voyant(projet_id) if peut_gerer else set(),
+        # Intervenants proposés pour une nouvelle tâche et personnes
+        # mentionnables : ceux qui voient le projet (lot 13 ; lot 16 pour les
+        # mentions, proposées à tous).
+        ids_voient_projet=projets.ids_utilisateurs_voyant(projet_id),
     )
 
     # Fenêtre "Informations" (retour Fadhel, 2026-09-28, Lot 5) : projets
@@ -1290,8 +1291,25 @@ def changer_etat_tache(projet_id: int, tache_id: int):
             notifications_repo.retirer(jeton["n"], tache_id)
         except Exception:
             current_app.logger.exception("Notifications non retirées (tâche %s)", tache_id)
-    if texte is None and etat_avant == "bloque" and etat == "en_cours" and not annulation:
-        texte = "Blocage levé."
+    if etat_avant == "bloque" and etat == "en_cours" and not annulation:
+        # Lot 16 : la levée du blocage prévient qui l'avait signalé et les
+        # intervenants de la tâche (jamais l'acteur) ; « Annuler » retire
+        # ces notifications.
+        projet = projets.get_projet(projet_id) or {}
+        ids = [avant.get("bloque_par")] + taches.ids_intervenants(tache_id)
+        destinataires = [uid for uid in dict.fromkeys(ids) if uid and uid != g.user["id"]]
+        prevenus = []
+        if destinataires:
+            try:
+                notifications_creees = list(notifications_repo.creer_pour_plusieurs(
+                    destinataires, "projet",
+                    f"{_acteur()} a levé le blocage de « {avant.get('titre') or ''} » "
+                    f"({projet.get('code') or ''}).", tache_id=tache_id) or [])
+                prevenus = [u for u in (utilisateurs.get_utilisateur(uid) for uid in destinataires) if u]
+            except Exception:
+                current_app.logger.exception("Notification de levée de blocage impossible (tâche %s)", tache_id)
+        texte = f"Blocage levé : {_noms_prevenus(prevenus)} prévenu{'s' if len(prevenus) > 1 else ''}." \
+            if prevenus else "Blocage levé."
 
     if partiel.est_partiel():
         libelle = tache_etat_style(etat)["libelle"]

@@ -205,3 +205,13 @@
 .post-commenter-nb:empty { min-width: 2ch; }
 /* « Voir comme » (lecture seule) : pas de menu Modifier / Supprimer. */
 html[data-lecture-seule] .post-menu { display: none; }
+
+/* Contrôles segmentés (retour du 17/10) : pas de sélection de texte sur des
+   clics rapprochés ; en sombre, le segment courant est plus clair que le
+   rail (il paraissait « enfoncé », donc inactif). */
+.k-segmente > a, .k-segmente > button, .k-segmente label { -webkit-user-select: none; user-select: none; }
+:root[data-theme="dark"] .k-segmente::before { background: #323d36; box-shadow: 0 0 0 1px var(--border-hover); }
+:root[data-theme="dark"] .tdp-bascule > a[aria-current="page"] { background: #323d36; }
+
+/* Lot 16 : ligne du Daily log sans tâche (« Sans tâche » discret). */
+.dl9 .dl-pname.dl-pname-vide { color: var(--text-muted); font-weight: var(--graisse-normale); font-style: italic; }

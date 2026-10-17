@@ -16,7 +16,7 @@
   <a href="#posts-projet" class="lien-evitement-interne">Aller aux posts du projet</a>
   <div role="table" aria-label="Tâches du projet" class="taches-table" id="taches-ouvertes">
     <div class="thead" role="row">
-      <span role="columnheader">Tâche</span><span role="columnheader">Intervenants</span><span role="columnheader">État</span><span role="columnheader">Échéance</span><span role="columnheader">Heures</span><span aria-hidden="true"></span>
+      <span role="columnheader">Tâche</span><span role="columnheader">Intervenants</span><span role="columnheader">État</span><span role="columnheader">Échéance</span><span role="columnheader" title="Heures des intervenants · heures du chef de projet">Heures interv. · chef</span><span aria-hidden="true"></span>
     </div>
     {% for t in taches_ouvertes %}
       {% with oob=false %}{% include "partials/tache_ligne.html" %}{% endwith %}

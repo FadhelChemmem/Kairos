@@ -30,7 +30,9 @@ SELECT 'tache', 1, 'UPDATE', 2, jsonb_build_object('etat', 'en_cours', 'titre', 
 FROM generate_series(1, 160) AS g;
 INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, tache_id, heures, updated_by)
 SELECT 3, d::date, 1, NULL, 4, 3 FROM generate_series(CURRENT_DATE - 13, CURRENT_DATE - 1, interval '1 day') AS d
-WHERE extract(isodow FROM d) < 6;
+WHERE extract(isodow FROM d) < 6
+  -- Lot 16 : le week-end, le Daily log s'ouvre sur le vendredi, laissé vierge.
+  AND d::date < CURRENT_DATE - GREATEST(extract(isodow FROM CURRENT_DATE)::int - 5, 0);
 """
 env = dict(os.environ)
 env.setdefault("PGHOST", "127.0.0.1")

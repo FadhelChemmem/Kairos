@@ -22,6 +22,10 @@ class _Base(BaseIntegration):
         self.rh = self.user("rh", equipe=None)
         self.sql("UPDATE utilisateur SET created_at = now() - interval '400 days'")
         self.auj = self.dl.aujourdhui_pour({"fuseau": "Africa/Tunis"})
+        # Lot 16 : rien n'est proposé le week-end ; un samedi ou un dimanche,
+        # ces tests portent sur le dernier jour ouvré.
+        if self.auj.weekday() >= 5:
+            self.auj = self.dl.jour_ouvre_precedent(self.auj)
         self.pa = self.projet(self.chef, code="26001A")
         self.pb = self.projet(self.chef, code="26002B")
         self.pc = self.projet(self.cochef, code="26003C")
@@ -232,7 +236,7 @@ class TestFiche(_Base):
         self.assertIn("Daily log — 2 dernières semaines", html)
         self.assertIn(f'/dailylog?date={hier.isoformat()}&amp;utilisateur={self.moi}', html)
         self.assertIn("Non renseigné", html)
-        self.assertIn("Tâches en cours", html)
+        self.assertIn("Tâches ouvertes", html)
         self.assertIn("Projets en cours", html)
         self.login(self.admin)
         html = self.client.get(f"/utilisateurs/{self.moi}").get_data(as_text=True)
@@ -245,7 +249,7 @@ class TestFiche(_Base):
         self.login(self.chef)
         html = self.client.get(f"/utilisateurs/{self.rh}/profil").get_data(as_text=True)
         self.assertNotIn("Daily log —", html)
-        self.assertNotIn("Tâches en cours", html)
+        self.assertNotIn("Tâches ouvertes", html)
 
     def test_chef_ne_voit_que_les_lignes_de_ses_projets_mais_l_etat_reel(self):
         hier = self.ouvre_precedent()

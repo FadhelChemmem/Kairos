@@ -495,6 +495,13 @@ def create_tache(
         return tache_id
 
 
+def ids_intervenants(tache_id: int) -> list[int]:
+    """Intervenants d'une tâche (notifications : requête qui la cite, levée
+    de blocage — lot 16)."""
+    return [int(r["utilisateur_id"]) for r in db.query_all(
+        "SELECT utilisateur_id FROM tache_intervenant WHERE tache_id = %s ORDER BY utilisateur_id", (tache_id,))]
+
+
 def user_est_intervenant(tache_id: int, user_id: int) -> bool:
     """Vrai si `user_id` est affecté comme intervenant sur cette tâche —
     en plus du chef de projet et des co-chefs (voir projets.user_can_manage),
@@ -656,7 +663,8 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, 
                                  WHEN etat = 'bloque' AND bloque_le IS NOT NULL THEN bloque_le
                                  WHEN %(annulation)s AND bloque_motif IS NOT DISTINCT FROM %(motif)s
                                       AND bloque_le IS NOT NULL THEN bloque_le
-                                 ELSE now() END,
+                                 -- Lot 16 : instant simulé (mode test), jamais dans le futur réel.
+                                 ELSE LEAST(now(), COALESCE(fn_instant_simule(), now())) END,
                 bloque_par = CASE WHEN %(etat)s <> 'bloque' THEN bloque_par
                                   WHEN (etat = 'bloque' OR %(annulation)s) AND bloque_motif IS NOT DISTINCT FROM %(motif)s
                                        AND bloque_par IS NOT NULL THEN bloque_par

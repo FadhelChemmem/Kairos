@@ -97,7 +97,7 @@
         </div>
         <span class="tb-ligne-meta">
           {% if x.date_echeance %}<span class="tb-ligne-date"><span class="tb-ligne-prefixe">éch.</span> {{ x.date_echeance|date_courte }}</span>{% elif cle != 'sans_echeance' %}<span class="tb-ligne-date">sans échéance</span>{% endif %}
-          {% if retard %}<span class="pill pill-sm pill-rouge tb-retard">+{{ (b.aujourdhui - x.date_echeance).days }}&nbsp;j<span class="sr-only">, {{ retard }}</span></span>{% endif %}
+          {% if retard %}<span class="pill pill-sm pill-rouge tb-retard">{{ (b.aujourdhui - x.date_echeance).days }}&nbsp;j de retard<span class="sr-only">, {{ retard }}</span></span>{% endif %}
         </span>
       {% endif %}
     </li>

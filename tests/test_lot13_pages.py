@@ -251,7 +251,7 @@ class TestJournal(_Base):
 
 class TestUtilisateursFormulaires(_Base):
     AUTRE = smoke.AUTRE_UTILISATEUR
-    FICHE = {"prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn", "telephone": "", "poste": "Technicien",
+    FICHE = {"prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn", "telephone": "", "poste": "Technicien",
              "adresse": "", "date_embauche": "", "equipe_code": "URBS", "role": "intervenant", "fuseau": "Africa/Tunis"}
 
     def test_fiche_erreur_reliee_au_champ_422(self):
@@ -275,7 +275,7 @@ class TestUtilisateursFormulaires(_Base):
         maj.assert_called_once()
         self.assertEqual(resp.status_code, 200)
         html = fragment(self, resp)
-        self.assertIn('<h1 class="page-titre" id="utilisateur-titre" data-partiel-oob>Wael Rekik</h1>', html)
+        self.assertIn('<h1 class="page-titre" id="utilisateur-titre" data-partiel-oob>Wael Testeur</h1>', html)
         self.assertEqual(toasts_de(resp)[0], {"type": "succes", "texte": "Fiche mise à jour."})
         # Sans JavaScript : redirection inchangée.
         with patch("app.repositories.utilisateurs.update_utilisateur_complet"):
@@ -369,7 +369,7 @@ class TestUtilisateursFormulaires(_Base):
         self.assertIn('id="fiche-actif" class="toggle toggle-liste" role="switch" aria-checked="false"', html)
         self.assertIn('id="utilisateur-reinit"', html)   # carte de réinitialisation, hors cible
         toast = toasts_de(resp)[0]
-        self.assertEqual(toast["texte"], "Compte désactivé\u00a0: Wael Rekik.")
+        self.assertEqual(toast["texte"], "Compte désactivé\u00a0: Wael Testeur.")
         self.assertEqual((toast["action"]["cible"], toast["action"]["donnees"]["retour"]), ("#utilisateur-actif", "fiche"))
         self.assertEqual((sans_js.status_code, sans_js.headers["Location"]), (302, "/utilisateurs/2"))
 

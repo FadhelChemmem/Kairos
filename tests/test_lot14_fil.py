@@ -131,13 +131,13 @@ class TestSql(unittest.TestCase):
         sql, params = self._sql(lambda: posts_repo.list_feed_mes_projets(1, limit=21, categorie="echanges",
                                                                          avant=(T0, 9)))
         page = sql.split("WITH page AS (", 1)[1].split(")\n", 1)[0]
-        self.assertIn("NOT (p.evenement IS NOT NULL AND p.evenement NOT IN ('repost', 'blocage_tache')", sql)
+        self.assertIn("NOT (p.evenement IS NOT NULL AND p.evenement NOT IN ('repost', 'blocage_tache', 'deblocage_tache')", sql)
         self.assertIn("(p.created_at, p.id) < (%(avant_date)s::timestamptz, %(avant_id)s::bigint)", sql)
         self.assertIn("WHERE p.id = ANY (ARRAY(SELECT id FROM page))", sql)
         self.assertNotIn("json_agg", page)
         self.assertEqual((params["limit"], params["avant_date"], params["avant_id"]), (21, T0, 9))
         sql, _ = self._sql(lambda: posts_repo.list_feed_projet(1, 1, categorie="activite"))
-        self.assertIn("AND (p.evenement IS NOT NULL AND p.evenement NOT IN ('repost', 'blocage_tache')", sql)
+        self.assertIn("AND (p.evenement IS NOT NULL AND p.evenement NOT IN ('repost', 'blocage_tache', 'deblocage_tache')", sql)
         sql, _ = self._sql(lambda: posts_repo.list_feed_auteur(3, 1, categorie="tout"))
         self.assertIn("AND TRUE", sql)
 

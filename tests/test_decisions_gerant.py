@@ -380,9 +380,9 @@ class TestDecision5ProxyDeConfiance(unittest.TestCase):
         journal.warning.assert_not_called()
 
     def test_cidr_ip_seule_et_espaces(self):
-        app = self._app(ips=" 192.168.100.17 , 10.0.0.0/8,")
+        app = self._app(ips=" 192.0.2.17 , 10.0.0.0/8,")
         self.assertTrue(self._vu(app, "10.200.3.4").startswith("203.0.113.9|"))
-        self.assertTrue(self._vu(app, "192.168.100.17").startswith("203.0.113.9|"))
+        self.assertTrue(self._vu(app, "192.0.2.17").startswith("203.0.113.9|"))
         with self.assertLogs("app.proxy", "WARNING"):
             self.assertTrue(self._vu(app, "192.168.100.18").startswith("192.168.100.18|"))
             self.assertTrue(self._vu(app, "172.18.0.5").startswith("172.18.0.5|"))  # pas dans la liste
@@ -396,14 +396,14 @@ class TestDecision5ProxyDeConfiance(unittest.TestCase):
             with self.subTest(adresse=adresse):
                 self.assertTrue(self._vu(app, adresse).startswith("203.0.113.9|"))
         with self.assertLogs("app.proxy", "WARNING"):
-            for adresse in ("192.168.100.50", "192.168.100.17", "172.32.0.1", "10.0.0.5"):
+            for adresse in ("192.168.100.50", "192.0.2.17", "172.32.0.1", "10.0.0.5"):
                 self.assertTrue(self._vu(app, adresse).startswith(adresse + "|"))
 
     def test_liste_vide_avec_ip_de_l_hote(self):
         with self.assertLogs("app.proxy", "WARNING") as journal:
-            app = self._app(ips="", hote="192.168.100.17")
-        self.assertIn("192.168.100.17", journal.output[0])
-        self.assertTrue(self._vu(app, "192.168.100.17").startswith("203.0.113.9|"))
+            app = self._app(ips="", hote="192.0.2.17")
+        self.assertIn("192.0.2.17", journal.output[0])
+        self.assertTrue(self._vu(app, "192.0.2.17").startswith("203.0.113.9|"))
         with self.assertLogs("app.proxy", "WARNING"):
             self.assertTrue(self._vu(app, "192.168.100.50").startswith("192.168.100.50|"))
 
@@ -460,8 +460,8 @@ class TestDecision5ProxyDeConfiance(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Décision 6 : mode test des e-mails (MAIL_DESTINATAIRES_AUTORISES)
 # ---------------------------------------------------------------------------
-LISTE_TEST = "MedFadhelChemmem@gmail.com, @midgardengineering.com"
-CIBLE_HORS_LISTE = {**smoke.AUTRE_UTILISATEUR, "id": 10, "email": "w.rekik@midgard.tn"}
+LISTE_TEST = "Gerant@exemple.tn, @midgardengineering.com"
+CIBLE_HORS_LISTE = {**smoke.AUTRE_UTILISATEUR, "id": 10, "email": "w.testeur@midgard.tn"}
 CIBLE_DANS_LISTE = {**CIBLE_HORS_LISTE, "email": "Kairos@MidgardEngineering.com"}
 RH = {**smoke.USER, "id": 7, "role": "rh"}
 
@@ -487,7 +487,7 @@ class TestDecision6MailerModeTest(unittest.TestCase):
                 smtp.assert_called_once()
 
     def test_adresse_et_domaine_autorises_casse_ignoree(self):
-        for adresse in ("medfadhelchemmem@GMAIL.com", " MedFadhelChemmem@gmail.com ",
+        for adresse in ("gerant@EXEMPLE.tn", " Gerant@exemple.tn ",
                         "kairos@midgardengineering.com", "Autre@MIDGARDENGINEERING.COM"):
             with self.subTest(adresse=adresse):
                 ok, smtp = self._envoyer(LISTE_TEST, adresse)
@@ -495,8 +495,8 @@ class TestDecision6MailerModeTest(unittest.TestCase):
                 smtp.assert_called_once()
 
     def test_hors_liste_rien_ne_part_journal_sans_contenu_adresse_masquee(self):
-        for adresse in ("w.rekik@midgard.tn", "medfadhelchemmem@gmail.com.pirate.tn",
-                        "x@sous.midgardengineering.com", "medfadhelchemmem@gmail.co", "pas-une-adresse"):
+        for adresse in ("w.testeur@midgard.tn", "gerant@exemple.tn.pirate.tn",
+                        "x@sous.midgardengineering.com", "gerant@exemple.t", "pas-une-adresse"):
             with self.subTest(adresse=adresse):
                 with self.assertLogs("app.mailer", "WARNING") as journal:
                     ok, smtp = self._envoyer(LISTE_TEST, adresse)
@@ -509,7 +509,7 @@ class TestDecision6MailerModeTest(unittest.TestCase):
 
     def test_masquage(self):
         from app.mailer import masquer
-        self.assertEqual(masquer("w.rekik@midgard.tn"), "w.***@midgard.tn")
+        self.assertEqual(masquer("w.testeur@midgard.tn"), "w.***@midgard.tn")
         self.assertEqual(masquer("a@b.tn"), "a***@b.tn")
 
     def test_liste_sans_entree_valide_rien_n_est_autorise(self):
@@ -522,7 +522,7 @@ class TestDecision6MailerModeTest(unittest.TestCase):
         from app import mailer
         self.app.config["MAIL_DESTINATAIRES_AUTORISES"] = LISTE_TEST
         with self.app.app_context(), patch("smtplib.SMTP") as smtp, self.assertLogs("app.mailer", "WARNING"):
-            mailer.envoyer_en_arriere_plan("w.rekik@midgard.tn", "s", "c")
+            mailer.envoyer_en_arriere_plan("w.testeur@midgard.tn", "s", "c")
         smtp.assert_not_called()
 
     def test_avertissement_au_demarrage(self):
@@ -532,7 +532,7 @@ class TestDecision6MailerModeTest(unittest.TestCase):
             MAIL_DESTINATAIRES_AUTORISES = LISTE_TEST
         with self.assertLogs("app.mailer", "WARNING") as journal:
             create_app(C)
-        self.assertIn("medfadhelchemmem@gmail.com", journal.output[0])
+        self.assertIn("gerant@exemple.tn", journal.output[0])
         self.assertIn("@midgardengineering.com", journal.output[0])
 
     def test_seul_mailer_envoie(self):
@@ -606,8 +606,8 @@ class TestDecision6Interface(_Base):
         return resp, self._flashes(), chercher, smtp
 
     def test_mot_de_passe_oublie_hors_liste_message_honnete_identique(self):
-        _, connu, chercher, smtp = self._oublie("w.rekik@midgard.tn", {**smoke.USER, "email": "w.rekik@midgard.tn"})
-        _, inconnu, _, _ = self._oublie("w.rekik@midgard.tn", None)
+        _, connu, chercher, smtp = self._oublie("w.testeur@midgard.tn", {**smoke.USER, "email": "w.testeur@midgard.tn"})
+        _, inconnu, _, _ = self._oublie("w.testeur@midgard.tn", None)
         self.assertEqual(connu, inconnu)  # ne révèle pas si le compte existe
         chercher.assert_not_called()      # la base n'est même pas consultée
         smtp.assert_not_called()
@@ -615,9 +615,9 @@ class TestDecision6Interface(_Base):
         self.assertFalse(any("va lui être envoyé" in f for f in connu), connu)
 
     def test_mot_de_passe_oublie_dans_la_liste_comportement_normal(self):
-        _, connu, _, smtp = self._oublie("medfadhelchemmem@gmail.com",
-                                         {**smoke.USER, "id": 1, "email": "medfadhelchemmem@gmail.com"})
-        _, inconnu, _, _ = self._oublie("medfadhelchemmem@gmail.com", None)
+        _, connu, _, smtp = self._oublie("gerant@exemple.tn",
+                                         {**smoke.USER, "id": 1, "email": "gerant@exemple.tn"})
+        _, inconnu, _, _ = self._oublie("gerant@exemple.tn", None)
         self.assertEqual(connu, inconnu)
         self.assertTrue(any("un lien de réinitialisation va lui être envoyé" in f for f in connu), connu)
 

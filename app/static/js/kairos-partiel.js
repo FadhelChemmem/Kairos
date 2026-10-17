@@ -383,6 +383,13 @@
     var zone = placerZone();
     var presents = zone.querySelectorAll('.k-toast:not(.k-sortie)');
     for (var i = 0; i <= presents.length - MAX_TOASTS; i++) fermerToast(presents[i], false);
+    // Un seul « Annuler » vivant (retour du 17/10) : la souris et Ctrl+Z
+    // visent la même action ; l'ancien toast « Annuler » se ferme.
+    if (opts.action && opts.action.libelle && RE_ANNULER.test(opts.action.libelle)) {
+      Array.prototype.forEach.call(presents, function (t) {
+        if (t.querySelector && t.querySelector('[data-k-annuler]')) fermerToast(t, false);
+      });
+    }
 
     var el = doc.createElement('div');
     el.className = 'k-toast k-toast-' + type;
@@ -1095,6 +1102,9 @@
         mode: a.getAttribute('data-partiel-mode') || 'outer',
         historique: K.historiqueParDefaut('GET', a.getAttribute('data-partiel-historique')),
         focusApres: a.getAttribute('data-focus-apres'), defiler: a.getAttribute('data-partiel-defiler'),
+        // data-optimiste vaut aussi pour un lien (« Les miennes | Toutes »,
+        // tuiles dépliables) : état appliqué au clic, sans capture de page.
+        optimiste: a.getAttribute('data-optimiste'),
         declencheur: a, synchroniser: true
       });
     });

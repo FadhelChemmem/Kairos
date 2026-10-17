@@ -75,7 +75,7 @@ class TestVueEnsemble(_Base):
         self.assertIn('href="/projets/7?tache=41"', html)
         self.assertIn("Ali Chef", html)
         # Retard compté depuis l'échéance de la fixture (date du jour réelle).
-        self.assertIn(f"+{(datetime.date.today() - RETARD[0]['date_echeance']).days}&nbsp;j", html)
+        self.assertIn(f"{(datetime.date.today() - RETARD[0]['date_echeance']).days}&nbsp;j de retard", html)
 
     def test_voir_inconnu_ignore(self):
         liste = espion("app.repositories.tableaux.liste", RETARD)

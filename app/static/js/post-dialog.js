@@ -123,20 +123,26 @@
   // par le serveur) ; sans cette donnée (projet imposé), tout reste proposé
   // et le serveur écarte en le disant.
   var intervenantsTache = tacheForm ? tacheForm.querySelector('select[name="intervenants"]') : null;
+  // Lot 16 : même filtre pour les personnes mentionnées (Information,
+  // Requête) quand un projet est choisi.
+  var selectsPersonnes = [intervenantsTache].concat(Array.prototype.slice.call(
+    dialog.querySelectorAll('#dialog-mentions-information, #dialog-mentions-requete'))).filter(Boolean);
   function filtrerIntervenants(pid) {
-    if (!intervenantsTache || !projetSelect) return;
+    if (!selectsPersonnes.length || !projetSelect) return;
     var opt = pid && pid !== AUCUN ? optionProjet(pid) : null;
     var voient = null;
     if (opt && opt.hasAttribute('data-voient')) {
       voient = {};
       opt.getAttribute('data-voient').split(' ').forEach(function (id) { if (id) voient[id] = true; });
     }
-    Array.prototype.forEach.call(intervenantsTache.options, function (o) {
-      var hors = !!voient && !voient[o.value];
-      if (hors) o.selected = false;
-      o.disabled = hors;
+    selectsPersonnes.forEach(function (sel) {
+      Array.prototype.forEach.call(sel.options, function (o) {
+        var hors = !!voient && !voient[o.value];
+        if (hors) o.selected = false;
+        o.disabled = hors;
+      });
+      sel.dispatchEvent(new Event('change'));
     });
-    intervenantsTache.dispatchEvent(new Event('change'));
   }
 
   // Lot 15 : « Tâche concernée » d'une Requête — tâches ouvertes du projet
@@ -160,7 +166,7 @@
   function chargerTaches(pid) {
     if (!tacheRequete || !ouvreur) return;   // seulement fenêtre ouverte
     if (!pid || pid === AUCUN) { remplirTaches(pid, []); return; }
-    if (tachesParProjet[pid]) { remplirTaches(pid, tachesParProjet[pid]); return; }
+    // Lot 16 : rechargée à chaque fois (une tâche créée ou close entre-temps).
     remplirTaches(pid, []);   // jamais la tâche d'un autre projet pendant le chargement
     var url = tacheRequete.getAttribute('data-taches-url').replace('999999999', pid);
     fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })

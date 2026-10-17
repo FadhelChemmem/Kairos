@@ -38,7 +38,7 @@
   {% endif %}
   <div role="cell" class="taskrow-date{{ ' taskrow-close' if tache_close }}{{ ' taskrow-retard' if retard }}">
     {% if t.date_echeance %}{{ t.date_echeance|date_courte }}{% endif %}{% if t.type_deadline == 'interne' %} <span class="taskrow-interne">(interne)</span>{% endif %}
-    {% if retard %}<span class="texte-retard taskrow-retard-jours" title="{{ retard|capitalize }}"><span aria-hidden="true">+{{ retard.split(' ')[-2] }} j</span><span class="sr-only">, {{ retard }}</span></span>{% endif %}
+    {% if retard %}<span class="texte-retard taskrow-retard-jours" title="{{ retard|capitalize }}"><span aria-hidden="true">{{ retard.split(' ')[-2] }}&nbsp;j de retard</span><span class="sr-only">, {{ retard }}</span></span>{% endif %}
   </div>
   {# « 8/5 h » = heures intervenants / heures chef de projet (PR4). #}
   <div role="cell" class="taskrow-heures" title="{{ t.heures_intervenant|heures }} intervenants / {{ t.heures_chef|heures }} chef de projet">{{ heures_interv_chef(t.heures_intervenant, t.heures_chef) }}</div>

@@ -41,7 +41,7 @@ _MAX_ADRESSES_SIGNALEES = 1000
 
 
 def analyser_reseaux(valeur: str) -> tuple[list, list[str]]:
-    """« 172.16.0.0/12, 192.168.100.17 » -> (réseaux, entrées invalides).
+    """« 172.16.0.0/12, 192.0.2.17 » -> (réseaux, entrées invalides).
     Une IP seule vaut un réseau d'une adresse ; espaces et entrées vides
     ignorés."""
     reseaux, invalides = [], []

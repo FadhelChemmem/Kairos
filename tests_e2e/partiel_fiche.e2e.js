@@ -84,7 +84,7 @@ module.exports = async function scenarioFiche(h) {
   await p.evaluate(() => { const l = document.getElementById('tache-ligne-20'); window.scrollBy(0, l.getBoundingClientRect().top - 260); });
   etape('fiche : tâche en retard signalée dans la ligne (audit UX I7)',
     await p.locator('#tache-ligne-20 .taskrow-retard .texte-retard').count() === 1
-    && /\+4 j/.test(await p.locator('#tache-ligne-20 .taskrow-retard-jours').innerText()));
+    && /4\s+j de retard/.test(await p.locator('#tache-ligne-20 .taskrow-retard-jours').innerText()));
 
   // --- Ouverture : panneau latéral, ?tache=, Retour ferme -----------------
   await mesurer(p, c, 'ouvrir le panneau (pushState ?tache=20)',

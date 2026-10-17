@@ -114,7 +114,7 @@ class TestLibelles(_Base):
         self.assertIn(">Prochaine échéance</span>", html)
         self.assertIn(">Heures (interv. · chef)</span>", html)
         self.assertIn("ptable-rendu ptable-rendu-retard", html)
-        self.assertIn('<span class="ptable-retard-jours" aria-hidden="true">+2&nbsp;j</span>', html)
+        self.assertIn('<span class="ptable-retard-jours" aria-hidden="true">2&nbsp;j de retard</span>', html)
         self.assertIn("8 h · 5 h", html)
 
     def test_accueil_etats_vides_avec_action(self):

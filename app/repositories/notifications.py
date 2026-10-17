@@ -67,7 +67,13 @@ def list_notifications(user_id: int, limit: int = 50, avec_simulees: bool = Fals
     « [Simulation] » ne se voient que pendant le test de l'Admin
     (modes_admin.voit_rappels_simules), jamais par la vraie personne."""
     sql = """
-        SELECT n.id, n.categorie, n.message, n.lu, n.created_at,
+        SELECT n.id, n.categorie,
+               -- Lot 16 (revue sécurité) : l'extrait d'un post supprimé ne
+               -- reste pas lisible dans les notifications.
+               CASE WHEN p.supprime_le IS NOT NULL
+                    THEN regexp_replace(n.message, '[[:space:] ]*:[[:space:] ]*«.*$', '') || ' (post supprimé).'
+                    ELSE n.message END AS message,
+               n.lu, n.created_at,
                n.post_id, n.tache_id, n.projet_id, n.simulee,
                p.projet_id AS post_projet_id,
                t.projet_id AS tache_projet_id, t.titre AS tache_titre,

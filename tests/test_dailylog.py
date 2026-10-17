@@ -617,7 +617,7 @@ class TestPage(_BaseDailyLog):
             self.assertEqual(url_for("dailylog.formulaire", date="2026-10-01"), "/dailylog?date=2026-10-01")
 
     def test_selection_d_un_employe_pour_chef_et_admin(self):
-        actifs = [{"id": 2, "prenom": "Wael", "nom": "Rekik", "role": "intervenant"},
+        actifs = [{"id": 2, "prenom": "Wael", "nom": "Testeur", "role": "intervenant"},
                   {"id": 7, "prenom": "Rym", "nom": "Client", "role": "client"}]
         for user, voit in ((CHEF, True), (ADMIN, True), (INTERVENANT, False)):
             with self.subTest(role=user["role"]):
@@ -625,13 +625,13 @@ class TestPage(_BaseDailyLog):
                                   **{"app.repositories.utilisateurs.list_actifs": actifs}).data.decode()
                 self.assertEqual('id="dl-qui-select"' in html, voit)
                 if voit:
-                    self.assertIn("Wael Rekik", html)
+                    self.assertIn("Wael Testeur", html)
                     self.assertNotIn("Rym Client", html)
 
     def test_mode_correction_bandeau(self):
         html = self.appel("get", "/dailylog?utilisateur=2", user=CHEF,
                           **{"app.repositories.utilisateurs.get_utilisateur": EMPLOYE}).data.decode()
-        self.assertIn("Correction du Daily log&nbsp;: <b>Wael Rekik</b>", html)
+        self.assertIn("Correction du Daily log&nbsp;: <b>Wael Testeur</b>", html)
         self.assertIn("Seules les lignes de vos projets sont modifiables", html)
         self.assertIn('"mode": "correction"', html)
 

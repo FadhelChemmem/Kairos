@@ -152,12 +152,24 @@
     groupe.classList.add('k-segmente-pret');
   }
   var observateur = window.ResizeObserver ? new ResizeObserver(function (entrees) { entrees.forEach(function (en) { placer(en.target); }); }) : null;
+  // L'indicateur suit le segment courant quel que soit celui qui le change
+  // (clic, état optimiste, fragment re-rendu, retour en arrière) : sans
+  // cela il restait sur l'ancien segment (vidéo du 17/10, « Les miennes |
+  // Toutes » de l'accueil).
+  var suiveur = window.MutationObserver ? new MutationObserver(function (mutations) {
+    var vus = [];
+    mutations.forEach(function (m) {
+      var g = m.target.closest && m.target.closest('.k-segmente');
+      if (g && vus.indexOf(g) < 0) { vus.push(g); placer(g); }
+    });
+  }) : null;
   function segmentes(racine) {
     (racine && racine.querySelectorAll ? racine : document).querySelectorAll('.k-segmente').forEach(function (g) {
       if (g.dataset.segInit) { placer(g); return; }
       g.dataset.segInit = '1';
       placer(g);
       if (observateur) observateur.observe(g);
+      if (suiveur) suiveur.observe(g, { subtree: true, attributes: true, attributeFilter: ['aria-current', 'aria-pressed', 'aria-checked'] });
     });
   }
   segmentes(document);

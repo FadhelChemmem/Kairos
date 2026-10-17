@@ -107,7 +107,7 @@ class TestBlocageAvecMotif(_Blocage):
         self.login(self.chef)
         r = self.client.post(self.url_etat(), data={"etat": "en_cours"}, headers=partiel(f"#tache-fenetre-{self.t1}"))
         t = toasts(r)[0]
-        self.assertEqual(t["texte"], "Blocage levé.")
+        self.assertEqual(t["texte"], "Blocage levé\u00a0: Rim Inter prévenu.")  # lot 16
         self.assertEqual((t["action"]["donnees"]["etat"], t["action"]["donnees"]["annulation"]), ("bloque", "1"))
         self.assertEqual([p["contenu"] for p in self.posts(self.p1, "deblocage_tache")], ["Bloqué → En cours"])
         fiche = self.visible(self.client.get(f"/projets/{self.p1}?fil=tout"))

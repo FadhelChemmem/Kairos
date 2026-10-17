@@ -194,7 +194,7 @@ serveur, facultative), avec un avertissement au démarrage si le port 8000
 est publié sur le LAN (`WEB_BIND` ≠ `127.0.0.1`). L'appli démarre dans
 tous les cas.
 
-Exemple (Nginx Proxy Manager en conteneur sur le serveur 192.168.100.17,
+Exemple (Nginx Proxy Manager en conteneur sur le serveur 192.0.2.17,
 qui renvoie vers le port 8000 publié) :
 
 ```
@@ -229,7 +229,7 @@ destinataires possibles : adresses et/ou domaines `@domaine`, séparés par
 des virgules, casse ignorée.
 
 ```
-MAIL_DESTINATAIRES_AUTORISES=medfadhelchemmem@gmail.com,kairos@midgardengineering.com
+MAIL_DESTINATAIRES_AUTORISES=gerant@exemple.tn,kairos@midgardengineering.com
 ```
 
 Un e-mail vers une autre adresse n'est **jamais** envoyé, quel que soit le

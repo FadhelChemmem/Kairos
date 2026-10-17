@@ -150,11 +150,11 @@ class TestEmailsModeTest(BaseIntegration):
     def test_lien_rh_hors_liste_aucun_jeton_aucun_envoi(self):
         from unittest.mock import patch
         rh = self.user("rh")
-        cible = self.user("intervenant", email="w.rekik@midgard.tn")
+        cible = self.user("intervenant", email="w.testeur@midgard.tn")
         autorisee = self.user("intervenant", email="Kairos@MidgardEngineering.com")
         self.app.config.update(SMTP_HOST="smtp.exemple.tn", SMTP_USE_TLS=False,
                                APP_BASE_URL="https://kairos.exemple.tn",
-                               MAIL_DESTINATAIRES_AUTORISES="medfadhelchemmem@gmail.com,@midgardengineering.com")
+                               MAIL_DESTINATAIRES_AUTORISES="gerant@exemple.tn,@midgardengineering.com")
         try:
             self.login(rh)
             with patch("smtplib.SMTP") as smtp:

@@ -216,7 +216,7 @@ UTILISATEUR_PROFIL = {
 # où on doit pouvoir éditer le compte de quelqu'un d'autre sans restriction,
 # contrairement à son propre compte (garde-fou anti-auto-changement de rôle).
 AUTRE_UTILISATEUR = {
-    "id": 2, "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+    "id": 2, "prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn",
     "telephone": None, "poste": "Technicien", "adresse": None,
     "date_embauche": None, "equipe_code": "URBS",
     "role": "intervenant", "verifie": True, "actif": True, "champs_perso": {},
@@ -1375,7 +1375,7 @@ class SmokeTestCase(SmokeBase):
             self.assertEqual(r10.status_code, 302, r10.data[:2000])
 
             r12 = self.client.post("/utilisateurs/nouveau", data={
-                "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                "prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn",
                 "role": "intervenant", "equipe_code": "MIDGARD", "actif": "on",
             })
             self.assertEqual(r12.status_code, 302, r12.data[:2000])
@@ -1599,7 +1599,7 @@ class SmokeTestCase(SmokeBase):
                 resp = self.client.post(
                     "/utilisateurs/nouveau",
                     data={
-                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn",
                         "role": "intervenant", "equipe_code": "MIDGARD", "actif": "on",
                         "avatar": (io.BytesIO(b"contenu bidon"), "photo.png"),
                     },
@@ -1629,7 +1629,7 @@ class SmokeTestCase(SmokeBase):
                 resp = self.client.post(
                     "/utilisateurs/nouveau",
                     data={
-                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn",
                         "role": "intervenant", "equipe_code": "MIDGARD", "actif": "on",
                         "avatar": (io.BytesIO(b"contenu bidon"), "carte.pdf"),
                     },
@@ -1660,7 +1660,7 @@ class SmokeTestCase(SmokeBase):
                 resp = self.client.post(
                     "/utilisateurs/nouveau",
                     data={
-                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn",
                         "role": "intervenant", "equipe_code": "MIDGARD",
                         # Pas de "actif": "on" → compte voulu inactif.
                     },
@@ -1689,7 +1689,7 @@ class SmokeTestCase(SmokeBase):
                 resp = self.client.post(
                     "/utilisateurs/nouveau",
                     data={
-                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn",
                         "role": "intervenant", "equipe_code": "MIDGARD",
                         "date_embauche": "n-importe-quoi",
                     },
@@ -1714,7 +1714,7 @@ class SmokeTestCase(SmokeBase):
                 resp = self.client.post(
                     "/utilisateurs/nouveau",
                     data={
-                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn",
                         "role": "intervenant", "equipe_code": "MIDGARD",
                         "date_embauche": "2026-09-28", "actif": "on",
                     },
@@ -2150,7 +2150,7 @@ class SmokeTestCase(SmokeBase):
         self.assertIn("Note de calcul EXE", body)
         # Pas de champ de filtre ni de légende de couleurs dans la bannière.
         self.assertNotIn('id="filtre-deadlines"', body)
-        self.assertNotIn("En retard / imminent", body)
+        self.assertNotIn("En retard ou d’ici demain", body)
 
     def test_accueil_bandeau_deadlines_nom_projet_cliquable(self):
         """Retour Fadhel, 2026-09-28 : "Aller vers le projet en cliquant sur
@@ -2691,14 +2691,14 @@ class SmokeTestCase(SmokeBase):
     def test_generer_lien_reset_utilise_app_base_url(self):
         from app.auth import generer_lien_reset
 
-        self.app.config["APP_BASE_URL"] = "https://kairos.nanaki45.duckdns.org"
+        self.app.config["APP_BASE_URL"] = "https://kairos.exemple.tn"
         try:
             with self.app.test_request_context("/", headers={"Host": "evil.attacker.tld"}), \
                  patch("app.repositories.utilisateurs.set_reset_token"):
                 lien = generer_lien_reset(1)
         finally:
             self.app.config["APP_BASE_URL"] = ""
-        self.assertTrue(lien.startswith("https://kairos.nanaki45.duckdns.org/reinitialiser/"))
+        self.assertTrue(lien.startswith("https://kairos.exemple.tn/reinitialiser/"))
         self.assertNotIn("evil.attacker.tld", lien)
 
     def test_creation_utilisateur_envoie_un_email_pour_definir_le_mot_de_passe(self):
@@ -2719,13 +2719,13 @@ class SmokeTestCase(SmokeBase):
                 resp = self.client.post(
                     "/utilisateurs/nouveau",
                     data={
-                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn",
                         "role": "intervenant", "equipe_code": "MIDGARD", "actif": "on",
                     },
                     follow_redirects=True,
                 )
             mock_envoyer.assert_called_once()
-            self.assertEqual(mock_envoyer.call_args[0][0], "w.rekik@midgard.tn")
+            self.assertEqual(mock_envoyer.call_args[0][0], "w.testeur@midgard.tn")
             self.assertIn("d\xe9finisse son mot de passe".encode(), resp.data)
         finally:
             for p in reversed(patchers):
@@ -2744,7 +2744,7 @@ class SmokeTestCase(SmokeBase):
                 resp = self.client.post(
                     "/utilisateurs/nouveau",
                     data={
-                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn",
                         "role": "intervenant", "equipe_code": "MIDGARD", "actif": "on",
                     },
                     follow_redirects=True,
@@ -2770,7 +2770,7 @@ class SmokeTestCase(SmokeBase):
                 resp = self.client.post(
                     "/utilisateurs/nouveau",
                     data={
-                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn",
                         "role": "intervenant", "equipe_code": "MIDGARD",
                     },
                     follow_redirects=True,
@@ -2808,7 +2808,7 @@ class SmokeTestCase(SmokeBase):
                 resp = self.client.post(
                     "/utilisateurs/2",
                     data={
-                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn",
                         "role": "chef_de_projet", "equipe_code": "URBS",
                     },
                     follow_redirects=True,
@@ -2859,7 +2859,7 @@ class SmokeTestCase(SmokeBase):
                 resp = self.client.post(
                     "/utilisateurs/2",
                     data={
-                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn",
                         "role": "super_admin", "equipe_code": "URBS",
                     },
                 )
@@ -2884,7 +2884,7 @@ class SmokeTestCase(SmokeBase):
                 resp = self.client.post(
                     "/utilisateurs/2",
                     data={
-                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn",
                         "role": "intervenant", "equipe_code": "URBS",
                         "date_embauche": "n-importe-quoi",
                     },
@@ -2910,7 +2910,7 @@ class SmokeTestCase(SmokeBase):
                 resp = self.client.post(
                     "/utilisateurs/2",
                     data={
-                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn",
                         "role": "intervenant", "equipe_code": "URBS",
                         "date_embauche": "2026-09-28",
                     },
@@ -2966,7 +2966,7 @@ class SmokeTestCase(SmokeBase):
                 resp = self.client.post(
                     "/utilisateurs/2",
                     data={
-                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn",
                         "role": "client", "equipe_code": "URBS",
                         "telephone": "20 000 001",
                     },
@@ -2992,7 +2992,7 @@ class SmokeTestCase(SmokeBase):
                 self.client.post(
                     "/utilisateurs/2",
                     data={
-                        "prenom": "Wael", "nom": "Rekik", "email": "w.rekik@midgard.tn",
+                        "prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn",
                         "role": "intervenant", "equipe_code": "URBS",
                         "nouveau_mot_de_passe": "nouveau123",
                     },
@@ -3278,7 +3278,7 @@ class SmokeTestCase(SmokeBase):
         self.assertIn("Wael", html)
         self.assertIn("20 111 222", html)
         self.assertNotIn("Modifier la fiche", html)
-        self.assertIn("Tâches en cours", html)
+        self.assertIn("Tâches ouvertes", html)
         self.assertIn("Projets en cours", html)
 
     def test_fiche_chef_de_projet_ne_peut_rien_modifier(self):
@@ -3297,8 +3297,8 @@ class SmokeTestCase(SmokeBase):
                 resp = self.client.post(
                     "/utilisateurs/2",
                     data={
-                        "prenom": "Pirate", "nom": "Rekik",
-                        "email": "w.rekik@midgard.tn", "role": "admin",
+                        "prenom": "Pirate", "nom": "Testeur",
+                        "email": "w.testeur@midgard.tn", "role": "admin",
                     },
                 )
         finally:

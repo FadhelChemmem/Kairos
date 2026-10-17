@@ -370,7 +370,7 @@ class TestPageDeLaPersonne(_Base):
         self.sql("UPDATE tache SET etat = 'bloque', bloque_motif = 'Attente', bloque_le = now() WHERE id = %s", (bloquee,))
         self.login(self.chef)
         html = self.client.get(f"/utilisateurs/{self.inter}/profil").get_data(as_text=True)
-        self.assertIn("Tâches en cours", html)
+        self.assertIn("Tâches ouvertes", html)
         self.assertIn("Projets en cours", html)
         self.assertIn(f'href="/projets/{self.p}?tache={en_retard}"', html)
         self.assertIn(f'href="/projets/{self.p}?tache={bloquee}"', html)

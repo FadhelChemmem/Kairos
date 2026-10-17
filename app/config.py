@@ -68,7 +68,7 @@ class Config:
     SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
 
     # Base publique de l'application (revue sécurité, PROMPT_CORRECTIONS.md
-    # P0 #3), ex. "https://kairos.nanaki45.duckdns.org" (sans / final) —
+    # P0 #3), ex. "https://kairos.exemple.tn" (sans / final) —
     # utilisée pour construire les liens ABSOLUS envoyés par email
     # (réinitialisation de mot de passe, création de compte) sans jamais
     # faire confiance à l'en-tête Host de la requête entrante. Sans ce

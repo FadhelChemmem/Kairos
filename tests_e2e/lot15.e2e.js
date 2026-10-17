@@ -101,6 +101,25 @@ const deborde = (p) => p.evaluate(() => document.documentElement.scrollWidth > d
     await p.click('#acc-deadlines summary');
     await attendre(() => sql("SELECT accueil_deadlines FROM utilisateur_preference WHERE utilisateur_id = 2") === 'f');
 
+    // Lot 16 (vidéo du 17/10) : « Les miennes | Toutes » — l'indicateur
+    // suit le segment courant, sans capture de page (View Transition).
+    const indicateur = () => p.evaluate(() => {
+      const nav = document.querySelector('[data-tdp-bascule]');
+      const cur = nav.querySelector('[aria-current="page"]');
+      const x = parseFloat(getComputedStyle(nav).getPropertyValue('--seg-x')) || 0;
+      return { courant: cur && cur.id, ok: !!cur && Math.abs(x - cur.offsetLeft) < 1, vt: !!document.activeViewTransition };
+    });
+    for (const id of ['#tdp-miennes', '#tdp-toutes', '#tdp-toutes', '#tdp-miennes']) {
+      await p.click(id);
+      const i0 = await indicateur();
+      await attendre(async () => (await p.evaluate(() => document.getElementById('accueil-taches').dataset.mode))
+        === (id === '#tdp-miennes' ? 'miennes' : 'toutes'));
+      await pause(400);
+      const i1 = await indicateur();
+      etape(`« ${id === '#tdp-miennes' ? 'Les miennes' : 'Toutes'} » : indicateur sur le segment courant, au clic et après`,
+        i0.courant === id.slice(1) && i1.courant === id.slice(1) && i1.ok && !i0.vt, [i0, i1]);
+    }
+
     // --- 2. Post : modifier, supprimer, Annuler -------------------------------
     await p.click('#fil-filtre-accueil-tout');
     await attendre(() => p.evaluate(() => !!document.querySelector('#fil-liste[data-fil-categorie="tout"]')));

@@ -299,7 +299,7 @@ class TestConstatsMineurs(_Base):
         html = self._requete("/accueil", **{"app.repositories.taches.list_mes_taches": mes_taches}).data.decode()
         # Intégration lot 11 : texte du back (« en retard de N j »), classe du front.
         # Lot 15 : pastille « +N j », le texte complet au survol et lu.
-        self.assertRegex(html, r'title="en retard de \d+ j">\+\d+&nbsp;j<span class="sr-only">, en retard de \d+ j</span>')
+        self.assertRegex(html, r'title="en retard de \d+ j">\d+&nbsp;j de retard<span class="sr-only">, en retard de \d+ j</span>')
 
     def test_scripts_du_fil_seulement_sur_les_pages_a_fil(self):
         for url in ("/utilisateurs", "/notifications", "/deadlines", "/dailylog"):

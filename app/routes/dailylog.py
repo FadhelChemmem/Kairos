@@ -115,6 +115,7 @@ TEXTES_DAILYLOG = {
     "taches_titre": "Tâches de {x}",
     "projet_seul": "Projet seul (sans tâche)",
     "sans_tache": "sans tâche",
+    "sans_tache_titre": "Sans tâche",
     "retirer": "Retirer la ligne {x} (non enregistrée)",
     "retirer_titre": "Retirer cette ligne (non enregistrée)",
     "ligne_retiree": "Ligne retirée\u00a0: {x}",
@@ -423,7 +424,8 @@ def jour_json(proprio: dict, date, aujourdhui, contexte: bool = True) -> dict:
         # tâches en cours proposées à 0 h (affichées si la personne ne l'a
         # pas désactivé, voir dailylog.js) ; jamais en correction.
         out["proposees"] = (dl.lignes_proposees(proprio, date)
-                            if statut == "vide" and droits["mode"] == "saisie" and droits["saisie_libre"] else [])
+                            if statut == "vide" and droits["mode"] == "saisie" and droits["saisie_libre"]
+                            and date.weekday() < 5 else [])
     return out
 
 
@@ -445,7 +447,10 @@ def _mois_json(proprio: dict, annee: int, mois: int, aujourdhui) -> dict:
 def formulaire():
     proprio = _proprietaire(pour_api=False)
     aujourdhui = dl.aujourdhui_pour(proprio)
-    date = _date_ou_none(request.args.get("date")) or aujourdhui
+    # Lot 16 : le week-end, la page s'ouvre sur le dernier jour ouvré (le
+    # vendredi manquant), pas sur le samedi ; le samedi reste accessible.
+    defaut = aujourdhui if aujourdhui.weekday() < 5 else dl.jour_ouvre_precedent(aujourdhui)
+    date = _date_ou_none(request.args.get("date")) or defaut
     if date > aujourdhui:
         params = {"date": aujourdhui.isoformat()}
         if proprio["id"] != g.user["id"]:
