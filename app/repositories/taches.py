@@ -495,6 +495,20 @@ def create_tache(
         return tache_id
 
 
+def derniere_cloture(tache_id: int) -> dict | None:
+    """Qui a terminé la tâche (dernier post de clôture) — lot 17, encadré
+    « Terminée le … par … » du panneau."""
+    return db.query_one(
+        """
+        SELECT u.prenom, u.nom, p.created_at
+        FROM post p JOIN utilisateur u ON u.id = p.auteur_id
+        WHERE p.tache_id = %s AND p.evenement = 'cloture_tache'
+        ORDER BY p.created_at DESC, p.id DESC LIMIT 1
+        """,
+        (tache_id,),
+    )
+
+
 def ids_intervenants(tache_id: int) -> list[int]:
     """Intervenants d'une tâche (notifications : requête qui la cite, levée
     de blocage — lot 16)."""
@@ -767,7 +781,7 @@ TEXTE_CLOTURE_SANS_MESSAGE = "Tâche terminée."
 
 def close_tache(
     tache_id: int, projet_id: int, current_user_id: int, type_code: str, contenu: str | None = None,
-    *, peut_gerer: bool = False,
+    *, peut_gerer: bool = False, date_fin=None,
 ) -> int | None:
     """Clôture une tâche (etat='termine', date_fin=aujourd'hui) et génère
     toujours le post automatique associé, avec le tag choisi par
@@ -801,12 +815,17 @@ def close_tache(
             """
             WITH avant AS (SELECT etat FROM tache WHERE id = %s)
             UPDATE tache SET etat = 'termine',
-                             date_fin = fn_date_ecriture((SELECT fuseau FROM utilisateur WHERE id = %s))
+                             -- Lot 17 : date de fin choisie (oubli d'hier…), jamais
+                             -- après la date d'écriture (aujourd'hui, simulée comprise).
+                             date_fin = LEAST(fn_date_ecriture((SELECT fuseau FROM utilisateur WHERE id = %s)),
+                                              COALESCE(%s::date, fn_date_ecriture(
+                                                (SELECT fuseau FROM utilisateur WHERE id = %s))))
             WHERE id = %s AND projet_id = %s AND etat NOT IN ('termine', 'verifie')
               AND (%s OR etat::text <> ALL (%s))
             RETURNING id, projet_id, titre, (SELECT etat FROM avant) AS ancien_etat
             """,
-            (tache_id, current_user_id, tache_id, projet_id, peut_gerer, list(reserves_hors_cloture)),
+            (tache_id, current_user_id, date_fin, current_user_id, tache_id, projet_id, peut_gerer,
+             list(reserves_hors_cloture)),
         )
         row = cur.fetchone()
         if row is None:

@@ -74,7 +74,9 @@ class TestBlocageAvecMotif(_Blocage):
         html = self.texte(r)
         self.assertIn(f'id="tache-{self.t1}-blocage-detail"', html)
         self.assertIn(f"« {MOTIF} »", html)
-        self.assertIn(" · bloquée depuis aujourd’hui, par Rim Inter", html)
+        # Lot 17 : encadré « Bloquée depuis … par … : motif » + « Lever le blocage ».
+        self.assertIn("Bloquée depuis aujourd’hui</b> par Rim Inter", html)
+        self.assertIn(f'id="tache-{self.t1}-lever"', html)
         self.assertIn(f"tache-ligne-{self.t1}", oob(html))
         ligne = html.split(f'id="tache-ligne-{self.t1}"')[1].split('class="taskrow-heures"')[0]
         self.assertIn(f'title="Bloquée depuis aujourd’hui : « {MOTIF} »"', ligne)
@@ -121,7 +123,7 @@ class TestBlocageAvecMotif(_Blocage):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(self.tache_bloc(), avant)
         self.assertEqual(self.posts(self.p1, "deblocage_tache"), [])
-        self.assertIn("bloquée depuis 3 j, par Rim Inter", self.texte(r))
+        self.assertIn("Bloquée depuis 3 j</b> par Rim Inter", self.texte(r))
         # Aucune nouvelle notification par l'annulation.
         self.assertEqual(len(self.notifs(self.chef)), 1)
 
@@ -201,17 +203,22 @@ class TestClotureAvecMessage(_Blocage):
     def test_panneau_propose_le_message(self):
         self.login(self.inter)
         html = self.texte(self.client.get(f"/projets/{self.p1}/taches/{self.t1}/fenetre"))
-        bloc = html.split('class="tache-cloture"')[1].split("</form>")[0]
+        # Lot 17 : fenêtre flottante sous « Terminée » (message, date de fin,
+        # Envoi / Réponse), cachée jusqu'au clic.
+        bloc = html.split(f'id="tache-{self.t1}-cloture"')[1].split("</form>")[0]
+        self.assertIn("hidden", bloc.split(">")[0])
+        self.assertIn(f'data-blocage-ouvrir="tache-{self.t1}-cloture"', html)
         self.assertIn("Terminer la tâche", bloc)
         self.assertIn(f'<textarea name="contenu" id="cloture-message-{self.t1}"', bloc)
-        self.assertIn('placeholder="Ex. Dossier EXE indice B envoyé au BET"', bloc)
-        self.assertIn("Type de post", bloc)
+        self.assertIn("ex. dossier EXE indice B envoyé au BET", bloc)
+        self.assertIn(f'name="date_fin" id="cloture-date-{self.t1}"', bloc)
+        self.assertIn('aria-label="Type du post"', bloc)
         self.assertIn("Terminer et publier", bloc)
         # Question du blocage : cachée, motif obligatoire, exemple.
         question = html.split(f'id="tache-{self.t1}-blocage"')[1].split("</form>")[0]
         self.assertIn("hidden", question.split(">")[0])
         self.assertIn("Qu’est-ce qui bloque ?", question)
-        self.assertIn('placeholder="Ex. attente des plans archi indice B"', question)
+        self.assertIn('placeholder="Ex. attente des plans archi indice B, visa BC, réponse client"', question)
         self.assertRegex(question, r'<textarea[^>]+name="motif"[^>]+required')
         self.assertIn(f'data-blocage-ouvrir="tache-{self.t1}-blocage"', html)
 

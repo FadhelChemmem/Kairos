@@ -505,7 +505,7 @@
     // État : la pastille change tout de suite, dans le panneau et la ligne.
     K.optimistes['etat-tache'] = function (bouton) {
       if (!bouton || !bouton.getAttribute || !bouton.hasAttribute('data-classe')) return null;
-      var groupe = bouton.closest('form');
+      var groupe = bouton.form || bouton.closest('form');
       var fenetre = bouton.closest('[data-tache-fenetre]');
       var pastilles = [];
       if (fenetre) pastilles.push(fenetre.querySelector('[data-tache-pastille]'));
@@ -892,5 +892,44 @@
   document.addEventListener('pointerout', function (e) {
     var ligne = e.target.closest && e.target.closest('[data-open-tache]');
     if (ligne && !ligne.contains(e.relatedTarget)) clearTimeout(minuteur);
+  });
+
+  // Lot 17 : échéance enregistrée au changement (plus de bouton). Le type
+  // part tout de suite ; la date à la sortie du champ ou 900 ms après la
+  // dernière modification (la saisie au clavier change jour, mois, année
+  // l'un après l'autre) ; Entrée envoie (formulaire natif).
+  var minuteurEcheance = null;
+  function envoyerEcheance(form) {
+    clearTimeout(minuteurEcheance);
+    if (!form || !document.contains(form)) return;
+    var date = form.querySelector('input[type="date"]');
+    var type = form.querySelector('select');
+    var cle = (date ? date.value : '') + '|' + (type ? type.value : '');
+    if (form.dataset.envoye === cle) return;
+    // Date hors bornes : message du navigateur, rien n'est envoyé.
+    if (date && date.value && !date.checkValidity()) { date.reportValidity(); return; }
+    if (form.dataset.initial === undefined) form.dataset.initial = cle;
+    if (cle === form.dataset.initial) return;
+    form.dataset.envoye = cle;
+    if (form.requestSubmit) form.requestSubmit(); else form.submit();
+  }
+  document.addEventListener('focusin', function (e) {
+    var form = e.target.closest && e.target.closest('.tache-echeance-form');
+    if (!form || form.dataset.initial !== undefined) return;
+    var date = form.querySelector('input[type="date"]');
+    var type = form.querySelector('select');
+    form.dataset.initial = (date ? date.value : '') + '|' + (type ? type.value : '');
+  });
+  document.addEventListener('change', function (e) {
+    var form = e.target.closest && e.target.closest('.tache-echeance-form');
+    if (!form) return;
+    clearTimeout(minuteurEcheance);
+    if (e.target.tagName === 'SELECT') { envoyerEcheance(form); return; }
+    minuteurEcheance = setTimeout(function () { envoyerEcheance(form); }, 900);
+  });
+  document.addEventListener('focusout', function (e) {
+    var form = e.target.closest && e.target.closest('.tache-echeance-form');
+    if (!form || form.contains(e.relatedTarget)) return;
+    envoyerEcheance(form);
   });
 })();

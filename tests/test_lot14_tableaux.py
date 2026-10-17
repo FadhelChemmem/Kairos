@@ -147,7 +147,8 @@ class TestATraiter(_Base):
         html = self._appel("get", "/accueil", **{"app.auth.get_user_by_id": INTERV,
                                                  "app.repositories.tableaux.gere_des_projets": True}).get_data(as_text=True)
         self.assertIn('id="a-traiter"', html)
-        self.assertIn("data-tdp-bascule", html)
+        # Lot 17 : plus de bascule « Les miennes | Toutes » (toujours Toutes).
+        self.assertNotIn("data-tdp-bascule", html)
 
     def test_rh_et_client_sans_tableaux(self):
         for role in ("rh", "client"):
@@ -228,8 +229,9 @@ class TestTachesDeMesProjets(_Base):
         html = self._appel("get", "/accueil", **{"app.auth.get_user_by_id": CHEF,
                                                  "app.repositories.tableaux.taches_de_mes_projets": self.LIGNES}).get_data(as_text=True)
         self.assertIn(">Tâches de mes projets</h2>", html)
-        self.assertIn('id="tdp-toutes" data-partiel="#accueil-taches"', html)
-        self.assertIn('data-tableau-valeur="" aria-current="page">Toutes</a>', html)
+        # Lot 17 : bascule « Les miennes | Toutes » retirée, toutes les tâches.
+        self.assertNotIn('id="tdp-toutes"', html)
+        self.assertNotIn('>Les miennes</a>', html)
         self.assertIn('href="/projets/1?tache=1"', html)
         self.assertIn('<span class="tdp-a-vous">À vous</span>', html)
 

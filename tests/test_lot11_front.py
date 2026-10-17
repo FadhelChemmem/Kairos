@@ -156,9 +156,9 @@ class TestFenetreTacheALaDemande(_Base):
         self.assertIn('action="/projets/1/taches/5/etat"', html)
         self.assertIn("Terminer et publier", html)
         self.assertIn("note_calcul.pdf", html)
-        # Retour après un envoi de fichier sans JavaScript : la fiche, panneau
-        # de la tâche rouvert (lot 13), pas le fragment.
-        self.assertIn('name="next" value="/projets/1?tache=5"', html)
+        # Lot 17 : plus d'envoi de fichier dans le panneau (pièces jointes
+        # existantes listées en lecture seule).
+        self.assertNotIn('enctype="multipart/form-data"', html)
 
     def test_memes_droits_que_la_fiche(self):
         for overrides in ({"app.repositories.projets.user_can_view": False},

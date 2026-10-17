@@ -326,6 +326,43 @@
     // Texte affiché initial = l'option déjà sélectionnée côté serveur.
     input.value = labelFor(select.value);
 
+    // Lot 17 (champ Projet de « + Nouveau post », data-search-selection) :
+    // au clic ou au focus, tout le nom est sélectionné — la frappe le
+    // remplace d'un coup ; « × » vide le champ et montre toute la liste
+    // sans changer le choix (Échap ou sortie : le projet d'avant revient).
+    if (select.hasAttribute('data-search-selection')) {
+      var vientDuFocus = false;
+      input.addEventListener('focus', function () {
+        vientDuFocus = true;
+        setTimeout(function () { if (document.activeElement === input) input.select(); }, 0);
+      });
+      // Le relâchement du clic qui donne le focus désélectionnerait le texte.
+      input.addEventListener('mouseup', function (evt) {
+        if (vientDuFocus) { evt.preventDefault(); vientDuFocus = false; }
+      });
+      input.addEventListener('blur', function () { vientDuFocus = false; });
+      input.addEventListener('keydown', function (evt) {
+        vientDuFocus = false;
+        // Échap : le projet d'avant revient, de nouveau tout sélectionné.
+        if (evt.key === 'Escape') setTimeout(function () { if (document.activeElement === input) input.select(); }, 0);
+      });
+      var effacer = document.createElement('button');
+      effacer.type = 'button';
+      effacer.className = 'search-combobox-effacer';
+      effacer.tabIndex = -1;
+      effacer.setAttribute('aria-label', 'Effacer la recherche');
+      effacer.textContent = '×';
+      wrap.appendChild(effacer);
+      wrap.classList.add('search-combobox-avec-effacer');
+      // mousedown : le champ garde le focus (sinon sa sortie restaurerait le texte).
+      effacer.addEventListener('mousedown', function (evt) { evt.preventDefault(); });
+      effacer.addEventListener('click', function () {
+        input.value = '';
+        if (document.activeElement !== input) input.focus();
+        afficher('');
+      });
+    }
+
     // Si le code applicatif change select.value par programmation (ex.
     // post-dialog.js, quand le projet est imposé par un rebond), garder
     // le texte affiché synchronisé.

@@ -244,12 +244,19 @@ def creer():
     # stade) — projet_id, déjà connu, sert de regroupement à la place ;
     # le nom de fichier stocké reste un UUID (save_upload()), donc sans
     # impact sur l'unicité.
-    fichier = request.files.get("fichier")
-    piece_jointe = None
-    chemin = None
-    if fichier and fichier.filename:
-        nom_fichier, chemin = save_upload(fichier, f"posts/projet-{projet_id}" if projet_id else "posts/information")
-        piece_jointe = (nom_fichier, chemin)
+    # Lot 17 : plusieurs fichiers (collés, glissés ou choisis), contrôlés
+    # avant tout enregistrement ; tous effacés si l'insertion échoue.
+    fichiers, refus_pj = fichiers_postes()
+    if refus_pj:
+        return _refus(refus_pj, 422, "fichier")
+    pieces = []
+    try:
+        for f in fichiers:
+            pieces.append(save_upload(f, f"posts/projet-{projet_id}" if projet_id else "posts/information"))
+    except Exception:
+        for _, c in pieces:
+            delete_upload(c)
+        raise
 
     try:
         post_id = posts_repo.create_post(
@@ -261,12 +268,12 @@ def creer():
             tache_id=tache_id,
             lien=lien,
             mentionne_ids=mentionne_ids,
-            piece_jointe=piece_jointe,
+            pieces_jointes=pieces,
             equipe_codes=equipe_codes,
         )
     except Exception:
-        if chemin:
-            delete_upload(chemin)
+        for _, c in pieces:
+            delete_upload(c)
         raise
 
     if mentionne_ids:
@@ -291,6 +298,38 @@ def creer():
     if partiel.est_partiel():
         return reponse_publication(post_id)
     return _safe_redirect()
+
+
+MAX_FICHIERS_POST = 10
+
+
+@bp.record_once
+def _exposer_pj(state):
+    # Lot 17 : extensions acceptées, lues par partials/pieces_jointes.html
+    # (attribut accept et contrôle avant l'envoi, pieces-jointes.js).
+    from ..storage import PIECE_JOINTE_EXTENSIONS
+
+    state.app.jinja_env.globals["extensions_pj"] = ",".join(sorted(PIECE_JOINTE_EXTENSIONS))
+    state.app.jinja_env.globals["max_fichiers_post"] = MAX_FICHIERS_POST
+
+
+def fichiers_postes() -> tuple[list, str | None]:
+    """Fichiers envoyés sous le nom « fichier » (lot 17 : plusieurs) :
+    (liste, message de refus). Au plus 10 ; extension de la liste blanche
+    (storage.PIECE_JOINTE_EXTENSIONS) — un fichier refusé est nommé, plus
+    rien n'est enregistré sans extension en silence."""
+    import os
+
+    from ..storage import PIECE_JOINTE_EXTENSIONS
+
+    fichiers = [f for f in request.files.getlist("fichier") if f and f.filename]
+    if len(fichiers) > MAX_FICHIERS_POST:
+        return [], f"Au plus {MAX_FICHIERS_POST} fichiers par post."
+    for f in fichiers:
+        ext = os.path.splitext(f.filename)[1].lower()
+        if ext not in PIECE_JOINTE_EXTENSIONS:
+            return [], f"Type de fichier non accepté\u00a0: «\u00a0{f.filename[:80]}\u00a0»."
+    return fichiers, None
 
 
 def _notifier_requete(post_id: int, projet_id: int, tache: dict | None, contenu: str, deja: set) -> None:
@@ -723,9 +762,11 @@ def modifier(post_id: int):
                       422, "lien")
     retirees_demandees = v.ids_entiers(request.form.getlist("retirer_pj"))
     ajoutees, chemins = [], []
-    fichier = request.files.get("fichier")
+    fichiers, refus_pj = fichiers_postes()
+    if refus_pj:
+        return _refus(refus_pj, 422, "fichier")
     try:
-        if fichier and fichier.filename:
+        for fichier in fichiers:
             nom, chemin = save_upload(fichier, f"posts/projet-{post['projet_id']}" if post["projet_id"]
                                       else "posts/information")
             ajoutees.append((nom, chemin))

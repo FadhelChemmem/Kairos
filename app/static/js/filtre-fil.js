@@ -119,6 +119,13 @@
     if (!nav.contains(a)) { var seg = nav.querySelector('a[data-fil="' + fil + '"]'); if (seg) seg.focus(); }
   }, true);
 
+  // Lot 17 : l'onglet ouvert n'a plus de nouveautés (le serveur le note vu).
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('[data-fil-filtres] a[data-fil]');
+    var pastille = a && a.querySelector('[data-fil-non-vus]');
+    if (pastille) pastille.remove();
+  }, true);
+
   // « Afficher plus » : nombre de posts ajoutés annoncé (le focus reste sur
   // le bouton, remplacé à l'identique).
   var plus = null;

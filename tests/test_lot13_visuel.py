@@ -44,8 +44,9 @@ class TestFeuilleVisuelle(unittest.TestCase):
         # Lot 14 : les feuilles des nouvelles fonctionnalités (lot14-*.css)
         # viennent après ; lot13-visuel.css reste après toutes les autres.
         # Lot 15 : lot15.css (sobriété) en tout dernier.
-        self.assertEqual(paquets.PAQUETS["app.css"][-1], "css/lot15.css")
-        feuilles = [f for f in paquets.PAQUETS["app.css"] if not f.startswith(("css/lot14-", "css/lot15"))]
+        # Lot 17 : lot17.css juste après.
+        self.assertEqual(paquets.PAQUETS["app.css"][-2:], ("css/lot15.css", "css/lot17.css"))
+        feuilles = [f for f in paquets.PAQUETS["app.css"] if not f.startswith(("css/lot14-", "css/lot15", "css/lot17"))]
         self.assertEqual(feuilles[-1], "css/lot13-visuel.css")
 
     def test_regle_k_page_valide(self):

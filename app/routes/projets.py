@@ -1397,10 +1397,31 @@ def cloturer_tache(projet_id: int, tache_id: int):
     contenu = (request.form.get("contenu") or "").strip() or None
     if erreur := v.trop_long(contenu, v.MAX_CONTENU_POST, "Message de clôture"):
         return _refus(erreur, 422, projet_id)
+    # Lot 17 : date de fin choisie (oubli d'hier ou d'avant-hier) : jamais
+    # dans le futur, jamais avant la création de la tâche.
+    date_fin = None
+    brute = (request.form.get("date_fin") or "").strip()
+    if brute:
+        from ..repositories import dailylog as dl
+
+        try:
+            date_fin = datetime.date.fromisoformat(brute)
+        except ValueError:
+            return _refus("Date de fin invalide.", 422, projet_id, champs={"date_fin": "Date de fin invalide."})
+        tache_avant = taches.get_tache(tache_id) or {}
+        cree = tache_avant.get("created_at")
+        debut = cree.astimezone(horloge.ZoneInfo(g.user.get("fuseau") or "Africa/Tunis")).date() \
+            if hasattr(cree, "astimezone") else None
+        if date_fin > dl.aujourdhui_pour(g.user):
+            return _refus("La date de fin ne peut pas être dans le futur.", 422, projet_id,
+                          champs={"date_fin": "La date de fin ne peut pas être dans le futur."})
+        if debut and date_fin < debut:
+            message = f"La tâche a été créée le {debut.strftime('%d/%m/%Y')}\u00a0: date de fin trop ancienne."
+            return _refus(message, 422, projet_id, champs={"date_fin": message})
 
     try:
         post_id = taches.close_tache(tache_id, projet_id, g.user["id"], type_code, contenu,
-                                     peut_gerer=peut_gerer)
+                                     peut_gerer=peut_gerer, date_fin=date_fin)
     except Exception as exc:
         if not taches.est_refus_etat_reserve(exc):
             raise

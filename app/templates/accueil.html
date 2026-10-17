@@ -106,7 +106,7 @@
       <div class="acc-fil-entete">
         <h2 class="acc-section-titre" id="acc-fil-titre">Fil d’équipe</h2>
         {% import "partials/fil_filtres.html" as film %}
-        {{ film.filtres('accueil', fil_categorie, '#fil-liste', 'main.accueil', {}) }}
+        {{ film.filtres('accueil', fil_categorie, '#fil-liste', 'main.accueil', {}, fil_non_vus|default(none)) }}
       </div>
       <div class="card acc-fil-carte">
         <div class="search-mini fil-filtre acc-fil-filtre">
@@ -167,10 +167,8 @@
           <a href="{{ url_for('deadlines.liste', vue='mes') if g.user.role == 'admin' else url_for('deadlines.liste') }}" class="lien-carte lien-carte-petit">Tout voir<span class="sr-only"> les échéances</span></a>
         </div>
         {% if tdp %}
-        <nav class="k-segmente tdp-bascule" aria-label="Tâches affichées" data-tdp-bascule>
-          <a href="{{ tdp.liens.miennes }}" id="tdp-miennes" data-partiel="#accueil-taches" data-partiel-historique="replace" data-optimiste="courant" data-tableau-param="taches" data-tableau-valeur="miennes"{% if tdp.mode == 'miennes' %} aria-current="page"{% endif %}>Les miennes</a>
-          <a href="{{ tdp.liens.toutes }}" id="tdp-toutes" data-partiel="#accueil-taches" data-partiel-historique="replace" data-optimiste="courant" data-tableau-param="taches" data-tableau-valeur=""{% if tdp.mode == 'toutes' %} aria-current="page"{% endif %}>Toutes</a>
-        </nav>
+        {# Lot 17 : plus de bascule « Les miennes | Toutes » (demande du gérant) :
+           une seule liste, « À vous » sur ses propres tâches. #}
         {% include "partials/accueil_taches.html" %}
         {% else %}
         {% with tdp={'taches': mes_taches, 'mode': 'miennes', 'nb': mes_taches|length, 'nb_toutes': 0} %}

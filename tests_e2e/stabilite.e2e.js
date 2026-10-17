@@ -99,6 +99,7 @@ const SONDE = `
       const ex = (exclure || []).join(', ');
       // Zones exclues (contenu rechargé) : ce qui est SOUS elles, dans la
       // même colonne, suit leur hauteur — pas un contrôle qui bouge.
+      // Lot 17 : y compris dans une fenêtre (panneau de tâche), repère commun.
       const zones = ex ? [...document.querySelectorAll(ex)].filter(visible).map((z) => {
         const p = position(z), r = z.getBoundingClientRect();
         return { x: p.x, y: p.y, w: r.width, f: !!p.f };
@@ -108,7 +109,7 @@ const SONDE = `
         if (sansFocus && el === document.activeElement) return;
         const r = el.getBoundingClientRect();
         const p = position(el);
-        const sous = zones.some((z) => !z.f && !p.f && p.y >= z.y && p.x < z.x + z.w && p.x + r.width > z.x);
+        const sous = zones.some((z) => z.f === !!p.f && p.y >= z.y && p.x < z.x + z.w && p.x + r.width > z.x);
         out[cle(el)] = { sig: sig(el), x: p.x, y: p.y, xd: p.xd, yd: p.yd, w: r.width, h: r.height, sous };
       });
       return out;
@@ -143,6 +144,7 @@ function comparer(a, b, ref) {
     // elle est unique avant comme après.
     if (!y) { const c = parSig[x.sig]; y = c && c.length === 1 && nbA[x.sig] === 1 ? c[0] : null; }
     if (!y) continue;
+    if (y.sous) continue;                                // sous une zone apparue (lot 17 : encadré « Bloquée »)
     let d = Math.max(Math.abs(y.x - x.x), Math.abs(y.y - x.y), Math.abs(y.w - x.w), Math.abs(y.h - x.h));
     if (x.yd !== undefined && y.yd !== undefined && d > SEUIL) {
       const dDoc = Math.max(Math.abs(y.xd - x.xd), Math.abs(y.yd - x.yd), Math.abs(y.w - x.w), Math.abs(y.h - x.h));
@@ -287,10 +289,9 @@ const PAGES = [
     // Lot 14 (P0-1) : section repliable « Bloquées (n) » sous Mes tâches.
     { nom: 'Bloquées (détail)', sel: '#taches-bloquees > summary', divulgation: true },
     // Lot 14 : tuiles de la Vue d'ensemble (la liste se déplie sous les
-    // tuiles) et bascule « Les miennes | Toutes ».
+    // tuiles) ; bascule « Les miennes | Toutes » retirée au lot 17.
     { nom: 'Tuile « Tâches en retard » (dépliée / repliée)', sel: '#tuile-retard', divulgation: true },
     { nom: 'Tuile « Projets sans tâche ouverte » puis « Tâches bloquées »', suite: ['#tuile-projets_sans_tache', '#tuile-bloquees', '#tuile-bloquees'], divulgation: true },
-    { nom: 'Les miennes / Toutes', suite: ['#tdp-miennes', '#tdp-toutes'], exclure: ['#accueil-taches'] },
     // Lot 14 (revue produit P1-3) : fil filtrable, « Commenter » replié.
     { nom: 'Fil : Tout · Échanges · Activité', suite: ['#fil-filtre-accueil-activite', '#fil-filtre-accueil-tout', '#fil-filtre-accueil-echanges'],
       exclure: ['#fil-liste', '#fil-suite'] },
@@ -302,7 +303,6 @@ const PAGES = [
   // Lot 14 : carte « À traiter » du chef de projet (ali, chef du projet 1).
   { nom: 'accueil-chef', chemin: '/accueil', compte: 'ali@x.tn', bascules: [
     { nom: 'Ligne « À traiter » (dépliée / repliée)', sel: '.at-lignes .at-ligne >> nth=0', divulgation: true },
-    { nom: 'Les miennes / Toutes (chef)', suite: ['#tdp-miennes', '#tdp-toutes'], exclure: ['#accueil-taches'] },
   ] },
   { nom: 'projets', chemin: '/projets', exclure: ['#projets-resultats'], bascules: [
     { nom: 'puce État « Terminé »', sel: '.projets-filtres .chip-opt:has-text("Terminé")' },
@@ -325,7 +325,9 @@ const PAGES = [
     // Lot 14 (P0-1) : « Bloquée » ouvre « Qu’est-ce qui bloque ? » par-dessus
     // le panneau, « Signaler le blocage » l’enregistre (motif sous les états,
     // ligne réservée), « En cours » le lève : rien ne bouge à aucun clic.
-    { nom: 'États de la tâche (Bloquée + motif ↔ En cours)',
+    // Lot 17 : l'encadré « Bloquée depuis … » (avec « Lever le blocage »)
+    // s'ouvre sous les états — ce qui est dessous le suit.
+    { nom: 'États de la tâche (Bloquée + motif ↔ En cours)', exclure: ['#tache-20-blocage-detail'],
       suite: ['#tache-20-etat-bloque', '#tache-20-blocage-valider', '#tache-20-etat-en_cours'],
       apres: async (p) => {
         const champ = p.locator('#tache-20-motif');

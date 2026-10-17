@@ -63,7 +63,7 @@
       <div class="post-meta">
         {# Information d'équipe sans projet (migration 0009) : ses équipes
            destinataires à la place du projet. #}
-        {% if post.projet_id is none %}<span>{{ 'Équipes' if post.equipes|default([])|length > 1 else 'Équipe' }}&nbsp;: {{ post.equipes|default([])|join(', ') }}</span> · {% elif show_projet %}<a href="{{ url_for('projets.detail', projet_id=post.projet_id) }}" class="lien-discret">{{ post.projet_code }}_{{ post.projet_nom }}</a> · {% endif %}{% if post.created_at %}<time datetime="{{ post.created_at.isoformat() }}" title="{{ 'Horodatage réel : ' if g.date_simulee }}{{ date_fr(post.created_at) }} à {{ post.created_at.strftime('%H:%M') }}">{{ post.created_at|il_y_a }}</time>{% endif %}{% if post.modifie_le %} · <span title="Modifié {{ post.modifie_le|il_y_a }}">modifié</span>{% endif %}
+        {% if post.projet_id is none %}<span>{{ 'Équipes' if post.equipes|default([])|length > 1 else 'Équipe' }}&nbsp;: {{ post.equipes|default([])|join(', ') }}</span> · {% elif show_projet %}<a href="{{ url_for('projets.detail', projet_id=post.projet_id) }}" class="lien-discret">{{ post.projet_code }}_{{ post.projet_nom }}</a> · {% endif %}{% if post.created_at %}<time datetime="{{ post.created_at.isoformat() }}" title="{{ 'Horodatage réel : ' if g.date_simulee }}{{ date_fr(post.created_at) }} à {{ post.created_at.strftime('%H:%M') }}">{{ post.created_at|il_y_a }}</time>{% endif %}{% if post.modifie_le %} · <span title="Modifié {{ post.modifie_le|il_y_a }}">modifié</span>{% endif %}{% if post.nouveau|default(false) %} <span class="fil-nouveau-puce">Nouveau</span>{% endif %}
       </div>
     </div>
     <div class="post-entete-droite">

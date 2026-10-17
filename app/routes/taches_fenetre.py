@@ -10,6 +10,7 @@ autre projet -> 404.
 from flask import Blueprint, abort, g, make_response, render_template, url_for
 
 from ..auth import login_required
+from .. import horloge
 from ..repositories import projets, taches, utilisateurs
 
 bp = Blueprint("taches_fenetre", __name__, url_prefix="/projets")
@@ -42,7 +43,17 @@ def contexte_fenetre(projet: dict, tache_id: int, peut_gerer: bool) -> dict | No
         voient = projets.ids_utilisateurs_voyant(projet["id"])
         deja = {i["id"] for i in tache["intervenants"]}
         candidats = [u for u in utilisateurs.list_affectables() if u["id"] in voient and u["id"] not in deja]
-    return dict(t=tache, candidats=candidats, peut_gerer=peut_gerer,
+    # Lot 17 : bornes de la date de fin proposée à la clôture (création de
+    # la tâche → aujourd'hui) et auteur de la dernière clôture.
+    from ..repositories import dailylog as dl
+
+    aujourdhui = dl.aujourdhui_pour(g.user)
+    cree = tache.get("created_at")
+    debut = cree.astimezone(horloge.ZoneInfo(g.user.get("fuseau") or "Africa/Tunis")).date() \
+        if hasattr(cree, "astimezone") else aujourdhui
+    cloture = taches.derniere_cloture(tache_id) if tache["etat"] in ("termine", "verifie") else None
+    return dict(t=tache, candidats=candidats, peut_gerer=peut_gerer, cloture=cloture,
+                date_fin_min=min(debut, aujourdhui), date_fin_max=aujourdhui,
                 projet_clos=projet["etat"] in projets.ETATS_CLOS,
                 etats_reserves=taches.ETATS_RESERVES_GESTION,
                 aide_blocage=aide_blocage(projet) if tache["etat"] != "bloque" else "")

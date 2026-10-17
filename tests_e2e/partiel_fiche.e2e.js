@@ -195,15 +195,21 @@ module.exports = async function scenarioFiche(h) {
 
   // --- Échéance ------------------------------------------------------------
   const demain = sql("SELECT to_char(CURRENT_DATE + 30, 'YYYY-MM-DD')");
-  await p.fill('#tache-20-date-echeance', demain);
-  await mesurer(p, c, 'échéance (panneau)',
-    () => p.click('#tache-20-echeance-enregistrer'),
+  // Lot 17 : enregistrée dès qu'on la change (plus de bouton « Enregistrer »).
+  etape('échéance : pas de bouton « Enregistrer » avec JavaScript', !(await p.isVisible('#tache-20-echeance-enregistrer')));
+  await p.click('#tache-20-date-echeance');
+  await mesurer(p, c, 'échéance (panneau, enregistrée au changement)',
+    () => p.fill('#tache-20-date-echeance', demain),
     async () => sql('SELECT date_echeance::text FROM tache WHERE id=20') === demain
       && await p.locator('#tache-ligne-20 .taskrow-retard').count() === 0,
-    '#tache-20-echeance-enregistrer');
+    '#tache-20-date-echeance', { latence: 0 });   // pas de geste (fill) : délai de 900 ms voulu
   // Erreur reliée au champ : échéance hors bornes.
-  await p.evaluate(() => { document.getElementById('tache-20-date-echeance').value = '1990-01-01'; });
-  await p.click('#tache-20-echeance-enregistrer');
+  // (borne « min » retirée : on teste le refus du serveur, pas celui du navigateur)
+  await p.evaluate(() => {
+    const d = document.getElementById('tache-20-date-echeance');
+    d.removeAttribute('min'); d.focus(); d.value = '1990-01-01';
+    d.dispatchEvent(new Event('change', { bubbles: true }));
+  });
   await attendre(() => p.evaluate(() => document.getElementById('tache-20-date-echeance').getAttribute('aria-invalid') === 'true'));
   etape('échéance refusée : champ aria-invalid, message relié (aria-describedby), focus dessus (a11y I5)', await p.evaluate(() => {
     const c = document.getElementById('tache-20-date-echeance');
@@ -235,35 +241,21 @@ module.exports = async function scenarioFiche(h) {
       && await p.locator('#tache-20-rejoindre').count() === 0,
     '#tache-fenetre-20 [data-tache-entete]');
 
-  // --- Pièce jointe : progression, liste à jour ----------------------------
-  const fichier = path.join(os.tmpdir(), 'kairos-e2e-pj-' + process.pid + '.txt');
-  fs.writeFileSync(fichier, 'x'.repeat(400000));
-  await latence(p, 800);
-  await instrumenter(p);
-  c.docs = 0;
-  await p.setInputFiles('#tache-20-fichier', fichier);
-  const progressionVue = await attendre(() => p.evaluate(() => {
-    const b = document.querySelector('#tache-fenetre-20 [data-progression]');
-    return !!b && !b.hidden;
-  }), 3000);
-  await attendre(() => p.locator('#tache-fenetre-20 .tache-pj-lien:has-text("kairos-e2e-pj")').count(), 10000);
-  await latence(p, 0);
-  e = await etat(p);
-  etape('pièce jointe : barre de progression pendant l’envoi', !!progressionVue);
-  etape('pièce jointe : liste à jour sans rechargement, en base',
-    e.marque && c.docs === 0 && sql("SELECT count(*) FROM tache_piece_jointe WHERE tache_id=20") === '1');
-  etape('pièce jointe : focus sur le champ fichier', await focusSur(p, '#tache-20-fichier'), await focusDecrit(p));
-  fs.unlinkSync(fichier);
+  // --- Lot 17 : plus d'envoi de fichier dans le panneau de tâche ---------
+  etape('panneau : plus de champ « pièce jointe » (lot 17)', await p.locator('#tache-fenetre-20 input[type=file]').count() === 0);
 
   // --- Clôturer : la ligne passe dans les tâches closes --------------------
   const compteurAvant = await p.innerText('#taches-compteur');
-  await mesurer(p, c, 'clôturer (Marquer comme terminée)',
+  // Lot 17 : « Terminée » ouvre la fenêtre de clôture (message, date, type).
+  await p.click('#tache-20-etat-termine');
+  await p.waitForSelector('#tache-20-cloture:not([hidden])');
+  await mesurer(p, c, 'clôturer (Terminer et publier)',
     () => p.click('#tache-20-cloturer'),
     async () => sql('SELECT etat FROM tache WHERE id=20') === 'termine'
       && await p.locator('#taches-closes [data-open-tache="20"]').count() === 1,
-    '#tache-fenetre-20 [data-tache-entete]', { dy: false });
+    '#tache-20-etat-termine', { dy: false });
   etape('clôturer : compteur à jour', (await p.innerText('#taches-compteur')) !== compteurAvant, [compteurAvant, await p.innerText('#taches-compteur')]);
-  etape('clôturer : bouton « Rouvrir » proposé', await p.locator('#tache-20-etat-en_cours:has-text("Rouvrir")').count() === 1);
+  etape('clôturer : bouton « Rouvrir » proposé', await p.locator('#tache-20-rouvrir:has-text("Rouvrir")').count() === 1);
   await capture(p, 'c-panneau-cloture-1440-clair.png');
   await p.keyboard.press('Escape');
   await attendre(() => p.evaluate(() => !document.getElementById('dialog-tache').open));
@@ -286,7 +278,8 @@ module.exports = async function scenarioFiche(h) {
       && await p.locator('#carte-taches .taskrow.k-surligne:has-text("Tâche créée en partiel")').count() === 1,
     '#nouveau-post', { dy: false });
   etape('« + Tâche » : post de création en tête du fil, surligné',
-    await p.locator('#fil-posts .fil-item').first().locator(':text("Tâche créée en partiel")').count() >= 1);
+    await p.locator('#fil-posts .fil-item').first().locator(':text("Tâche créée en partiel")').count() >= 1,
+    (await p.locator('#fil-posts .fil-item').first().innerText().catch(() => '')).slice(0, 200));
   // Titre manquant : champ signalé, fenêtre ouverte.
   await p.click('#nouveau-post');
   await p.evaluate(() => { const t = document.getElementById('dialog-titre-tache'); t.removeAttribute('required'); t.value = '  '; });

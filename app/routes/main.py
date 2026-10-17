@@ -1,6 +1,6 @@
 """Page d'accueil — porte Main.dc.html en template Jinja2 réel."""
 
-from flask import Blueprint, g, render_template, request, url_for
+from flask import Blueprint, current_app, g, render_template, request, url_for
 
 from .. import fil as film
 from .. import partiel
@@ -27,9 +27,38 @@ def contexte_fil_accueil(user_id: int) -> dict:
     lus = posts.list_feed_mes_projets(user_id, limit=taille + 1, categorie=categorie,
                                       avant=film.curseur_demande())
     fil, curseur = film.page(lus, taille)
-    return dict(fil=fil, fil_entrees=film.regrouper(fil), fil_categorie=categorie,
+    non_vus = marquer_nouveaux(user_id, categorie, fil)
+    return dict(fil=fil, fil_entrees=film.regrouper(fil), fil_categorie=categorie, fil_non_vus=non_vus,
                 fil_suite_id="fil-suite", fil_suite_cible="#fil-liste",
                 fil_suite_url=url_for("main.accueil", fil=categorie, avant=curseur) if curseur else None)
+
+
+def marquer_nouveaux(user_id: int, categorie: str, fil: list[dict]) -> dict:
+    """Lot 17 (demande du gérant) : posts arrivés depuis la dernière visite
+    de leur catégorie (hors les siens) marqués « nouveau » ; nombre de
+    nouveautés des AUTRES catégories pour leurs onglets ; la catégorie
+    affichée (les deux pour « Tout ») devient vue. Première page seulement."""
+    if film.curseur_demande():
+        return {}
+    try:
+        vus = posts.fil_vu(user_id)
+        non_vus = posts.compter_non_vus(user_id, vus)
+    except Exception:
+        current_app.logger.exception("Posts non vus : lecture impossible")
+        return {}
+    for p in fil:
+        seuil = vus.get("activite" if p.get("est_activite") else "echanges")
+        p["nouveau"] = bool(seuil and p.get("created_at") and p["created_at"] > seuil
+                            and p.get("auteur_id") != user_id)
+    vues = ("echanges", "activite") if categorie == "tout" else (categorie,)
+    # Ni en « Voir comme » ni en « Agir comme » : l'Admin qui teste ne
+    # consomme pas les nouveautés de la personne.
+    if not g.get("lecture_seule") and not g.get("mode_admin"):
+        try:
+            posts.marquer_fil_vu(user_id, vues)
+        except Exception:
+            current_app.logger.exception("Posts non vus : enregistrement impossible")
+    return {c: n for c, n in non_vus.items() if c not in vues and n}
 
 
 def _fil_partiel(user_id: int):

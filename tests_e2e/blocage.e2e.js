@@ -89,8 +89,10 @@ const toastTexte = (p) => p.locator('#k-toasts .k-toast .k-toast-texte').last().
     let p = await ouvrir(rim, '/projets/1?tache=1');
     await p.waitForSelector('#tache-fenetre-1');
     await pause(400);
-    const temoins = ['#tache-1-etat-en_cours', '#tache-1-etat-bloque', '#tache-1-cloturer', '#cloture-message-1',
-      '#dialog-tache .tache-dialog-fermer', '#tache-1-fichier'];
+    // Lot 17 : trois états (En cours · Bloquée · Terminée) ; la clôture
+    // s'ouvre en fenêtre flottante sous « Terminée ».
+    const temoins = ['#tache-1-etat-en_cours', '#tache-1-etat-bloque', '#tache-1-etat-termine',
+      '#dialog-tache .tache-dialog-fermer'];
     const positions = async () => Promise.all(temoins.map((s) => rect(p, s).catch(() => null)));
     const avant = await positions();
     await p.click('#tache-1-etat-bloque');
@@ -99,7 +101,7 @@ const toastTexte = (p) => p.locator('#k-toasts .k-toast .k-toast-texte').last().
       await focusSur(p, '#tache-1-motif') && await p.getAttribute('#tache-1-etat-bloque', 'aria-expanded') === 'true',
       await focusDecrit(p));
     etape('question par-dessus le panneau : aucun bouton ne bouge', memes(avant, await positions()), [avant, await positions()]);
-    etape('exemple et aide affichés', await p.getAttribute('#tache-1-motif', 'placeholder') === 'Ex. attente des plans archi indice B'
+    etape('exemple et aide affichés', await p.getAttribute('#tache-1-motif', 'placeholder') === 'Ex. attente des plans archi indice B, visa BC, réponse client'
       && /prévenus/.test(await p.innerText('#tache-1-blocage-aide')));
     etape('rien n’est encore enregistré', sql('SELECT etat FROM tache WHERE id = 1') === 'en_cours');
     await capture(p, 'blocage-question-1440.png');
@@ -176,8 +178,18 @@ const toastTexte = (p) => p.locator('#k-toasts .k-toast .k-toast-texte').last().
     await p.click('#tache-ligne-2 [data-ouvrir-tache]');
     await p.waitForSelector('#tache-fenetre-2');
     await pause(300);
+    const avantCloture = await rect(p, '#tache-2-etat-termine');
+    await p.click('#tache-2-etat-termine');
+    await p.waitForSelector('#tache-2-cloture:not([hidden])');
+    etape('« Terminée » ouvre la fenêtre de clôture : focus dans le message, date du jour, Envoi coché',
+      await focusSur(p, '#cloture-message-2') && await p.getAttribute('#tache-2-etat-termine', 'aria-expanded') === 'true'
+      && await p.inputValue('#cloture-date-2') === sql("SELECT fn_date_ecriture('Africa/Tunis')")
+      && await p.isChecked('#cloture-envoi-2'), await focusDecrit(p));
+    etape('fenêtre de clôture par-dessus le panneau : « Terminée » ne bouge pas',
+      memes([avantCloture], [await rect(p, '#tache-2-etat-termine')]));
+    await capture(p, 'cloture-question-1440.png');
     await p.fill('#cloture-message-2', 'Dossier EXE indice B envoyé au BET');
-    await p.selectOption('#cloture-tag-2', 'reponse');
+    await p.click('label[for="cloture-reponse-2"]');
     await p.click('#tache-2-cloturer');
     await attendre(() => sql('SELECT etat FROM tache WHERE id = 2') === 'termine');
     await attendre(async () => /Tâche terminée/.test(await toastTexte(p)));

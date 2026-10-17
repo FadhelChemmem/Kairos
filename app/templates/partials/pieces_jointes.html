@@ -1,0 +1,20 @@
+{# Pièces jointes d'un post (lot 17) : on colle (Ctrl+V) une capture ou un
+   fichier dans le texte, on le glisse dessus, ou « Joindre » ; les fichiers
+   s'affichent en puces sous le champ (pieces-jointes.js). Sans JavaScript :
+   le champ fichier (plusieurs) reste visible. Appel :
+   {% call pj.champ('dialog-pj-requete') %}<textarea …></textarea>{% endcall %} #}
+{% macro champ(id_input) %}
+<div class="pj-zone" data-pj-zone data-pj-max="{{ max_fichiers_post|default(10) }}" data-pj-extensions="{{ extensions_pj|default('') }}">
+  <div class="pj-champ">
+    {{ caller() }}
+    <button type="button" class="pj-joindre k-js-seul" data-pj-joindre>
+      <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+      Joindre
+    </button>
+  </div>
+  <input type="file" name="fichier" id="{{ id_input }}" multiple class="pj-input k-sans-js" data-pj-input aria-label="Joindre des fichiers">
+  <input type="file" multiple class="pj-choix" data-pj-choix hidden tabindex="-1" aria-hidden="true">
+  <p class="pj-aide k-js-seul">Ctrl+V ou glisser ici&#8239;: joindre une capture ou un fichier.</p>
+  <ul class="pj-puces" data-pj-puces></ul>
+</div>
+{% endmacro %}

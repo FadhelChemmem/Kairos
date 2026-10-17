@@ -3,6 +3,6 @@
    n'est pas inséré deux fois par une mise à jour partielle. Contexte :
    post, show_projet, next_url. #}
 {% import "partials/post_filtre.html" as filtrem %}
-<div class="fil-item" id="fil-item-{{ post.id }}" data-categorie="{{ 'activite' if post.est_activite|default(false) else 'echanges' }}" data-filtre="{{ filtrem.texte_filtre(post) }}">
+<div class="fil-item{{ ' fil-nouveau' if post.nouveau|default(false) }}" id="fil-item-{{ post.id }}" data-categorie="{{ 'activite' if post.est_activite|default(false) else 'echanges' }}" data-filtre="{{ filtrem.texte_filtre(post) }}">
   {% include "partials/post_card.html" %}
 </div>

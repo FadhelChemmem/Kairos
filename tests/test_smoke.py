@@ -423,6 +423,11 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.posts.list_feed_projet": FEED,
             "app.repositories.posts.get_post": POST_POUR_ACCES,
             "app.repositories.posts.get_piece_jointe": PIECE_JOINTE_POST,
+            # Lot 17 : posts non vus du fil, auteur de la dernière clôture.
+            "app.repositories.posts.fil_vu": {},
+            "app.repositories.posts.compter_non_vus": {"echanges": 0, "activite": 0},
+            "app.repositories.posts.marquer_fil_vu": None,
+            "app.repositories.taches.derniere_cloture": None,
             "app.repositories.utilisateurs.list_actifs": UTILISATEURS_ACTIFS,
             "app.repositories.utilisateurs.list_collaborateurs_recents": [3],
             "app.repositories.dailylog.list_entrees_jour": DAILYLOG_ENTREES,
@@ -1115,7 +1120,7 @@ class SmokeTestCase(SmokeBase):
                 p.stop()
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(
-            mock_create.call_args.kwargs["piece_jointe"], ("plan.pdf", "posts/projet-1/xyz.pdf"),
+            mock_create.call_args.kwargs["pieces_jointes"], [("plan.pdf", "posts/projet-1/xyz.pdf")],
         )
 
     def test_posts_commenter_nettoie_le_fichier_si_creation_echoue(self):

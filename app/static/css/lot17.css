@@ -1,0 +1,103 @@
+/* Lot 17 — panneau de tâche (maquette A1 validée le 17/10/2026). Jetons
+   de app.css seulement (clair et sombre). */
+
+/* --- Trois états fixes : En cours · Bloquée · Terminée ----------------- */
+.tache-etats.tache-etats-3 {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px;
+  padding: 4px; border-radius: var(--rayon-m); background: var(--hover-bg);
+}
+.tache-etats-3 > .tache-etat-choix {
+  min-height: 40px; border-radius: calc(var(--rayon-m) - 2px); border: 1px solid transparent; background: none;
+  padding: 0 10px 0 22px; justify-content: center; font-weight: var(--graisse-forte); color: var(--text-secondary);
+  display: inline-flex; align-items: center;
+}
+.tache-etats-3 > .tache-etat-choix:hover:not([disabled]):not([aria-pressed="true"]) { background: var(--surface); color: var(--text-strong); }
+.tache-etats-3 > .tache-etat-choix[aria-pressed="true"] { padding: 0 10px 0 22px; box-shadow: 0 1px 3px rgb(20 30 25 / .14); }
+.tache-etats-3 > .tache-etat-choix.tache-etat-en_cours[aria-pressed="true"] { border-color: var(--etat-cours-texte); }
+.tache-etats-3 > .tache-etat-choix.tache-etat-bloque[aria-pressed="true"] { border-color: var(--etat-bloque-texte); }
+.tache-etats-3 > .tache-etat-choix.tache-etat-termine[aria-pressed="true"] { border-color: var(--etat-termine-texte); }
+.tache-etats-3 > .tache-etat-choix[disabled] { opacity: .45; cursor: not-allowed; }
+/* Bouton « armé » : sa petite fenêtre est ouverte, l'état n'a pas changé. */
+.tache-etats-3 > .tache-etat-choix[aria-expanded="true"] { border: 1.5px dashed currentColor; background: var(--surface); }
+.tache-etats-3 > .tache-etat-bloque[aria-expanded="true"] { color: var(--etat-bloque-texte); }
+.tache-etats-3 > .tache-etat-termine[aria-expanded="true"] { color: var(--etat-termine-texte); }
+.tache-etats-autres { margin: 6px 0 0 4px; font-size: var(--texte-xs); color: var(--text-muted); }
+.tache-etat-lien { border: 0; background: none; padding: 0; font: inherit; color: var(--text-secondary);
+  text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.tache-etat-lien:hover { color: var(--text-strong); }
+.tache-etats-3 + .tache-etat-encadre, .tache-etats-3 ~ .tache-etat-encadre { margin-top: var(--esp-2); }
+
+/* --- Encadré sous les états : bloquée / terminée / abandonnée ---------- */
+.tache-etat-encadre {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2) var(--esp-3);
+  padding: 10px 12px; border-radius: var(--rayon-m); border: 1px solid var(--border);
+  background: var(--surface); font-size: var(--texte-s);
+}
+.tache-etat-encadre-bloque { background: var(--etat-bloque-fond); border-color: color-mix(in srgb, var(--etat-bloque-texte) 35%, transparent); }
+.tache-etat-encadre-close { background: var(--etat-termine-fond); border-color: color-mix(in srgb, var(--etat-termine-texte) 35%, transparent); }
+.tache-etat-encadre-texte { margin: 0; flex: 1 1 200px; min-width: 0; line-height: 1.45; color: var(--text); overflow-wrap: anywhere; }
+.tache-etat-encadre-actions { margin-left: auto; }
+
+/* --- Petite fenêtre « Terminer la tâche » (même modèle que le blocage) --- */
+.tache-blocage.tache-cloture-pop { border-top-color: var(--etat-termine-texte); width: min(100%, 420px); }
+.tache-cloture-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2); font-size: var(--texte-s); }
+.tache-cloture-ligne label[for^="cloture-date"] { color: var(--text-secondary); }
+.tache-cloture-ligne input[type="date"] { width: auto; min-height: 34px; }
+.tache-cloture-types { display: inline-flex; gap: 3px; padding: 3px; margin-left: auto; border-radius: var(--rayon-s); background: var(--hover-bg); }
+.tache-cloture-types input { position: absolute; opacity: 0; pointer-events: none; }
+.tache-cloture-types label { padding: 4px 10px; border-radius: calc(var(--rayon-s) - 2px); font-weight: var(--graisse-forte);
+  color: var(--text-secondary); cursor: pointer; -webkit-user-select: none; user-select: none; }
+.tache-cloture-types input:checked + label { background: var(--surface); color: var(--text-strong); box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
+.tache-cloture-types input:focus-visible + label { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+
+/* --- « + M'ajouter » dans Intervenants ------------------------------- */
+.tache-rejoindre { margin-top: var(--esp-2); }
+.tache-rejoindre-lien { border: 0; background: none; padding: 0; font: inherit; font-size: var(--texte-s);
+  font-weight: var(--graisse-forte); color: var(--brand-text-strong); cursor: pointer; }
+.tache-rejoindre-lien:hover { text-decoration: underline; }
+
+/* --- Fil : posts pas encore vus (lot 17) ------------------------------ */
+.fil-non-vus {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; margin-left: 6px;
+  padding: 0 5px; border-radius: 999px; background: var(--accent-fill); color: var(--on-accent);
+  font-size: 11px; font-weight: var(--graisse-forte); font-variant-numeric: var(--chiffres); line-height: 1;
+}
+.fil-nouveau > .post-card, .fil-nouveau > .fil-groupe-carte { position: relative; box-shadow: inset 3px 0 0 var(--accent-fill); }
+.fil-nouveau-puce {
+  display: inline-block; margin-left: 4px; padding: 0 7px; border-radius: 999px; vertical-align: 1px;
+  background: var(--accent-fill); color: var(--on-accent);
+  font-size: 10.5px; line-height: 17px; font-weight: var(--graisse-forte); letter-spacing: .02em;
+}
+
+/* --- Pièces jointes d'un post : collées, glissées ou « Joindre » ------- */
+.pj-zone { display: flex; flex-direction: column; gap: 6px; border-radius: var(--rayon-m); }
+.pj-champ { position: relative; }
+html.k-js .pj-champ textarea { padding-bottom: 42px; min-height: 96px; }
+.pj-joindre { position: absolute; right: 8px; bottom: 8px; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: var(--rayon-s); background: var(--surface);
+  font: inherit; font-size: var(--texte-s); font-weight: var(--graisse-forte); color: var(--text-secondary); cursor: pointer; }
+.pj-joindre:hover { color: var(--text-strong); border-color: var(--border-hover); }
+.pj-aide { margin: 0; font-size: var(--texte-xs); color: var(--text-muted); }
+.pj-zone.pj-survol .pj-champ textarea { outline: 2px dashed var(--accent-fill); outline-offset: 2px; }
+.pj-puces { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.pj-puces:empty { display: none; }
+.pj-puce { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 4px 4px 4px;
+  border: 1px solid var(--border); border-radius: var(--rayon-m); background: var(--surface); font-size: var(--texte-s); }
+.pj-puce img, .pj-ico { width: 32px; height: 32px; flex-shrink: 0; border-radius: 6px; object-fit: cover; }
+.pj-ico { display: inline-flex; align-items: center; justify-content: center; background: var(--hover-bg);
+  color: var(--text-secondary); font-size: 9.5px; font-weight: var(--graisse-forte); }
+.pj-nom { font-weight: var(--graisse-forte); color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+.pj-taille { color: var(--text-muted); white-space: nowrap; }
+.pj-retirer { border: 0; background: none; padding: 0 6px; font-size: 17px; line-height: 1; color: var(--text-muted); cursor: pointer; min-height: 28px; }
+.pj-retirer:hover { color: var(--text-strong); }
+
+/* Champ Projet de « + Nouveau post » : bouton × pour vider la recherche. */
+.search-combobox-avec-effacer .search-combobox-input { padding-right: 34px; }
+.search-combobox-effacer {
+  position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+  width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--text-muted);
+  font-size: 18px; line-height: 24px; text-align: center; cursor: pointer;
+}
+.search-combobox-effacer:hover { background: var(--hover-bg); color: var(--text-strong); }
+.search-combobox-effacer:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 1px; }

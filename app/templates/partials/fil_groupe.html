@@ -8,7 +8,7 @@
 {% import "partials/avatar.html" as avatarm %}
 {% set t = entree.tete %}
 {% set auteur_url = url_for('utilisateurs.profil_personne', user_id=t.auteur_id) %}
-<div class="fil-item fil-groupe" id="fil-groupe-{{ t.id }}" data-categorie="activite" data-filtre="{{ t.auteur_prenom }} {{ t.auteur_nom }} {{ entree.phrase }} {% for p in entree.groupe %}{{ filtrem.texte_filtre(p) }} {% endfor %}">
+<div class="fil-item fil-groupe{{ ' fil-nouveau' if entree.groupe|selectattr('nouveau')|list }}" id="fil-groupe-{{ t.id }}" data-categorie="activite" data-filtre="{{ t.auteur_prenom }} {{ t.auteur_nom }} {{ entree.phrase }} {% for p in entree.groupe %}{{ filtrem.texte_filtre(p) }} {% endfor %}">
   <div class="card post-card fil-groupe-carte">
     <div class="post-entete">
       <a href="{{ auteur_url }}" aria-hidden="true" tabindex="-1">
@@ -18,7 +18,7 @@
         <div class="post-entete-ligne"><a href="{{ auteur_url }}" class="post-auteur-lien">{{ t.auteur_prenom }} {{ t.auteur_nom }}</a> {{ entree.phrase }}{% if show_projet %} sur <a href="{{ url_for('projets.detail', projet_id=t.projet_id) }}" class="lien-discret fil-groupe-projet" title="{{ t.projet_code }}_{{ t.projet_nom }}">{{ t.projet_code }}</a>{% endif %}</div>
         <div class="post-meta">
           {% set dernier = entree.groupe[-1] %}
-          {% if t.created_at %}<time datetime="{{ t.created_at.isoformat() }}" title="{{ 'Horodatage réel : ' if g.date_simulee }}{{ date_fr(dernier.created_at) }}, de {{ dernier.created_at.strftime('%H:%M') }} à {{ t.created_at.strftime('%H:%M') }}">{{ t.created_at|il_y_a }}</time>{% endif %}
+          {% if t.created_at %}<time datetime="{{ t.created_at.isoformat() }}" title="{{ 'Horodatage réel : ' if g.date_simulee }}{{ date_fr(dernier.created_at) }}, de {{ dernier.created_at.strftime('%H:%M') }} à {{ t.created_at.strftime('%H:%M') }}">{{ t.created_at|il_y_a }}</time>{% endif %}{% if entree.groupe|selectattr('nouveau')|list %} <span class="fil-nouveau-puce">Nouveau</span>{% endif %}
         </div>
       </div>
       <span class="pill pill-neutre">Activité</span>

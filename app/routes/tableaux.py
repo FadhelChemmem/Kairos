@@ -203,5 +203,5 @@ def contexte_page(user: dict, aujourdhui: datetime.date, mes_projets: list[dict]
     elif peut_a_traiter(user, gere):
         ctx["at"] = contexte_a_traiter(user, aujourdhui, voir)
     if role == "admin" or gere:
-        ctx["tdp"] = contexte_taches(user, lire_mode_taches(), voir)
+        ctx["tdp"] = contexte_taches(user, "toutes", voir)  # lot 17 : une seule liste
     return ctx

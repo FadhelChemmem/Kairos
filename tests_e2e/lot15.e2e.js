@@ -101,24 +101,38 @@ const deborde = (p) => p.evaluate(() => document.documentElement.scrollWidth > d
     await p.click('#acc-deadlines summary');
     await attendre(() => sql("SELECT accueil_deadlines FROM utilisateur_preference WHERE utilisateur_id = 2") === 'f');
 
-    // Lot 16 (vidéo du 17/10) : « Les miennes | Toutes » — l'indicateur
-    // suit le segment courant, sans capture de page (View Transition).
-    const indicateur = () => p.evaluate(() => {
-      const nav = document.querySelector('[data-tdp-bascule]');
-      const cur = nav.querySelector('[aria-current="page"]');
-      const x = parseFloat(getComputedStyle(nav).getPropertyValue('--seg-x')) || 0;
-      return { courant: cur && cur.id, ok: !!cur && Math.abs(x - cur.offsetLeft) < 1, vt: !!document.activeViewTransition };
-    });
-    for (const id of ['#tdp-miennes', '#tdp-toutes', '#tdp-toutes', '#tdp-miennes']) {
-      await p.click(id);
-      const i0 = await indicateur();
-      await attendre(async () => (await p.evaluate(() => document.getElementById('accueil-taches').dataset.mode))
-        === (id === '#tdp-miennes' ? 'miennes' : 'toutes'));
-      await pause(400);
-      const i1 = await indicateur();
-      etape(`« ${id === '#tdp-miennes' ? 'Les miennes' : 'Toutes'} » : indicateur sur le segment courant, au clic et après`,
-        i0.courant === id.slice(1) && i1.courant === id.slice(1) && i1.ok && !i0.vt, [i0, i1]);
-    }
+    // Lot 17 (gérant, 17/10) : bascule « Les miennes | Toutes » retirée,
+    // toutes les tâches des projets du chef.
+    etape('« Tâches de mes projets » : plus de bascule « Les miennes | Toutes »',
+      await p.locator('[data-tdp-bascule], #tdp-miennes').count() === 0
+      && await p.evaluate(() => document.getElementById('accueil-taches').dataset.mode) === 'toutes');
+
+    // Lot 17 : « + Nouveau post » — projet entièrement sélectionné au clic,
+    // sélection glissée hors de la fenêtre sans la fermer, capture jointe.
+    await p.click('#nouveau-post');
+    await p.waitForSelector('#dialog-nouveau-post[open]');
+    await p.click('label[for="intent-information"]');
+    const champProjet = '[data-post-dialog-projet-row] .search-combobox-input';
+    await p.click(champProjet); await pause(150);
+    const sel = await p.evaluate((s) => { const i = document.querySelector(s); return [i.selectionStart, i.selectionEnd, i.value.length]; }, champProjet);
+    etape('« + Nouveau post » : nom du projet entièrement sélectionné au clic, bouton ×',
+      sel[0] === 0 && sel[1] === sel[2] && sel[2] > 0 && await p.locator('[data-post-dialog-projet-row] .search-combobox-effacer').count() === 1, sel);
+    await p.keyboard.press('Escape');
+    await p.fill('#dialog-contenu-information', 'Texte à sélectionner');
+    const zone = await p.locator('#dialog-contenu-information').boundingBox();
+    await p.mouse.move(zone.x + 20, zone.y + 12); await p.mouse.down();
+    await p.mouse.move(4, 4, { steps: 6 }); await p.mouse.up(); await pause(300);
+    etape('sélection glissée et relâchée hors de la fenêtre : la fenêtre reste ouverte',
+      await p.evaluate(() => document.getElementById('dialog-nouveau-post').open));
+    await p.setInputFiles('.panel-information [data-pj-choix]', [
+      { name: 'image.png', mimeType: 'image/png', buffer: Buffer.from('89504e470d0a1a0a', 'hex') },
+      { name: 'note.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') }]);
+    const noms = await p.$$eval('.panel-information .pj-puce .pj-nom', (l) => l.map((x) => x.textContent));
+    etape('« Joindre » : deux pièces en puces, capture renommée, envoyées avec le formulaire',
+      noms.length === 2 && /^Capture \d{4}-\d\d-\d\d \d\dh\d\d\.png$/.test(noms[0]) && noms[1] === 'note.pdf'
+      && await p.evaluate(() => document.querySelector('.panel-information [data-pj-input]').files.length) === 2, noms);
+    etape('champ « Lien » masqué', await p.locator('#dialog-lien-information').isVisible() === false);
+    await p.reload(); await p.waitForLoadState('networkidle');
 
     // --- 2. Post : modifier, supprimer, Annuler -------------------------------
     await p.click('#fil-filtre-accueil-tout');

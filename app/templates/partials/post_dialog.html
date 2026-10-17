@@ -22,6 +22,7 @@
 {% set personnes = personnes_recentes_d_abord(utilisateurs_actifs, collaborateurs_recents) %}
 {# `parmi` (lot 13, audit rôles I7) : ids des personnes qui voient le
    projet de la page — les seules affectables à une de ses tâches. #}
+{% import "partials/pieces_jointes.html" as pj %}
 {% macro options_personnes(sans_clients=false, parmi=none) %}
   {% for u in personnes %}
     {# Un Client peut être tagué, jamais intervenant (lot 7). #}
@@ -53,7 +54,7 @@
   </div>
 
   {% if projet_id is none %}
-    <div class="form-row" data-post-dialog-projet-row>
+    <div class="form-row" data-post-dialog-projet-row data-fw-ignore>
       {# Information : projet vide par défaut, "optionnel" (retour Fadhel,
          Remarques/J.docx) — voir post-dialog.js. #}
       <label for="dialog-post-projet">Projet <span data-projet-optionnel style="display:none; font-weight:400; color:var(--text-faint);">— facultatif</span></label>
@@ -65,7 +66,7 @@
       {# data-gere : l'onglet "Tâche" n'est proposé que pour un projet que je
          gère (chef/co-chef). Option vide : Information d'équipe sans projet
          (N5) — proposée seulement sur l'onglet Information (post-dialog.js). #}
-      <select id="dialog-post-projet" data-search-combobox data-search-placeholder="Rechercher un projet…">
+      <select id="dialog-post-projet" data-search-combobox data-search-selection data-search-placeholder="Rechercher un projet…">
         {% for p in projets_choix %}
           {% set voient = (voient_par_projet|default({})).get(p.id) %}
           <option value="{{ p.id }}" data-gere="{{ '1' if p.mon_role in ('chef_de_projet', 'co_chef') else '0' }}"{% if voient is not none %} data-voient="{{ voient|join(' ') }}"{% endif %}>{{ p.code }}_{{ p.nom }}</option>
@@ -82,9 +83,9 @@
   {% endif %}
 
   <!-- Sélecteur Tâche / Information / Requête — CSS pur, voir app.css -->
-  <input type="radio" id="intent-tache" name="intent-toggle" class="composer-radio" checked>
-  <input type="radio" id="intent-information" name="intent-toggle" class="composer-radio">
-  <input type="radio" id="intent-requete" name="intent-toggle" class="composer-radio">
+  <input type="radio" id="intent-tache" name="intent-toggle" class="composer-radio" data-fw-ignore checked>
+  <input type="radio" id="intent-information" name="intent-toggle" class="composer-radio" data-fw-ignore>
+  <input type="radio" id="intent-requete" name="intent-toggle" class="composer-radio" data-fw-ignore>
 
   <div class="seg k-segmente">
     <label for="intent-tache">
@@ -157,7 +158,7 @@
 
         <div class="form-row">
           <label for="dialog-contenu-information">Texte de l’information</label>
-          <textarea id="dialog-contenu-information" name="contenu" maxlength="10000" required></textarea>
+          {% call pj.champ('dialog-pj-information') %}<textarea id="dialog-contenu-information" name="contenu" maxlength="10000" required></textarea>{% endcall %}
         </div>
         {% if projet_id is none and sans_projet_possible %}
         <div class="form-row" data-post-dialog-equipes style="display:none;">
@@ -185,17 +186,11 @@
             {{ options_personnes(parmi=ids_voient_projet|default(none) if projet_id is not none else none) }}
           </select>
         </div>
-        <div class="form-row">
+        {# Lot 17 : Lien masqué pour l'instant (demande du gérant) ; le serveur
+           l'accepte toujours, il suffit de retirer « hidden ». #}
+        <div class="form-row" hidden>
           <label for="dialog-lien-information">Lien <span class="label-note">— facultatif</span></label>
           <input type="text" id="dialog-lien-information" name="lien" maxlength="2000" placeholder="\\NAS\Projets\...">
-        </div>
-        <div class="form-row form-row-serre">
-          <label for="dialog-pj-information">Pièce jointe <span class="label-note">— facultatif</span></label>
-          <div class="dropzone" data-dropzone>
-            <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
-            <span class="dropzone-label" data-dropzone-label>Glissez un fichier ici ou cliquez pour parcourir</span>
-            <input type="file" name="fichier" id="dialog-pj-information" class="dropzone-input" aria-label="Pièce jointe (facultatif)">
-          </div>
         </div>
 
         <div class="fenetre-actions">
@@ -220,7 +215,7 @@
         </div>
         <div class="form-row">
           <label for="dialog-description-requete">Description <span class="label-note">— facultatif</span></label>
-          <textarea id="dialog-description-requete" name="contenu" maxlength="10000" placeholder="Détaillez la demande…"></textarea>
+          {% call pj.champ('dialog-pj-requete') %}<textarea id="dialog-description-requete" name="contenu" maxlength="10000" placeholder="Détaillez la demande…"></textarea>{% endcall %}
         </div>
         {# Lot 15 : la requête peut citer une tâche ouverte du projet (liste
            chargée au choix du projet, post-dialog.js). #}
@@ -238,17 +233,11 @@
             {{ options_personnes(parmi=ids_voient_projet|default(none) if projet_id is not none else none) }}
           </select>
         </div>
-        <div class="form-row">
+        {# Lot 17 : Lien masqué pour l'instant (demande du gérant) ; le serveur
+           l'accepte toujours, il suffit de retirer « hidden ». #}
+        <div class="form-row" hidden>
           <label for="dialog-lien-requete">Lien <span class="label-note">— facultatif</span></label>
           <input type="text" id="dialog-lien-requete" name="lien" maxlength="2000" placeholder="\\NAS\Projets\...">
-        </div>
-        <div class="form-row form-row-serre">
-          <label for="dialog-pj-requete">Pièce jointe <span class="label-note">— facultatif</span></label>
-          <div class="dropzone" data-dropzone>
-            <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
-            <span class="dropzone-label" data-dropzone-label>Glissez un fichier ici ou cliquez pour parcourir</span>
-            <input type="file" name="fichier" id="dialog-pj-requete" class="dropzone-input" aria-label="Pièce jointe (facultatif)">
-          </div>
         </div>
 
         <div class="fenetre-actions">

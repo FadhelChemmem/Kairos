@@ -257,6 +257,9 @@ _CONDITION_MES_PROJETS = """
            -- Client (lot 7) : jamais rattaché, il suit les projets de son équipe.
            OR EXISTS (SELECT 1 FROM utilisateur uc
                       WHERE uc.id = %(uid)s AND uc.role = 'client' AND uc.equipe_code = pj.equipe_code)
+           -- Lot 17 (gérant) : l'Admin suit les échanges de tous les projets ouverts.
+           OR (pj.etat NOT IN ('termine', 'abandonne')
+               AND EXISTS (SELECT 1 FROM utilisateur ua WHERE ua.id = %(uid)s AND ua.role = 'admin'))
     )
     OR """ + _POST_SANS_PROJET_VISIBLE
 
@@ -302,6 +305,58 @@ def list_feed_mes_projets(current_user_id: int, limit: int = 30, categorie: str 
     de son équipe (lot 7) — plus les Informations d'équipe qui lui sont
     destinées (migration 0009). Le RH n'a que ces dernières."""
     return _lire_fil(_CONDITION_MES_PROJETS, {"uid": current_user_id}, limit, categorie, avant)
+
+
+# --------------------------------------------------------------------------
+# Lot 17 : posts pas encore vus du fil de l'accueil (migration 0022).
+# --------------------------------------------------------------------------
+CATEGORIES_VUES = ("echanges", "activite")
+
+
+def fil_vu(user_id: int) -> dict:
+    """{catégorie: dernière consultation} ; catégorie absente : jamais vue."""
+    rows = db.query_all("SELECT categorie, vu_le FROM utilisateur_fil_vu WHERE utilisateur_id = %s", (user_id,))
+    return {r["categorie"]: r["vu_le"] for r in rows}
+
+
+def compter_non_vus(user_id: int, vus: dict) -> dict:
+    """Posts du fil de l'accueil publiés depuis la dernière consultation de
+    leur catégorie, hors ceux de la personne. Catégorie jamais vue : 0 (la
+    première visite ne transforme pas tout l'historique en nouveautés)."""
+    e, a = vus.get("echanges"), vus.get("activite")
+    if e is None and a is None:
+        return {"echanges": 0, "activite": 0}
+    row = db.query_one(
+        """
+        SELECT count(*) FILTER (WHERE NOT """ + _EST_ACTIVITE + """ AND %(e)s::timestamptz IS NOT NULL
+                                AND p.created_at > %(e)s::timestamptz) AS echanges,
+               count(*) FILTER (WHERE """ + _EST_ACTIVITE + """ AND %(a)s::timestamptz IS NOT NULL
+                                AND p.created_at > %(a)s::timestamptz) AS activite
+        FROM post p
+        WHERE p.supprime_le IS NULL AND p.auteur_id <> %(uid)s
+          AND p.created_at > LEAST(COALESCE(%(e)s::timestamptz, 'infinity'), COALESCE(%(a)s::timestamptz, 'infinity'))
+          AND (""" + _CONDITION_MES_PROJETS + """)
+        """,
+        {"uid": user_id, "e": e, "a": a},
+    )
+    return {"echanges": int(row["echanges"] or 0), "activite": int(row["activite"] or 0)} if row else \
+        {"echanges": 0, "activite": 0}
+
+
+def marquer_fil_vu(user_id: int, categories) -> None:
+    """La personne vient de regarder ces catégories du fil."""
+    cats = [c for c in categories if c in CATEGORIES_VUES]
+    if not cats:
+        return
+    db.execute(
+        """
+        INSERT INTO utilisateur_fil_vu (utilisateur_id, categorie, vu_le)
+        SELECT %s, c, now() FROM unnest(%s::text[]) AS c
+        ON CONFLICT (utilisateur_id, categorie) DO UPDATE SET vu_le = EXCLUDED.vu_le
+        """,
+        (user_id, cats),
+        user_id=user_id,
+    )
 
 
 def list_feed_auteur(auteur_id: int, viewer_id: int, limit: int = 8, depuis=None, avant=None,
@@ -389,6 +444,7 @@ def create_post(
     lien: str | None = None,
     mentionne_ids: list[int] | None = None,
     piece_jointe: tuple[str, str] | None = None,
+    pieces_jointes: list[tuple[str, str]] | None = None,
     equipe_codes: list[str] | None = None,
 ) -> int:
     """Création manuelle d'un post (Envoi/Réponse/Question/Requête), ou
@@ -439,8 +495,8 @@ def create_post(
                 (post_id, code),
             )
 
-        if piece_jointe is not None:
-            nom_fichier, chemin = piece_jointe
+        # Lot 17 : plusieurs pièces jointes, dans la même transaction.
+        for nom_fichier, chemin in ([piece_jointe] if piece_jointe is not None else []) + list(pieces_jointes or []):
             cur.execute(
                 """
                 INSERT INTO post_piece_jointe (post_id, nom_fichier, chemin, uploaded_by)

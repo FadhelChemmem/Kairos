@@ -22,6 +22,9 @@ window.KairosFloatingWindow = (function () {
       // Les champs désactivés restent comptés : un onglet activé ou
       // désactivé par le code ne doit pas passer pour une saisie.
       if (el.type === 'hidden') return;
+      // Lot 17 : choix de navigation (onglet Tâche / Information / Requête,
+      // projet de « + Nouveau post ») — pas une saisie à protéger.
+      if (el.closest('[data-fw-ignore]')) return;
       var v;
       if (el.type === 'checkbox' || el.type === 'radio') {
         v = el.checked ? '1' : '0';
@@ -143,8 +146,22 @@ window.KairosFloatingWindow = (function () {
     }).observe(dialogEl, { attributes: true, attributeFilter: ['open'] });
     if (dialogEl.hasAttribute('open')) memoriser(dialogEl);
 
+    // Lot 17 (retour Fadhel du 17/10) : sélectionner le texte d'un champ en
+    // glissant et relâcher la souris hors de la fenêtre produisait un
+    // « click » sur le <dialog> (ancêtre commun du pointerdown et du
+    // pointerup) → fermeture. Seul un clic COMMENCÉ sur le fond compte.
+    var fondArme = false;
+    function horsCadre(e) {
+      var r = dialogEl.getBoundingClientRect();
+      return !(e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom);
+    }
+    dialogEl.addEventListener('pointerdown', function (e) {
+      fondArme = e.target === dialogEl && horsCadre(e);
+    });
     dialogEl.addEventListener('click', function (e) {
-      if (e.target !== dialogEl) return;
+      var arme = fondArme;
+      fondArme = false;
+      if (e.target !== dialogEl || !arme) return;
       // Lot 10 (audit front I4) : e.target vaut aussi le <dialog> pour un
       // clic dans son propre padding (20 px) — on ne ferme que pour un
       // clic réellement hors du cadre (sur le fond).

@@ -197,7 +197,7 @@ class TestDecision3EtatsReserves(_Base):
                                 espions=[("app.repositories.taches.close_tache", EtatReserve("x"))],
                                 **self.INTERVENANT_DE_LA_TACHE)
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(m["app.repositories.taches.close_tache"].call_args.kwargs, {"peut_gerer": False})
+        self.assertEqual(m["app.repositories.taches.close_tache"].call_args.kwargs, {"peut_gerer": False, "date_fin": None})
         self.assertTrue(any("Seuls le chef de projet" in f for f in self._flashes()))
 
     def test_refus_du_trigger_en_base_message_clair(self):
@@ -222,7 +222,7 @@ class TestDecision3EtatsReserves(_Base):
                     m["app.repositories.taches.set_etat"].assert_called_once_with(5, 1, etat, 1, peut_gerer=True, annulation=False)
         _, m = self._requete("post", "/projets/1/taches/5/cloturer", {"type_code": "envoi"},
                              espions=[("app.repositories.taches.close_tache", 100)])
-        self.assertEqual(m["app.repositories.taches.close_tache"].call_args.kwargs, {"peut_gerer": True})
+        self.assertEqual(m["app.repositories.taches.close_tache"].call_args.kwargs, {"peut_gerer": True, "date_fin": None})
 
     # --- repository : contrôle sur l'état lu sous verrou ---
     def _curseur(self, fetchone):
@@ -261,7 +261,8 @@ class TestDecision3EtatsReserves(_Base):
         with self.assertRaises(taches.EtatReserve):
             taches.close_tache(5, 1, 1, "envoi")
         update = self._updates(cur)[0]
-        self.assertEqual(update.args[1][4:], (False, ["arret", "abandonne"]))
+        # Lot 17 : date de fin choisie (None : aujourd'hui) en 3e paramètre.
+        self.assertEqual(update.args[1][6:], (False, ["arret", "abandonne"]))
         # Déjà terminée : simple « rien à clôturer », pas un refus d'état réservé.
         self._curseur([None, {"etat": "termine"}])
         self.assertIsNone(taches.close_tache(5, 1, 1, "envoi"))
@@ -308,11 +309,19 @@ class TestDecision3EtatsReserves(_Base):
 
     def test_chef_voit_tous_les_etats(self):
         dialogue = self._page(CHEF, True, "bloque")
-        for etat in ("en_cours", "bloque", "verifie", "arret", "abandonne"):
+        for etat in ("en_cours", "bloque", "abandonne"):
             self.assertIn(self._choix(etat), dialogue)
-        self.assertRegex(self._page(CHEF, True, "termine"), self._choix("verifie") + r'[^>]*>Vérifiée</button>')
+        # Lot 17 (gérant, 17/10) : « Vérifiée » et « Arrêtée » ne sont plus
+        # proposés dans le panneau (le serveur les accepte toujours).
+        for etat in ("verifie", "arret"):
+            self.assertNotIn(self._choix(etat), dialogue)
+        self.assertIn(">Abandonner</button>", dialogue)
+        self.assertIn(">Rouvrir</button>", self._page(CHEF, True, "termine"))
         self.assertIn(">Rouvrir</button>", self._page(CHEF, True, "verifie"))
-        self.assertIn("Terminer et publier", self._page(CHEF, True, "arret"))
+        # Tâche arrêtée : « Reprendre » d'abord, la clôture n'est pas proposée.
+        arretee = self._page(CHEF, True, "arret")
+        self.assertIn(">Reprendre</button>", arretee)
+        self.assertNotIn("Terminer et publier", arretee)
 
 
 class TestDecisions1Et4Inchangees(_Base):

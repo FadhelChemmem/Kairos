@@ -1,3 +1,4 @@
+{% import "partials/pieces_jointes.html" as pj %}
 {# Modification d'un post par son auteur (lot 15), dans la carte : le texte
    (une Requête : objet + description), le lien, les pièces jointes
    (retirer, ajouter). Masqué tant qu'on n'a pas choisi « Modifier » (menu
@@ -16,33 +17,32 @@
   </div>
   <div class="form-row">
     <label for="post-{{ post.id }}-texte">Description <span class="label-note">— facultatif</span></label>
-    <textarea id="post-{{ post.id }}-texte" name="contenu" maxlength="10000" rows="3">{{ requete_texte }}</textarea>
+    {% call pj.champ('post-' ~ post.id ~ '-fichier') %}<textarea id="post-{{ post.id }}-texte" name="contenu" maxlength="10000" rows="3">{{ requete_texte }}</textarea>{% endcall %}
   </div>
   {% else %}
   <div class="form-row">
     <label for="post-{{ post.id }}-texte">Texte</label>
-    <textarea id="post-{{ post.id }}-texte" name="contenu" maxlength="10000" rows="3" required>{{ post.contenu or '' }}</textarea>
+    {% call pj.champ('post-' ~ post.id ~ '-fichier') %}<textarea id="post-{{ post.id }}-texte" name="contenu" maxlength="10000" rows="3" required>{{ post.contenu or '' }}</textarea>{% endcall %}
   </div>
   {% endif %}
-  <div class="form-row">
+  {# Lot 17 : Lien masqué, sauf pour un post qui en a déjà un (il doit
+     pouvoir être corrigé ou retiré). #}
+  <div class="form-row"{% if not post.lien %} hidden{% endif %}>
     <label for="post-{{ post.id }}-lien">Lien <span class="label-note">— facultatif</span></label>
     <input type="text" id="post-{{ post.id }}-lien" name="lien" maxlength="2000" value="{{ post.lien or '' }}" placeholder="\\NAS\Projets\...">
   </div>
+  {% if post.pieces_jointes %}
   <fieldset class="form-row post-edition-pj">
     <legend>Pièces jointes</legend>
-    {% for pj in post.pieces_jointes %}
+    {% for piece in post.pieces_jointes %}
     <label class="post-edition-pj-ligne">
-      <input type="checkbox" name="retirer_pj" value="{{ pj.id }}">
-      <span class="post-fichier-nom">{{ pj.nom_fichier }}</span>
+      <input type="checkbox" name="retirer_pj" value="{{ piece.id }}">
+      <span class="post-fichier-nom">{{ piece.nom_fichier }}</span>
       <span class="post-edition-pj-action">Retirer</span>
     </label>
     {% endfor %}
-    <div class="dropzone" data-dropzone>
-      <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
-      <span class="dropzone-label" data-dropzone-label>Ajouter un fichier (glisser ici ou cliquer)</span>
-      <input type="file" name="fichier" id="post-{{ post.id }}-fichier" class="dropzone-input" aria-label="Ajouter une pièce jointe">
-    </div>
   </fieldset>
+  {% endif %}
   <div class="fenetre-actions">
     <a href="#post-{{ post.id }}" class="btn" data-post-edition-annuler>Annuler</a>
     <button type="submit" class="btn-primaire">Enregistrer</button>

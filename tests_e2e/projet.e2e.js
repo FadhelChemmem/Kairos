@@ -121,7 +121,7 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     a = await actif(p);
     // Revue d'interaction P1-6 : focus sur l'en-tête, jamais dans le champ du titre.
     etape('focus sur l’en-tête du panneau (pas dans le titre)', await p.evaluate(() => document.activeElement && document.activeElement.matches('#tache-fenetre-2 [data-tache-entete]')), a);
-    etape('« Rejoindre cette tâche » proposé dans la fenêtre', await p.locator('#dialog-tache button:has-text("Rejoindre cette tâche")').count() === 1);
+    etape('« + M’ajouter » proposé dans la fenêtre (lot 17)', await p.locator('#dialog-tache button:has-text("M’ajouter")').count() === 1);
     await capture(p, 'e2e-projet-fenetre.png');
     await p.keyboard.press('Escape');
     await pause(350);

@@ -208,17 +208,9 @@ const debordement = (p) => p.evaluate(() => document.documentElement.scrollWidth
       () => p.click('#at-sans_intervenant'),
       async () => (await etat(p)).url === '/accueil?voir=sans_intervenant' && await p.locator('#at-detail .tb-ligne').count() === 2,
       { focus: '#at-sans_intervenant' });
-    await interaction(p, '« Les miennes » : seulement ses tâches, liste dépliée gardée',
-      () => p.click('#tdp-miennes'),
-      async () => (await etat(p)).url === '/accueil?voir=sans_intervenant&taches=miennes'
-        && await p.locator('#accueil-taches[data-mode="miennes"]').count() === 1,
-      { focus: '#tdp-miennes' });
-    etape('« Les miennes » : aucune tâche à Ali, renvoi vers « Toutes »', /Aucune tâche en cours à votre nom/.test(await p.textContent('#accueil-taches'))
-      && await p.getAttribute('#tdp-miennes', 'aria-current') === 'page');
-    await interaction(p, '« Toutes »',
-      () => p.click('#tdp-toutes'),
-      async () => (await etat(p)).url === '/accueil?voir=sans_intervenant' && await p.locator('#accueil-taches .acc-tache').count() === 4,
-      { focus: '#tdp-toutes' });
+    // Lot 17 : plus de bascule « Les miennes | Toutes » (toujours toutes).
+    etape('« Tâches de mes projets » : toutes les tâches, sans bascule',
+      await p.locator('#tdp-miennes, #tdp-toutes').count() === 0 && await p.locator('#accueil-taches .acc-tache').count() === 4);
     await latence(p, 0);
     // Droits : une cible forgée n'est pas servie.
     const forge = await p.evaluate(async () => (await fetch('/accueil?voir=retard', { headers: { 'X-Kairos-Partiel': '#vue-ensemble' } })).status);
