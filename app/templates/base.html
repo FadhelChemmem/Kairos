@@ -121,13 +121,15 @@
        P1-1) ; la page courante est marquée (aria-current, revue visuelle
        P0-3). #}
     <a class="iconbtn topbar-lien k-nav-principal" href="{{ url_for('main.accueil') }}" data-raccourci-g="a" title="Accueil" aria-label="Accueil"{% if request.endpoint == 'main.accueil' %} aria-current="page"{% endif %}>{{ ic.icone('accueil') }}<span class="topbar-libelle" aria-hidden="true">Accueil</span></a>
-    {# RH : aucun accès aux projets, ni échéances ni Daily log ; Client : ni
-       échéances (pas de tâches) ni Daily log (décisions Fadhel, lot 7). #}
+    {# RH : aucun accès aux projets, ni échéances ni Daily log ; Client : les
+       échéances de son équipe (lot 18), pas de Daily log (lot 7). #}
     {% if g.user.role != 'rh' %}
     <a class="iconbtn topbar-lien k-nav-principal" href="{{ url_for('projets.liste') }}" data-raccourci-g="p" title="Tous les projets" aria-label="Tous les projets"{% if request.endpoint == 'projets.liste' %} aria-current="page"{% elif request.endpoint == 'projets.detail' %} aria-current="true"{% endif %}>{{ ic.icone('projets') }}<span class="topbar-libelle" aria-hidden="true">Projets</span></a>
     {% endif %}
-    {% if g.user.role not in ('rh', 'client') %}
+    {% if g.user.role != 'rh' %}
     <a class="iconbtn topbar-lien k-nav-principal" href="{{ url_for('deadlines.liste') }}" data-raccourci-g="d" title="Deadlines" aria-label="Deadlines"{% if request.endpoint == 'deadlines.liste' %} aria-current="page"{% endif %}>{{ ic.icone('deadlines') }}<span class="topbar-libelle" aria-hidden="true">Deadlines</span></a>
+    {% endif %}
+    {% if g.user.role not in ('rh', 'client') %}
     <a class="iconbtn topbar-lien k-nav-principal" href="{{ url_for('dailylog.formulaire') }}" data-raccourci-g="l" title="Daily log" aria-label="Daily log"{% if request.endpoint == 'dailylog.formulaire' %} aria-current="page"{% endif %}>{{ ic.icone('dailylog') }}<span class="topbar-libelle" aria-hidden="true">Daily log</span></a>
     {% endif %}
     {# Le chef de projet a accès à la liste (lecture seule) : lien affiché
@@ -195,8 +197,10 @@
   {% if g.user.role != 'rh' %}
   <a href="{{ url_for('projets.liste') }}"{% if request.endpoint == 'projets.liste' %} aria-current="page"{% elif request.endpoint == 'projets.detail' %} aria-current="true"{% endif %}>{{ ic.icone('projets', 22) }}<span>Projets</span></a>
   {% endif %}
-  {% if g.user.role not in ('rh', 'client') %}
+  {% if g.user.role != 'rh' %}
   <a href="{{ url_for('deadlines.liste') }}"{% if request.endpoint == 'deadlines.liste' %} aria-current="page"{% endif %}>{{ ic.icone('deadlines', 22) }}<span>Deadlines</span></a>
+  {% endif %}
+  {% if g.user.role not in ('rh', 'client') %}
   <a href="{{ url_for('dailylog.formulaire') }}"{% if request.endpoint == 'dailylog.formulaire' %} aria-current="page"{% endif %}>{{ ic.icone('dailylog', 22) }}<span>Daily log</span></a>
   {% endif %}
   <a href="{{ url_for('notifications.liste') }}" aria-label="{{ libelle_notifs }}" data-notifs-lien{% if request.endpoint == 'notifications.liste' %} aria-current="page"{% endif %}>{{ ic.icone('notifications', 22) }}<span aria-hidden="true">Notifications</span><span class="k-nav-badge" aria-hidden="true" data-notifs-badge{% if not nb_notifs %} hidden{% endif %}>{{ nb_notifs if nb_notifs < 10 else '9+' }}</span></a>

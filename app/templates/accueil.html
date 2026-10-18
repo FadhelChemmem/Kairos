@@ -58,7 +58,7 @@
 
   {# Deadlines (lot 15) : une ligne de résumé ; « Afficher » déplie le
      mini-Gantt (même contenu qu'avant), choix gardé pour le compte. #}
-  {% if not sans_projets and g.user.role != 'client' %}
+  {% if not sans_projets %}
   {% set dr = deadlines_resume %}
   <details class="acc-deadlines" id="acc-deadlines" data-preference="accueil_deadlines" data-preference-url="{{ url_for('main.preference') }}" data-preference-etat="{{ '1' if preferences.accueil_deadlines else '0' }}"{% if preferences.accueil_deadlines %} open{% endif %}>
     <summary class="acc-deadlines-ligne">

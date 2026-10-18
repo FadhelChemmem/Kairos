@@ -401,6 +401,7 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.taches.list_deadlines": DEADLINES,
             "app.repositories.taches.list_mes_taches": MES_TACHES,
             "app.repositories.taches.list_deadlines_tous": DEADLINES,
+            "app.repositories.taches.list_deadlines_equipe": DEADLINES,
             "app.repositories.tableaux.compteurs": COMPTEURS_TABLEAUX,
             "app.repositories.tableaux.liste": [],
             "app.repositories.tableaux.par_chef": [],
@@ -468,6 +469,7 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.taches.list_ouvertes_pour_profil": TACHES_EN_COURS_PROFIL,
             "app.repositories.projets.list_en_cours_pour_profil": [],
             "app.repositories.utilisateurs.get_preferences": {"accueil_deadlines": False, "dailylog_proposer": True},
+            "app.repositories.utilisateurs.a_une_preference": False,
             "app.repositories.utilisateurs.set_preference": None,
             "app.repositories.posts.list_feed_auteur": [],
             "app.repositories.notifications.compter_non_lues": 2,
@@ -5352,9 +5354,11 @@ class TestDecisionsLot7(SmokeBase):
 
     # --- Client ---------------------------------------------------------
     def test_client_sans_daily_log_mais_avec_les_projets(self):
-        for chemin in ("/dailylog", "/deadlines"):
-            resp, _ = self._requete("get", chemin, **{"app.auth.get_user_by_id": CLIENT})
-            self.assertEqual(resp.status_code, 302)
+        resp, _ = self._requete("get", "/dailylog", **{"app.auth.get_user_by_id": CLIENT})
+        self.assertEqual(resp.status_code, 302)
+        # Lot 18 : le client a les Deadlines de son équipe (lecture seule).
+        resp, _ = self._requete("get", "/deadlines", **{"app.auth.get_user_by_id": CLIENT})
+        self.assertEqual(resp.status_code, 200)
         resp, mocks = self._requete(
             "get", "/accueil",
             espions=[("app.repositories.projets.list_projets", [{**MES_PROJETS[1], "mon_role": None}])],
@@ -5362,7 +5366,8 @@ class TestDecisionsLot7(SmokeBase):
         body = resp.data.decode()
         self.assertIn('title="Tous les projets"', body)
         self.assertNotIn('title="Daily log"', body)
-        self.assertNotIn('title="Deadlines"', body)
+        self.assertIn('title="Deadlines"', body)
+        self.assertIn('id="acc-deadlines"', body)
         self.assertNotIn("Remplir mon Daily log", body)
         self.assertNotIn("Mes tâches", body)
         self.assertNotIn("Aucun projet — information d", body)

@@ -266,7 +266,8 @@ const contraste = (p, selecteur) => p.evaluate((sel) => {
     }, J3);
     etape('écriture à J+3 refusée (422 futur_reel), rien en base', refusJ3 === '422:futur_reel' && heures(RIM, J3) === '0', refusJ3);
     // Le passé reste saisissable sous date simulée, horodatage réel.
-    const J1 = isoTunis(-1);
+    // Dernier jour ouvré avant aujourd'hui (le Daily log ne propose pas de ligne un week-end).
+    const J1 = (() => { let k = 1; while ([0, 6].includes(new Date(isoTunis(-k) + 'T12:00:00Z').getUTCDay())) k++; return isoTunis(-k); })();
     p = await ouvrir(adm, '/dailylog?date=' + J1);
     await pretDailyLog(p);
     await p.click('#dl-liste .dl-row[data-cle="1:1"] .dl-plus');

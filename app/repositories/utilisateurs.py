@@ -416,6 +416,12 @@ def get_preferences(user_id: int) -> dict:
     return {**PREFERENCES, **(dict(row) if row else {})}
 
 
+def a_une_preference(user_id: int) -> bool:
+    """Le compte a-t-il déjà enregistré un choix d'affichage ? (le client
+    voit ses deadlines dépliées tant qu'il n'a rien choisi, lot 18)."""
+    return db.query_one("SELECT 1 AS x FROM utilisateur_preference WHERE utilisateur_id = %s", (user_id,)) is not None
+
+
 def set_preference(user_id: int, cle: str, valeur: bool) -> None:
     if cle not in PREFERENCES:
         raise ValueError(cle)

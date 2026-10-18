@@ -317,7 +317,7 @@ class TestMatriceDesRoles(BaseIntegration):
     def test_un_client_ne_cree_ni_tache_ni_projet_et_ne_voit_pas_le_daily_log(self):
         pid, tid = self.projets["APS"]
         self.assertIn(self.statut(self.client_m, "/projets/nouveau"), (302, 403))
-        for url in ("/dailylog", "/dailylog/equipe", "/utilisateurs", "/deadlines"):
+        for url in ("/dailylog", "/dailylog/equipe", "/utilisateurs"):
             with self.subTest(url=url):
                 self.assertIn(self.statut(self.client_m, url), (302, 403, 404))
         self.assertEqual(self.statut(self.client_m, f"/projets/{pid}/taches/{tid}/etat", "post",
@@ -487,3 +487,79 @@ class TestEquipes(_Base):
                                  headers=partiel("#x"))
                 apres = self.sql("SELECT count(*) AS n FROM post WHERE projet_id = %s", (self.p,))[0]["n"]
                 self.assertEqual(apres - avant, 1 if ok else 0)
+
+
+class TestDeadlinesDuClient(_Base):
+    """18/10 : le client commence par les deadlines de TOUS les projets de son
+    équipe (rendus client et échéances internes), en lecture seule."""
+
+    def setUp(self):
+        super().setUp()
+        self.client_u = self.user("client", equipe="MIDGARD")
+        self.autre = self.projet(self.chef, equipe="MIDGARD")
+        self.hors = self.projet(self.chef, equipe="URBS")
+        j = datetime.date.today()
+        self.sql("UPDATE tache SET titre = 'Note EXE', date_echeance = %s WHERE id = %s", (j + datetime.timedelta(days=3), self.t))
+        self.t_autre = self.tache(self.autre, self.chef, echeance=j + datetime.timedelta(days=5))
+        self.sql("UPDATE tache SET titre = 'Rendu autre projet', type_deadline = 'interne' WHERE id = %s", (self.t_autre,))
+        self.t_hors = self.tache(self.hors, self.chef, echeance=j + datetime.timedelta(days=2))
+        self.sql("UPDATE tache SET titre = 'Autre équipe' WHERE id = %s", (self.t_hors,))
+        self.t_bloquee = self.tache(self.p, self.chef, etat="bloque", echeance=j + datetime.timedelta(days=1))
+        self.sql("UPDATE tache SET titre = 'Bloquée secrète', bloque_motif = 'Motif interne' WHERE id = %s", (self.t_bloquee,))
+        self.login(self.client_u)
+
+    def texte(self, r):
+        import html
+        return html.unescape(r.get_data(as_text=True))
+
+    def page(self, url):
+        return self.texte(self.client.get(url))
+
+    def test_page_deadlines_tous_les_projets_de_l_equipe_seulement(self):
+        r = self.client.get("/deadlines")
+        self.assertEqual(r.status_code, 200)
+        page = self.texte(r)
+        self.assertIn("Note EXE", page)
+        self.assertIn("Rendu autre projet", page)
+        self.assertNotIn("Autre équipe", page)           # projet d'une autre équipe
+        self.assertNotIn("Bloquée secrète", page)        # tâche bloquée : hors Gantt
+        self.assertNotIn("Motif interne", page)
+        self.assertIn("2 tâches avec échéance", page)
+
+    def test_accueil_commence_par_les_deadlines_depliees(self):
+        page = self.client.get("/accueil").get_data(as_text=True)
+        bloc = page.split('id="acc-deadlines"')[1].split(">")[0]
+        self.assertIn(" open", bloc)
+        self.assertIn("Note EXE", page.split('id="acc-deadlines"')[1].split("</details>")[0])
+        self.assertIn("Rendu autre projet", page.split('id="acc-deadlines"')[1].split("</details>")[0])
+        self.assertNotIn("Autre équipe", page)
+
+    def test_le_choix_du_client_de_replier_est_respecte(self):
+        self.assertEqual(self.client.post("/preferences", data={"cle": "accueil_deadlines", "valeur": "0"}).status_code, 204)
+        bloc = self.client.get("/accueil").get_data(as_text=True).split('id="acc-deadlines"')[1].split(">")[0]
+        self.assertNotIn(" open", bloc)
+
+    def test_menu_du_client_a_deadlines_mais_pas_de_daily_log(self):
+        page = self.client.get("/accueil").get_data(as_text=True)
+        self.assertIn('href="/deadlines"', page)
+        self.assertNotIn('href="/dailylog"', page)
+
+    def test_client_en_lecture_seule_sur_le_panneau_de_tache(self):
+        r = self.client.get(f"/projets/{self.p}/taches/{self.t}/fenetre")
+        self.assertEqual(r.status_code, 200)
+        page = r.get_data(as_text=True)
+        self.assertNotIn(f'/taches/{self.t}/etat', page)
+        r = self.client.post(f"/projets/{self.p}/taches/{self.t}/etat", data={"etat": "bloque", "motif": "x"},
+                             headers=partiel("#x"))
+        self.assertEqual(r.status_code, 403)
+
+    def test_client_d_une_autre_equipe_ne_voit_pas_ces_echeances(self):
+        autre_client = self.user("client", equipe="SS")
+        self.login(autre_client)
+        page = self.page("/deadlines")
+        self.assertNotIn("Note EXE", page)
+        self.assertIn("Aucune échéance à venir", page)
+
+    def test_rh_toujours_exclu(self):
+        self.login(self.user("rh", equipe=None))
+        self.assertIn(self.client.get("/deadlines").status_code, (302, 403, 404))

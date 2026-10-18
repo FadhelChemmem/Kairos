@@ -45,8 +45,9 @@ def grouper_par_semaine(rows: list[dict], aujourdhui: datetime.date) -> list[dic
 
 
 @bp.route("")
-# Ni le RH (aucun accès aux projets) ni un Client (pas de tâches) — lot 7.
-@role_required("admin", "chef_de_projet", "intervenant")
+# Pas le RH (aucun accès aux projets). Le client (lot 18) voit les échéances
+# de tous les projets de son équipe, en lecture seule.
+@role_required("admin", "chef_de_projet", "intervenant", "client")
 def liste():
     admin = g.user["role"] == "admin"
     # Lot 14 (revue produit P0-3) : l'Admin arrive sur « Tous les projets » ;
@@ -62,6 +63,11 @@ def liste():
         sans_echeance = taches.list_deadlines_tous(filtres["chef"], filtres["equipe"], sans_echeance=True, limit=300)
         chefs = projets.list_chefs_de_projet(g.user["id"])
         bloquees = taches.list_bloquees(tous=True, chef_id=filtres["chef"], equipe_code=filtres["equipe"])
+    elif g.user["role"] == "client":
+        # Lot 18 : tous les projets de son équipe ; ni motifs de blocage ni
+        # tâches sans échéance (vue d'information, pas de pilotage).
+        mes_taches = taches.list_deadlines_equipe(g.user["id"], limit=500)
+        bloquees = []
     else:
         mes_taches = taches.list_deadlines(g.user["id"], limit=200)
         bloquees = taches.list_bloquees(g.user["id"])

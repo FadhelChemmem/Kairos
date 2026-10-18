@@ -276,6 +276,31 @@ def list_deadlines(user_id: int, limit: int = 20) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def list_deadlines_equipe(user_id: int, limit: int = 500) -> list[dict]:
+    """Vue Deadlines du CLIENT (lot 18, demande du gérant du 18/10) : les
+    échéances des tâches en cours de TOUS les projets ouverts qu'il voit (ceux
+    de son équipe, via v_projet_visibilite), rendus client et échéances
+    internes — mêmes règles que list_deadlines (tâche en cours, avec échéance,
+    projet en cours ou bloqué, retards de plus de 90 jours en dernier)."""
+    return db.query_all(
+        """
+        SELECT t.id, t.titre, t.etat, t.date_echeance, t.type_deadline,
+               p.id AS projet_id, p.code AS projet_code, p.nom AS projet_nom,
+               (t.date_echeance < CURRENT_DATE - 90) AS ancienne
+        FROM tache t
+        JOIN projet p ON p.id = t.projet_id
+        WHERE t.etat = 'en_cours'
+          AND t.date_echeance IS NOT NULL
+          AND p.etat IN ('en_cours', 'bloque')
+          AND EXISTS (SELECT 1 FROM v_projet_visibilite vv
+                      WHERE vv.projet_id = p.id AND vv.utilisateur_id = %(uid)s)
+        ORDER BY ancienne, t.date_echeance, p.code, t.id
+        LIMIT %(limit)s
+        """,
+        {"uid": user_id, "limit": limit},
+    )
+
+
 def list_deadlines_tous(chef_id: int | None = None, equipe_code: str | None = None,
                         sans_echeance: bool = False, limit: int = 500) -> list[dict]:
     """Vue Admin des Deadlines (lot 12) : les tâches en cours de TOUS les

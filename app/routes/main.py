@@ -101,13 +101,14 @@ def accueil():
     if role == "rh":
         return _accueil_rh(user_id)
     if role == "client":
-        toutes_echeances = []
+        # Lot 18 : les échéances de tous les projets de son équipe.
+        toutes_echeances = taches.list_deadlines_equipe(user_id, limit=500)
     elif role == "admin":
         # Vue d'ensemble (revue produit P0-3) : les échéances du bureau.
         toutes_echeances = taches.list_deadlines_tous(limit=500)
     else:
         toutes_echeances = taches.list_deadlines(user_id, limit=500)
-    deadlines = toutes_echeances[:12 if role == "admin" else 6]
+    deadlines = toutes_echeances[:12 if role in ("admin", "client") else 6]
     # « Aujourd'hui » au fuseau de la personne (lot 10 pour le Daily log,
     # lot 11 pour les échéances : Guyane / Tunis).
     aujourdhui_local = dailylog_repo.aujourdhui_pour(g.user)
@@ -171,9 +172,14 @@ def accueil():
     else:
         intent = "information"  # Information d'équipe, sans projet
 
+    preferences = utilisateurs.get_preferences(user_id)
+    if role == "client" and not utilisateurs.a_une_preference(user_id):
+        # Le client « commence » par ses deadlines : dépliées tant qu'il n'a
+        # pas choisi de les replier (lot 18).
+        preferences = {**preferences, "accueil_deadlines": True}
     return render_template(
         "accueil.html",
-        preferences=utilisateurs.get_preferences(user_id),
+        preferences=preferences,
         deadlines_resume=deadlines_resume,
         nb_projets_ouverts=len(projets_postables),
         mes_projets=mes_projets_recents,
