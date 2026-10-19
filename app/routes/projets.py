@@ -3,9 +3,11 @@ et les actions sur les tâches d'un projet (création, clôture, changement
 d'état)."""
 import datetime
 import re
-from urllib.parse import quote
+from urllib.parse import parse_qsl, quote, urlencode
 
-from flask import Blueprint, abort, current_app, flash, g, jsonify, redirect, render_template, request, url_for
+from flask import (Blueprint, abort, current_app, flash, g, jsonify, make_response, redirect, render_template,
+                   request, url_for)
+from werkzeug.datastructures import MultiDict
 
 from ..auth import login_required
 from ..repositories import notifications as notifications_repo
@@ -167,6 +169,41 @@ def _parser_date_tache(date_str: str | None):
 PROJETS_PAR_PAGE = 50
 
 
+# Lot 22 (retour du gérant) : le dernier choix de filtres de « Tous les
+# projets » est mémorisé (cookie, ce navigateur) — rouvrir la page depuis
+# le menu, un nouvel onglet ou un F5 sur /projets ne revient plus aux
+# valeurs par défaut. « Filtres par défaut » efface ce choix.
+COOKIE_FILTRES_PROJETS = "kairos_projets_filtres"
+CLES_FILTRES_PROJETS = ("etat", "phase", "chef_id", "lot_contient", "lot_egal")
+MAX_COOKIE_FILTRES = 3000
+
+
+def _source_filtres():
+    """Filtres de l'adresse s'ils y sont (formulaire soumis), sinon le
+    dernier choix mémorisé, sinon None (valeurs par défaut)."""
+    if request.args.get("filtres_actifs"):
+        return request.args
+    brut = request.cookies.get(COOKIE_FILTRES_PROJETS) or ""
+    if brut and len(brut) <= MAX_COOKIE_FILTRES:
+        memorises = MultiDict([(k, v_) for k, v_ in parse_qsl(brut) if k in CLES_FILTRES_PROJETS + ("filtres_actifs",)])
+        if memorises.get("filtres_actifs"):
+            return memorises
+    return None
+
+
+def _memoriser_filtres(reponse, filtres_url: dict):
+    """Choix explicite (formulaire soumis) : gardé un an pour ce navigateur."""
+    if not request.args.get("filtres_actifs"):
+        return reponse
+    valeur = urlencode([(k, x) for k in ("filtres_actifs",) + CLES_FILTRES_PROJETS
+                        for x in (filtres_url[k] if isinstance(filtres_url.get(k), list) else [filtres_url.get(k)])
+                        if x not in (None, "")])
+    if len(valeur) <= MAX_COOKIE_FILTRES:
+        reponse.set_cookie(COOKIE_FILTRES_PROJETS, valeur, max_age=365 * 24 * 3600, path="/projets",
+                           samesite="Lax", httponly=True, secure=current_app.config.get("SESSION_COOKIE_SECURE", False))
+    return reponse
+
+
 def _filtres_liste() -> dict:
     """Filtres de "Tous les projets" (liste, rafraîchissement AJAX et
     export Excel utilisent exactement les mêmes)."""
@@ -180,16 +217,17 @@ def _filtres_liste() -> dict:
     # listait tout le monde (Intervenants, Clients...) via
     # utilisateurs.list_actifs() — voir list_chefs_de_projet().
     chefs_de_projet = projets.list_chefs_de_projet(g.user["id"])
-    if request.args.get("filtres_actifs"):
-        etats = request.args.getlist("etat") or None
-        phases = request.args.getlist("phase") or None
-        chef_ids = v.ids_entiers(request.args.getlist("chef_id")) or None
+    source = _source_filtres()
+    if source is not None:
+        etats = source.getlist("etat") or None
+        phases = source.getlist("phase") or None
+        chef_ids = v.ids_entiers(source.getlist("chef_id")) or None
         # Filtre lots à trois états par lot (retour Fadhel, 2026-10-01) :
         # "contient" (le projet A ce lot, même parmi d'autres) et "="
         # (le projet n'a QUE ce lot) — deux listes distinctes. Voir
         # projets_liste.html (data-chip-tristate) et list_projets.
-        lots_contient = request.args.getlist("lot_contient") or None
-        lots_egal = request.args.getlist("lot_egal") or None
+        lots_contient = source.getlist("lot_contient") or None
+        lots_egal = source.getlist("lot_egal") or None
     else:
         etats = ["en_cours", "bloque"]
         phases = list(PHASES)
@@ -221,6 +259,11 @@ def liste():
     refus = _refus_rh()
     if refus:
         return refus
+    if request.args.get("defaut"):
+        # « Filtres par défaut » : le choix mémorisé est oublié.
+        reponse = redirect(url_for("projets.liste"))
+        reponse.delete_cookie(COOKIE_FILTRES_PROJETS, path="/projets")
+        return reponse
     f = _filtres_liste()
     total = projets.compter_projets(user_id=g.user["id"], **_criteres(f))
     nb_pages = max(1, -(-total // PROJETS_PAR_PAGE))
@@ -265,9 +308,11 @@ def liste():
     # pagination, Retour) : les résultats seuls, le statut et le lien
     # d'export hors cible. X-Requested-With : ancien appel (compatibilité).
     if partiel.est_partiel():
-        return partiel.repondre("partials/projets_tableau.html", partiel=True, **contexte)
+        return _memoriser_filtres(make_response(partiel.repondre("partials/projets_tableau.html", partiel=True,
+                                                                 **contexte)), filtres_url)
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return render_template("partials/projets_tableau.html", **contexte)
+        return _memoriser_filtres(make_response(render_template("partials/projets_tableau.html", **contexte)),
+                                  filtres_url)
 
     # Contexte de la fenêtre flottante "+ Nouveau projet" (retour Fadhel,
     # 2026-09-28, voir partials/projet_dialog.html) — calculé seulement
@@ -291,7 +336,7 @@ def liste():
         # (api_phase_liee_candidats) au lieu de 200 <option> dans la page.
         contexte["projets_phase_liee"] = []
 
-    return render_template("projets_liste.html", **contexte)
+    return _memoriser_filtres(make_response(render_template("projets_liste.html", **contexte)), filtres_url)
 
 
 @bp.route("/export.xlsx")

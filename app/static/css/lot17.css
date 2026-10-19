@@ -155,3 +155,11 @@ html.k-js .pj-champ textarea { padding-bottom: 42px; min-height: 96px; }
 .fil-moi[aria-checked="true"] .fil-moi-piste { background: var(--accent-fill); }
 .fil-moi[aria-checked="true"] .fil-moi-bouton { transform: translateX(14px); background: var(--on-accent); }
 @media (prefers-reduced-motion: reduce) { .fil-moi-piste, .fil-moi-bouton { transition: none; } }
+/* Lot 22 (retour du gérant, capture du 19/10) : un champ de texte ne se
+   redimensionne qu'en hauteur — tiré à la souris, il pouvait devenir une
+   colonne étroite (largeur réduite), y compris dans « Nouveau post » où le
+   même champ est réutilisé. Hauteur bornée à l'écran. */
+textarea { resize: vertical; max-width: 100%; max-height: 70vh; box-sizing: border-box; }
+.pj-champ textarea { width: 100%; }
+/* Lot 22 : « Filtres par défaut » sous les filtres de « Tous les projets ». */
+.projets-filtres-defaut { display: inline-block; margin-top: 6px; font-size: 12.5px; }

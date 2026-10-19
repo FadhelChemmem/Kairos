@@ -264,6 +264,9 @@
         }
       }
       appliquerProjet();
+      // Lot 22 (retour du gérant) : un champ agrandi à la souris la fois
+      // précédente reprend sa taille normale.
+      dialog.querySelectorAll('textarea').forEach(function (t) { t.style.removeProperty('width'); t.style.removeProperty('height'); });
 
       if (typeof dialog.showModal === 'function') {
         dialog.showModal();

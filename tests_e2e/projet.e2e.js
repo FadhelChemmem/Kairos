@@ -588,6 +588,33 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
       await pc.goBack();
       etape('« Me concernant » : Retour rend la vue filtrée', !!await attendre(async () => !(await visibles()).includes('post-' + reunion)
         && await pc.getAttribute('#fil-moi', 'aria-checked') === 'true'));
+      // Lot 22 (capture du gérant) : le texte d'un post ne se rétrécit pas en
+      // colonne ; un champ agrandi reprend sa taille à l'ouverture suivante.
+      await pc.click('#nouveau-post');
+      await pc.waitForSelector('#dialog-contenu-information', { state: 'visible' });
+      const champPost = () => pc.evaluate(() => { const t = document.getElementById('dialog-contenu-information');
+        const z = t.closest('.pj-champ'); return { resize: getComputedStyle(t).resize, l: t.getBoundingClientRect().width, z: z.getBoundingClientRect().width }; });
+      let cp = await champPost();
+      etape('Nouveau post : texte sur toute la largeur, redimensionnable en hauteur seulement',
+        cp.resize === 'vertical' && Math.abs(cp.l - cp.z) <= 1, cp);
+      await pc.evaluate(() => { const t = document.getElementById('dialog-contenu-information'); t.style.height = '900px'; t.style.width = '110px'; });
+      cp = await champPost();
+      etape('Nouveau post : hauteur bornée à l’écran', await pc.evaluate(() =>
+        document.getElementById('dialog-contenu-information').getBoundingClientRect().height <= window.innerHeight * 0.7 + 1), cp);
+      await pc.keyboard.press('Escape');
+      await pc.click('#nouveau-post');
+      await pc.waitForSelector('#dialog-contenu-information', { state: 'visible' });
+      cp = await champPost();
+      etape('Nouveau post rouvert : taille normale rendue', Math.abs(cp.l - cp.z) <= 1 && await pc.evaluate(() =>
+        !document.getElementById('dialog-contenu-information').style.height), cp);
+      await pc.keyboard.press('Escape');
+      await pc.click(`#post-${sien} .post-menu > summary`);
+      await pc.click(`#post-${sien} [data-post-modifier]`);
+      const edition = await attendre(() => pc.evaluate((id) => { const t = document.getElementById('post-' + id + '-texte');
+        if (!t || !t.offsetParent) return null; const z = t.closest('.pj-champ'); return { resize: getComputedStyle(t).resize,
+          l: t.getBoundingClientRect().width, z: z.getBoundingClientRect().width }; }, sien));
+      etape('Modifier un post : texte sur toute la largeur, hauteur seulement',
+        !!edition && edition.resize === 'vertical' && Math.abs(edition.l - edition.z) <= 1, edition);
       await ctx.close();
     }
 
