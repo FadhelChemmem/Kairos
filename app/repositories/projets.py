@@ -737,6 +737,23 @@ def user_can_view(projet_id: int, user_id: int) -> bool:
         return cur.fetchone() is not None
 
 
+def user_can_act(projet_id: int, user_id: int) -> bool:
+    """Vrai si `user_id` peut AGIR sur le projet (poster, commenter, réagir,
+    changer une tâche, la rejoindre, saisir des heures) : même règle que la
+    visibilité, sauf qu'une tâche close ne donne que la lecture (vue
+    v_projet_action, migration 0024). Lot 20, décision du gérant : une
+    personne retirée d'un projet d'une autre équipe garde la lecture de ce
+    qu'elle y a fait, mais n'y agit plus."""
+    return db.query_one(
+        "SELECT 1 AS ok FROM v_projet_action WHERE projet_id = %s AND utilisateur_id = %s",
+        (projet_id, user_id),
+    ) is not None
+
+
+MESSAGE_LECTURE_SEULE = ("Vous n’êtes plus rattaché(e) à ce projet\u00a0: "
+                         "vous pouvez le consulter, plus y intervenir.")
+
+
 # États d'un projet clos (décision Fadhel, lot 7) : plus aucune
 # intervention — posts, commentaires, réactions, tâches, fichiers,
 # intervenants — tant que son chef ou un co-chef ne le rouvre pas (seule la
@@ -795,15 +812,41 @@ def user_est_rattache(projet_id: int, user_id: int) -> bool:
 
 def add_co_chef(projet_id: int, utilisateur_id: int, current_user_id: int) -> None:
     """« Rejoindre ce projet » pour un chef de projet (retour Fadhel,
-    2026-09-29, PR8) : il rejoint comme co-chef, pas comme intervenant."""
-    db.execute(
+    2026-09-29, PR8) : il rejoint comme co-chef, pas comme intervenant.
+    Lot 20 : post automatique dans l'Activité du projet."""
+    with db.get_cursor(user_id=current_user_id) as cur:
+        cur.execute(
+            """
+            INSERT INTO projet_co_chef (projet_id, utilisateur_id)
+            VALUES (%s, %s)
+            ON CONFLICT DO NOTHING
+            """,
+            (projet_id, utilisateur_id),
+        )
+        if cur.rowcount == 1:
+            _post_rattachement(cur, projet_id, utilisateur_id, current_user_id, True)
+
+
+def _post_rattachement(cur, projet_id: int, personne_id: int, acteur_id: int, co_chef: bool) -> None:
+    """Lot 20 (test Chrome N6) : l'ajout d'une personne au projet apparaît
+    dans l'Activité, comme son retrait (evenement 'intervenant_projet')."""
+    cur.execute("SELECT id, prenom, nom FROM utilisateur WHERE id = ANY(%s)", ([personne_id, acteur_id],))
+    gens = {r["id"]: dict(r) for r in cur.fetchall()}
+    personne = gens.get(personne_id)
+    if personne is None:
+        return
+    role = "co-chef" if co_chef else "intervenant"
+    if personne_id == acteur_id:
+        contenu = f"{_nom(personne)} a rejoint le projet comme {role}."
+    else:
+        acteur = gens.get(acteur_id) or {"prenom": "", "nom": ""}
+        contenu = f"{_nom(acteur)} a ajouté {_nom(personne)} au projet comme {role}."
+    cur.execute(
         """
-        INSERT INTO projet_co_chef (projet_id, utilisateur_id)
-        VALUES (%s, %s)
-        ON CONFLICT DO NOTHING
+        INSERT INTO post (projet_id, auteur_id, type_code, contenu, evenement)
+        VALUES (%s, %s, 'information', %s, 'intervenant_projet')
         """,
-        (projet_id, utilisateur_id),
-        user_id=current_user_id,
+        (projet_id, acteur_id, contenu),
     )
 
 
@@ -932,7 +975,11 @@ def add_intervenant(projet_id: int, utilisateur_id: int, current_user_id: int) -
                 """,
                 (projet_id, utilisateur_id),
             )
-        return cur.rowcount == 1
+        cree = cur.rowcount == 1
+        if cree:
+            _post_rattachement(cur, projet_id, utilisateur_id, current_user_id,
+                               bool(row and row["role"] == "chef_de_projet"))
+        return cree
 
 
 # Phases valides (phase_enum, schema.sql) — voir PROMPT_CORRECTIONS.md P2
@@ -978,8 +1025,9 @@ def propose_code(phase: str, annee: int | None = None, phase_liee_code: str | No
     PROMPT_CORRECTIONS.md P2 #22).
 
     Une phase liée garde le numéro de sa phase liée, avec la lettre de la
-    nouvelle phase (26001D → 26001X), s'il est libre ; sinon (APS → APD,
-    même lettre P) on retombe sur le numéro suivant de l'année.
+    nouvelle phase (26001D → 26001X), s'il est libre DANS CETTE PHASE. Lot 20
+    (décision du gérant) : le code n'est plus unique que par phase, l'APD
+    d'un APS garde donc son code (26101P → 26101P) ; il reste modifiable.
     """
     import re
 
@@ -991,7 +1039,8 @@ def propose_code(phase: str, annee: int | None = None, phase_liee_code: str | No
         m = re.fullmatch(r"(\d{5,})[A-Z]", phase_liee_code)
         if m:
             candidat = f"{m.group(1)}{lettre}"
-            if db.query_one("SELECT 1 AS pris FROM projet WHERE code = %s", (candidat,)) is None:
+            if db.query_one("SELECT 1 AS pris FROM projet WHERE code = %s AND phase = %s",
+                            (candidat, phase)) is None:
                 return candidat
 
     from .. import horloge

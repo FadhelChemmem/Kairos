@@ -162,7 +162,16 @@ _FEED_SELECT = """
            (parent.supprime_le IS NOT NULL) AS parent_supprime,
            parent.evenement AS parent_evenement,
            parent_auteur.prenom AS parent_auteur_prenom, parent_auteur.nom AS parent_auteur_nom,
-           parent_tache.titre AS parent_tache_titre
+           parent_tache.titre AS parent_tache_titre,
+           -- Lot 20 (test Chrome FP3) : tâches créées par « Donner suite »
+           -- depuis ce post — la requête montre qu'elle a eu une suite (le
+           -- post de création, lui, est regroupé dans « Activité »).
+           COALESCE(
+             (SELECT json_agg(json_build_object('id', st.id, 'titre', st.titre) ORDER BY st.id)
+              FROM post sp JOIN tache st ON st.id = sp.tache_id
+              WHERE sp.parent_post_id = p.id AND sp.evenement = 'creation_tache' AND sp.supprime_le IS NULL),
+             '[]'
+           ) AS suites_taches
     FROM post p
     JOIN utilisateur u ON u.id = p.auteur_id
     LEFT JOIN projet proj ON proj.id = p.projet_id
@@ -345,24 +354,29 @@ def compter_non_vus(user_id: int, vus: dict) -> dict:
 
 def instant_base():
     """Horloge de la base, à relever AVANT de lire le fil (lot 18, revue QA) :
-    un post validé pendant la lecture n'est alors pas compté comme vu."""
-    ligne = db.query_one("SELECT clock_timestamp() AS t")
+    un post validé pendant la lecture n'est alors pas compté comme vu. Lot
+    20 : l'instant simulé en mode test (les posts y sont datés ainsi)."""
+    ligne = db.query_one("SELECT COALESCE(fn_instant_simule(), clock_timestamp()) AS t")
     return ligne["t"] if ligne else None
 
 
 def marquer_fil_vu(user_id: int, categories, instant=None) -> None:
-    """La personne vient de regarder ces catégories du fil (à `instant`, relevé
-    avant la lecture du fil ; maintenant par défaut)."""
+    """La personne vient de regarder ces catégories du fil, jusqu'à `instant`
+    (un horodatage, ou un dict catégorie → horodatage ; maintenant — simulé
+    en mode test — par défaut). Lot 20 : jamais en arrière (GREATEST)."""
     cats = [c for c in categories if c in CATEGORIES_VUES]
     if not cats:
         return
+    instants = [(instant.get(c) if isinstance(instant, dict) else instant) for c in cats]
     db.execute(
         """
         INSERT INTO utilisateur_fil_vu (utilisateur_id, categorie, vu_le)
-        SELECT %s, c, COALESCE(%s::timestamptz, now()) FROM unnest(%s::text[]) AS c
-        ON CONFLICT (utilisateur_id, categorie) DO UPDATE SET vu_le = EXCLUDED.vu_le
+        SELECT %s, c, COALESCE(i, fn_maintenant())
+        FROM unnest(%s::text[], %s::timestamptz[]) AS x(c, i)
+        ON CONFLICT (utilisateur_id, categorie)
+        DO UPDATE SET vu_le = GREATEST(utilisateur_fil_vu.vu_le, EXCLUDED.vu_le)
         """,
-        (user_id, instant, cats),
+        (user_id, cats, instants),
         user_id=user_id,
     )
 

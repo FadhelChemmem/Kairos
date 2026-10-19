@@ -20,7 +20,7 @@
         {{ avatarm.avatar(iv.id, iv.prenom, iv.nom, iv.avatar_chemin, css_class='avatar avatar-sm', titre=(iv.prenom ~ ' ' ~ iv.nom)) }}
       {%- endfor %}
     </div>
-    {%- if g.user.role not in ('rh', 'client') and not projet_clos and not deja_intervenant_tache and not tache_close %}
+    {%- if g.user.role not in ('rh', 'client') and not projet_clos and not lecture_seule|default(false) and not deja_intervenant_tache and not tache_close %}
     {# « Rejoindre cette tâche » (retour Fadhel, 2026-09-28) : un seul
        formulaire (jeton CSRF) pour toute la page, #form-rejoindre-tache ;
        lot 13 : en partiel (la ligne seule est remplacée), visible au focus

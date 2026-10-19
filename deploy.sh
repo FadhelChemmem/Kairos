@@ -18,11 +18,13 @@
 #     version de retour arrière est ce tag, à défaut l'état d'avant git am
 #     (ORIG_HEAD).
 #
-# Retour arrière (affiché à la fin) :
-#   sudo bash scripts/restore_db.sh <sauvegarde>.sql.gz
+# Retour arrière (affiché à la fin), DANS CET ORDRE (lot 20, revue QA n° 6) :
 #   git switch --detach avant-deploiement
 #   sudo docker tag kairos-web:avant-deploiement kairos-web:latest
-#   sudo docker compose up -d --no-build
+#   sudo bash scripts/restore_db.sh <sauvegarde>.sql.gz
+# restore_db.sh redémarre `web`, qui applique les migrations de SON image :
+# restaurer avec la nouvelle image encore en place re-migrait aussitôt la
+# base restaurée (ancien code sur une base migrée, sans message).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -95,6 +97,9 @@ echo
 
 etape "6/6 Contrôle des migrations et des journaux"
 journaux="$(docker compose logs web --since "$debut" 2>&1 || true)"
+# Lot 20 (revue QA n° 17b) : les lignes d'accès de gunicorn (« GET
+# /recherche/api?q=Erreur … 200 ») ne sont pas des erreurs.
+journaux="$(printf '%s\n' "$journaux" | grep -Ev '"(GET|POST|HEAD|PUT|PATCH|DELETE|OPTIONS) [^"]* HTTP/[0-9.]+" [0-9]{3} ' || true)"
 echo "$journaux" | grep -E "Application de|-> OK|migration\(s\) appliquée|Rien à faire" || true
 if echo "$journaux" | grep -Eq "Traceback|ERROR|ECHEC|Erreur"; then
   echo "$journaux" | grep -E -B2 -A8 "Traceback|ERROR|ECHEC|Erreur" | tail -60
@@ -106,7 +111,7 @@ docker compose exec -T db sh -c 'psql -X -At -U "$POSTGRES_USER" -d "$POSTGRES_D
 git tag -f deploye HEAD >/dev/null
 vert ""
 vert "OK : Kairos déployé ($avant -> $apres)."
-echo "Retour arrière si besoin :"
-echo "  sudo bash scripts/restore_db.sh <sauvegarde ci-dessus>.sql.gz"
+echo "Retour arrière si besoin (dans cet ordre : code, image, puis base) :"
 echo "  git switch --detach avant-deploiement"
-echo "  sudo docker tag $image:avant-deploiement $image:latest && sudo docker compose up -d --no-build"
+echo "  sudo docker tag $image:avant-deploiement $image:latest"
+echo "  sudo bash scripts/restore_db.sh <sauvegarde ci-dessus>.sql.gz"

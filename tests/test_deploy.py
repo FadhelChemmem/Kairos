@@ -18,7 +18,8 @@ case "$*" in
   "compose images web --format json") echo '[{"Repository":"kairos-web","Tag":"latest"}]' ;;
   "compose ps -q web") echo abc123 ;;
   inspect*) echo healthy ;;
-  "compose logs web"*) echo "Rien à faire : toutes les migrations sont déjà appliquées." ;;
+  "compose logs web"*) echo "Rien à faire : toutes les migrations sont déjà appliquées."
+                       if [ -n "$FAUX_LOG_EN_PLUS" ]; then echo "$FAUX_LOG_EN_PLUS"; fi ;;
   "compose exec -T db"*) cat >/dev/null; echo "Dernière migration : 0018" ;;
   *) : ;;
 esac
@@ -118,6 +119,33 @@ class TestDeploy(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("des fichiers suivis sont modifiés localement", r.stdout)
         self.assertNotIn("compose up", appels)
+
+    def test_retour_arriere_affiche_code_image_puis_base(self):
+        """Lot 20 (revue QA n° 6) : restaurer la base AVANT de remettre
+        l'ancienne image la faisait re-migrer aussitôt par la nouvelle."""
+        r, _ = self.deployer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        fin = r.stdout[r.stdout.index("Retour arrière si besoin"):]
+        positions = [fin.index(m) for m in ("git switch --detach avant-deploiement",
+                                            "docker tag kairos-web:avant-deploiement kairos-web:latest",
+                                            "scripts/restore_db.sh")]
+        self.assertEqual(positions, sorted(positions))
+        self.assertNotIn("up -d --no-build", fin)
+
+    def test_ligne_d_acces_contenant_erreur_ignoree(self):
+        """Lot 20 (revue QA n° 17b) : une recherche du mot « Erreur » n'est
+        pas une erreur ; une vraie trace l'est toujours."""
+        acces = ('web-1  | 192.168.1.20 - - [19/Oct/2026:10:00:07 +0100] '
+                 '"GET /recherche/api?q=Erreur HTTP/1.1" 200 312 "http://kairos.local/accueil" "Mozilla/5.0"')
+        self.env["FAUX_LOG_EN_PLUS"] = acces
+        r, _ = self.deployer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.tag("deploye"), self.git("rev-parse", "HEAD", cwd=self.serveur))
+        self.git("tag", "-d", "deploye", cwd=self.serveur)
+        self.env["FAUX_LOG_EN_PLUS"] = "web-1  | Traceback (most recent call last):"
+        r, _ = self.deployer()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("erreur dans les journaux", r.stdout)
 
 
 if __name__ == "__main__":

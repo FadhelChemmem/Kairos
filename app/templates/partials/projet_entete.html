@@ -15,7 +15,8 @@
       {# Revue produit P2-12 : un projet clos affiche sa date de clôture, et
          non une « échéance » qui n'a plus de sens. #}
       <span>{% if projet.date_debut %}Début {{ projet.date_debut|date_courte(true) }}{% endif %}{% if projet.date_fin and not (projet_clos and projet.date_cloture) %} → Échéance {{ projet.date_fin|date_courte(true) }}{% endif %}{% if projet_clos and projet.date_cloture %}{{ ' · ' if projet.date_debut }}Clôturé le {{ projet.date_cloture|date_courte(true) }}{% endif %}</span>
-      {% if projet.phase_liee_id %}
+      {# Lot 20 (revue 9b) : seulement si le visiteur voit aussi l'autre phase. #}
+      {% if projet.phase_liee_id and phase_liee_visible|default(false) %}
         <a href="{{ url_for('projets.detail', projet_id=projet.phase_liee_id) }}" class="fiche-phase-liee">Phase liée&nbsp;: {{ projet.phase_liee_code }}_{{ projet.phase_liee_nom }}</a>
       {% endif %}
     </div>

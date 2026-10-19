@@ -3,7 +3,7 @@
    projet (2026-09-29) ; l'onglet Tâche seulement pour qui gère le projet
    (data-gere). Projet clos : plus aucune publication (lot 7). #}
 <span class="fil-nouveau-post" id="fil-nouveau-post"{% if oob %} data-partiel-oob{% endif %}>
-  {% if not projet_clos %}
+  {% if not projet_clos and not lecture_seule|default(false) %}
   <button type="button" id="nouveau-post" data-open-post-dialog data-raccourci-n aria-keyshortcuts="N" data-intent="{{ 'tache' if peut_gerer else 'information' }}" data-gere="{{ '1' if peut_gerer else '0' }}" class="btn">+ Nouveau post</button>
   {% endif %}
 </span>

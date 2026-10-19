@@ -88,3 +88,9 @@
 @media (prefers-reduced-motion: reduce) {
   .taches-bloquees-chevron { transition: none; }
 }
+
+/* Lot 20 (test Chrome N3) : un motif saisi sur plusieurs lignes (Maj+Entrée)
+   garde ses retours à la ligne. */
+.tache-etat-detail-motif, .post-blocage-motif, .tache-bloquee-motif, .tb-ligne-motif { white-space: pre-line; }
+/* Lot 20 (test Chrome FP3) : « Suite : tâche … » sous une requête. */
+.post-suites { margin: 6px 0 0; }

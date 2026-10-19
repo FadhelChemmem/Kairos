@@ -61,6 +61,19 @@ def _refus_si_clos(post: dict):
     return None
 
 
+def _refus_si_inactif(post: dict):
+    """Projet clos (lot 7), ou personne qui n'a plus que la lecture du projet
+    (lot 20 : retirée d'un projet d'une autre équipe) : ni commentaire, ni
+    réaction, ni repost. Ses propres posts et commentaires restent
+    modifiables et supprimables."""
+    refus = _refus_si_clos(post)
+    if refus:
+        return refus
+    if post.get("projet_id") and not projets_repo.user_can_act(post["projet_id"], g.user["id"]):
+        return _refus(projets_repo.MESSAGE_LECTURE_SEULE, 403)
+    return None
+
+
 # Fils de la page qui reçoivent un post publié en partiel (lot 13) :
 # accueil (projet affiché sur chaque carte) et fiche projet.
 FILS_PARTIELS = {"#fil-liste": True, "#fil-posts": False}
@@ -75,7 +88,7 @@ def reponse_publication(post_id: int, toasts: list | None = None, **fiche):
     # Lot 14 : seulement si la catégorie affichée par le fil l'accepte
     # (un post écrit n'arrive pas dans la vue « Activité », un post de
     # création de tâche pas dans « Échanges »).
-    categorie = film.categorie_demandee()
+    categorie = film.categorie_demandee("accueil" if FILS_PARTIELS.get(cible) else "projet")
     if post is None or (categorie != "tout" and (categorie == "activite") != bool(post.get("est_activite"))):
         return partiel.rien(toasts)
     show_projet = FILS_PARTIELS[cible]
@@ -182,6 +195,9 @@ def creer():
     # publier que sur un projet qu'on voit déjà.
     if projet_id and not projets_repo.user_can_view(projet_id, g.user["id"]):
         abort(404)
+    # Lot 20 : retirée d'un projet d'une autre équipe → lecture seule.
+    if projet_id and not projets_repo.user_can_act(projet_id, g.user["id"]):
+        return _refus(projets_repo.MESSAGE_LECTURE_SEULE, 403)
     # Projet terminé ou abandonné : plus aucune publication, pour personne
     # — chef et co-chefs compris (décision Fadhel, lot 7).
     if projet_id:
@@ -216,14 +232,23 @@ def creer():
         # MÊMES équipes que le post d'origine — sinon le bloc "En réponse
         # à" montrerait ce post à d'autres équipes (relecture 2026-09-29).
         if parent["projet_id"] is None:
-            equipe_codes = posts_repo.equipes_du_post(parent["id"])
+            # Lot 20 (rapport N8) : seulement les équipes encore actives (une
+            # réponse à un ancien post IPCO ne part plus vers une équipe vide).
+            actives = {code for code, _ in EQUIPE_CHOICES}
+            equipe_codes = [c for c in posts_repo.equipes_du_post(parent["id"]) if c in actives]
+            if not equipe_codes:
+                if g.user.get("equipe_code") in actives:
+                    equipe_codes = [g.user["equipe_code"]]
+                else:
+                    return _refus("Choisissez un projet ou au moins une équipe destinataire.", 422, "equipes")
 
     # Idem pour les mentions : on ne peut taguer que des personnes qui
     # voient déjà ce projet (pas de fuite d'existence d'un utilisateur vers
     # un projet auquel il n'a pas accès). Sans projet : toute personne
     # active (la tagger la rend destinataire).
     if projet_id:
-        mentionne_ids = [uid for uid in mentionne_ids if projets_repo.user_can_view(projet_id, uid)]
+        voyant = projets_repo.ids_utilisateurs_voyant(projet_id) if mentionne_ids else set()
+        mentionne_ids = [uid for uid in mentionne_ids if uid in voyant]
     else:
         # Information sans projet : la mention rend destinataire — jamais un
         # Client, et (sauf Admin/RH) seulement un membre des équipes visées
@@ -236,7 +261,8 @@ def creer():
         mentionne_ids = [uid for uid in mentionne_ids if uid in cibles]
     # Une personne taguée dans une réponse doit aussi voir le post d'origine
     # (repris dans le bloc "En réponse à").
-    if parent_post_id:
+    if parent_post_id and mentionne_ids and parent["projet_id"] is None:
+        # (Réponse dans un projet : le parent est du même projet, déjà filtré.)
         mentionne_ids = [uid for uid in mentionne_ids
                          if posts_repo.peut_voir(parent["id"], parent["projet_id"], uid)]
 
@@ -367,7 +393,7 @@ def _notifier_requete(post_id: int, projet_id: int, tache: dict | None, contenu:
 def reagir(post_id: int):
     # Contrôle d'accès (IDOR, PROMPT_CORRECTIONS.md P0 #1) : impossible de
     # réagir à un post qu'on ne voit pas.
-    refus = _refus_si_clos(_post_visible_ou_404(post_id))
+    refus = _refus_si_inactif(_post_visible_ou_404(post_id))
     if refus:
         return refus
     reaction_code = request.form.get("reaction_code")
@@ -380,7 +406,7 @@ def reagir(post_id: int):
 @bp.route("/<int:post_id>/reagir/supprimer", methods=["POST"])
 @login_required
 def retirer_reaction(post_id: int):
-    refus = _refus_si_clos(_post_visible_ou_404(post_id))
+    refus = _refus_si_inactif(_post_visible_ou_404(post_id))
     if refus:
         return refus
     posts_repo.remove_reaction(post_id, g.user["id"])
@@ -413,7 +439,7 @@ def commenter(post_id: int):
     commentaire" que pour "répondre à un commentaire" (voir
     post-comments.js/post_card.html)."""
     post = _post_visible_ou_404(post_id)
-    refus = _refus_si_clos(post)
+    refus = _refus_si_inactif(post)
     if refus:
         return refus
     contenu = v.texte_net(request.form.get("contenu"))
@@ -478,7 +504,7 @@ def commenter(post_id: int):
     a_notifier = set(mention_ids)
     if mentionne_user_id:
         a_notifier.add(mentionne_user_id)
-    _notifier_tags(sorted(a_notifier), post_id, contenu)
+    _notifier_tags(sorted(a_notifier), post_id, contenu, commentaire_id=commentaire_id)
     _notifier_auteur(post, parent_commentaire, deja=a_notifier)
     if partiel.est_partiel():
         # Lot 14 : le champ principal reste ouvert après l'envoi (le focus y
@@ -530,13 +556,14 @@ def _extrait(texte: str | None, longueur: int = 80) -> str:
     return f"\u00a0: «\u00a0{texte}\u00a0»"
 
 
-def _notifier_tags(user_ids: list[int], post_id: int, contenu: str | None = None) -> None:
+def _notifier_tags(user_ids: list[int], post_id: int, contenu: str | None = None,
+                   commentaire_id: int | None = None) -> None:
     ids = [uid for uid in user_ids if uid != g.user["id"]]
     if ids:
         notifications_repo.creer_pour_plusieurs(
             ids, "projet",
             f"{g.user['prenom']} {g.user['nom']} vous a mentionné dans un commentaire{_extrait(contenu)}.",
-            post_id=post_id, exclure_id=g.user["id"],
+            post_id=post_id, exclure_id=g.user["id"], commentaire_id=commentaire_id,
         )
 
 
@@ -581,7 +608,7 @@ def modifier_commentaire(commentaire_id: int):
     except Exception:
         delete_upload(chemin)
         raise
-    _notifier_tags(nouveaux, commentaire["post_id"], contenu)
+    _notifier_tags(nouveaux, commentaire["post_id"], contenu, commentaire_id=commentaire_id)
     if partiel.est_partiel():
         texte, action = "Commentaire modifié.", None
         if retirees:

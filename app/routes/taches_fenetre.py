@@ -55,6 +55,7 @@ def contexte_fenetre(projet: dict, tache_id: int, peut_gerer: bool) -> dict | No
     return dict(t=tache, candidats=candidats, peut_gerer=peut_gerer, cloture=cloture,
                 date_fin_min=min(debut, aujourdhui), date_fin_max=aujourdhui,
                 projet_clos=projet["etat"] in projets.ETATS_CLOS,
+                lecture_seule=not projets.user_can_act(projet["id"], g.user["id"]),
                 etats_reserves=taches.ETATS_RESERVES_GESTION,
                 aide_blocage=aide_blocage(projet) if tache["etat"] != "bloque" else "")
 

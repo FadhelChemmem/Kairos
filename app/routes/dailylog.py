@@ -122,6 +122,8 @@ TEXTES_DAILYLOG = {
     "astuce_saisie": "Tapez 2,5 ou 2h30",
     "propositions_annonce": "{x} tâches ou projets proposés à 0 h",
     "propositions_annonce_1": "1 tâche ou projet proposé à 0 h",
+    "afficher_plus": "+ Afficher {x} de plus",
+    "afficher_plus_reste": "({x} restants)",
     "aucune_tache": "Aucune tâche en cours.",
     "total": "Total",
     "jauge": "Total de la journée",
@@ -206,6 +208,8 @@ TEXTES_DAILYLOG = {
         "projet_clos": "Projet clos à cette date\u00a0: plus d’heures après sa clôture.",
         "projet_pas_commence": "Projet pas encore commencé à cette date.",
         "tache_hors_projet": "Cette tâche n’appartient pas au projet de la ligne.",
+        "tache_close": "Cette tâche était déjà terminée à cette date\u00a0: imputez le projet sans tâche.",
+        "projet_lecture_seule": "Vous n’êtes plus rattaché(e) à ce projet\u00a0: plus d’heures nouvelles.",
         "ligne_non_modifiable": "Ligne non modifiable\u00a0: au-delà de 14 jours, seuls le chef du projet ou l’Admin corrigent.",
         "absence_non_autorisee": "Absence non modifiable pour ce jour.",
         "date_future": "Pas de saisie pour un jour futur.",
@@ -319,8 +323,9 @@ def droits_jour(acteur: dict, proprio: dict, date, aujourdhui, reel=None) -> dic
     - le titulaire : tout, aujourd'hui et les 14 jours précédents ;
     - l'Admin : tout, toujours (absence comprise) ;
     - un chef de projet (titulaire ou co-chef) : les lignes de SES projets,
-      à toute date et pour n'importe quel employé ; jamais l'absence d'un
-      autre ;
+      à toute date, pour les AUTRES employés (lot 20, décision du gérant :
+      au-delà de 14 jours, ses propres heures ne sont corrigées que par
+      l'Admin, comme pour tout le monde) ; jamais l'absence d'un autre ;
     - sinon : lecture seule.
     Lot 13 (décision 5) : un jour postérieur à la vraie date de la personne
     (`reel`, vu sous date simulée) est en lecture seule pour tout le monde."""
@@ -329,7 +334,7 @@ def droits_jour(acteur: dict, proprio: dict, date, aujourdhui, reel=None) -> dic
     debut = aujourdhui - datetime.timedelta(days=dl.FENETRE_LIBRE_JOURS)
     futur_reel = date > (reel or dl.aujourdhui_reel_pour(proprio))
     libre = not futur_reel and (admin or (soi and date >= debut))
-    chef = acteur["role"] == "chef_de_projet" and not futur_reel
+    chef = acteur["role"] == "chef_de_projet" and not futur_reel and not soi
     return {
         "mode": "saisie" if soi else "correction",
         "saisie_libre": libre,
@@ -366,10 +371,13 @@ def _copie(proprio: dict, date, droits: dict) -> dict | None:
         return None
     jour = dl.lire_jour(proprio["id"], source)
     infos = dl.projets_info([l["projet_id"] for l in jour["lignes"]], proprio["id"], g.user["id"])
+    taches_info = dl.taches_infos([l["tache_id"] for l in jour["lignes"] if l.get("tache_id")])
     lignes, exclues, total = [], 0, 0
     for ligne in jour["lignes"]:
         projet = infos.get(ligne["projet_id"])
-        if projet is None or not projet["visible"] or dl.projet_saisissable(projet, date):
+        if (projet is None or not projet["visible"] or not projet.get("peut_agir", True)
+                or dl.projet_saisissable(projet, date)
+                or (ligne.get("tache_id") and not dl.tache_saisissable(taches_info.get(ligne["tache_id"]), date))):
             exclues += 1
             continue
         minutes = min(_arrondi_grille(ligne["minutes"]), dl.MAX_MINUTES_JOUR - total)
@@ -567,7 +575,8 @@ def _ecrire(proprio: dict, date, aujourdhui, corps: dict, absent: bool, lignes_b
         erreurs.append({"code": "absent_avec_heures"})
     if erreurs:
         raise ErreurApi(422, "validation", "Saisie refusée.", erreurs=erreurs)
-    taches = dl.taches_projet([l["tache_id"] for l in lignes if l["tache_id"]])
+    taches_info = dl.taches_infos([l["tache_id"] for l in lignes if l["tache_id"]])
+    taches = {i: t["projet_id"] for i, t in taches_info.items()}
     demandees = {l["cle"]: l["minutes"] for l in lignes}
 
     def preparer(existantes: dict, absent_actuel: bool):
@@ -602,8 +611,12 @@ def _ecrire(proprio: dict, date, aujourdhui, corps: dict, absent: bool, lignes_b
             refus = None if baisse else dl.projet_saisissable(projet, date)
             if refus:
                 errs.append({"code": refus, "ligne": l["i"]})
+            elif not baisse and not projet.get("peut_agir", True):
+                errs.append({"code": "projet_lecture_seule", "ligne": l["i"]})
             if l["tache_id"] and taches.get(l["tache_id"]) != l["projet_id"]:
                 errs.append({"code": "tache_hors_projet", "ligne": l["i"]})
+            elif l["tache_id"] and not baisse and not dl.tache_saisissable(taches_info.get(l["tache_id"]), date):
+                errs.append({"code": "tache_close", "ligne": l["i"]})
         voulues = {} if absent else dict(demandees)
         for cle, minutes in existantes.items():
             if cle in demandees or _modifiable(droits, infos.get(cle[0])):

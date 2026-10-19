@@ -169,9 +169,12 @@ async function segment(p, page, liste, fil, nom, opts = {}) {
     // change pas le choix) : rouverte sans ?fil=, la catégorie revient.
     p = await ouvrir(ali, '/accueil');
     await attendre(async () => (await categorie(p, '#fil-liste')) === 'tout');
-    etape('choix mémorisé (localStorage) : accueil rouvert sur « Tout », adresse remplacée',
+    // Lot 20 (revue 12d) : le serveur lit le choix (cookie) — la page
+    // s'ouvre directement sur « Tout », sans bascule ni adresse réécrite.
+    etape('choix mémorisé (cookie lu par le serveur) : accueil rouvert directement sur « Tout »',
       (await categorie(p, '#fil-liste')) === 'tout' && (await courante(p, 'accueil')) === 'tout'
-      && await p.evaluate(() => /fil=tout/.test(location.search) && localStorage.getItem('kairos-fil-accueil') === 'tout'));
+      && await p.evaluate(() => !/fil=/.test(location.search) && localStorage.getItem('kairos-fil-accueil') === 'tout'
+        && /kairos_fil_accueil=tout/.test(document.cookie)));
     // localStorage inaccessible : la page marche (défaut du serveur).
     const bloque = await navigateur.newContext({ viewport: { width: 1440, height: 900 } });
     await bloque.addInitScript(() => { Object.defineProperty(window, 'localStorage', { get() { throw new Error('bloqué'); } }); });
@@ -277,7 +280,10 @@ async function segment(p, page, liste, fil, nom, opts = {}) {
     // Recette du lot 14, n° 6 : l'accueil ouvert depuis la fiche en
     // « Activité » s'ouvre sur SA catégorie (défaut « Échanges »), jamais
     // celle de la page précédente ; aucune requête de rattrapage.
-    await p.evaluate(() => { try { localStorage.removeItem('kairos-fil-accueil'); } catch (e) { /* */ } });
+    await p.evaluate(() => {
+      try { localStorage.removeItem('kairos-fil-accueil'); } catch (e) { /* */ }
+      document.cookie = 'kairos_fil_accueil=; path=/; max-age=0';
+    });
     const partielsAccueil = [];
     p.on('request', (r) => { if (r.headers()['x-kairos-partiel']) partielsAccueil.push(r.url()); });
     await Promise.all([p.waitForNavigation(), p.click('a[href="/accueil"]')]);
@@ -286,6 +292,40 @@ async function segment(p, page, liste, fil, nom, opts = {}) {
     etape('accueil ouvert depuis la fiche en « Activité » : « Échanges » (défaut de la page), sans requête de plus',
       (await courante(p, 'accueil')) === 'echanges' && (await categorie(p, '#fil-liste')) === 'echanges'
       && !partielsAccueil.some((u) => /fil=/.test(u)), [await courante(p, 'accueil'), partielsAccueil]);
+    await p.close();
+
+    // Lot 20 (revue QA n° 8) : fermer le panneau d'une tâche après un
+    // changement d'onglet du fil ne revient pas en arrière (ni adresse, ni
+    // onglet, ni requête) ; un rechargement ne rouvre pas le panneau.
+    p = await ouvrir(ali, '/projets/1');
+    const partielsFiche = [];
+    p.on('request', (r) => { if (r.headers()['x-kairos-partiel']) partielsFiche.push(r.url()); });
+    await p.locator('[data-open-tache] [data-ouvrir-tache]').first().click();
+    await attendre(() => p.evaluate(() => document.getElementById('dialog-tache').open && /tache=/.test(location.search)));
+    const cible = (await courante(p, 'projet')) === 'tout' ? 'echanges' : 'tout';
+    await p.click(`#fil-filtre-projet-${cible}`);
+    await attendre(async () => (await categorie(p, '#fil-posts')) === cible);
+    partielsFiche.length = 0;
+    await p.locator('#dialog-tache [data-close-tache]').first().click();
+    await pause(600);
+    const apresFermeture = await p.evaluate(() => location.search);
+    etape('panneau fermé après un changement d’onglet : onglet et adresse gardés, aucune requête',
+      !/tache=/.test(apresFermeture) && new RegExp(`fil=${cible}`).test(apresFermeture)
+      && (await courante(p, 'projet')) === cible && partielsFiche.length === 0, [apresFermeture, partielsFiche]);
+    await p.reload();
+    await p.waitForLoadState('networkidle');
+    etape('rechargement après fermeture : panneau resté fermé', !(await p.evaluate(() => document.getElementById('dialog-tache').open)));
+    // Ouvrir puis fermer sans rien changer : aucune requête (défilement et
+    // pages « Afficher plus » gardés).
+    partielsFiche.length = 0;
+    await p.locator('[data-open-tache] [data-ouvrir-tache]').first().click();
+    await attendre(() => p.evaluate(() => document.getElementById('dialog-tache').open));
+    await pause(300);
+    const avantFermeture = partielsFiche.filter((u) => !/\/taches\/\d+\/fenetre|fenetre/.test(u)).length;
+    await p.locator('#dialog-tache [data-close-tache]').first().click();
+    await pause(600);
+    etape('ouvrir puis fermer une tâche : le fil n’est pas rechargé',
+      partielsFiche.filter((u) => /\/projets\/1(\?|$)/.test(u)).length === 0 && avantFermeture === 0, partielsFiche);
     await p.close();
 
     // Recette du lot 14, n° 13 : ancre d'une notification vers un post plus

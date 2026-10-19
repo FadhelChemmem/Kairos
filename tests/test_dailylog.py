@@ -87,7 +87,10 @@ class _BaseDailyLog(smoke.SmokeBase):
         corps.update(kw.pop("corps", {}))
         return self.appel("put", f"/dailylog/api/jour/{date.isoformat()}{kw.pop('qs', '')}", json=corps,
                           **{"app.repositories.dailylog.projets_info": projets if projets is not None else {1: projet(1)},
-                             "app.repositories.dailylog.taches_projet": taches or {}},
+                             # Lot 20 : projet et état de chaque tâche (taches_infos).
+                             "app.repositories.dailylog.taches_infos": {
+                                 i: {"projet_id": p, "ouverte": True, "fermee_le": None}
+                                 for i, p in (taches or {}).items()}},
                           **kw)
 
     def codes(self, resp):
@@ -397,7 +400,9 @@ class TestDroits(_BaseDailyLog):
         autre = {"id": 2, "role": "intervenant"}
         cas = [
             (moi, moi, 14, True, False, False), (moi, moi, 15, False, False, True),
-            (chef, chef, 0, True, False, False), (chef, chef, 15, False, True, False),
+            (chef, chef, 0, True, False, False),
+            # Lot 20 (décision du gérant) : au-delà de 14 jours, ses propres heures → lecture seule.
+            (chef, chef, 15, False, False, True),
             (chef, autre, 0, False, True, False), (chef, autre, 90, False, True, False),
             (admin, autre, 400, True, False, False), (admin, admin, 400, True, False, False),
         ]

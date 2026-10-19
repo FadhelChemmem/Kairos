@@ -26,8 +26,15 @@
   } catch (e) { personnes = []; }
   personnes.forEach(function (p) {
     p.complet = (p.prenom + ' ' + p.nom).trim();
-    p.cle = p.complet.toLowerCase();
+    // Lot 20 (revue QA n° 16d) : « @hel » trouve Hélène.
+    p.cle = norm(p.complet);
+    p.cleNom = norm(p.nom);
   });
+  function norm(t) {
+    if (window.KairosTexte && window.KairosTexte.sansAccents) return window.KairosTexte.sansAccents(t || '');
+    return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  }
+  var numeroListe = 0;
 
   var RE_IMAGE = /\.(png|jpe?g|gif|webp)$/i;
 
@@ -42,26 +49,36 @@
     var liste = document.createElement('div');
     liste.className = 'mention-liste';
     liste.setAttribute('role', 'listbox');
+    liste.id = 'mention-liste-' + (++numeroListe);
+    liste.setAttribute('aria-label', 'Personnes à mentionner');
     liste.hidden = true;
     wrap.appendChild(liste);
+    // Le champ (textbox multiligne : role combobox interdit sur textarea)
+    // garde le focus ; l'option active est annoncée par
+    // aria-activedescendant, la liste reliée par aria-controls.
+    ta.setAttribute('aria-autocomplete', 'list');
+    ta.setAttribute('aria-controls', liste.id);
     var choix = [];
     var actif = 0;
     var debut = -1;
 
-    function fermer() { liste.hidden = true; choix = []; debut = -1; }
+    function fermer() {
+      liste.hidden = true; choix = []; debut = -1;
+      ta.removeAttribute('aria-activedescendant');
+    }
 
     function requete() {
       var avant = ta.value.slice(0, ta.selectionStart);
       var m = /(^|\s)@([^\s@]{0,24}(?: [^\s@]{0,24})?)$/.exec(avant);
       if (!m) return null;
-      return { debut: avant.length - m[2].length - 1, texte: m[2].toLowerCase() };
+      return { debut: avant.length - m[2].length - 1, texte: norm(m[2]) };
     }
 
     function afficher() {
       var r = requete();
       if (!r || !personnes.length) return fermer();
       choix = personnes.filter(function (p) {
-        return !r.texte || p.cle.indexOf(r.texte) === 0 || p.nom.toLowerCase().indexOf(r.texte) === 0 ||
+        return !r.texte || p.cle.indexOf(r.texte) === 0 || p.cleNom.indexOf(r.texte) === 0 ||
           p.cle.indexOf(' ' + r.texte) !== -1;
       }).slice(0, 6);
       if (!choix.length) return fermer();
@@ -73,12 +90,16 @@
         b.type = 'button';
         b.className = 'mention-choix' + (i === actif ? ' actif' : '');
         b.setAttribute('role', 'option');
+        b.id = liste.id + '-' + i;
+        b.tabIndex = -1;
+        b.setAttribute('aria-selected', i === actif ? 'true' : 'false');
         b.textContent = p.complet;
         // mousedown (pas click) : garder le focus dans le champ.
         b.addEventListener('mousedown', function (e) { e.preventDefault(); inserer(p); });
         liste.appendChild(b);
       });
       liste.hidden = false;
+      ta.setAttribute('aria-activedescendant', liste.id + '-' + actif);
     }
 
     function inserer(p) {

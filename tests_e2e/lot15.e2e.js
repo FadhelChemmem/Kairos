@@ -190,7 +190,14 @@ const deborde = (p) => p.evaluate(() => document.documentElement.scrollWidth > d
     const jours = await p.locator('#dl-bande-jours .dl-jour').count();
     etape('Daily log : cinq jours dans la bande', jours === 5, jours);
     etape('Daily log : en-têtes Tâche · Projet · Heures', (await p.textContent('.dl-thead')).replace(/\s+/g, '') === 'TâcheProjetHeures');
-    const cible = await p.evaluate(() => { const b = Array.from(document.querySelectorAll('#dl-bande-jours .dl-jour:not([disabled])')).find((x) => x.getAttribute('aria-pressed') !== 'true'); return b && b.dataset.jour; });
+    const autreJour = () => p.evaluate(() => { const b = Array.from(document.querySelectorAll('#dl-bande-jours .dl-jour:not([disabled])')).find((x) => x.getAttribute('aria-pressed') !== 'true'); return b && b.dataset.jour; });
+    let cible = await autreJour();
+    if (!cible) {
+      // Lundi : les autres jours de la semaine sont à venir — semaine précédente.
+      await p.click('#dl-sem-prec');
+      await p.waitForFunction(() => !window.KairosDailyLogPage.etat().chargement);
+      cible = await autreJour();
+    }
     await p.click(`#dl-bande-jours [data-jour="${cible}"]`);
     await p.waitForFunction((k) => window.KairosDailyLogPage.etat().sel === k && !window.KairosDailyLogPage.etat().chargement, cible);
     etape('clic sur un jour de la bande : jour ouvert', (await p.evaluate(() => window.KairosDailyLogPage.etat().sel)) === cible);

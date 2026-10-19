@@ -66,12 +66,13 @@ class TestPiecesJointesEtSaisies(_Base):
         self.assertEqual(r.status_code, 422)
         self.assertEqual(self.sql("SELECT contenu FROM post_commentaire")[0]["contenu"], "Un commentaire")
 
-    def test_envoi_sur_une_tache_refuse_une_extension_interdite(self):
+    def test_envoi_sur_une_tache_toujours_refuse(self):
+        # Lot 20 (décision du gérant) : plus aucune pièce jointe sur une tâche.
         self.login(self.chef)
         r = self.client.post(f"/fichiers/taches/{self.t}/upload",
                              data={"fichier": (io.BytesIO(b"x"), "virus.exe")}, headers=partiel("#x"),
                              content_type="multipart/form-data")
-        self.assertEqual(r.status_code, 422)
+        self.assertEqual(r.status_code, 410)
         self.assertEqual(self.sql("SELECT count(*) AS n FROM tache_piece_jointe")[0]["n"], 0)
 
     def test_post_invisible_refuse(self):

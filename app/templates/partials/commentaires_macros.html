@@ -69,7 +69,7 @@
         {% for pj in c.pieces_jointes|default([]) %}{{ piece_jointe_commentaire(pj) }}{% endfor %}
       </div>
       <div class="post-comment-meta">
-        {% if c.created_at %}<time datetime="{{ c.created_at.isoformat() }}" title="{{ 'Horodatage réel : ' if g.date_simulee }}{{ date_fr(c.created_at) }} à {{ c.created_at.strftime('%H:%M') }}">{{ c.created_at|il_y_a }}</time>{% endif %}
+        {% if c.created_at %}<time datetime="{{ c.created_at.isoformat() }}" title="{{ date_fr(c.created_at) }} à {{ c.created_at.strftime('%H:%M') }}">{{ c.created_at|il_y_a }}</time>{% endif %}
         {# Répondre à une réponse : même fil (un seul niveau), la personne
            est taguée d'office. #}
         {# Projet clos : ni réponse ni modification (décision Fadhel, lot 7). #}

@@ -1,4 +1,6 @@
 -- Empreinte du schéma indépendante de l'ordre des colonnes et de NOT VALID.
+-- Lot 20 (revue QA n° 17a) : commentaires (COMMENT ON) des tables, vues,
+-- colonnes et fonctions compris.
 SELECT 'col' AS k, table_name || '.' || column_name || ' ' || data_type || ' ' || is_nullable || ' ' || coalesce(column_default, '') AS v
 FROM information_schema.columns WHERE table_schema = 'public'
 UNION ALL
@@ -15,4 +17,17 @@ SELECT 'vue', viewname || ' ' || md5(definition) FROM pg_views WHERE schemaname 
 UNION ALL
 SELECT 'enum', t.typname || ' ' || string_agg(e.enumlabel, ',' ORDER BY e.enumsortorder)
 FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid GROUP BY t.typname
+UNION ALL
+SELECT 'cmt', c.relname || ' ' || md5(d.description)
+FROM pg_class c JOIN pg_description d ON d.objoid = c.oid AND d.classoid = 'pg_class'::regclass AND d.objsubid = 0
+WHERE c.relnamespace = 'public'::regnamespace
+UNION ALL
+SELECT 'cmt', c.relname || '.' || a.attname || ' ' || md5(d.description)
+FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid
+JOIN pg_description d ON d.objoid = c.oid AND d.classoid = 'pg_class'::regclass AND d.objsubid = a.attnum
+WHERE c.relnamespace = 'public'::regnamespace
+UNION ALL
+SELECT 'cmt', p.proname || '() ' || md5(d.description)
+FROM pg_proc p JOIN pg_description d ON d.objoid = p.oid AND d.classoid = 'pg_proc'::regclass
+WHERE p.pronamespace = 'public'::regnamespace
 ORDER BY 1, 2;

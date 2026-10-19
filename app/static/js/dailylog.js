@@ -180,7 +180,7 @@
         objVal = $('dl-obj-val'), objMoins = $('dl-obj-moins'), objPlus = $('dl-obj-plus'),
         calEl = $('dl-cal'), dateBtn = $('dl-date'), dateLabel = $('dl-date-label'), titreEl = $('dl-titre'),
         precBtn = $('dl-prec'), suivBtn = $('dl-suiv'), banniere = $('dl-banniere'), banniereTexte = $('dl-banniere-texte'),
-        ajoutBtn = $('dl-ajouter'), ajoutWrap = $('dl-ajout'), panneau = $('dl-catalogue'), rechercheEl = $('dl-recherche'),
+        ajoutBtn = $('dl-ajouter'), ajoutWrap = $('dl-ajout'), plusBtn = $('dl-afficher-plus'), panneau = $('dl-catalogue'), rechercheEl = $('dl-recherche'),
         catCorps = $('dl-catalogue-corps'), copierBtn = $('dl-copier'), absentBtn = $('dl-absent'),
         outilsEl = $('dl-outils'), aideEl = $('dl-aide'), lectureEl = $('dl-lecture'), liveEl = $('dl-live'),
         barreEl = $('dl-barre'), quiDate = $('dl-qui-date'), catStatut = $('dl-catalogue-statut'),
@@ -192,6 +192,8 @@
     var jour = null;            // état serveur du jour affiché (format `Jour`)
     var TODAY = A.jour.aujourdhui;
     var sel = A.jour.date;
+    // Lot 20 : propositions pas encore affichées (5 d'abord, 5 de plus par clic).
+    var reserve = [], PAR_PAGE = 5;
     var rows = [];              // lignes affichées : {cle, projet_id, tache_id, code, nom, tache_titre, m, prev, modifiable, masquee, couleur}
     var saved = 'nouveau';      // nouveau | modifie | envoi | enregistre | erreur
     var rev = 0;                // révision locale : +1 à chaque modification
@@ -528,7 +530,18 @@
       }
       var tot = total();
       rows.forEach(function (r, i) { patchRow(enfants[i], r, i, tot); });
+      renderPlus();
       renderTotal();
+    }
+    function restantes() {
+      return reserve.filter(function (r) { return !rows.some(function (x) { return x.cle === r.cle; }); });
+    }
+    function renderPlus() {
+      if (!plusBtn) return;
+      reserve = restantes();
+      var n = reserve.length;
+      plusBtn.hidden = !n || isAbsent();
+      if (n) plusBtn.textContent = tr(T.afficher_plus, Math.min(PAR_PAGE, n)) + (n > PAR_PAGE ? ' ' + tr(T.afficher_plus_reste, n) : '');
     }
     function renderTotal() {
       var tot = total(), abs = isAbsent(), diff = tot - objectif, state, msg;
@@ -1306,7 +1319,9 @@
       sel = j.date;
       versions[j.date] = j.version;
       chargement = false;
-      rows = j.lignes.map(ligneVersRow).concat(j.statut === 'absent' ? [] : proposes(j));
+      var props = j.statut === 'absent' ? [] : proposes(j);
+      reserve = props.slice(PAR_PAGE);
+      rows = j.lignes.map(ligneVersRow).concat(props.slice(0, PAR_PAGE));
       var nbProposees = rows.filter(function (r) { return r.propose; }).length;
       if (propNote) propNote.hidden = !nbProposees;
       recalcSaved();
@@ -1325,6 +1340,7 @@
       sel = k;
       chargement = true;
       rows = [];
+      reserve = [];
       jour = Object.assign({}, jour, { date: k, statut: 'vide', lignes: [], copie: null, proposees: [], version: versions[k] || 0 });
       renderEntete(); syncMark(); renderStatus(); render();
       openAdd(false);
@@ -1515,6 +1531,12 @@
       if (!b || b.disabled || b.getAttribute('data-jour') === sel) return;
       goDay(b.getAttribute('data-jour'));
     });
+    if (plusBtn) plusBtn.addEventListener('click', function () {
+      var debut = rows.length;
+      rows = rows.concat(restantes().slice(0, PAR_PAGE));
+      render();
+      if (rows.length > debut) focusRow(debut);
+    });
     if (nePlusProposer) nePlusProposer.addEventListener('click', function () {
       var reactiver = function () {
         A.proposer = true;
@@ -1524,6 +1546,7 @@
       A.proposer = false;
       if (K && K.enregistrerPreference) K.enregistrerPreference(A.urls.preference, 'dailylog_proposer', false);
       rows = rows.filter(function (r) { return !r.propose || r.m > 0; });
+      reserve = [];
       if (propNote) propNote.hidden = true;
       render();
       toast(T.propositions_coupees, { actions: [{ texte: T.annuler, fn: reactiver }], back: listeEl });

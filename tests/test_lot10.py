@@ -260,6 +260,10 @@ class _CurseurEspion:
     def fetchone(self):
         return {"role": self.role}
 
+    def fetchall(self):
+        # Lot 20 : personnes nommées dans le post « a ajouté … au projet ».
+        return [{"id": 1, "prenom": "Ada", "nom": "Chef"}, {"id": 5, "prenom": "Eva", "nom": "Ajout"}]
+
 
 class TestDecision3CoChefAutomatique(_BaseLot10):
     def _ajouter(self, role, rowcount=1):
@@ -272,7 +276,11 @@ class TestDecision3CoChefAutomatique(_BaseLot10):
         from app.repositories import projets
         with patch.object(db, "get_cursor", faux):
             ajoute = projets.add_intervenant(1, 5, 1)
-        return ajoute, cur.sql[-1]
+        # Requête d'ajout (avant le post automatique du lot 20).
+        insertion = [q for q in cur.sql if q.startswith("INSERT INTO projet_")][-1]
+        if ajoute:
+            self.assertIn("'intervenant_projet'", cur.sql[-1])
+        return ajoute, insertion
 
     def test_chef_ajoute_comme_intervenant_devient_co_chef(self):
         ajoute, sql = self._ajouter("chef_de_projet")
@@ -638,7 +646,7 @@ class TestVerrouProjet(unittest.TestCase):
                 except Exception:
                     pass  # le faux curseur ne renvoie rien : seul l'ordre compte
             with self.subTest(sql=cur.sql[:1]):
-                self.assertEqual(cur.sql[0], "SELECT 1 FROM projet WHERE id = %s FOR NO KEY UPDATE")
+                self.assertEqual(cur.sql[0], "SELECT etat FROM projet WHERE id = %s FOR NO KEY UPDATE")
 
 
 

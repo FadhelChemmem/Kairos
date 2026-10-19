@@ -132,6 +132,9 @@
   }
 
   var entreeEnAttente = false;
+  // Lot 20 (revue QA n° 16c) : texte dont les résultats sont affichés ;
+  // Entrée pendant l'attente d'une recherche affinée attend les nouveaux.
+  var resultatsDe = null;
   input.addEventListener('input', function () {
     entreeEnAttente = false;
     var q = input.value.trim();
@@ -147,6 +150,7 @@
           clearTimeout(attente);
           if (n !== seq) return;
           render(data.resultats || [], q);
+          resultatsDe = q;
           if (entreeEnAttente) { entreeEnAttente = false; var l0 = liens(); if (l0.length) l0[0].click(); }
         })
         .catch(function () { clearTimeout(attente); if (n === seq) montrer(false); });
@@ -166,7 +170,8 @@
       // Lot 15 (revue UX) : Entrée ouvre le résultat choisi, à défaut le
       // premier ; résultats pas encore arrivés : ouvert dès leur arrivée.
       e.preventDefault();
-      if (!box.hidden && l.length) (l[actif >= 0 ? actif : 0]).click();
+      var aJour = resultatsDe === input.value.trim();
+      if (!box.hidden && l.length && (actif >= 0 || aJour)) (l[actif >= 0 ? actif : 0]).click();
       else entreeEnAttente = true;
     }
   });

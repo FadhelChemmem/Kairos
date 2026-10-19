@@ -525,7 +525,21 @@ def appliquer_coherence(projets, taches, report):
         t["etat"] = nouvel
         if t.get("date_fin") is None:
             t["date_fin"] = p.get("date_cloture")
-    bloques = {t["projet_id"] for t in taches if t["etat"] == "bloque"}
+    # Lot 20 (revue 5c) : même règle que fn_etat_projet_recalcule (0023/0024) —
+    # Bloqué tant qu'une tâche bloquée n'a pas été suivie d'une tâche En
+    # cours CRÉÉE après son blocage (date du blocage = sa dernière
+    # modification dans Chronos, reprise dans bloque_le).
+    def _instant(v):
+        return str(v or "")
+
+    bloques = set()
+    for b in taches:
+        if b["etat"] != "bloque":
+            continue
+        depuis = _instant(b.get("updated_at") or b.get("created_at"))
+        if not any(c["projet_id"] == b["projet_id"] and c["etat"] == "en_cours"
+                   and _instant(c.get("created_at")) > depuis for c in taches):
+            bloques.add(b["projet_id"])
     for p in projets:
         p.setdefault("etat_chronos", p["etat"])
         if p["etat"] not in ("en_cours", "bloque"):
@@ -758,9 +772,11 @@ def emit_sql(path, utilisateurs, projets, projet_lots, liens_phase, taches,
     for t in taches:
         w(
             "INSERT INTO tache (id, projet_id, titre, etat, date_debut, date_echeance, "
-            "date_fin, created_by, created_at, updated_at) SELECT "
+            "date_fin, bloque_le, created_by, created_at, updated_at) SELECT "
             f"{t['id']}, {t['projet_id']}, {sql_val(t['titre'])}, {sql_val(t['etat'])}::tache_etat_enum, "
             f"{sql_val(t['date_debut'])}, {sql_val(t['date_echeance'])}, {sql_val(t['date_fin'])}, "
+            # Lot 20 (revue 5c) : date du blocage = dernière modification Chronos.
+            f"{sql_val(t['updated_at']) if t['etat'] == 'bloque' else 'NULL'}, "
             f"chef_projet_id, {sql_val(t['created_at'])}, {sql_val(t['updated_at'])} "
             f"FROM projet WHERE id = {t['projet_id']};"
         )

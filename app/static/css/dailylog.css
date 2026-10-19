@@ -172,6 +172,12 @@ html:has(body.page-dailylog) { scroll-padding-bottom: 140px; }
 .dl9 .dl-addwrap { position: relative; margin-top: 10px; }
 .dl9 .dl-add { width: 100%; border: 1.5px dashed var(--dl-control-border); background: none; color: var(--dl-muted); font-size: 13px; font-weight: 600;
   padding: 12px; border-radius: var(--dl-r-card); cursor: pointer; }
+/* Lot 20 : « + Afficher 5 de plus » sous les propositions du jour. */
+.dl9 .dl-afficher-plus { display: block; width: 100%; margin: 6px 0 8px; border: 1px solid var(--dl-border); background: var(--dl-surface);
+  color: var(--dl-accent-text); font-size: 13px; font-weight: 600; padding: 10px 12px; border-radius: var(--dl-r-card); cursor: pointer; }
+.dl9 .dl-afficher-plus[hidden] { display: none; }
+.dl9 .dl-afficher-plus:hover { border-color: var(--dl-accent-text); }
+.dl9 .dl-afficher-plus:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .dl9 .dl-add[aria-expanded="true"] { border-color: var(--dl-accent-text); color: var(--dl-accent-text); }
 .dl9 .dl-addpanel { margin-top: 8px; background: var(--dl-surface); border: 1px solid var(--dl-border); border-radius: var(--dl-r-card);
   box-shadow: var(--dl-pop); padding: 10px; scroll-margin-bottom: 110px; }

@@ -27,6 +27,8 @@ validé manuellement via psql pendant la conception du schéma :
 """
 import contextlib
 import logging
+import threading
+import time
 
 import psycopg2
 import psycopg2.extras
@@ -35,6 +37,15 @@ from psycopg2.pool import ThreadedConnectionPool
 logger = logging.getLogger(__name__)
 
 _pool: ThreadedConnectionPool | None = None
+
+# Lot 20 (revue QA, N5) : après un redémarrage de PostgreSQL, chaque
+# connexion du pool était morte et la première requête de chaque worker
+# finissait en erreur 500. Une connexion inutilisée depuis SEUIL_PING
+# secondes est testée (SELECT 1) avant d'être prêtée ; morte, elle est
+# jetée et remplacée.
+SEUIL_PING = 2.0
+_derniere_utilisation: dict[int, float] = {}
+_verrou_usage = threading.Lock()
 
 
 class LectureSeule(Exception):
@@ -99,7 +110,7 @@ def get_cursor(user_id: int | None = None, commit: bool = True):
         raise RuntimeError("db.init_pool() n'a pas été appelé — vérifier app/__init__.py")
 
     lecture_seule, admin_reel_id, instant_simule = _reglages_requete()
-    conn = _pool.getconn()
+    conn = _connexion_vivante()
     conn.autocommit = False
     cur = None
     try:
@@ -143,7 +154,43 @@ def get_cursor(user_id: int | None = None, commit: bool = True):
         # Une connexion fermée n'est pas remise dans le pool (close=True) :
         # la requête suivante en obtiendra une neuve au lieu d'échouer à son
         # tour.
+        with _verrou_usage:
+            if conn.closed:
+                _derniere_utilisation.pop(id(conn), None)
+            else:
+                _derniere_utilisation[id(conn)] = time.monotonic()
         _pool.putconn(conn, close=bool(conn.closed))
+
+
+def _connexion_vivante():
+    """Connexion du pool, testée si elle n'a pas servi depuis SEUIL_PING
+    secondes (voir plus haut) ; deux remplacements au plus, puis la
+    connexion telle quelle (l'erreur éventuelle remonte normalement)."""
+    erreurs = tuple(e for e in (getattr(psycopg2, "OperationalError", None),
+                                getattr(psycopg2, "InterfaceError", None)) if e)
+    for _ in range(3):
+        conn = _pool.getconn()
+        with _verrou_usage:
+            dernier = _derniere_utilisation.get(id(conn))
+        if not conn.closed and dernier is not None and time.monotonic() - dernier < SEUIL_PING:
+            return conn
+        if not conn.closed:
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT 1")
+                cur.close()
+                conn.rollback()
+                return conn
+            except erreurs:
+                pass
+        logger.warning("Connexion Postgres morte écartée du pool (redémarrage de la base ?)")
+        with _verrou_usage:
+            _derniere_utilisation.pop(id(conn), None)
+        try:
+            _pool.putconn(conn, close=True)
+        except Exception:
+            pass
+    return _pool.getconn()
 
 
 def query_all(sql: str, params: tuple = (), user_id: int | None = None) -> list[dict]:

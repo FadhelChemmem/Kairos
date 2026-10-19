@@ -13,7 +13,7 @@
 {% set tst = tache_etat_style(t.etat) %}
 {% set ids_intervenants = t.intervenants|map(attribute='id')|list %}
 {% set tache_close = t.etat in etats_taches_closes %}
-{% set peut_agir_tache = not projet_clos and (peut_gerer or (g.user.role not in ('client', 'rh') and g.user.id in ids_intervenants)) %}
+{% set peut_agir_tache = not projet_clos and not lecture_seule|default(false) and (peut_gerer or (g.user.role not in ('client', 'rh') and g.user.id in ids_intervenants)) %}
 {% set gestion_tache = peut_gerer and not projet_clos and not tache_close %}
 {# États réservés (décision du gérant, lot 10) : Vérifiée, Arrêtée et
    Abandonnée seulement pour le chef de projet, un co-chef ou l'Admin ;
@@ -201,7 +201,7 @@
         {% endif %}
         {# « + M'ajouter » (lot 17, ex « Rejoindre cette tâche ») : jamais sur
            une tâche close ni pour un RH ou un client. #}
-        {% if g.user.role not in ('rh', 'client') and not projet_clos and g.user.id not in ids_intervenants and not tache_close %}
+        {% if g.user.role not in ('rh', 'client') and not projet_clos and not lecture_seule|default(false) and g.user.id not in ids_intervenants and not tache_close %}
         <form method="post" action="{{ url_for('projets.rejoindre_tache', projet_id=projet.id, tache_id=t.id) }}" class="tache-rejoindre" data-partiel="{{ cible }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" id="tache-{{ t.id }}-rejoindre" class="tache-rejoindre-lien">+ M’ajouter</button>

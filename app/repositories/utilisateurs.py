@@ -253,15 +253,23 @@ def update_profil(
     )
 
 
-def set_avatar(user_id: int, avatar_chemin: str, current_user_id: int) -> None:
+def set_avatar(user_id: int, avatar_chemin: str, current_user_id: int) -> str | None:
     """Change la photo de profil (retour Fadhel, 2026-09-20). Fonction à
     part de update_profil pour ne jamais toucher à cette colonne quand
-    aucun nouveau fichier n'a été envoyé."""
-    db.execute(
-        "UPDATE utilisateur SET avatar_chemin = %s WHERE id = %s",
-        (avatar_chemin, user_id),
-        user_id=current_user_id,
-    )
+    aucun nouveau fichier n'a été envoyé. Renvoie le chemin de l'ancienne
+    photo (lot 20 : supprimée du disque par l'appelant)."""
+    with db.get_cursor(user_id=current_user_id) as cur:
+        cur.execute(
+            """
+            UPDATE utilisateur u SET avatar_chemin = %s
+            FROM (SELECT avatar_chemin FROM utilisateur WHERE id = %s FOR UPDATE) avant
+            WHERE u.id = %s
+            RETURNING avant.avatar_chemin AS ancien
+            """,
+            (avatar_chemin, user_id, user_id),
+        )
+        row = cur.fetchone()
+        return row["ancien"] if row else None
 
 
 def set_actif(user_id: int, actif: bool, current_user_id: int) -> bool:
@@ -296,11 +304,14 @@ def update_utilisateur_complet(
         UPDATE utilisateur
         SET prenom = %s, nom = %s, email = %s, telephone = %s, poste = %s,
             adresse = %s, date_embauche = %s, equipe_code = %s, role = %s,
-            champs_perso = %s::jsonb, fuseau = COALESCE(%s, fuseau)
+            champs_perso = %s::jsonb, fuseau = COALESCE(%s, fuseau),
+            -- Lot 20 (revue 10a) : un lien envoyé à l'ANCIENNE adresse ne sert plus.
+            reset_token_hash = CASE WHEN lower(email) = lower(%s) THEN reset_token_hash END,
+            reset_token_expires_at = CASE WHEN lower(email) = lower(%s) THEN reset_token_expires_at END
         WHERE id = %s
         """,
         (prenom, nom, email, telephone, poste, adresse, date_embauche,
-         equipe_code, role, json.dumps(champs_perso or {}), fuseau, user_id),
+         equipe_code, role, json.dumps(champs_perso or {}), fuseau, email, email, user_id),
         user_id=current_user_id,
     )
 
@@ -348,6 +359,21 @@ def revoquer_sessions(user_id: int) -> None:
         """,
         (user_id,),
     )
+
+
+def lien_reset_recent(user_id: int, minutes: int) -> bool:
+    """Vrai si un lien de réinitialisation encore valable a été émis il y a
+    moins de `minutes` (lot 20, revue 10b : une nouvelle demande ne
+    l'écrase plus aussitôt — sinon n'importe qui annulait le lien d'un
+    collègue en redemandant)."""
+    return db.query_one(
+        """
+        SELECT 1 AS ok FROM utilisateur
+        WHERE id = %s AND reset_token_hash IS NOT NULL AND reset_token_expires_at > now()
+          AND reset_token_expires_at - interval '1 hour' > now() - make_interval(mins => %s)
+        """,
+        (user_id, minutes),
+    ) is not None
 
 
 def set_reset_token(user_id: int, token_hash: str, expires_at, current_user_id: int | None = None) -> None:
@@ -409,17 +435,20 @@ PREFERENCES = {"accueil_deadlines": False, "dailylog_proposer": True}
 
 
 def get_preferences(user_id: int) -> dict:
+    """Réglages du compte, valeurs par défaut comprises. `choisies` : les
+    clés réellement choisies par la personne (lot 20 : une préférence
+    jamais choisie vaut NULL en base)."""
     row = db.query_one(
         "SELECT accueil_deadlines, dailylog_proposer FROM utilisateur_preference WHERE utilisateur_id = %s",
         (user_id,),
     )
-    return {**PREFERENCES, **(dict(row) if row else {})}
+    choisies = {k: v for k, v in (dict(row) if row else {}).items() if v is not None}
+    return {**PREFERENCES, **choisies, "choisies": set(choisies)}
 
 
-def a_une_preference(user_id: int) -> bool:
-    """Le compte a-t-il déjà enregistré un choix d'affichage ? (le client
-    voit ses deadlines dépliées tant qu'il n'a rien choisi, lot 18)."""
-    return db.query_one("SELECT 1 AS x FROM utilisateur_preference WHERE utilisateur_id = %s", (user_id,)) is not None
+# Réglages qui ont un sens pour chaque rôle (lot 20, revue 13) : pas de
+# Daily log pour un client ni le RH.
+PREFERENCES_PAR_ROLE = {"client": {"accueil_deadlines"}, "rh": set()}
 
 
 def set_preference(user_id: int, cle: str, valeur: bool) -> None:

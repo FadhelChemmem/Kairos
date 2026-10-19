@@ -38,6 +38,7 @@ class _Base(BaseIntegration):
         self.t3 = self.tache(self.pa, self.chef, etat="termine", intervenants=(self.moi,))
         self.t4 = self.tache(self.pc, self.cochef, intervenants=(self.autre,))
         self.sql("UPDATE tache SET created_at = now() - interval '30 days'")
+        self.sql("UPDATE projet SET created_at = now() - interval '30 days'")
 
     def jour(self, uid, date):
         self.login(uid)
@@ -55,13 +56,16 @@ class _Base(BaseIntegration):
 
 
 class TestPropositions(_Base):
-    def test_taches_en_cours_puis_projets_suivis_sans_tache(self):
+    def test_taches_par_echeance_puis_projets_suivis(self):
+        """Lot 20 (demande du gérant) : ses tâches EN COURS CE JOUR-LÀ par
+        échéance (la terminée aujourd'hui l'était encore ce matin), puis ses
+        AUTRES projets en cours, en « projet seul »."""
+        self.sql("UPDATE tache SET date_echeance = %s WHERE id = %s", (self.auj + datetime.timedelta(days=2), self.t2))
         j = self.jour(self.moi, self.auj)
         cles = [(l["projet_id"], l["tache_id"]) for l in j["proposees"]]
-        # Projet A : ses deux tâches ouvertes (Bloquée comprise), pas la terminée,
-        # pas de « projet seul » (elle y a des tâches) ; projet B : projet seul.
-        self.assertCountEqual(cles, [(self.pa, self.t1), (self.pa, self.t2), (self.pb, None)])
-        self.assertEqual(cles[0][0], self.pa)              # regroupées par projet (nom)
+        self.assertEqual(cles[0], (self.pa, self.t2))                  # échéance la plus proche d'abord
+        self.assertCountEqual(cles[:3], [(self.pa, self.t1), (self.pa, self.t2), (self.pa, self.t3)])
+        self.assertEqual(cles[3:], [(self.pb, None)])   # pa : déjà proposé par ses tâches
         self.assertEqual(j["lignes"], [])
         self.assertEqual(self.sql("SELECT count(*) AS n FROM dailylog_entree")[0]["n"], 0)  # jamais stockées
 
@@ -73,15 +77,19 @@ class TestPropositions(_Base):
         self.assertCountEqual([(l["projet_id"], l["tache_id"]) for l in j["proposees"]],
                               [(self.pa, None), (self.pc, None)])
 
-    def test_plus_de_8_projets_geres_seulement_les_recents(self):
+    def test_tous_ses_projets_le_plus_recemment_saisi_d_abord(self):
+        """Lot 20 : plus de limite à 8 projets gérés ; l'écran en montre 5,
+        puis 5 de plus (« Afficher plus »)."""
         autres = [self.projet(self.chef) for _ in range(8)]
+        self.sql("UPDATE projet SET created_at = now() - interval '30 days'")
         hier = self.ouvre_precedent()
         with self.db.get_cursor() as cur:
             cur.execute("SET LOCAL kairos.reprise_historique = 'on'")
             cur.execute("INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (%s, %s, %s, 2)",
                         (self.chef, hier, autres[3]))
-        j = self.jour(self.chef, self.auj)
-        self.assertEqual([(l["projet_id"], l["tache_id"]) for l in j["proposees"]], [(autres[3], None)])
+        cles = [(l["projet_id"], l["tache_id"]) for l in self.jour(self.chef, self.auj)["proposees"]]
+        self.assertEqual(cles[0], (autres[3], None))
+        self.assertEqual(len(cles), 10)
 
     def test_rien_hors_journee_vierge_ni_en_correction_ni_hors_fenetre(self):
         hier = self.ouvre_precedent()
@@ -98,13 +106,20 @@ class TestPropositions(_Base):
         r = self.client.get(f"/dailylog/api/jour/{self.ouvre_precedent(2).isoformat()}?utilisateur={self.moi}")
         self.assertEqual(r.get_json()["proposees"], [])                    # correction par le chef
 
-    def test_tache_ou_projet_pas_encore_commence(self):
+    def test_en_cours_a_cette_date_pas_aujourd_hui(self):
+        """Lot 20 : en revenant en arrière, ce qui était en cours CE JOUR-LÀ
+        (une tâche close depuis y est, une tâche créée depuis n'y est pas)."""
         avant = self.auj - datetime.timedelta(days=3)
-        self.sql("UPDATE tache SET created_at = now() WHERE id = %s", (self.t1,))      # créée après : proposée quand même
-        self.sql("UPDATE tache SET date_debut = %s WHERE id = %s", (self.auj, self.t2))
+        self.sql("UPDATE tache SET created_at = now() WHERE id = %s", (self.t1,))       # créée après
+        self.sql("UPDATE tache SET date_debut = %s WHERE id = %s", (self.auj, self.t2))  # commencée après
+        self.sql("UPDATE tache SET date_fin = %s WHERE id = %s", (self.auj - datetime.timedelta(days=1), self.t3))
         self.sql("UPDATE projet SET date_debut = %s WHERE id = %s", (self.auj, self.pb))
         cles = [(l["projet_id"], l["tache_id"]) for l in self.jour(self.moi, avant)["proposees"]]
-        self.assertEqual(cles, [(self.pa, self.t1)])
+        self.assertEqual(cles, [(self.pa, self.t3)])
+        # La veille de sa clôture, plus tard : t3 n'y est plus.
+        self.sql("UPDATE tache SET date_fin = %s WHERE id = %s", (avant - datetime.timedelta(days=1), self.t3))
+        cles = [(l["projet_id"], l["tache_id"]) for l in self.jour(self.moi, avant)["proposees"]]
+        self.assertEqual(cles, [(self.pa, None)])
 
     def test_projet_clos_jamais_propose(self):
         self.sql("UPDATE projet SET etat = 'termine', date_cloture = %s WHERE id = %s",
@@ -119,7 +134,7 @@ class TestPropositions(_Base):
         r = self.client.put(f"/dailylog/api/jour/{self.auj.isoformat()}", json={"version": 0, "lignes": lignes})
         self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
         self.assertEqual(self.sql("SELECT sum(heures) AS h FROM dailylog_entree WHERE utilisateur_id = %s",
-                                  (self.moi,))[0]["h"], 6)
+                                  (self.moi,))[0]["h"], 8)   # 3 tâches + 1 projet × 2 h
 
 
 class TestEquipe(_Base):

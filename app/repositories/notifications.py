@@ -13,6 +13,7 @@ def creer(
     post_id: int | None = None,
     tache_id: int | None = None,
     projet_id: int | None = None,
+    commentaire_id: int | None = None,
 ) -> int:
     """Crée une notification pour un utilisateur. Appelée depuis les routes
     (posts, projets, auth), après que l'action déclenchante a réussi —
@@ -22,18 +23,19 @@ def creer(
     porte ni post ni tâche (« ajouté au projet »)."""
     row = db.query_one(
         """
-        INSERT INTO notification (utilisateur_id, categorie, post_id, tache_id, projet_id, message)
-        VALUES (%s, %s, %s, %s, %s, %s)
+        INSERT INTO notification (utilisateur_id, categorie, post_id, tache_id, projet_id, message, commentaire_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         RETURNING id
         """,
-        (utilisateur_id, categorie, post_id, tache_id, projet_id, message),
+        (utilisateur_id, categorie, post_id, tache_id, projet_id, message, commentaire_id),
     )
     return row["id"]
 
 
 def creer_pour_plusieurs(utilisateur_ids: list[int], categorie: str, message: str,
                           post_id: int | None = None, tache_id: int | None = None,
-                          exclure_id: int | None = None, projet_id: int | None = None) -> list[int]:
+                          exclure_id: int | None = None, projet_id: int | None = None,
+                          commentaire_id: int | None = None) -> list[int]:
     """Même notification pour plusieurs personnes (ex. tous les intervenants
     ajoutés à une tâche) — `exclure_id` sert à ne jamais notifier l'auteur
     de l'action lui-même. Chaque personne n'est notifiée qu'une fois, même
@@ -43,7 +45,8 @@ def creer_pour_plusieurs(utilisateur_ids: list[int], categorie: str, message: st
     for uid in dict.fromkeys(utilisateur_ids):
         if uid == exclure_id:
             continue
-        ids.append(creer(uid, categorie, message, post_id=post_id, tache_id=tache_id, projet_id=projet_id))
+        ids.append(creer(uid, categorie, message, post_id=post_id, tache_id=tache_id, projet_id=projet_id,
+                         commentaire_id=commentaire_id))
     return ids
 
 
@@ -79,6 +82,13 @@ def list_notifications(user_id: int, limit: int = 50, avec_simulees: bool = Fals
                     THEN 'Notification d’un projet auquel vous n’avez plus accès.'
                     WHEN p.supprime_le IS NOT NULL
                     THEN regexp_replace(n.message, '[[:space:] ]*:[[:space:] ]*«.*$', '') || ' (post supprimé).'
+                    -- Lot 20 (revue 9c) : l'extrait d'un commentaire supprimé ou
+                    -- modifié, ou d'un post modifié depuis, ne reste pas lisible.
+                    WHEN c.supprime_le IS NOT NULL
+                    THEN regexp_replace(n.message, '[[:space:] ]*:[[:space:] ]*«.*$', '') || ' (commentaire supprimé).'
+                    WHEN strpos(n.message, '«') > 0 AND (c.modifie_le > n.created_at
+                                              OR (n.commentaire_id IS NULL AND p.modifie_le > n.created_at))
+                    THEN regexp_replace(n.message, '[[:space:] ]*:[[:space:] ]*«.*$', '') || ' (modifié depuis).'
                     ELSE n.message END AS message,
                n.lu, n.created_at,
                n.post_id, n.tache_id, n.projet_id, n.simulee,
@@ -88,6 +98,7 @@ def list_notifications(user_id: int, limit: int = 50, avec_simulees: bool = Fals
         FROM notification n
         LEFT JOIN post p ON p.id = n.post_id
         LEFT JOIN tache t ON t.id = n.tache_id
+        LEFT JOIN post_commentaire c ON c.id = n.commentaire_id
         -- Revue visuelle P2-31 : le code du projet remplace la pastille
         -- « Projet » répétée sur chaque ligne.
         LEFT JOIN projet pr ON pr.id = COALESCE(n.projet_id, p.projet_id, t.projet_id)
@@ -233,15 +244,15 @@ def marquer_rappels_dailylog_lus(user_id: int, cur=None) -> None:
 def a_deja_la_notification(user_id: int, message: str) -> bool:
     """Même message déjà envoyé AUJOURD'HUI à cette personne (ex. « Daily
     log du … corrigé par … » : un chef qui corrige plusieurs fois le même
-    jour ne prévient qu'une fois). Lot 13 (audit temps T-M1) : le jour est
-    celui de l'horodatage RÉEL, au fuseau de la personne — jamais la date
-    simulée, ni le fuseau de la session (Tunis, déjà le lendemain le soir
-    en Guyane)."""
+    jour ne prévient qu'une fois). Lot 13 (audit temps T-M1) : au fuseau de
+    la personne, jamais celui de la session (Tunis, déjà le lendemain le
+    soir en Guyane). Lot 20 : l'horodatage suit la date simulée (mode test),
+    le jour comparé aussi."""
     row = db.query_one(
         """
         SELECT 1 FROM notification n JOIN utilisateur u ON u.id = n.utilisateur_id
         WHERE n.utilisateur_id = %s AND n.message = %s
-          AND (n.created_at AT TIME ZONE u.fuseau)::date = fn_aujourdhui_reel(u.fuseau)
+          AND (n.created_at AT TIME ZONE u.fuseau)::date = fn_aujourdhui(u.fuseau)
         """,
         (user_id, message),
     )

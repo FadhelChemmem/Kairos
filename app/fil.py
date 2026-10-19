@@ -32,14 +32,21 @@ TAILLE_PAGE = 30
 # s'ouvre jusqu'à lui (`?jusqua=<id>`), dans cette limite.
 MAX_POSTS_JUSQUA = 500
 
+# Lot 20 : catégorie mémorisée par page, lue par le serveur.
+COOKIE_CATEGORIE = "kairos_fil_"
+PAGES_MEMORISEES = ("accueil", "projet", "profil")
 
-def categorie_demandee() -> str:
+
+def categorie_demandee(page: str | None = None) -> str:
     """Catégorie de l'adresse (`?fil=`) ; pour une action en partiel (POST
     d'une tâche, publication…), celle de la page d'où elle part (Referer
-    interne, tenu à jour par l'History API) ; sinon la valeur par défaut.
-    Jamais le Referer pour une page complète (recette du lot 14, n° 6) :
-    l'accueil ouvert depuis une fiche en « Activité » s'ouvre sur sa propre
-    catégorie (défaut, ou choix mémorisé pour cette page)."""
+    interne, tenu à jour par l'History API) ; sinon le choix mémorisé pour
+    cette `page` (cookie `kairos_fil_<page>`, écrit par filtre-fil.js —
+    lot 20 : la page complète s'ouvre directement sur la bonne catégorie,
+    sans bascule en JS qui marquait « vue » une catégorie jamais affichée) ;
+    sinon la valeur par défaut. Jamais le Referer pour une page complète
+    (recette du lot 14, n° 6) : l'accueil ouvert depuis une fiche en
+    « Activité » s'ouvre sur sa propre catégorie."""
     from . import partiel
 
     valeur = request.args.get("fil")
@@ -47,6 +54,8 @@ def categorie_demandee() -> str:
         parts = urlsplit(request.referrer)
         if not parts.netloc or parts.netloc == request.host:
             valeur = (parse_qs(parts.query).get("fil") or [None])[0]
+    if valeur is None and page in PAGES_MEMORISEES:
+        valeur = request.cookies.get(COOKIE_CATEGORIE + page)
     return valeur if valeur in CATEGORIES else CATEGORIE_DEFAUT
 
 
@@ -104,7 +113,8 @@ _PHRASES = {
     "creation_projet": ("créé le projet", "créé le projet"),
     "etat_projet": ("changé l’état du projet", "changé {n} fois l’état du projet"),
     "chef_projet": ("changé le chef de projet", "changé {n} fois le chef de projet"),
-    "intervenant_projet": ("retiré un intervenant du projet", "retiré {n} intervenants du projet"),
+    # Lot 20 : l'ajout est aussi tracé (test Chrome N6) — phrase commune.
+    "intervenant_projet": ("changé les intervenants du projet", "changé {n} fois les intervenants du projet"),
 }
 _AUTRE = ("fait une modification", "fait {n} modifications")
 _PAR_TACHE = {"creation_tache", "cloture_tache", "etat_tache", "titre_tache", "intervenant_tache", "echeance_tache"}

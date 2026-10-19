@@ -24,7 +24,7 @@ from ..repositories import posts as posts_repo
 from ..repositories import projets as projets_repo
 from ..repositories import taches as taches_repo
 from ..repositories import utilisateurs as utilisateurs_repo
-from ..storage import delete_upload, is_image_filename, save_upload
+from ..storage import delete_upload, est_vraie_image, is_image_filename, save_upload
 from .. import validation as v
 from ..utils import EQUIPE_CHOICES
 
@@ -145,17 +145,23 @@ def _enregistrer_avatar_si_fourni(user_id: int, current_user_id: int) -> None:
     fichier = request.files.get("avatar")
     if not fichier or not fichier.filename:
         return
-    if not is_image_filename(fichier.filename):
+    if not is_image_filename(fichier.filename) or not est_vraie_image(fichier):
         flash("Photo de profil ignorée\u00a0: formats acceptés — jpg, png, gif, webp.", "error")
         return
     _, chemin = save_upload(fichier, f"avatars/{user_id}")
     # Fichier orphelin sur disque si l'UPDATE échoue juste après (audit
     # sécurité/qualité externe, 2026-09-28, item P0-3).
     try:
-        utilisateurs_repo.set_avatar(user_id, chemin, current_user_id)
+        ancien = utilisateurs_repo.set_avatar(user_id, chemin, current_user_id)
     except Exception:
         delete_upload(chemin)
         raise
+    # Lot 20 (rapport N7) : l'ancienne photo ne reste plus sur le disque.
+    if ancien and ancien != chemin:
+        try:
+            delete_upload(ancien)
+        except Exception:
+            current_app.logger.warning("Ancienne photo de profil non supprimée : %s", ancien)
 
 
 # Rôles qui ne voient des projets que par leur équipe (lot 13, audit rôles M4).
@@ -345,7 +351,10 @@ def profil_personne(user_id: int):
     # Lot 13 (audit rôles M2) : un Client ne consulte pas le profil d'un
     # compte désactivé (la recherche les lui masque déjà).
     if g.user["role"] == "client" and not utilisateur.get("actif") and user_id != g.user["id"]:
-        abort(404)
+        # Lot 20 (rapport N6) : même réponse qu'un compte inexistant — un
+        # 404 ici révélait quels identifiants sont des comptes désactivés.
+        flash("Utilisateur introuvable.", "error")
+        return redirect(url_for("main.accueil"))
 
     viewer_id = g.user["id"]
     projets_visibles_ids = projets_repo.list_ids_visibles(viewer_id)
@@ -356,7 +365,7 @@ def profil_personne(user_id: int):
     depuis = dailylog_repo.aujourdhui_pour(g.user) - datetime.timedelta(days=7 * semaines - 1)
     # Lot 14 (revue produit P1-3) : Tout · Échanges · Activité, évènements
     # automatiques regroupés.
-    fil_categorie = film.categorie_demandee()
+    fil_categorie = film.categorie_demandee("profil")
     posts_recents = posts_repo.list_feed_auteur(user_id, viewer_id, limit=100, depuis=depuis, categorie=fil_categorie)
     posts_plus_anciens = bool(posts_repo.list_feed_auteur(user_id, viewer_id, limit=1, avant=depuis,
                                                           categorie=fil_categorie))

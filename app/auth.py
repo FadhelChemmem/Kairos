@@ -41,6 +41,11 @@ RESET_TOKEN_TTL = datetime.timedelta(hours=1)
 # réinitialisation sont bloquées temporairement (voir securite_repo).
 MAX_TENTATIVES = 5
 FENETRE_TENTATIVES_MINUTES = 15
+# Lot 20 (revue 10b) : demandes de lien de réinitialisation par adresse IP
+# (toutes adresses e-mail confondues), et délai avant qu'une nouvelle
+# demande remplace un lien encore valable.
+MAX_DEMANDES_RESET_IP = 10
+DELAI_NOUVEAU_LIEN_MINUTES = 15
 
 # Anti-bourrinage par IP (PROMPT_CORRECTIONS.md P2 #24) : une limite
 # uniquement par email permet à n'importe qui connaissant l'adresse d'un
@@ -466,7 +471,12 @@ def mot_de_passe_oublie():
             )
             return redirect(url_for("auth.mot_de_passe_oublie"))
 
-        if email:
+        ip = request.remote_addr or "ip-inconnue"
+        trop_depuis_ip = securite_repo.compter_tentatives_recentes(
+            "mot_de_passe_oublie_ip", ip[:255], 60) >= MAX_DEMANDES_RESET_IP
+        if email and not trop_depuis_ip:
+            securite_repo.enregistrer_tentative("mot_de_passe_oublie_ip", ip[:255])
+        if email and not trop_depuis_ip:
             if securite_repo.compter_tentatives_recentes(
                 "mot_de_passe_oublie", email, FENETRE_TENTATIVES_MINUTES
             ) >= MAX_TENTATIVES:
@@ -477,7 +487,10 @@ def mot_de_passe_oublie():
             else:
                 securite_repo.enregistrer_tentative("mot_de_passe_oublie", email)
                 user = get_user_by_email(email)
-                if user is not None and user["actif"]:
+                # Lot 20 (revue 10b) : un lien émis il y a moins de 15 min
+                # reste le bon — pas de nouveau lien qui l'annulerait.
+                if (user is not None and user["actif"]
+                        and not utilisateurs_repo.lien_reset_recent(user["id"], DELAI_NOUVEAU_LIEN_MINUTES)):
                     lien = generer_lien_reset(user["id"])
                     # En arrière-plan (audit n°2) : un envoi SMTP synchrone
                     # rendait la réponse nettement plus lente quand l'email

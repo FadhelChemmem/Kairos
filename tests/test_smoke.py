@@ -93,6 +93,23 @@ MOT_DE_PASSE_HASH_PAR_DEFAUT = "hash-bidon"
 _UPLOAD_DIR_TESTS = tempfile.mkdtemp(prefix="kairos-tests-uploads-")
 
 
+
+VERROU_PROJET = "SELECT etat FROM projet WHERE id = %s FOR NO KEY UPDATE"
+
+
+def fetchone_simule(cur, reponses):
+    """Réponses successives de cur.fetchone() pour un curseur simulé ; le
+    verrou du projet (lot 20 : il relit l'état du projet) reçoit toujours
+    un projet ouvert, sans consommer de réponse."""
+    restantes = list(reponses)
+
+    def suivante(*_a, **_k):
+        appel = cur.execute.call_args
+        if appel and str(appel.args[0]).strip() == VERROU_PROJET:
+            return {"etat": "en_cours"}
+        return restantes.pop(0) if restantes else None
+    return suivante
+
 class TestConfig(Config):
     DATABASE_URL = "postgresql://fake/fake"  # jamais utilisé, get_cursor n'est pas appelé
     UPLOAD_DIR = _UPLOAD_DIR_TESTS
@@ -389,6 +406,7 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.projets.list_intervenants": INTERVENANTS,
             "app.repositories.projets.user_can_manage": True,
             "app.repositories.projets.user_can_view": True,
+            "app.repositories.projets.user_can_act": True,
             "app.repositories.projets.user_est_rattache": False,
             "app.repositories.projets.propose_code": "26099X",
             "app.repositories.projets.update_projet": None,
@@ -469,7 +487,6 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.taches.list_ouvertes_pour_profil": TACHES_EN_COURS_PROFIL,
             "app.repositories.projets.list_en_cours_pour_profil": [],
             "app.repositories.utilisateurs.get_preferences": {"accueil_deadlines": False, "dailylog_proposer": True},
-            "app.repositories.utilisateurs.a_une_preference": False,
             "app.repositories.utilisateurs.set_preference": None,
             "app.repositories.posts.list_feed_auteur": [],
             "app.repositories.notifications.compter_non_lues": 2,
@@ -1043,28 +1060,29 @@ class SmokeTestCase(SmokeBase):
             for p in reversed(patchers):
                 p.stop()
 
-    def test_fichiers_upload_tache_nettoie_le_fichier_si_insert_echoue(self):
+    def test_fichiers_upload_tache_refuse_sans_rien_enregistrer(self):
+        """Lot 20 (décision du gérant) : plus de pièce jointe sur une tâche —
+        refus clair (410 en partiel), rien d'écrit sur le disque ni en base."""
         self._login()
-        patchers = self._patched() + [
-            patch("app.routes.fichiers.save_upload", return_value=("note.pdf", "taches/5/xyz.pdf")),
-            patch("app.repositories.taches.add_piece_jointe", side_effect=Exception("connexion perdue")),
-        ]
-        delete_patcher = patch("app.routes.fichiers.delete_upload")
+        patchers = self._patched()
         for p in patchers:
             p.start()
-        mock_delete = delete_patcher.start()
         try:
-            with self.assertRaises(Exception):
-                self.client.post(
+            with patch("app.storage.save_upload") as save, \
+                    patch("app.repositories.taches.add_piece_jointe") as ajout:
+                resp = self.client.post(
                     "/fichiers/taches/5/upload",
                     data={"fichier": (io.BytesIO(b"contenu bidon"), "note.pdf")},
                     content_type="multipart/form-data",
+                    headers={"X-Kairos-Partiel": "#fil-posts"},
                 )
-            mock_delete.assert_called_once_with("taches/5/xyz.pdf")
+                save.assert_not_called()
+                ajout.assert_not_called()
         finally:
-            delete_patcher.stop()
             for p in reversed(patchers):
                 p.stop()
+        self.assertEqual(resp.status_code, 410)
+        self.assertIn("Nouveau post", resp.get_data(as_text=True))
 
     def test_posts_creer_nettoie_le_fichier_si_creation_echoue(self):
         """Depuis le suivi P0-3 round 2 (Luna) : post + pièce jointe sont
@@ -1323,7 +1341,7 @@ class SmokeTestCase(SmokeBase):
             patch("app.repositories.posts.react", return_value=None),
             patch("app.repositories.posts.add_comment", return_value=102),
             patch("app.repositories.projets.create_projet", return_value=42),
-            patch("app.routes.fichiers.save_upload", return_value=("note.pdf", "taches/5/xyz.pdf")),
+            patch("app.storage.save_upload", return_value=("note.pdf", "taches/5/xyz.pdf")),
             patch("app.routes.posts.save_upload", return_value=("plan.pdf", "posts/101/xyz.pdf")),
             patch("app.repositories.taches.add_piece_jointe", return_value=1),
             patch("app.repositories.utilisateurs.create_utilisateur", return_value=42),
@@ -1536,7 +1554,7 @@ class SmokeTestCase(SmokeBase):
         self._login()
         patchers = self._patched(**{
             "app.repositories.taches.add_piece_jointe": 1,
-        }) + [patch("app.routes.fichiers.save_upload", return_value=("note.pdf", "taches/5/xyz.pdf"))]
+        }) + [patch("app.storage.save_upload", return_value=("note.pdf", "taches/5/xyz.pdf"))]
         for p in patchers:
             p.start()
         try:
@@ -1612,7 +1630,7 @@ class SmokeTestCase(SmokeBase):
                     data={
                         "prenom": "Wael", "nom": "Testeur", "email": "w.testeur@midgard.tn",
                         "role": "intervenant", "equipe_code": "MIDGARD", "actif": "on",
-                        "avatar": (io.BytesIO(b"contenu bidon"), "photo.png"),
+                        "avatar": (io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"0" * 32), "photo.png"),
                     },
                     content_type="multipart/form-data",
                 )
@@ -1819,7 +1837,7 @@ class SmokeTestCase(SmokeBase):
                     "/utilisateurs/moi",
                     data={
                         "telephone": "20 000 000", "poste": "Chef de projet", "adresse": "Tunis",
-                        "avatar": (io.BytesIO(b"contenu bidon"), "moi.jpg"),
+                        "avatar": (io.BytesIO(b"\xff\xd8\xff\xe0" + b"0" * 32), "moi.jpg"),
                     },
                     content_type="multipart/form-data",
                 )
@@ -2610,6 +2628,7 @@ class SmokeTestCase(SmokeBase):
         with patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
              patch("app.repositories.securite.enregistrer_tentative"), \
              patch("app.auth.get_user_by_email", return_value=user_row), \
+             patch("app.repositories.utilisateurs.lien_reset_recent", return_value=False), \
              patch("app.repositories.utilisateurs.set_reset_token") as mock_set_token, \
              patch("app.mailer.envoyer", return_value=True) as mock_envoyer:
             resp = self.client.post(
@@ -2633,7 +2652,8 @@ class SmokeTestCase(SmokeBase):
                 follow_redirects=True,
             )
         self.assertIn("un lien de r\xe9initialisation".encode(), resp.data)
-        mock_enregistrer.assert_not_called()
+        # Lot 20 (revue 10b) : seule la demande de l'adresse IP est comptée.
+        self.assertEqual([c.args[0] for c in mock_enregistrer.call_args_list], ["mot_de_passe_oublie_ip"])
         mock_envoyer.assert_not_called()
 
     def test_reinitialiser_mot_de_passe_jeton_invalide(self):
@@ -3726,7 +3746,7 @@ class TestControlesDAccesStricts(unittest.TestCase):
 
     def test_upload_tache_projet_invisible_nenregistre_rien(self):
         resp, save = self._requete(
-            "post", "/fichiers/taches/5/upload", "app.routes.fichiers.save_upload",
+            "post", "/fichiers/taches/5/upload", "app.storage.save_upload",
             {"fichier": (io.BytesIO(b"x"), "note.pdf")},
             **{"app.repositories.projets.user_can_view": False},
         )
@@ -3770,6 +3790,8 @@ class TestControlesDAccesStricts(unittest.TestCase):
 
         patchers = self._patched() + [
             patch("app.repositories.projets.user_can_view", side_effect=peut_voir),
+            # Lot 20 : une seule lecture des personnes qui voient le projet.
+            patch("app.repositories.projets.ids_utilisateurs_voyant", return_value={1, 2}),
         ]
         for p in patchers:
             p.start()
@@ -4760,7 +4782,7 @@ class TestPostsAutomatiquesEtProjet(SmokeBase):
         m = mock_cm.start()
         self.addCleanup(mock_cm.stop)
         cur = m.return_value.__enter__.return_value
-        cur.fetchone.side_effect = fetchone
+        cur.fetchone.side_effect = fetchone_simule(cur, fetchone)
         return cur
 
     def _inserts_post(self, cur):
@@ -5395,8 +5417,11 @@ class TestDecisionsLot7(SmokeBase):
                 _, mocks = self._requete("post", chemin, espions=[(espion, True)],
                                          **{"app.auth.get_user_by_id": CLIENT})
                 mocks[espion].assert_not_called()
-        resp, _ = self._requete("post", "/fichiers/taches/5/upload", **{"app.auth.get_user_by_id": CLIENT})
-        self.assertEqual(resp.status_code, 403)
+        resp, mocks = self._requete("post", "/fichiers/taches/5/upload",
+                                    espions=[("app.repositories.taches.add_piece_jointe", None)],
+                                    **{"app.auth.get_user_by_id": CLIENT})
+        self.assertEqual(resp.status_code, 302)   # lot 20 : plus aucun envoi sur une tâche
+        mocks["app.repositories.taches.add_piece_jointe"].assert_not_called()
         # Ajouté par un chef : refusé aussi.
         _, mocks = self._requete("post", "/projets/1/intervenants", data={"utilisateur_id": "8"},
                                  espions=[("app.repositories.projets.add_intervenant", None)],
@@ -5428,16 +5453,17 @@ class TestDecisionsLot7(SmokeBase):
 
     def test_fichier_de_tache_reserve_au_chef_et_aux_intervenants(self):
         import io
-        for gere, intervenant, attendu in ((False, False, False), (True, False, True), (False, True, True)):
+        # Lot 20 (décision du gérant) : plus aucune pièce jointe sur une tâche, pour personne.
+        for gere, intervenant, attendu in ((False, False, False), (True, False, False), (False, True, False)):
             with self.subTest(gere=gere, intervenant=intervenant):
                 _, mocks = self._requete(
                     "post", "/fichiers/taches/5/upload", data={"fichier": (io.BytesIO(b"x"), "n.pdf")},
-                    espions=[("app.routes.fichiers.save_upload", ("n.pdf", "taches/5/x.pdf")),
+                    espions=[("app.storage.save_upload", ("n.pdf", "taches/5/x.pdf")),
                              ("app.repositories.taches.add_piece_jointe", None)],
                     **{"app.auth.get_user_by_id": {**USER, "role": "intervenant"},
                        "app.repositories.projets.user_can_manage": gere,
                        "app.repositories.taches.user_est_intervenant": intervenant})
-                self.assertEqual(mocks["app.routes.fichiers.save_upload"].called, attendu)
+                self.assertEqual(mocks["app.storage.save_upload"].called, attendu)
 
     def test_phase_liee_des_la_creation_du_projet(self):
         """Retour Fadhel (lot 7) : lier un projet existant à la création."""
@@ -5501,7 +5527,7 @@ class TestDecisionsLot7(SmokeBase):
             ("/projets/1/rejoindre", {}, "app.repositories.projets.add_co_chef"),
             ("/projets/1/taches/5/rejoindre", {}, "app.repositories.taches.add_intervenant"),
             ("/posts", {"projet_id": "1", "type_code": "requete", "contenu": "x"}, "app.repositories.posts.create_post"),
-            ("/fichiers/taches/5/upload", "fichier", "app.routes.fichiers.save_upload"),
+            ("/fichiers/taches/5/upload", "fichier", "app.storage.save_upload"),
         ]
         import io
         for chemin, data, espion in cas:

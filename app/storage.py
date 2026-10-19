@@ -39,6 +39,21 @@ def is_image_filename(filename: str) -> bool:
     return os.path.splitext(filename or "")[1].lower() in AVATAR_EXTENSIONS
 
 
+def est_vraie_image(file_storage) -> bool:
+    """Lot 20 (revue 16e) : photo de profil non vide et dont le contenu est
+    bien une image JPEG, PNG, GIF ou WEBP (signature des premiers octets) —
+    un texte renommé « .png » ou un fichier vide étaient acceptés."""
+    flux = file_storage.stream
+    try:
+        position = flux.tell()
+        debut = flux.read(12)
+        flux.seek(position)
+    except (OSError, ValueError, AttributeError):
+        return False
+    return (debut.startswith(b"\xff\xd8\xff") or debut.startswith(b"\x89PNG\r\n\x1a\n")
+            or debut[:6] in (b"GIF87a", b"GIF89a") or (debut[:4] == b"RIFF" and debut[8:12] == b"WEBP"))
+
+
 def refus_fichier(file_storage) -> str | None:
     """Lot 18 (audit sécurité) : message de refus d'un fichier à joindre, ou
     None s'il est acceptable — extension hors de la liste blanche, ou fichier

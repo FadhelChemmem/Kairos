@@ -49,6 +49,18 @@ MESSAGE_PROJET_CLOS = (
 )
 
 
+# États qu'on peut donner par la route « état » (« Terminée » passe par la
+# clôture, avec son post).
+ETATS_VALIDES_ROUTE = {"en_cours", "bloque", "verifie", "arret", "abandonne"}
+
+
+@bp.errorhandler(taches.ProjetClos)
+def _projet_clos_entre_temps(_exc):
+    """Lot 20 (revue 12a) : le projet a été clos entre le contrôle de la route
+    et le verrou pris par l'écriture — même refus que _refus_si_clos."""
+    return _refus(MESSAGE_PROJET_CLOS, 409, (request.view_args or {}).get("projet_id"))
+
+
 def _refus_si_clos(projet_id: int):
     """Projet terminé ou abandonné (décision Fadhel, lot 7) : toute
     intervention est refusée, pour tout le monde — chef et co-chefs compris
@@ -57,6 +69,10 @@ def _refus_si_clos(projet_id: int):
     projet = projets.get_projet(projet_id)
     if projet is not None and projet["etat"] in projets.ETATS_CLOS:
         return _refus(MESSAGE_PROJET_CLOS, 409, projet_id)
+    # Lot 20 (décision du gérant) : une personne retirée d'un projet d'une
+    # autre équipe le consulte encore (historique) mais n'y agit plus.
+    if not projets.user_can_act(projet_id, g.user["id"]):
+        return _refus(projets.MESSAGE_LECTURE_SEULE, 403, projet_id)
     return None
 
 
@@ -106,7 +122,11 @@ def _message_erreur_intervenant(exc: Exception, action: str) -> str:
     "Un utilisateur avec le rôle RH ne peut pas être ...") justifie le
     message RH ; toute autre erreur (clé étrangère, connexion perdue...)
     était auparavant présentée à tort comme un problème de RH — elle est
-    maintenant journalisée et signalée comme une erreur générique."""
+    maintenant journalisée et signalée comme une erreur générique. Lot 20 :
+    un projet clos entre-temps (taches.ProjetClos) remonte tel quel, vers
+    le gestionnaire du blueprint (409 « projet clos »)."""
+    if isinstance(exc, taches.ProjetClos):
+        raise exc
     if "rôle RH" in str(exc):
         return f"Impossible {action}\u00a0: un RH ne peut pas être intervenant."
     if "rôle Client" in str(exc):
@@ -415,7 +435,8 @@ def creer():
                 # Seule une violation d'unicité du code justifie ce message
                 # (audit n°2).
                 if "unique" in str(exc).lower() or "duplicate" in str(exc).lower():
-                    champ, erreur = "code", f"Le code «\u00a0{code}\u00a0» est déjà utilisé par un autre projet."
+                    champ, erreur = "code", (f"Le code «\u00a0{code}\u00a0» est déjà utilisé par un autre projet "
+                                             f"en {phase}.")
                 else:
                     current_app.logger.exception("Échec inattendu de création de projet")
                     erreur = "Impossible de créer ce projet (erreur inattendue, réessayez)."
@@ -528,7 +549,7 @@ def _contexte_fil(projet_id: int, fil_limite: int = film.TAILLE_PAGE) -> dict:
     """Fil de la fiche (lot 14, revue produit P1-3) : catégorie (adresse, ou
     page d'où part l'action en partiel), page à partir du curseur `avant`,
     évènements automatiques regroupés, adresse de la page suivante."""
-    categorie = film.categorie_demandee()
+    categorie = film.categorie_demandee("projet")
     fil_limite = film.taille_jusqua(
         fil_limite, lambda post_id: posts.rang_dans_fil_projet(projet_id, g.user["id"], categorie, post_id))
     lus = posts.list_feed_projet(projet_id, g.user["id"], limit=fil_limite + 1, categorie=categorie,
@@ -558,10 +579,18 @@ def _contexte_fiche(projet: dict, *, fil_limite: int = film.TAILLE_PAGE) -> dict
     # rattaché ; ni RH ni Client (migration 0011), jamais sur un projet clos.
     projet_clos = projet["etat"] in projets.ETATS_CLOS
     # L'Admin gère déjà tous les projets : jamais « Rejoindre » (lot 13, M11).
+    # Lot 20 : une personne qui n'a plus que la lecture (retirée d'un projet
+    # d'une autre équipe) ne voit plus ni « Rejoindre » ni de quoi écrire.
+    lecture_seule = not projets.user_can_act(projet_id, g.user["id"])
     peut_rejoindre_projet = (
-        g.user["role"] not in ("rh", "client", "admin") and not projet_clos
+        g.user["role"] not in ("rh", "client", "admin") and not projet_clos and not lecture_seule
         and not projets.user_est_rattache(projet_id, g.user["id"])
     )
+    # Lot 20 (rapport du 19/10) : dans « Nouvelle tâche », les personnes de
+    # l'équipe du projet d'abord, puis les collaborateurs récents.
+    equipe_projet = [i["id"] for i in intervenants if i.get("role") not in ("client", "rh")]
+    recents = equipe_projet + [i for i in utilisateurs.list_collaborateurs_recents(g.user["id"])
+                               if i not in equipe_projet]
 
     contexte = dict(
         projet=projet,
@@ -577,7 +606,11 @@ def _contexte_fiche(projet: dict, *, fil_limite: int = film.TAILLE_PAGE) -> dict
         nb_en_cours=nb_en_cours,
         utilisateurs_actifs=utilisateurs_actifs,
         utilisateurs_affectables=[u for u in utilisateurs_actifs if u.get("role") != "client"],
-        collaborateurs_recents=utilisateurs.list_collaborateurs_recents(g.user["id"]),
+        collaborateurs_recents=recents[:8],
+        lecture_seule=lecture_seule,
+        # Lot 20 (revue 9b) : la phase liée n'est montrée qu'à qui la voit.
+        phase_liee_visible=bool(projet.get("phase_liee_id"))
+        and projets.user_can_view(projet["phase_liee_id"], g.user["id"]),
         # Intervenants proposés pour une nouvelle tâche et personnes
         # mentionnables : ceux qui voient le projet (lot 13 ; lot 16 pour les
         # mentions, proposées à tous).
@@ -834,7 +867,7 @@ def editer_informations(projet_id: int):
     # que la personne a vue ; revérifiée sous verrou par update_projet.
     taches_a_clore = None
     if request.form.get("confirmer_cloture") == "1":
-        taches_a_clore = v.ids_entiers(request.form.getlist("taches_a_clore"))
+        taches_a_clore = v.ids_entiers(request.form.getlist("taches_a_clore"), maximum=5000)
     bilan = {}
 
     try:
@@ -942,9 +975,10 @@ def _intervenants_possibles(projet_id: int, brut: list[str]) -> tuple[list[int],
     if not demandes:
         return [], []
     affectables = {u["id"]: u for u in utilisateurs.list_affectables()}
+    voyant = projets.ids_utilisateurs_voyant(projet_id)   # une requête (lot 20, revue 11)
     retenus, ecartes = [], []
     for uid in demandes:
-        if uid in affectables and projets.user_can_view(projet_id, uid):
+        if uid in affectables and uid in voyant:
             retenus.append(uid)
         else:
             personne = affectables.get(uid) or utilisateurs.get_utilisateur(uid)
@@ -1107,7 +1141,7 @@ def creer_tache(projet_id: int):
         post = posts.get_post_carte(post_id, g.user["id"])
         # Lot 14 : le post de création (Activité) n'arrive pas dans la vue
         # « Échanges » du fil.
-        racine = None if film.categorie_demandee() == "echanges" else "post"
+        racine = None if film.categorie_demandee("projet") == "echanges" else "post"
         return _maj_fiche(projet_id, racine, ["taches", "projet", "intervenants"], post=post, show_projet=False,
                           next_url=url_for("projets.detail", projet_id=projet_id), surligner=tache_id)
     return redirect(url_for("projets.detail", projet_id=projet_id))
@@ -1164,9 +1198,21 @@ def _signeur_annuler():
     return URLSafeTimedSerializer(current_app.secret_key, salt=SEL_ANNULER)
 
 
-def _jeton_annuler(projet_id: int, tache_id: int, etat: str, motif: str | None, notifications: list[int]) -> str:
-    return _signeur_annuler().dumps({"p": projet_id, "t": tache_id, "u": g.user["id"], "e": etat, "m": motif,
-                                     "v": taches.version(tache_id), "n": [int(i) for i in notifications]})
+def _jeton_annuler(projet_id: int, tache_id: int, etat: str, motif: str | None, notifications: list[int],
+                   *, version: str | None = None, restaurer: dict | None = None) -> str:
+    """Jeton signé de l'action « Annuler ». Lot 20 : `version` est celle
+    produite par le geste, lue dans SA transaction (revue 12b : relue après
+    coup, elle pouvait déjà inclure le geste d'une autre personne) ;
+    `restaurer` porte les valeurs d'avant (motif, date et auteur du blocage,
+    date de fin) pour un retour exact."""
+    def texte(valeur):
+        return valeur.isoformat() if hasattr(valeur, "isoformat") else valeur
+    return _signeur_annuler().dumps({
+        "p": projet_id, "t": tache_id, "u": g.user["id"], "e": etat, "m": motif,
+        "v": version if version is not None else taches.version(tache_id),
+        "n": [int(i) for i in notifications],
+        "r": {k: texte(v) for k, v in (restaurer or {}).items()},
+    })
 
 
 def _lire_jeton_annuler(projet_id: int, tache_id: int) -> dict | None:
@@ -1223,7 +1269,7 @@ def changer_etat_tache(projet_id: int, tache_id: int):
         return refus
 
     etat = request.form.get("etat")
-    etats_valides = {"en_cours", "bloque", "verifie", "arret", "abandonne"}
+    etats_valides = ETATS_VALIDES_ROUTE
     if etat not in etats_valides:
         return _refus("État invalide.", 422, projet_id)
     if etat in taches.ETATS_RESERVES_GESTION and not peut_gerer:
@@ -1259,7 +1305,8 @@ def changer_etat_tache(projet_id: int, tache_id: int):
     try:
         trouvee = taches.set_etat(tache_id, projet_id, etat, g.user["id"], peut_gerer=peut_gerer,
                                   annulation=annulation, remplace=remplace, **({"motif": motif} if etat == "bloque" else {}),
-                                  **({"version_attendue": jeton.get("v")} if annulation else {}))
+                                  **({"version_attendue": jeton.get("v"), "restaurer": jeton.get("r") or None}
+                                     if annulation else {}))
     except taches.MotifBlocageRequis:
         return _refus(MESSAGE_MOTIF_REQUIS, 422, projet_id, tache_id, vers_tache=True,
                       champs={"motif": MESSAGE_MOTIF_REQUIS})
@@ -1325,7 +1372,9 @@ def changer_etat_tache(projet_id: int, tache_id: int):
                 and (peut_gerer or etat_avant not in taches.ETATS_RESERVES_GESTION)):
             jeton_retour = _jeton_annuler(projet_id, tache_id, etat_avant,
                                           avant.get("bloque_motif") if etat_avant == "bloque" else None,
-                                          notifications_creees)
+                                          notifications_creees, version=remplace.get("version_apres"),
+                                          restaurer={k: avant.get(k) for k in ("bloque_motif", "bloque_le",
+                                                                                 "bloque_par", "date_fin")})
             donnees = {"etat": etat_avant, "jeton": jeton_retour}
             action = _action_annuler(url_for("projets.changer_etat_tache", projet_id=projet_id, tache_id=tache_id),
                                      donnees, tache_id)
@@ -1426,8 +1475,9 @@ def cloturer_tache(projet_id: int, tache_id: int):
             return _refus(message, 422, projet_id, champs={"date_fin": message})
 
     try:
+        infos: dict = {}
         post_id = taches.close_tache(tache_id, projet_id, g.user["id"], type_code, contenu,
-                                     peut_gerer=peut_gerer, date_fin=date_fin)
+                                     peut_gerer=peut_gerer, date_fin=date_fin, infos=infos)
     except Exception as exc:
         if not taches.est_refus_etat_reserve(exc):
             raise
@@ -1453,9 +1503,17 @@ def cloturer_tache(projet_id: int, tache_id: int):
             texte = f"Tâche terminée\u00a0: post publié, {_noms_prevenus(prevenus)} prévenu{'s' if len(prevenus) > 1 else ''}."
 
     if partiel.est_partiel():
+        # Lot 20 (revue 3) : « Annuler » rend l'état d'AVANT la clôture
+        # (Bloquée avec son motif, Arrêtée, Abandonnée…), plus « En cours ».
+        ancien = infos.get("ancien_etat") or "en_cours"
+        if ancien not in ETATS_VALIDES_ROUTE or (ancien in taches.ETATS_RESERVES_GESTION and not peut_gerer):
+            ancien = "en_cours"
         action = _action_annuler(url_for("projets.changer_etat_tache", projet_id=projet_id, tache_id=tache_id),
-                                 {"etat": "en_cours",
-                                  "jeton": _jeton_annuler(projet_id, tache_id, "en_cours", None, notifications_creees)},
+                                 {"etat": ancien,
+                                  "jeton": _jeton_annuler(projet_id, tache_id, ancien,
+                                                          infos.get("ancien_motif") if ancien == "bloque" else None,
+                                                          notifications_creees, version=infos.get("version"),
+                                                          restaurer={"date_fin": infos.get("ancienne_date_fin")})},
                                  tache_id)
         return _reponse_tache(projet_id, tache_id, [partiel.toast(texte, action=action)], deplacee=True)
     flash(texte, "success")

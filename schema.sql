@@ -219,7 +219,7 @@ CREATE UNIQUE INDEX idx_utilisateur_rh_singleton ON utilisateur (role) WHERE rol
 -- =====================================================================
 CREATE TABLE projet (
   id               BIGSERIAL PRIMARY KEY,
-  code             VARCHAR(20) NOT NULL UNIQUE, -- ex. "24091X" — proposé semi-auto, éditable
+  code             VARCHAR(20) NOT NULL,        -- ex. "24091X" — proposé semi-auto, éditable ; unique PAR PHASE (lot 20, index projet_code_phase_uniq)
   nom              VARCHAR(200) NOT NULL,
   phase            phase_enum NOT NULL,
   date_debut       DATE,
@@ -244,6 +244,8 @@ CREATE INDEX idx_projet_etat ON projet(etat);
 CREATE INDEX idx_projet_chef ON projet(chef_projet_id);
 CREATE INDEX idx_projet_phase_liee ON projet(phase_liee_id);
 CREATE INDEX idx_projet_equipe ON projet(equipe_code);
+-- Lot 20 (migration 0024) : APS et APD d'une même affaire gardent le même code.
+CREATE UNIQUE INDEX projet_code_phase_uniq ON projet (code, phase);
 
 -- Lots d'un projet (plusieurs possibles, ex. CM + GO)
 CREATE TABLE projet_lot (
@@ -857,6 +859,30 @@ WHERE u.actif = true
     ))
   );
 
+-- Lot 20 (migration 0024) : droit d'AGIR (une tâche close ne donne que la lecture).
+CREATE OR REPLACE VIEW v_projet_action AS
+SELECT p.id AS projet_id, u.id AS utilisateur_id
+FROM projet p
+CROSS JOIN utilisateur u
+WHERE u.actif = true
+  AND u.role <> 'rh'
+  AND (
+    u.role = 'admin'
+    OR u.equipe_code = p.equipe_code
+    OR (u.role <> 'client' AND (
+      u.id = p.chef_projet_id
+      OR EXISTS (SELECT 1 FROM projet_co_chef pc WHERE pc.projet_id = p.id AND pc.utilisateur_id = u.id)
+      OR EXISTS (SELECT 1 FROM projet_intervenant pi WHERE pi.projet_id = p.id AND pi.utilisateur_id = u.id)
+      OR EXISTS (
+        SELECT 1 FROM tache t
+        JOIN tache_intervenant ti ON ti.tache_id = t.id
+        WHERE t.projet_id = p.id AND ti.utilisateur_id = u.id AND t.etat IN ('en_cours', 'bloque')
+      )
+    ))
+  );
+COMMENT ON VIEW v_projet_action IS
+  'Droit d''agir sur un projet (0024) : comme v_projet_visibilite, mais une tâche close ne donne que la lecture.';
+
 
 -- ---------------------------------------------------------------------
 -- Règle "un RH n'est ni chef, ni co-chef, ni intervenant" aussi lors d'un
@@ -974,7 +1000,7 @@ ALTER TABLE post ADD CONSTRAINT post_parent_pas_soi_meme CHECK (parent_post_id <
 ALTER TABLE notification ADD CONSTRAINT notification_categorie_valide
   CHECK (categorie IN ('projet', 'rh_info'));
 ALTER TABLE tentative_securite ADD CONSTRAINT tentative_securite_type_valide
-  CHECK (type IN ('connexion', 'connexion_ip', 'mot_de_passe_oublie'));
+  CHECK (type IN ('connexion', 'connexion_ip', 'mot_de_passe_oublie', 'mot_de_passe_oublie_ip'));
 -- ENTREE / SORTIE : modes « Voir comme », « Agir comme », date simulée (0018).
 ALTER TABLE audit_log ADD CONSTRAINT audit_log_action_valide
   CHECK (action IN ('INSERT', 'UPDATE', 'DELETE', 'ENTREE', 'SORTIE'));
@@ -1115,7 +1141,7 @@ CREATE TRIGGER trg_revoquer_sessions_si_desactive
 -- dépliées sur l'accueil, tâches en cours proposées dans le Daily log.
 CREATE TABLE IF NOT EXISTS utilisateur_preference (
   utilisateur_id        BIGINT PRIMARY KEY REFERENCES utilisateur(id),
-  accueil_deadlines     BOOLEAN NOT NULL DEFAULT false,
+  accueil_deadlines     BOOLEAN,                -- NULL = jamais choisie (lot 20, migration 0024)
   dailylog_proposer     BOOLEAN NOT NULL DEFAULT true,
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -1235,18 +1261,47 @@ CREATE CONSTRAINT TRIGGER trg_dailylog_jour_absent_coherent
 --    Sans app.current_user_id (scripts, migrations) : seules les deux
 --    premières règles. Seule une valeur qui CHANGE est contrôlée.
 -- ---------------------------------------------------------------------
+-- Lot 20 (migration 0024) : ligne d'avant une modification contrôlée aussi ;
+-- le chef n'a plus de passe-droit sur ses propres jours au-delà de 14 jours.
+CREATE OR REPLACE FUNCTION fn_dailylog_droit(p_table TEXT, p_op TEXT, p_ligne JSONB, p_acteur BIGINT)
+RETURNS BOOLEAN AS $$
+DECLARE
+  v_proprio BIGINT := (p_ligne->>'utilisateur_id')::BIGINT;
+  v_date    DATE   := (p_ligne->>'date')::DATE;
+  v_projet  BIGINT := (p_ligne->>'projet_id')::BIGINT;
+  v_fuseau  TEXT;
+  v_role    role_enum;
+  v_actif   BOOLEAN;
+BEGIN
+  SELECT fuseau INTO v_fuseau FROM utilisateur WHERE id = v_proprio;
+  IF p_acteur = v_proprio AND v_date >= fn_aujourdhui(v_fuseau) - 14 THEN
+    RETURN true;
+  END IF;
+  SELECT role, actif INTO v_role, v_actif FROM utilisateur WHERE id = p_acteur;
+  IF v_role = 'admin' AND v_actif THEN
+    RETURN true;
+  END IF;
+  IF v_actif AND v_role = 'chef_de_projet' AND p_acteur <> v_proprio THEN
+    IF p_table = 'dailylog_entree' THEN
+      RETURN EXISTS (SELECT 1 FROM projet p WHERE p.id = v_projet AND p.chef_projet_id = p_acteur)
+          OR EXISTS (SELECT 1 FROM projet_co_chef cc WHERE cc.projet_id = v_projet AND cc.utilisateur_id = p_acteur);
+    ELSIF p_op = 'INSERT' AND NOT (p_ligne->>'absent')::BOOLEAN THEN
+      RETURN true;  -- première ligne « état du jour » d'une correction (sans absence)
+    END IF;
+  END IF;
+  RETURN false;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
 CREATE OR REPLACE FUNCTION fn_dailylog_garde()
 RETURNS TRIGGER AS $$
 DECLARE
   v_ligne        JSONB;
   v_proprio      BIGINT;
   v_date         DATE;
-  v_projet       BIGINT;
   v_acteur       BIGINT := fn_app_user_id();
   v_role_proprio role_enum;
   v_fuseau       TEXT;
-  v_role_acteur  role_enum;
-  v_actif_acteur BOOLEAN;
   v_aujourdhui   DATE;
 BEGIN
   IF current_setting('kairos.reprise_historique', true) = 'on' THEN
@@ -1268,7 +1323,6 @@ BEGIN
   v_ligne   := to_jsonb(CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END);
   v_proprio := (v_ligne->>'utilisateur_id')::BIGINT;
   v_date    := (v_ligne->>'date')::DATE;
-  v_projet  := (v_ligne->>'projet_id')::BIGINT;
   SELECT role, fuseau INTO v_role_proprio, v_fuseau FROM utilisateur WHERE id = v_proprio;
   -- Date (ou instant) simulée en mode test, ou aujourd'hui au fuseau du titulaire.
   v_aujourdhui := fn_aujourdhui(v_fuseau);
@@ -1294,22 +1348,11 @@ BEGIN
   IF v_acteur IS NULL THEN
     RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
   END IF;
-  IF v_acteur = v_proprio AND v_date >= v_aujourdhui - 14 THEN
+  -- Lot 20 : la ligne d'avant une modification est contrôlée elle aussi
+  -- (une ligne verrouillée ne se déplace pas vers un jour ouvert).
+  IF fn_dailylog_droit(TG_TABLE_NAME, TG_OP, v_ligne, v_acteur)
+     AND (TG_OP <> 'UPDATE' OR fn_dailylog_droit(TG_TABLE_NAME, TG_OP, to_jsonb(OLD), v_acteur)) THEN
     RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
-  END IF;
-  SELECT role, actif INTO v_role_acteur, v_actif_acteur FROM utilisateur WHERE id = v_acteur;
-  IF v_role_acteur = 'admin' AND v_actif_acteur THEN
-    RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
-  END IF;
-  IF v_actif_acteur AND v_role_acteur = 'chef_de_projet' THEN
-    IF TG_TABLE_NAME = 'dailylog_entree' THEN
-      IF EXISTS (SELECT 1 FROM projet p WHERE p.id = v_projet AND p.chef_projet_id = v_acteur)
-         OR EXISTS (SELECT 1 FROM projet_co_chef cc WHERE cc.projet_id = v_projet AND cc.utilisateur_id = v_acteur) THEN
-        RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
-      END IF;
-    ELSIF TG_OP = 'INSERT' AND NOT (v_ligne->>'absent')::BOOLEAN THEN
-      RETURN NEW;  -- première ligne « état du jour » d'une correction (sans absence)
-    END IF;
   END IF;
   RAISE EXCEPTION 'Daily log du % verrouillé : au-delà de 14 jours (ou pour une autre personne), seul le chef du projet ou un Admin peut corriger (utilisateur %).',
     v_date, v_proprio
@@ -1491,18 +1534,18 @@ $$ LANGUAGE plpgsql STABLE;
 -- notification.simulee et post_evenement_check : voir plus haut ;
 -- fn_dailylog_garde : section 0014).
 -- ---------------------------------------------------------------------
+-- Lots 18 et 20 (migrations 0023, 0024) : Bloqué tant qu'une tâche bloquée
+-- n'a pas été suivie d'une tâche En cours créée après son blocage.
 CREATE OR REPLACE FUNCTION fn_etat_projet_recalcule(p_etat projet_etat_enum, p_projet BIGINT)
 RETURNS projet_etat_enum AS $$
   SELECT CASE
     WHEN p_etat NOT IN ('en_cours', 'bloque') THEN p_etat
-    -- Lot 18 (migration 0023) : Bloqué tant qu'une tâche bloquée n'a pas été
-    -- suivie d'une tâche En cours créée après son blocage.
     WHEN EXISTS (
       SELECT 1 FROM tache b
       WHERE b.projet_id = p_projet AND b.etat = 'bloque'
         AND NOT EXISTS (SELECT 1 FROM tache c
                         WHERE c.projet_id = p_projet AND c.etat = 'en_cours'
-                          AND c.created_at > COALESCE(b.bloque_le, b.updated_at))
+                          AND c.created_at > COALESCE(b.bloque_le, b.created_at))
     ) THEN 'bloque'::projet_etat_enum
     ELSE 'en_cours'::projet_etat_enum
   END
@@ -1544,6 +1587,43 @@ RETURNS DATE AS $$
   SELECT LEAST(fn_aujourdhui(p_fuseau), fn_aujourdhui_reel(p_fuseau))
 $$ LANGUAGE sql STABLE;
 
+-- Lot 20 (migration 0024) : « maintenant » en mode test (date simulée) pour
+-- l'horodatage des créations ; l'audit garde l'heure réelle.
+CREATE OR REPLACE FUNCTION fn_maintenant()
+RETURNS TIMESTAMPTZ AS $$
+  SELECT COALESCE(fn_instant_simule(), now())
+$$ LANGUAGE sql STABLE;
+COMMENT ON FUNCTION fn_maintenant() IS
+  'Instant simulé de la requête (mode test) ou now() : horodatage des créations (0024).';
+
+ALTER TABLE projet ALTER COLUMN created_at SET DEFAULT fn_maintenant();
+ALTER TABLE tache ALTER COLUMN created_at SET DEFAULT fn_maintenant();
+ALTER TABLE post ALTER COLUMN created_at SET DEFAULT fn_maintenant();
+ALTER TABLE post_commentaire ALTER COLUMN created_at SET DEFAULT fn_maintenant();
+ALTER TABLE notification ALTER COLUMN created_at SET DEFAULT fn_maintenant();
+
+-- Lot 20 (migration 0024) : notifications liées à un commentaire ; index des
+-- clés étrangères post_id et tache_id.
+ALTER TABLE notification ADD COLUMN commentaire_id BIGINT REFERENCES post_commentaire(id);
+CREATE INDEX idx_notification_post ON notification (post_id) WHERE post_id IS NOT NULL;
+CREATE INDEX idx_notification_tache ON notification (tache_id) WHERE tache_id IS NOT NULL;
+CREATE INDEX idx_notification_commentaire ON notification (commentaire_id) WHERE commentaire_id IS NOT NULL;
+
+
+-- Commentaires posés par les migrations 0019 à 0021 (lot 20, revue QA n° 17a :
+-- la base créée par schema.sql seul doit être identique à la base migrée).
+COMMENT ON COLUMN notification.projet_id IS 'Projet ouvert par la notification quand elle ne porte ni post ni tâche (0019).';
+COMMENT ON COLUMN notification.simulee IS 'Rappel créé en mode test (« Simuler le rappel du jour », 0019) : ignoré par le dédoublonnage des vrais rappels.';
+COMMENT ON COLUMN post.modifie_le IS 'Dernière modification du texte par son auteur (0021).';
+COMMENT ON COLUMN post.supprime_le IS 'Suppression logique (0021) : le post n''apparaît plus nulle part ; « Annuler » la lève.';
+COMMENT ON COLUMN post.supprime_par IS 'Personne qui a supprimé le post (auteur, chef, co-chef ou Admin, 0021).';
+COMMENT ON COLUMN post_commentaire.supprime_le IS 'Suppression logique (0021), réponses comprises.';
+COMMENT ON COLUMN post_commentaire_piece_jointe.retire_le IS 'Retrait (0021) : plus téléchargeable ; fichier effacé 30 jours après.';
+COMMENT ON COLUMN post_piece_jointe.retire_le IS 'Retrait (0021) : plus téléchargeable ; fichier effacé 30 jours après.';
+COMMENT ON COLUMN tache.bloque_le IS 'Début du dernier blocage (0020) : nombre de jours de blocage.';
+COMMENT ON COLUMN tache.bloque_motif IS 'Motif du dernier blocage (« Qu''est-ce qui bloque ? », 0020) ; affiché tant que la tâche est bloquée.';
+COMMENT ON COLUMN tache.bloque_par IS 'Personne qui a signalé le dernier blocage (0020).';
+COMMENT ON TABLE utilisateur_preference IS 'Réglages d''affichage du compte (0021) : Deadlines dépliées sur l''accueil, tâches proposées dans le Daily log.';
 
 -- ---------------------------------------------------------------------
 -- Migrations déjà intégrées à ce fichier : une base créée depuis
@@ -1581,5 +1661,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0020_lot14_blocage_et_cloture'),
   ('0021_lot15_posts_et_preferences'),
   ('0022_lot17_fil_vu'),
-  ('0023_equipes_vd_et_etat_projet')
+  ('0023_equipes_vd_et_etat_projet'),
+  ('0024_lot20_droits_dates_et_garde')
 ON CONFLICT (version) DO NOTHING;

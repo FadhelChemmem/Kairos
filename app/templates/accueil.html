@@ -108,7 +108,8 @@
         {% import "partials/fil_filtres.html" as film %}
         {{ film.filtres('accueil', fil_categorie, '#fil-liste', 'main.accueil', {}, fil_non_vus|default(none)) }}
         {# Lot 18 (revue UX) : sur téléphone, « Mes tâches » est sous le fil. #}
-        {% if not sans_projets %}<a class="acc-lien-taches" href="#accueil-taches-titre">Aller à mes tâches ↓</a>{% endif %}
+        {# Lot 20 (revue QA n° 16a) : seulement si la carte des tâches existe (même condition qu'en bas). #}
+        {% if not sans_projets and g.user.role != 'client' and not (g.user.role == 'admin' and not mes_projets and tdp and not tdp.nb_toutes) %}<a class="acc-lien-taches" href="#accueil-taches-titre">Aller à mes tâches ↓</a>{% endif %}
       </div>
       <div class="card acc-fil-carte">
         <div class="search-mini fil-filtre acc-fil-filtre">

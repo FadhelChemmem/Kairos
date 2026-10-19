@@ -33,6 +33,11 @@ class TacheClose(Exception):
     """« Rejoindre cette tâche » refusé : la tâche est close (ETATS_CLOS)."""
 
 
+class ProjetClos(Exception):
+    """Écriture refusée : le projet a été clos (Terminé ou Abandonné) entre
+    le contrôle de la route et le verrou (lot 20, revue 12a)."""
+
+
 class EtatReserve(Exception):
     """Changement d'état refusé : il touche un état réservé (voir
     ETATS_RESERVES_GESTION) et l'utilisateur ne gère pas le projet."""
@@ -176,7 +181,7 @@ def list_mes_taches(user_id: int, limit: int = 10) -> list[dict]:
               )
           -- Lot 18 : « créée par moi » ne suffit plus si je ne vois plus le projet.
           AND EXISTS (SELECT 1 FROM v_projet_visibilite vv WHERE vv.projet_id = p.id AND vv.utilisateur_id = %(uid)s)
-        ORDER BY (t.date_echeance < CURRENT_DATE - 90), t.date_echeance NULLS LAST  -- lot 18 : le stock très en retard après le reste
+        ORDER BY (t.date_echeance < fn_aujourdhui() - 90), t.date_echeance NULLS LAST  -- lot 18 : le stock très en retard après le reste
         LIMIT %(limit)s
     """
     with db.get_cursor() as cur:
@@ -243,7 +248,7 @@ def list_deadlines(user_id: int, limit: int = 20) -> list[dict]:
     sql = """
         SELECT DISTINCT t.id, t.titre, t.etat, t.date_echeance, t.type_deadline,
                p.id AS projet_id, p.code AS projet_code, p.nom AS projet_nom,
-               (t.date_echeance < CURRENT_DATE - 90) AS ancienne
+               (t.date_echeance < fn_aujourdhui() - 90) AS ancienne
         FROM tache t
         JOIN projet p ON p.id = t.projet_id
         LEFT JOIN projet_co_chef cc ON cc.projet_id = p.id AND cc.utilisateur_id = %(uid)s
@@ -286,7 +291,7 @@ def list_deadlines_equipe(user_id: int, limit: int = 500) -> list[dict]:
         """
         SELECT t.id, t.titre, t.etat, t.date_echeance, t.type_deadline,
                p.id AS projet_id, p.code AS projet_code, p.nom AS projet_nom,
-               (t.date_echeance < CURRENT_DATE - 90) AS ancienne
+               (t.date_echeance < fn_aujourdhui() - 90) AS ancienne
         FROM tache t
         JOIN projet p ON p.id = t.projet_id
         WHERE t.etat = 'en_cours'
@@ -320,7 +325,7 @@ def list_deadlines_tous(chef_id: int | None = None, equipe_code: str | None = No
           AND t.date_echeance IS {'NULL' if sans_echeance else 'NOT NULL'}
           AND (%(chef)s::bigint IS NULL OR p.chef_projet_id = %(chef)s::bigint)
           AND (%(equipe)s::text IS NULL OR p.equipe_code = %(equipe)s::text)
-        ORDER BY {'p.code, t.titre, t.id' if sans_echeance else '(t.date_echeance < CURRENT_DATE - 90), t.date_echeance, p.code, t.id'}
+        ORDER BY {'p.code, t.titre, t.id' if sans_echeance else '(t.date_echeance < fn_aujourdhui() - 90), t.date_echeance, p.code, t.id'}
         LIMIT %(limit)s
     """
     with db.get_cursor() as cur:
@@ -383,7 +388,7 @@ def search(user_id: int, q: str, limit: int = 6) -> list[dict]:
     )
 
 
-def _verrouiller_projet(cur, projet_id: int) -> None:
+def _verrouiller_projet(cur, projet_id: int, *, ouvert: bool = True) -> None:
     """À appeler EN PREMIER dans toute transaction qui peut changer l'état
     d'une tâche (audit données lot 10, I2). Sans ce verrou, deux tâches
     bloquées clôturées en même temps voient chacune l'autre encore bloquée
@@ -393,7 +398,12 @@ def _verrouiller_projet(cur, projet_id: int) -> None:
     début et en NO KEY UPDATE : pas d'interblocage avec les verrous FOR KEY
     SHARE que posent les clés étrangères des posts insérés dans la même
     transaction."""
-    cur.execute("SELECT 1 FROM projet WHERE id = %s FOR NO KEY UPDATE", (projet_id,))
+    cur.execute("SELECT etat FROM projet WHERE id = %s FOR NO KEY UPDATE", (projet_id,))
+    # Lot 20 (revue 12a) : l'état du projet est relu SOUS le verrou — une
+    # tâche ne se rouvre ni ne se crée dans un projet clos entre-temps.
+    projet = cur.fetchone()
+    if ouvert and projet is not None and projet["etat"] in ("termine", "abandonne"):
+        raise ProjetClos()
 
 
 # « Annuler » d'un toast (lot 13, contre-expertise UX N9) : rejoué dans ce
@@ -422,7 +432,7 @@ def _retirer_post_annule(cur, projet_id: int, auteur_id: int, evenement: str, co
                 ORDER BY created_at DESC, id DESC LIMIT 1)
           AND p.auteur_id = %(a)s
           AND (%(tout)s OR p.contenu IS NOT DISTINCT FROM %(c)s)
-          AND p.created_at > now() - make_interval(secs => %(d)s)
+          AND p.created_at > fn_maintenant() - make_interval(secs => %(d)s)
           AND NOT EXISTS (SELECT 1 FROM post_commentaire c WHERE c.post_id = p.id)
           AND NOT EXISTS (SELECT 1 FROM post_reaction r WHERE r.post_id = p.id)
           AND NOT EXISTS (SELECT 1 FROM post_piece_jointe j WHERE j.post_id = p.id)
@@ -640,7 +650,7 @@ def version(tache_id: int) -> str | None:
 
 def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, peut_gerer: bool = False,
              annulation: bool = False, motif: str | None = None, version_attendue: str | None = None,
-             remplace: dict | None = None) -> bool:
+             remplace: dict | None = None, restaurer: dict | None = None) -> bool:
     """Changement d'état simple (En cours / Bloqué / Vérifié / Arrêt /
     Abandonné) — avec un post automatique "ancien état → nouvel état"
     depuis le 2026-09-29 (P1) ; la clôture ("Terminé", voir close_tache)
@@ -688,14 +698,22 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, 
     l'état RÉELLEMENT remplacé (lu sous verrou : etat, titre, bloque_motif,
     bloque_par). La route s'en sert pour les notifications et le jeton
     « Annuler » plutôt que de la lecture faite avant le verrou, qui pouvait
-    être périmée si deux gestes arrivaient en même temps."""
+    être périmée si deux gestes arrivaient en même temps. Lot 20 : il reçoit
+    aussi bloque_le et date_fin d'avant, et `version_apres` (version produite
+    par CE geste, lue dans la même transaction, revue 12b).
+
+    `restaurer` (lot 20, « Annuler » exact) : en annulation, valeurs d'avant
+    le geste à remettre telles quelles (bloque_motif, bloque_le, bloque_par,
+    date_fin) — un blocage annulé ne laisse plus de motif sur une tâche En
+    cours, une réouverture annulée rend sa date de fin."""
     from ..utils import tache_etat_style
 
     motif = normaliser_motif(motif)
     with db.get_cursor(user_id=current_user_id) as cur:
         _verrouiller_projet(cur, projet_id)
         cur.execute(
-            """SELECT etat, titre, bloque_motif, bloque_par, extract(epoch FROM updated_at)::text AS version
+            """SELECT etat, titre, bloque_motif, bloque_par, bloque_le, date_fin,
+                      extract(epoch FROM updated_at)::text AS version
                FROM tache WHERE id = %s AND projet_id = %s FOR UPDATE""",
             (tache_id, projet_id),
         )
@@ -703,7 +721,7 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, 
         if avant is None:
             return False
         if remplace is not None:
-            remplace.update({k: avant[k] for k in ("etat", "titre", "bloque_motif", "bloque_par")})
+            remplace.update({k: avant[k] for k in ("etat", "titre", "bloque_motif", "bloque_par", "bloque_le", "date_fin")})
         if version_attendue is not None and avant["version"] != version_attendue:
             raise TacheModifiee()
         if not peut_gerer and (etat in ETATS_RESERVES_GESTION or avant["etat"] in ETATS_RESERVES_GESTION):
@@ -721,8 +739,9 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, 
                                  WHEN etat = 'bloque' AND bloque_le IS NOT NULL THEN bloque_le
                                  WHEN %(annulation)s AND bloque_motif IS NOT DISTINCT FROM %(motif)s
                                       AND bloque_le IS NOT NULL THEN bloque_le
-                                 -- Lot 16 : instant simulé (mode test), jamais dans le futur réel.
-                                 ELSE LEAST(now(), COALESCE(fn_instant_simule(), now())) END,
+                                 -- Lot 20 : instant simulé (mode test), comme les
+                                 -- dates de création qu'on lui compare.
+                                 ELSE fn_maintenant() END,
                 bloque_par = CASE WHEN %(etat)s <> 'bloque' THEN bloque_par
                                   WHEN (etat = 'bloque' OR %(annulation)s) AND bloque_motif IS NOT DISTINCT FROM %(motif)s
                                        AND bloque_par IS NOT NULL THEN bloque_par
@@ -733,6 +752,19 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, 
             {"etat": etat, "annulation": annulation, "motif": motif, "uid": current_user_id,
              "t": tache_id, "p": projet_id},
         )
+        if annulation and restaurer:
+            # Seules les colonnes transmises sont remises (liste fermée).
+            colonnes = {"bloque_motif": "%s", "bloque_le": "%s::timestamptz", "bloque_par": "%s",
+                        "date_fin": "%s::date"}
+            champs = [c for c in colonnes if c in restaurer]
+            if champs:
+                cur.execute(
+                    "UPDATE tache SET " + ", ".join(f"{c} = {colonnes[c]}" for c in champs) + " WHERE id = %s",
+                    [restaurer[c] for c in champs] + [tache_id],
+                )
+        if remplace is not None:
+            cur.execute("SELECT extract(epoch FROM updated_at)::text AS v FROM tache WHERE id = %s", (tache_id,))
+            remplace["version_apres"] = cur.fetchone()["v"]
         if avant["etat"] != etat:
             libelle = lambda e: tache_etat_style(e)["label"]  # noqa: E731
             # Post de l'aller à retirer (« Annuler »), selon le geste annulé.
@@ -769,6 +801,9 @@ def set_titre(tache_id: int, projet_id: int, titre: str, current_user_id: int) -
     dans le fil ("ancien → nouveau", evenement='titre_tache'), dans la même
     transaction. Même garde-fou `projet_id` que set_etat."""
     with db.get_cursor(user_id=current_user_id) as cur:
+        # Lot 20 (rapport de tests N1) : projet verrouillé d'abord, comme
+        # set_etat — plus d'interblocage avec la clôture du projet.
+        _verrouiller_projet(cur, projet_id)
         cur.execute(
             "SELECT titre FROM tache WHERE id = %s AND projet_id = %s FOR UPDATE",
             (tache_id, projet_id),
@@ -825,7 +860,7 @@ TEXTE_CLOTURE_SANS_MESSAGE = "Tâche terminée."
 
 def close_tache(
     tache_id: int, projet_id: int, current_user_id: int, type_code: str, contenu: str | None = None,
-    *, peut_gerer: bool = False, date_fin=None,
+    *, peut_gerer: bool = False, date_fin=None, infos: dict | None = None,
 ) -> int | None:
     """Clôture une tâche (etat='termine', date_fin=aujourd'hui) et génère
     toujours le post automatique associé, avec le tag choisi par
@@ -857,7 +892,7 @@ def close_tache(
         # la vraie date (fn_date_ecriture, migration 0019).
         cur.execute(
             """
-            WITH avant AS (SELECT etat FROM tache WHERE id = %s)
+            WITH avant AS (SELECT etat, bloque_motif, date_fin FROM tache WHERE id = %s)
             UPDATE tache SET etat = 'termine',
                              -- Lot 17 : date de fin choisie (oubli d'hier…), jamais
                              -- après la date d'écriture (aujourd'hui, simulée comprise).
@@ -866,7 +901,9 @@ def close_tache(
                                                 (SELECT fuseau FROM utilisateur WHERE id = %s))))
             WHERE id = %s AND projet_id = %s AND etat NOT IN ('termine', 'verifie')
               AND (%s OR etat::text <> ALL (%s))
-            RETURNING id, projet_id, titre, (SELECT etat FROM avant) AS ancien_etat
+            RETURNING id, projet_id, titre, (SELECT etat FROM avant) AS ancien_etat,
+                      (SELECT bloque_motif FROM avant) AS ancien_motif,
+                      (SELECT date_fin FROM avant)::text AS ancienne_date_fin, created_at
             """,
             (tache_id, current_user_id, date_fin, current_user_id, tache_id, projet_id, peut_gerer,
              list(reserves_hors_cloture)),
@@ -892,6 +929,13 @@ def close_tache(
         )
         post_id = cur.fetchone()["id"]
         recalculer_etat_projet(cur, row["projet_id"], current_user_id)
+        if infos is not None:
+            # Lot 20 (« Annuler » exact, revue 3 et 12b) : état d'avant et
+            # version produite par la clôture, lus dans la même transaction.
+            cur.execute("SELECT extract(epoch FROM updated_at)::text AS v FROM tache WHERE id = %s", (tache_id,))
+            infos.update({"ancien_etat": str(row["ancien_etat"]), "ancien_motif": row["ancien_motif"],
+                          "ancienne_date_fin": row["ancienne_date_fin"], "version": cur.fetchone()["v"],
+                          "created_at": row["created_at"]})
         return post_id
 
 

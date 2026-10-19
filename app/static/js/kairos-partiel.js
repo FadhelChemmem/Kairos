@@ -752,8 +752,35 @@
     var actuel = win.history.state;
     if (actuel && typeof actuel === 'object') Object.keys(actuel).forEach(function (k) { st[k] = actuel[k]; });
     st.kairosPartiel = { cible: o.cible, mode: o.mode || 'outer', saisie: saisie || null };
+    // Lot 20 (revue QA n° 8) : l'entrée du panneau de tâche n'est pas
+    // recopiée — fermer le panneau ne doit pas revenir en arrière par
+    // dessus ce changement (onglet du fil, vue Deadlines).
+    delete st.kairosTache;
     return st;
   }
+
+  // Adresse affichée, tenue à jour à chaque écriture de l'historique (lot
+  // 20) : Retour / Avancer entre deux entrées qui ne diffèrent que par la
+  // tâche ouverte (?tache=) ne recharge rien — c'est le panneau qui suit.
+  var adresseAffichee = win.location.href;
+  ['pushState', 'replaceState'].forEach(function (nom) {
+    var original = win.history && win.history[nom];
+    if (typeof original !== 'function') return;
+    win.history[nom] = function () {
+      var r = original.apply(this, arguments);
+      adresseAffichee = win.location.href;
+      return r;
+    };
+  });
+  function sansTache(adresse) {
+    try {
+      var u = new URL(adresse, win.location.href);
+      u.searchParams.delete('tache');
+      if (/^#tache-\d+$/.test(u.hash)) u.hash = '';
+      return u.pathname + '?' + u.searchParams.toString() + u.hash;
+    } catch (e) { return adresse; }
+  }
+  K.sansTache = sansTache;
 
   /**
    * K.requete({ url, methode, corps, cible, mode, historique, declencheur,
@@ -958,7 +985,10 @@
     else el.removeAttribute('aria-describedby');
   }
 
-  function effacerErreurChamp(el) {
+  /** `garderPlace` (champ corrigé à la frappe, lot 20 — test Chrome N4) :
+   *  le message est masqué mais garde sa hauteur jusqu'au prochain envoi ;
+   *  le bouton d'envoi ne remonte plus sous le pointeur. */
+  function effacerErreurChamp(el, garderPlace) {
     var id = el.getAttribute('data-k-invalide');
     if (id === null) return;
     el.removeAttribute('aria-invalid');
@@ -968,14 +998,20 @@
       var msg = doc.getElementById(id);
       if (msg && msg.hasAttribute('data-k-erreur')) {
         var autres = doc.querySelectorAll('[data-k-invalide="' + echapperSel(id) + '"]');
-        if (!autres.length && msg.parentNode) msg.parentNode.removeChild(msg);
+        if (autres.length || !msg.parentNode) return;
+        if (garderPlace === true) {
+          msg.style.visibility = 'hidden';
+          msg.setAttribute('aria-hidden', 'true');
+        } else {
+          msg.parentNode.removeChild(msg);
+        }
       }
     }
   }
 
   K.effacerErreurs = function (form) {
     if (!form || !form.querySelectorAll) return;
-    Array.prototype.forEach.call(form.querySelectorAll('[data-k-invalide]'), effacerErreurChamp);
+    Array.prototype.forEach.call(form.querySelectorAll('[data-k-invalide]'), function (el) { effacerErreurChamp(el); });
     Array.prototype.forEach.call(form.querySelectorAll('[data-k-erreur]'), function (m) { if (m.parentNode) m.parentNode.removeChild(m); });
   };
 
@@ -998,6 +1034,8 @@
         rangee.appendChild(msg);
       }
       msg.textContent = champs[nom];
+      msg.style.visibility = '';
+      msg.removeAttribute('aria-hidden');
       [champ, visible].forEach(function (el) {
         el.setAttribute('aria-invalid', 'true');
         el.setAttribute('data-k-invalide', id);
@@ -1114,7 +1152,7 @@
       var el = e.target;
       if (!el || !el.hasAttribute || !el.hasAttribute('data-k-invalide')) return;
       var id = el.getAttribute('data-k-invalide');
-      Array.prototype.forEach.call(doc.querySelectorAll('[data-k-invalide="' + echapperSel(id) + '"]'), effacerErreurChamp);
+      Array.prototype.forEach.call(doc.querySelectorAll('[data-k-invalide="' + echapperSel(id) + '"]'), function (x) { effacerErreurChamp(x, true); });
     }
     doc.addEventListener('input', corrige);
     doc.addEventListener('change', corrige);
@@ -1155,8 +1193,11 @@
 
     // Retour / Avancer : entrée créée par une requête partielle.
     win.addEventListener('popstate', function (e) {
+      var avant = adresseAffichee;
+      adresseAffichee = win.location.href;
       var st = e.state && e.state.kairosPartiel;
       if (!st || !doc.querySelector(st.cible)) return;
+      if (sansTache(avant) === sansTache(win.location.href)) return;
       synchroniserFormulaires();
       K.requete({ url: win.location.pathname + win.location.search, methode: 'GET', cible: st.cible, mode: st.mode, historique: 'aucun', transition: false });
     });

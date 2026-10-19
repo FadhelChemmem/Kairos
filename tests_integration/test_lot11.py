@@ -122,11 +122,17 @@ class TestCodePropose(BaseIntegration):
         chef = self.user("chef_de_projet")
         for code in ("26076D", "26077X", "26088X", "26085P", "26922X", "26924X", "25120X"):
             self.projet(chef, code=code)
+        # Lot 20 : le code n'est unique que par phase (phase cohérente avec la lettre).
+        self.sql("UPDATE projet SET phase = 'DCE' WHERE code = '26076D'")
+        self.sql("UPDATE projet SET phase = 'APS' WHERE code = '26085P'")
         self.assertEqual(projets.propose_code("APS", annee=2026), "26089P")
         self.assertEqual(projets.propose_code("DCE", annee=2026), "26089D")
         self.assertEqual(projets.propose_code("EXE", annee=2025), "25121X")
         self.assertEqual(projets.propose_code("EXE", annee=2026, phase_liee_code="26076D"), "26076X")
         self.assertEqual(projets.propose_code("DCE", annee=2026, phase_liee_code="26076D"), "26089D")  # pris
+        # Lot 20 (décision du gérant) : l'APD d'un APS garde son code.
+        self.assertEqual(projets.propose_code("APD", annee=2026, phase_liee_code="26085P"), "26085P")
+        self.assertEqual(projets.propose_code("APS", annee=2026, phase_liee_code="26085P"), "26089P")  # pris en APS
         self.login(chef)
         self.assertEqual(self.client.get("/projets/code-propose?phase=DOE").get_json()["code"],
                          f"{datetime.date.today().year % 100:02d}001E" if datetime.date.today().year != 2026 else "26089E")

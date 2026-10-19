@@ -31,8 +31,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"   # même version que le Dockerfile
           cache: pip
@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Aucune migration publiée modifiée, renommée ou supprimée
@@ -95,7 +95,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0  # historique complet : schéma d'origine et migrations telles que publiées
 
@@ -107,6 +107,12 @@ jobs:
             echo "--- $fichier ---"
             psql -d kairos -v ON_ERROR_STOP=1 -q -f "$fichier"
           done
+
+      - name: Installation neuve (schema.sql seul, comme docker-entrypoint-initdb.d)
+        run: |
+          set -e
+          psql -d kairos -c "CREATE DATABASE schema_seul"
+          psql -d schema_seul -v ON_ERROR_STOP=1 -q -f schema.sql
 
       - name: Montée de version depuis le schéma d'origine (deux passes)
         run: |
@@ -134,12 +140,13 @@ jobs:
             fi
           done
 
-      - name: Schéma neuf = schéma migré = schéma « comme en production »
+      - name: Schéma seul = schéma neuf migré = schéma migré = schéma « comme en production »
         run: |
           set -e
-          for base in kairos montee_version comme_prod; do
+          for base in kairos schema_seul montee_version comme_prod; do
             psql -d "$base" -At -f scripts/empreinte_schema.sql | grep -v schema_migrations > "/tmp/empreinte_$base.txt"
           done
+          diff -u /tmp/empreinte_kairos.txt /tmp/empreinte_schema_seul.txt
           diff -u /tmp/empreinte_kairos.txt /tmp/empreinte_montee_version.txt
           diff -u /tmp/empreinte_kairos.txt /tmp/empreinte_comme_prod.txt
 
@@ -155,7 +162,7 @@ jobs:
             done
           done
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: empreintes-schema
@@ -185,10 +192,10 @@ jobs:
       TZ: Africa/Tunis
       PGTZ: Africa/Tunis
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -207,7 +214,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # -S error : les avertissements n'ont pas encore été passés en revue
       # (shellcheck indisponible lors de l'audit) ; à durcir en -S warning.
       - name: shellcheck
@@ -217,7 +224,7 @@ jobs:
           for f in scripts/*.sh; do
             [ "$(git ls-files -s "$f" | cut -c1-6)" = "100755" ] || { echo "::error::$f doit être en 100755"; exit 1; }
           done
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
       - name: Tests JavaScript (node --test, sans dépendance)
@@ -232,7 +239,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: .env de CI
         run: |
           umask 077
@@ -270,6 +277,7 @@ jobs:
           docker compose exec -T web flask create-user --email ci@kairos.tn --prenom C --nom I \
             --password "$(openssl rand -hex 12)" --role admin
           curl -fsS -o /dev/null http://127.0.0.1:8000/connexion
+          curl -fsS http://127.0.0.1:8000/sante | grep -qx ok
           docker compose exec -T web flask migrer | grep -q "Rien à faire"
       - name: Sauvegarde puis restauration
         run: |

@@ -21,7 +21,7 @@ def contexte_fil_accueil(user_id: int) -> dict:
     """Fil de l'accueil (lot 14, revue produit P1-3) : catégorie demandée
     (Tout · Échanges · Activité), page à partir du curseur `avant`,
     évènements automatiques regroupés, adresse de la page suivante."""
-    categorie = film.categorie_demandee()
+    categorie = film.categorie_demandee("accueil")
     instant = _instant_lecture()
     taille = film.taille_jusqua(TAILLE_FIL_ACCUEIL,
                                 lambda post_id: posts.rang_dans_fil_mes_projets(user_id, categorie, post_id))
@@ -64,13 +64,22 @@ def marquer_nouveaux(user_id: int, categorie: str, fil: list[dict], instant=None
         p["nouveau"] = bool(seuil and p.get("created_at") and p["created_at"] > seuil
                             and p.get("auteur_id") != user_id)
     vues = ("echanges", "activite") if categorie == "tout" else (categorie,)
+    # Lot 20 (revue QA, 12c) : chaque catégorie est vue jusqu'à son post le
+    # plus récent AFFICHÉ (les dates suivent la date simulée en mode test) ;
+    # sans post affiché, jusqu'à l'instant relevé avant la lecture.
+    affiches = {}
+    for p in fil:
+        c = "activite" if p.get("est_activite") else "echanges"
+        if p.get("created_at") and (c not in affiches or p["created_at"] > affiches[c]):
+            affiches[c] = p["created_at"]
+    instants = {c: affiches.get(c, instant) for c in vues}
     # Ni en « Voir comme » ni en « Agir comme » : l'Admin qui teste ne
     # consomme pas les nouveautés de la personne.
     if not g.get("lecture_seule") and not g.get("mode_admin"):
         try:
-            posts.marquer_fil_vu(user_id, vues, instant)
+            posts.marquer_fil_vu(user_id, vues, instants)
         except Exception:
-            current_app.logger.exception("Posts non vus : enregistrement impossible")
+            current_app.logger.exception("Posts non vus\u00a0: enregistrement impossible")
     return {c: n for c, n in non_vus.items() if c not in vues and n}
 
 
@@ -82,6 +91,21 @@ def _fil_partiel(user_id: int):
         return partiel.repondre("partials/fil_page.html", show_projet=True,
                                 next_url=url_for("main.accueil", fil=ctx["fil_categorie"]), **ctx)
     return partiel.repondre("partials/fil_maj.html", fil_gabarit="partials/fil_accueil.html", **ctx)
+
+
+@bp.route("/sante")
+def sante():
+    """Lot 20 (revue QA n° 7) : contrôle de santé de Docker et de deploy.sh.
+    /connexion répondait 200 base arrêtée ; ici la base est interrogée.
+    Sans connexion ni session, rien de personnel."""
+    from .. import db
+
+    try:
+        db.query_one("SELECT 1 AS ok")
+    except Exception:
+        current_app.logger.warning("Santé\u00a0: base de données injoignable")
+        return "base indisponible\n", 503, {"Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store"}
+    return "ok\n", 200, {"Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store"}
 
 
 @bp.route("/accueil")
@@ -173,7 +197,7 @@ def accueil():
         intent = "information"  # Information d'équipe, sans projet
 
     preferences = utilisateurs.get_preferences(user_id)
-    if role == "client" and not utilisateurs.a_une_preference(user_id):
+    if role == "client" and "accueil_deadlines" not in preferences.get("choisies", ()):
         # Le client « commence » par ses deadlines : dépliées tant qu'il n'a
         # pas choisi de les replier (lot 18).
         preferences = {**preferences, "accueil_deadlines": True}
@@ -224,7 +248,8 @@ def preference():
     """Réglage d'affichage du compte (lot 15) : `cle` parmi
     utilisateurs.PREFERENCES, `valeur` 1/0. Réponse vide (204)."""
     cle = request.form.get("cle", "")
-    if cle not in utilisateurs.PREFERENCES:
+    permises = utilisateurs.PREFERENCES_PAR_ROLE.get(g.user["role"], set(utilisateurs.PREFERENCES))
+    if cle not in utilisateurs.PREFERENCES or cle not in permises:
         return {"erreur": "invalide", "message": "Réglage inconnu."}, 400
     utilisateurs.set_preference(g.user["id"], cle, request.form.get("valeur") == "1")
     return "", 204

@@ -88,11 +88,19 @@ def telephone_invalide(telephone: str | None) -> str | None:
 _ID = re.compile(r"[0-9]{1,18}")
 
 
-def ids_entiers(valeurs) -> list[int]:
+# Lot 20 (revue 11) : une liste d'identifiants envoyée par un formulaire
+# est bornée (20 000 mentions occupaient le serveur 15 s).
+MAX_IDS = 100
+
+
+def ids_entiers(valeurs, maximum: int = MAX_IDS) -> list[int]:
     """Ids entiers d'une liste de champs de formulaire/URL, sans doublon
-    (ordre conservé). `str.isdigit()` accepte « ² » ou « ٣ » que `int()`
-    refuse ensuite (erreur 500) : on n'accepte que des chiffres ASCII."""
-    return list(dict.fromkeys(int(x) for x in valeurs if isinstance(x, str) and _ID.fullmatch(x)))
+    (ordre conservé), `maximum` au plus (les suivants sont ignorés).
+    `str.isdigit()` accepte « ² » ou « ٣ » que `int()` refuse ensuite
+    (erreur 500) : on n'accepte que des chiffres ASCII."""
+    valeurs = list(valeurs)[: maximum * 2]
+    ids = dict.fromkeys(int(x) for x in valeurs if isinstance(x, str) and _ID.fullmatch(x))
+    return list(ids)[:maximum]
 
 
 def premiere_erreur(*messages: str | None) -> str | None:

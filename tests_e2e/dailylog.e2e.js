@@ -143,11 +143,13 @@ async function contrastes(p) {
 
   // 1. Page, propositions à 0 h (lot 14, revue produit P0-4) : sa tâche en
   // cours du projet 1 (pas le projet 1 seul : elle y a une tâche), les
-  // projets 2, 3 (Bloqué compris) et 5 (URBS) qu'elle suit sans tâche.
+  // projets 2, 3 (Bloqué compris) et 5 (URBS) qu'elle suit sans tâche, et
+  // le 7 où elle a déjà saisi des heures (lot 20 : projets auxquels elle a
+  // participé).
   let e = await etat(p);
   etape('page chargée sur aujourd\'hui (fuseau de Tunis)', e.sel === T, e.sel);
   etape('propositions : tâche en cours + projets suivis sans tâche, à 0 h (Bloqué compris)',
-    JSON.stringify(e.rows.map((r) => r.cle).sort()) === JSON.stringify(['1:1', '2:0', '3:0', '5:0']) && e.rows.every((r) => r.m === 0 && r.propose),
+    JSON.stringify(e.rows.map((r) => r.cle).sort()) === JSON.stringify(['1:1', '2:0', '3:0', '5:0', '7:0']) && e.rows.every((r) => r.m === 0 && r.propose),
     e.rows.map((r) => r.cle));
   etape('ligne de tâche : titre en gras, « code · projet » dessous',
     (await p.textContent('#dl-liste .dl-row[data-cle="1:1"] .dl-pname')) === 'Note de calcul' &&
@@ -158,7 +160,7 @@ async function contrastes(p) {
   etape('0 h : champ vide, indication « 0 h », infobulle « Tapez 2,5 ou 2h30 »',
     (await valeur(p, '1:1')) === '' && (await p.getAttribute('#dl-liste .dl-row[data-cle="1:1"] .dl-val', 'placeholder')) === '0 h' &&
     (await p.getAttribute('#dl-liste .dl-row[data-cle="1:1"] .dl-val', 'title')) === 'Tapez 2,5 ou 2h30');
-  etape('× visible sur les lignes proposées', (await p.$$('#dl-liste .dl-retirer:not(.dl-retirer-cache)')).length === 4);
+  etape('× visible sur les lignes proposées', (await p.$$('#dl-liste .dl-retirer:not(.dl-retirer-cache)')).length === 5);
   const ordreAvant = e.rows.map((r) => r.cle).join();
   const stepAvant = await p.locator('#dl-liste .dl-row[data-cle="1:1"] .dl-plus').boundingBox();
   await p.click('#dl-liste .dl-row[data-cle="3:0"] .dl-retirer');
@@ -556,6 +558,31 @@ async function contrastes(p) {
   await attendre(async () => sql(`SELECT dailylog_proposer FROM utilisateur_preference WHERE utilisateur_id=${RIM}`) === 't');
   etape('« Annuler » : propositions revenues', (await etat(pr)).rows.some((r) => r.propose));
   await pr.close();
+
+  // 23. Lot 20 (demande du gérant) : 5 tâches proposées, la plus proche
+  // échéance d'abord, puis « + Afficher 5 de plus » (tâches puis projets).
+  const dPlus = ouvre(isoTunis(0), -3);
+  sql(`SET app.current_user_id = '${RIM}'; DELETE FROM dailylog_entree WHERE utilisateur_id=${RIM} AND date='${dPlus}'; ` +
+      `DELETE FROM dailylog_jour WHERE utilisateur_id=${RIM} AND date='${dPlus}'`);
+  sql(`WITH t AS (INSERT INTO tache (projet_id, titre, created_by, etat, date_echeance, created_at) ` +
+      `SELECT 1, 'Lot20 tâche ' || i, ${ALI}, 'en_cours', CURRENT_DATE + i, now() - interval '30 days' ` +
+      `FROM generate_series(1, 7) i RETURNING id) INSERT INTO tache_intervenant (tache_id, utilisateur_id) SELECT id, ${RIM} FROM t`);
+  const premiere = sql(`SELECT id FROM tache WHERE titre = 'Lot20 tâche 1'`);
+  const pp = await ouvrir(rim, '/dailylog?date=' + dPlus);
+  let lignes = (await etat(pp)).rows;
+  etape('5 propositions d\'abord, la plus proche échéance en tête', lignes.length === 5 && lignes.every((r) => r.propose) &&
+    lignes[0].cle === '1:' + premiere, lignes.map((r) => r.cle));
+  etape('« + Afficher 5 de plus » visible', await pp.isVisible('#dl-afficher-plus') &&
+    /Afficher 5 de plus/.test(await pp.textContent('#dl-afficher-plus')), await pp.textContent('#dl-afficher-plus'));
+  await pp.click('#dl-afficher-plus');
+  lignes = (await etat(pp)).rows;
+  etape('5 de plus, sans rien enregistrer', lignes.length === 10 && sql(`SELECT count(*) FROM dailylog_entree WHERE utilisateur_id=${RIM} AND date='${dPlus}'`) === '0',
+    lignes.map((r) => r.cle));
+  for (let i = 0; i < 3 && await pp.isVisible('#dl-afficher-plus'); i++) await pp.click('#dl-afficher-plus');
+  lignes = (await etat(pp)).rows;
+  etape('à la fin : projets suivis sans tâche aussi, bouton masqué', lignes.some((r) => /:0$/.test(r.cle)) && await pp.isHidden('#dl-afficher-plus'),
+    lignes.map((r) => r.cle));
+  await pp.close();
 
   etape('aucune erreur JavaScript', erreursJs.length === 0, erreursJs);
   await navigateur.close();

@@ -42,6 +42,10 @@ INSERT INTO tache (id, projet_id, titre, created_by, etat, date_echeance) VALUES
  (2, 1, 'Plans de ferraillage', 2, 'en_cours', CURRENT_DATE + 14),
  (3, 2, 'Descente de charges', 2, 'bloque', CURRENT_DATE + 3);
 SELECT setval(pg_get_serial_sequence('tache','id'), 3);
+-- Lot 20 : le Daily log propose ce qui était en cours LE JOUR AFFICHÉ —
+-- projets et tâches créés bien avant le scénario.
+UPDATE projet SET created_at = now() - interval '200 days';
+UPDATE tache SET created_at = now() - interval '60 days';
 INSERT INTO tache_intervenant (tache_id, utilisateur_id) VALUES (1, 3);
 -- Historique de Rim : journées remplies, absence, quart d'heure v2, Chronos 12 h
 INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, tache_id, heures, updated_by) VALUES

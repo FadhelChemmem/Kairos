@@ -58,9 +58,11 @@ Notifications et fil de posts (étape 1, complète). Flask + PostgreSQL
   « Projets ouverts dont le chef est désactivé » (liste Utilisateurs) a un
   lien « Changer le chef » qui ouvre directement la fenêtre.
 - **État du projet et clôture** (lot 13, décisions 1 et 2 du gérant) : un
-  projet ouvert est Bloqué si et seulement si une de ses tâches l'est,
-  recalculé après chaque écriture de tâche ou de projet
-  (`fn_etat_projet_recalcule`, migration 0019) ; la fenêtre Informations
+  projet ouvert est Bloqué tant qu'une de ses tâches est bloquée et
+  qu'aucune tâche En cours n'a été créée après ce blocage (lot 18 ; date
+  du blocage `bloque_le`, date simulée comprise en mode test), recalculé
+  après chaque écriture de tâche ou de projet (`fn_etat_projet_recalcule`,
+  migrations 0023 et 0024) ; la fenêtre Informations
   propose En cours, Terminé ou Abandonné. Clore un projet qui a des tâches
   ouvertes passe par une confirmation (page complète, sans JavaScript) qui
   les liste : confirmées, elles deviennent Terminées (ou Abandonnées) dans
@@ -120,8 +122,14 @@ Notifications et fil de posts (étape 1, complète). Flask + PostgreSQL
   et en arrière-plan, calendrier rempli / absent / non renseigné, bannière
   des jours manqués. Saisie libre aujourd'hui et les 14 jours précédents
   (au fuseau de la personne : Tunis ou Guyane, réglé sur sa fiche) ;
-  au-delà, correction par le chef de projet (lignes de ses projets) ou
-  l'Admin, tracée à son nom. API JSON : voir `app/routes/dailylog.py`.
+  au-delà, correction par le chef de projet (lignes des AUTRES personnes
+  sur ses projets ; ses propres jours suivent la règle des 14 jours —
+  décision du 19/10) ou l'Admin, tracée à son nom. Lot 20 : tâches
+  proposées par échéance (la plus proche d'abord), 5 à la fois avec
+  « + Afficher 5 de plus » (puis les projets suivis), parmi celles EN COURS
+  À LA DATE AFFICHÉE ; pas d'heures sur une tâche après sa clôture ni sur
+  un projet dont la personne a été retirée. API JSON : voir
+  `app/routes/dailylog.py`.
 - **Notifications** : cloche dans la barre du haut avec compteur temps
   réel, page `/notifications`, déclenchées par mention (post/commentaire),
   affectation à une tâche, ajout comme intervenant, et rappel automatique
@@ -469,8 +477,9 @@ Les deux scripts (reprise complète et `scripts/recharger_projets_chronos.py`,
 rechargement des projets et tâches sans toucher aux comptes) appliquent la
 même cohérence des états (lot 11) : une tâche En cours ou Bloquée d'un
 projet Terminé devient Terminée (Abandonnée si le projet est Abandonné), un
-projet ouvert est Bloqué si et seulement si une de ses tâches l'est. Le
-rechargement exige une base à jour (dernière migration : 0019) et signale
+projet ouvert est Bloqué selon la règle du lot 18 (une tâche bloquée sans
+tâche En cours créée après son blocage). Le rechargement exige une base à
+jour (dernière migration : 0024) et signale
 les projets ouverts sans tâche ouverte et ceux dont le chef est désactivé.
 
 Volontairement laissé hors périmètre (pas encore modélisé en étape 1) :

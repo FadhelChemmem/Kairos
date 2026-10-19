@@ -320,6 +320,10 @@ def projets_info(projet_ids, proprietaire_id: int, acteur_id: int) -> dict:
                         WHERE v.projet_id = p.id AND v.utilisateur_id = %(proprio)s) AS visible,
                EXISTS (SELECT 1 FROM v_projet_visibilite v
                         WHERE v.projet_id = p.id AND v.utilisateur_id = %(acteur)s) AS visible_acteur,
+               -- Lot 20 : retirée d'un projet d'une autre équipe → plus
+               -- d'heures nouvelles (lecture seule).
+               EXISTS (SELECT 1 FROM v_projet_action v
+                        WHERE v.projet_id = p.id AND v.utilisateur_id = %(proprio)s) AS peut_agir,
                (p.chef_projet_id = %(acteur)s OR EXISTS (
                   SELECT 1 FROM projet_co_chef cc
                    WHERE cc.projet_id = p.id AND cc.utilisateur_id = %(acteur)s)) AS gere
@@ -344,11 +348,28 @@ def projet_saisissable(projet: dict, date) -> str | None:
 def taches_projet(tache_ids) -> dict:
     """{tache_id: projet_id} pour vérifier qu'une tâche est bien du projet
     de sa ligne."""
+    return {i: t["projet_id"] for i, t in taches_infos(tache_ids).items()}
+
+
+def taches_infos(tache_ids) -> dict:
+    """{tache_id: {projet_id, ouverte_le(date) -> bool}} : projet de la tâche
+    et dernier jour où elle était ouverte (lot 20 : pas d'heures nouvelles
+    sur une tâche close après sa date de fin)."""
     ids = sorted({int(i) for i in tache_ids if i})
     if not ids:
         return {}
-    return {r["id"]: r["projet_id"] for r in db.query_all(
-        "SELECT id, projet_id FROM tache WHERE id = ANY(%s)", (ids,))}
+    return {r["id"]: dict(r) for r in db.query_all(
+        """
+        SELECT id, projet_id, (etat IN ('en_cours', 'bloque')) AS ouverte,
+               COALESCE(date_fin, (updated_at AT TIME ZONE 'Africa/Tunis')::date) AS fermee_le
+        FROM tache WHERE id = ANY(%s)
+        """, (ids,))}
+
+
+def tache_saisissable(info: dict | None, date) -> bool:
+    """Heures nouvelles possibles sur cette tâche à `date` : ouverte, ou
+    close à cette date ou après (lot 20, rapport de tests N4)."""
+    return info is None or info["ouverte"] or (info["fermee_le"] is not None and date <= info["fermee_le"])
 
 
 def taches_ouvertes(projet_id: int) -> list[dict]:
@@ -467,78 +488,74 @@ def list_lignes_suggerees(user_id: int, gere_par: int | None = None) -> dict:
 
 
 # ---------------------------------------------------------------------
-# Lignes proposées d'une journée vierge (lot 14, revue produit P0-4)
+# Lignes proposées d'une journée vierge (lot 14, revue produit P0-4 ;
+# lot 20, demande du gérant du 19/10)
 # ---------------------------------------------------------------------
-MAX_PROPOSEES = 20
-# Un chef qui gère plus de projets que ça ne se voit proposer, en « projet
-# seul », que ceux où il a saisi des heures dans les 14 jours précédents.
-MAX_PROJETS_GERES_PROPOSES = 8
+# L'écran en montre 5, puis 5 de plus à chaque « Afficher plus ».
+MAX_PROPOSEES = 60
+PROPOSEES_PAR_PAGE = 5
 
 
 def lignes_proposees(user: dict, date) -> list[dict]:
-    """Lignes proposées à 0 h sur une journée vierge (décision du gérant,
-    lot 14 : « activé, pouvant être désactivé ») :
-    - une ligne par tâche en cours ou bloquée où la personne intervient ;
-    - une ligne « projet seul » pour chaque projet qu'elle gère (chef ou
-      co-chef) — au-delà de 8 projets gérés, ceux où elle a saisi des heures
-      dans les 14 jours précédents — et pour chaque projet qu'elle suit
-      (intervenante du projet) sans tâche à elle.
-    Projets en cours ou bloqués, visibles par la personne, commencés à
-    `date` ; tâche sans date de début ou commencée ce jour-là (une tâche
-    créée aujourd'hui reste proposée pour hier : le travail a souvent
-    précédé sa saisie). Regroupées par projet (projet seul d'abord, puis ses tâches
-    par échéance). Jamais stockées : la route les joint à l'état du jour."""
-    params = {"uid": user["id"], "date": date,
-              "depuis": date - datetime.timedelta(days=FENETRE_LIBRE_JOURS)}
-    visible = """EXISTS (SELECT 1 FROM v_projet_visibilite v WHERE v.projet_id = p.id AND v.utilisateur_id = %(uid)s)
-                 AND p.etat IN ('en_cours', 'bloque') AND (p.date_debut IS NULL OR p.date_debut <= %(date)s)"""
+    """Lignes proposées à 0 h sur une journée vierge (désactivable), dans
+    l'ordre où l'écran les montre (5 d'abord, puis 5 par 5) :
+    1. ses tâches EN COURS À CETTE DATE (intervenant de la tâche), de la
+       plus proche échéance à la plus lointaine (sans échéance à la fin) ;
+    2. puis une ligne « projet seul » pour chaque AUTRE projet EN COURS À
+       CETTE DATE auquel elle participe (chef, co-chef, intervenant du projet
+       ou d'une tâche, ou heures déjà saisies), le plus récemment saisi
+       d'abord.
+    « En cours à cette date » (lot 20) : quand on revient en arrière dans le
+    calendrier, ce sont les tâches et projets ouverts CE JOUR-LÀ, pas
+    aujourd'hui : commencés (date de début, à défaut création — une tâche
+    créée le lendemain reste proposée, le travail précède souvent sa
+    saisie) et pas encore clos (tâche : date de fin ; projet : date de
+    clôture). Projets visibles et où elle peut agir (v_projet_action).
+    Jamais stockées : la route les joint à l'état du jour."""
+    params = {"uid": user["id"], "date": date}
+    projet_ouvert = """
+        EXISTS (SELECT 1 FROM v_projet_action v WHERE v.projet_id = p.id AND v.utilisateur_id = %(uid)s)
+        AND COALESCE(p.date_debut, (p.created_at AT TIME ZONE 'Africa/Tunis')::date) <= %(date)s
+        AND (p.etat IN ('en_cours', 'bloque') OR (p.date_cloture IS NOT NULL AND p.date_cloture >= %(date)s))"""
     taches = db.query_all(
         f"""
         SELECT p.id AS projet_id, p.code, p.nom, t.id AS tache_id, t.titre AS tache_titre
         FROM tache t JOIN projet p ON p.id = t.projet_id
-        WHERE t.etat IN ('en_cours', 'bloque') AND {visible}
+        WHERE {projet_ouvert}
           AND EXISTS (SELECT 1 FROM tache_intervenant ti WHERE ti.tache_id = t.id AND ti.utilisateur_id = %(uid)s)
-          AND (t.date_debut IS NULL OR t.date_debut <= %(date)s)
-        ORDER BY t.date_echeance NULLS LAST, t.titre, t.id
-        LIMIT 200
+          AND COALESCE(t.date_debut, (t.created_at AT TIME ZONE 'Africa/Tunis')::date - 1) <= %(date)s
+          AND (t.etat IN ('en_cours', 'bloque')
+               OR COALESCE(t.date_fin, (t.updated_at AT TIME ZONE 'Africa/Tunis')::date) >= %(date)s)
+        ORDER BY t.date_echeance NULLS LAST, p.code, t.titre, t.id
+        LIMIT %(limit)s
         """,
-        params,
+        {**params, "limit": MAX_PROPOSEES},
     )
     projets = db.query_all(
         f"""
         SELECT p.id AS projet_id, p.code, p.nom,
-               (p.chef_projet_id = %(uid)s OR EXISTS (SELECT 1 FROM projet_co_chef cc
-                  WHERE cc.projet_id = p.id AND cc.utilisateur_id = %(uid)s)) AS gere,
-               EXISTS (SELECT 1 FROM dailylog_entree d WHERE d.utilisateur_id = %(uid)s AND d.projet_id = p.id
-                        AND d.date >= %(depuis)s AND d.date < %(date)s) AS recent
+               (SELECT max(d.date) FROM dailylog_entree d
+                 WHERE d.utilisateur_id = %(uid)s AND d.projet_id = p.id AND d.date < %(date)s) AS derniere
         FROM projet p
-        WHERE {visible}
+        WHERE {projet_ouvert}
           AND (p.chef_projet_id = %(uid)s
                OR EXISTS (SELECT 1 FROM projet_co_chef cc WHERE cc.projet_id = p.id AND cc.utilisateur_id = %(uid)s)
-               OR EXISTS (SELECT 1 FROM projet_intervenant pi WHERE pi.projet_id = p.id AND pi.utilisateur_id = %(uid)s))
-        LIMIT 500
+               OR EXISTS (SELECT 1 FROM projet_intervenant pi WHERE pi.projet_id = p.id AND pi.utilisateur_id = %(uid)s)
+               OR EXISTS (SELECT 1 FROM tache t JOIN tache_intervenant ti ON ti.tache_id = t.id
+                          WHERE t.projet_id = p.id AND ti.utilisateur_id = %(uid)s)
+               OR EXISTS (SELECT 1 FROM dailylog_entree d WHERE d.utilisateur_id = %(uid)s AND d.projet_id = p.id))
+        ORDER BY derniere DESC NULLS LAST, p.code
+        LIMIT %(limit)s
         """,
-        params,
+        {**params, "limit": MAX_PROPOSEES},
     )
+    sortie = [{"projet_id": t["projet_id"], "tache_id": t["tache_id"], "code": t["code"], "nom": t["nom"],
+               "tache_titre": t["tache_titre"]} for t in taches]
+    # Un projet déjà proposé par une de ses tâches n'a pas en plus sa ligne
+    # « projet seul » (« + Ajouter un projet » reste là pour ça).
     avec_tache = {t["projet_id"] for t in taches}
-    geres = [p for p in projets if p["gere"]]
-    if len(geres) > MAX_PROJETS_GERES_PROPOSES:
-        geres = [p for p in geres if p["recent"]]
-    seuls = {p["projet_id"]: p for p in geres}
-    for p in projets:
-        if not p["gere"] and p["projet_id"] not in avec_tache:
-            seuls.setdefault(p["projet_id"], p)
-    groupes: dict = {}
-    for p in seuls.values():
-        groupes.setdefault(p["projet_id"], {"code": p["code"], "nom": p["nom"], "lignes": []})["lignes"].append(
-            {"projet_id": p["projet_id"], "tache_id": None, "code": p["code"], "nom": p["nom"], "tache_titre": None})
-    for t in taches:
-        groupes.setdefault(t["projet_id"], {"code": t["code"], "nom": t["nom"], "lignes": []})["lignes"].append(
-            {"projet_id": t["projet_id"], "tache_id": t["tache_id"], "code": t["code"], "nom": t["nom"],
-             "tache_titre": t["tache_titre"]})
-    sortie = []
-    for groupe in sorted(groupes.values(), key=lambda g: (sans_accents(g["nom"]), g["code"])):
-        sortie.extend(groupe["lignes"])
+    sortie += [{"projet_id": p["projet_id"], "tache_id": None, "code": p["code"], "nom": p["nom"],
+                "tache_titre": None} for p in projets if p["projet_id"] not in avec_tache]
     return sortie[:MAX_PROPOSEES]
 
 

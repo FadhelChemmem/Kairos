@@ -92,7 +92,10 @@ FICHIER_UPLOADS="$DEST/kairos_uploads_${DATE}.tar.gz"
 TMP_UPLOADS="${FICHIER_UPLOADS}.tmp"
 
 set +e
-sudo docker compose exec -T web tar czf - -C /app/uploads . > "$TMP_UPLOADS"
+# Lot 20 (shellcheck SC2024) : le fichier est écrit par ce shell, pas par
+# sudo — passage par un tube, comme pour la base (pipefail : le statut
+# reste celui de tar).
+sudo docker compose exec -T web tar czf - -C /app/uploads . | cat > "$TMP_UPLOADS"
 statut_uploads=$?
 set -e
 # tar renvoie 1 quand un fichier change pendant la lecture (un envoi de

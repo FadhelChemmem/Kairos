@@ -197,7 +197,7 @@ class TestDecision3EtatsReserves(_Base):
                                 espions=[("app.repositories.taches.close_tache", EtatReserve("x"))],
                                 **self.INTERVENANT_DE_LA_TACHE)
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(m["app.repositories.taches.close_tache"].call_args.kwargs, {"peut_gerer": False, "date_fin": None})
+        self.assertEqual(m["app.repositories.taches.close_tache"].call_args.kwargs, {"peut_gerer": False, "date_fin": None, "infos": ANY})
         self.assertTrue(any("Seuls le chef de projet" in f for f in self._flashes()))
 
     def test_refus_du_trigger_en_base_message_clair(self):
@@ -223,7 +223,7 @@ class TestDecision3EtatsReserves(_Base):
                                                                                  remplace=ANY)
         _, m = self._requete("post", "/projets/1/taches/5/cloturer", {"type_code": "envoi"},
                              espions=[("app.repositories.taches.close_tache", 100)])
-        self.assertEqual(m["app.repositories.taches.close_tache"].call_args.kwargs, {"peut_gerer": True, "date_fin": None})
+        self.assertEqual(m["app.repositories.taches.close_tache"].call_args.kwargs, {"peut_gerer": True, "date_fin": None, "infos": ANY})
 
     # --- repository : contrôle sur l'état lu sous verrou ---
     def _curseur(self, fetchone):
@@ -231,7 +231,7 @@ class TestDecision3EtatsReserves(_Base):
         m = p.start()
         self.addCleanup(p.stop)
         cur = m.return_value.__enter__.return_value
-        cur.fetchone.side_effect = fetchone
+        cur.fetchone.side_effect = smoke.fetchone_simule(cur, fetchone)
         return cur
 
     def _updates(self, cur):
@@ -611,6 +611,7 @@ class TestDecision6Interface(_Base):
         with patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
                 patch("app.repositories.securite.enregistrer_tentative"), \
                 patch("app.auth.get_user_by_email", return_value=utilisateur) as chercher, \
+                patch("app.repositories.utilisateurs.lien_reset_recent", return_value=False), \
                 patch(self.JETON), patch(self.SMTP) as smtp:
             resp = self.client.post("/mot-de-passe-oublie", data={"email": email})
         return resp, self._flashes(), chercher, smtp

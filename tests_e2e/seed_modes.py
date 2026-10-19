@@ -38,6 +38,9 @@ INSERT INTO tache (id, projet_id, titre, created_by, etat, date_echeance, type_d
  (4, 2, 'Ferraillage Urbs', 7, 'en_cours', CURRENT_DATE + 9, 'rendu_client'),
  (5, 2, 'Métré Urbs', 7, 'en_cours', NULL, 'rendu_client');
 SELECT setval(pg_get_serial_sequence('tache','id'), 5);
+-- Lot 20 : le Daily log propose ce qui était en cours LE JOUR AFFICHÉ.
+UPDATE projet SET created_at = now() - interval '200 days';
+UPDATE tache SET created_at = now() - interval '60 days';
 INSERT INTO tache_intervenant (tache_id, utilisateur_id) VALUES (1, 3), (2, 3);
 INSERT INTO notification (utilisateur_id, categorie, message) VALUES
  (3, 'projet', 'Vous avez été ajoutée à la tâche « Note de calcul fondations ».');

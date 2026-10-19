@@ -7,7 +7,7 @@ from ..repositories import posts as posts_repo
 from ..repositories import projets as projets_repo
 from ..repositories import taches as taches_repo
 from ..repositories import utilisateurs as utilisateurs_repo
-from ..storage import delete_upload, is_image_filename, refus_fichier, save_upload
+from ..storage import is_image_filename
 from ..utils import avatar_version, redirect_vers_next
 
 bp = Blueprint("fichiers", __name__, url_prefix="/fichiers")
@@ -22,51 +22,15 @@ def _safe_redirect(default_endpoint="main.accueil"):
 @bp.route("/taches/<int:tache_id>/upload", methods=["POST"])
 @login_required
 def upload_tache(tache_id: int):
-    # Contrôle d'accès (IDOR, PROMPT_CORRECTIONS.md P0 #1) : on résout la
-    # tâche -> son projet AVANT d'écrire quoi que ce soit sur le disque —
-    # avant ce correctif, save_upload() était appelé sur un tache_id
-    # deviné/inexistant sans aucune vérification, créant des fichiers
-    # orphelins et laissant n'importe quel utilisateur connecté déposer une
-    # pièce jointe sur la tâche de n'importe quel autre projet.
+    """Lot 20 (décision du gérant, déjà annoncée au lot 17) : plus de pièce
+    jointe sur les tâches — les fichiers se joignent aux posts du projet.
+    La route reste pour répondre clairement à un ancien formulaire ou à une
+    requête forgée ; les pièces déjà déposées restent téléchargeables."""
     tache = taches_repo.get_tache(tache_id)
     if tache is None or not projets_repo.user_can_view(tache["projet_id"], g.user["id"]):
         abort(404)
-    # Décisions Fadhel (lot 7) : un Client n'intervient pas sur les tâches,
-    # et plus rien ne s'ajoute à un projet terminé ou abandonné.
-    if g.user["role"] == "client":
-        abort(403)
-    if tache.get("projet_etat") in projets_repo.ETATS_CLOS:
-        return _refus("Ce projet est clos (terminé ou abandonné)\u00a0: on ne peut plus y ajouter de fichier.", 409)
-    # Même règle que les autres actions sur une tâche (état, titre, clôture)
-    # et que le point G de l'audit pour les posts : chef, co-chef ou
-    # intervenant de CETTE tâche — plus n'importe qui voyant le projet.
-    if not (projets_repo.user_can_manage(tache["projet_id"], g.user["id"])
-            or taches_repo.user_est_intervenant(tache_id, g.user["id"])):
-        return _refus("Seuls le chef de projet, un co-chef ou un intervenant de cette tâche peuvent y joindre un "
-                      "fichier.", 403)
-
-    fichier = request.files.get("fichier")
-    if not fichier or not fichier.filename:
-        return _refus("Aucun fichier sélectionné.", 422)
-    if refus := refus_fichier(fichier):
-        return _refus(refus, 422)
-
-    nom_fichier, chemin = save_upload(fichier, f"taches/{tache_id}")
-    # Fichier orphelin sur disque si l'INSERT échoue juste après (audit
-    # sécurité/qualité externe, 2026-09-28, item P0-3).
-    try:
-        taches_repo.add_piece_jointe(tache_id, nom_fichier, chemin, g.user["id"])
-    except Exception:
-        delete_upload(chemin)
-        raise
-    if partiel.est_partiel():
-        # Lot 13 : envoi avec progression (tache-dialog.js) ; le panneau de
-        # la tâche montre aussitôt la pièce jointe.
-        from .projets import _reponse_tache
-
-        return _reponse_tache(tache["projet_id"], tache_id, [partiel.toast(f"Pièce jointe «\u00a0{nom_fichier}\u00a0» ajoutée.")])
-    flash("Pièce jointe ajoutée.", "success")
-    return _safe_redirect()
+    return _refus("Les pièces jointes ne s’ajoutent plus aux tâches\u00a0: joignez le fichier à un post du "
+                  "projet («\u00a0+ Nouveau post\u00a0»).", 410)
 
 
 def _refus(message: str, statut: int):

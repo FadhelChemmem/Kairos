@@ -286,6 +286,22 @@
     if (dialog.open) {
       // Panneau déjà ouvert : on change de tâche.
       if (String(id) === tacheCourante) return;
+      // Lot 20 (revue QA n° 16b) : saisie en cours (motif de blocage…)
+      // — même confirmation qu'à la fermeture.
+      if (!opts.confirme && opts.historique !== 'aucun' && FW && FW.aEteModifiee(dialog) && K && K.confirmer) {
+        if (dialog.querySelector('.k-confirmation')) return;
+        var ancre = dialog.contains(document.activeElement) ? document.activeElement : dialog;
+        K.confirmer(ancre, 'Abandonner les modifications\u202f? La saisie sera perdue.', {
+          libelleOk: 'Abandonner', libelleAnnuler: 'Continuer la saisie', danger: true
+        }).then(function (oui) {
+          if (!oui) return;
+          var suite = {};
+          Object.keys(opts).forEach(function (k) { suite[k] = opts[k]; });
+          suite.confirme = true;
+          ouvrir(ligne, suite);
+        });
+        return;
+      }
       declencheur = titreBouton;
       if (opts.historique === 'push') {
         // Réouverture pendant la sortie : l'entrée ?tache= a déjà été

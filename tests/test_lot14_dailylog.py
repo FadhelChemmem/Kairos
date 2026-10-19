@@ -66,23 +66,28 @@ class TestLignesProposees(unittest.TestCase):
         with patch("app.db.query_all", side_effect=[taches, projets]):
             return dl.lignes_proposees({"id": 7, "fuseau": "Africa/Tunis"}, datetime.date(2026, 10, 8))
 
-    def test_regroupees_par_projet_projet_seul_d_abord(self):
+    def test_taches_par_echeance_puis_projets(self):
+        """Lot 20 (demande du gérant) : ses tâches dans l'ordre des échéances
+        (la requête trie), puis une ligne « projet seul » par AUTRE projet en
+        cours auquel la personne participe (pas celui d'une tâche proposée)."""
         taches = [{"projet_id": 2, "code": "B", "nom": "Beta", "tache_id": 20, "tache_titre": "T20"},
                   {"projet_id": 1, "code": "A", "nom": "Été", "tache_id": 10, "tache_titre": "T10"}]
-        projets = [{"projet_id": 1, "code": "A", "nom": "Été", "gere": True, "recent": False},
-                   {"projet_id": 2, "code": "B", "nom": "Beta", "gere": False, "recent": False},
-                   {"projet_id": 3, "code": "C", "nom": "Gamma", "gere": False, "recent": False}]
+        projets = [{"projet_id": 3, "code": "C", "nom": "Gamma", "derniere": None},
+                   {"projet_id": 1, "code": "A", "nom": "Été", "derniere": None}]
         sortie = [(l["projet_id"], l["tache_id"]) for l in self.appel(taches, projets)]
-        # Beta < Été (sans accents) < Gamma ; B suivi avec une tâche : pas de projet seul.
-        self.assertEqual(sortie, [(2, 20), (1, None), (1, 10), (3, None)])
+        self.assertEqual(sortie, [(2, 20), (1, 10), (3, None)])
 
-    def test_plus_de_8_projets_geres_seulement_les_recents(self):
-        projets = [{"projet_id": i, "code": f"P{i}", "nom": f"P{i:02d}", "gere": True, "recent": i in (4, 6)} for i in range(1, 10)]
-        self.assertEqual([l["projet_id"] for l in self.appel([], projets)], [4, 6])
-        self.assertEqual(len(self.appel([], projets[:8])), 8)
+    def test_sql_en_cours_a_cette_date(self):
+        import inspect
+        source = inspect.getsource(dl.lignes_proposees)
+        self.assertIn("ORDER BY t.date_echeance NULLS LAST", source)
+        self.assertIn("p.date_cloture >= %(date)s", source)          # projet clos APRÈS cette date
+        self.assertIn("t.date_fin, (t.updated_at", source)           # tâche close APRÈS cette date
+        self.assertIn("v_projet_action", source)
+        self.assertEqual(dl.PROPOSEES_PAR_PAGE, 5)
 
     def test_plafond(self):
-        taches = [{"projet_id": 1, "code": "A", "nom": "A", "tache_id": i, "tache_titre": f"T{i}"} for i in range(30)]
+        taches = [{"projet_id": 1, "code": "A", "nom": "A", "tache_id": i, "tache_titre": f"T{i}"} for i in range(70)]
         self.assertEqual(len(self.appel(taches, [])), dl.MAX_PROPOSEES)
 
 

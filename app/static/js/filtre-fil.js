@@ -74,7 +74,18 @@
   var CATEGORIES = ['tout', 'echanges', 'activite'];
   var CLE = 'kairos-fil-';
   function lire(page) { try { return window.localStorage.getItem(CLE + page); } catch (e) { return null; } }
-  function ecrire(page, valeur) { try { window.localStorage.setItem(CLE + page, valeur); } catch (e) { /* choix non mémorisé */ } }
+  // Lot 20 : le choix est aussi écrit en cookie, lu par le serveur — la
+  // page complète s'ouvre directement sur la catégorie mémorisée (plus de
+  // bascule à l'ouverture qui marquait « vu » l'onglet par défaut).
+  function cookie(page, valeur) {
+    if (!/^[a-z]+$/.test(page || '') || CATEGORIES.indexOf(valeur) === -1) return;
+    document.cookie = 'kairos_fil_' + page + '=' + valeur + '; path=/; max-age=31536000; SameSite=Lax' +
+      (window.location.protocol === 'https:' ? '; Secure' : '');
+  }
+  function ecrire(page, valeur) {
+    cookie(page, valeur);
+    try { window.localStorage.setItem(CLE + page, valeur); } catch (e) { /* choix non mémorisé */ }
+  }
   function parametre(nom) { try { return new URL(window.location.href).searchParams.get(nom); } catch (e) { return null; } }
   function adresse(fil, avecAncre, jusqua) {
     var u = new URL(window.location.href);
@@ -185,6 +196,9 @@
       return;
     }
     var memorisee = lire(nav.getAttribute('data-fil-filtres'));
+    // Choix mémorisé avant le lot 20 (localStorage seul) : recopié en
+    // cookie pour les ouvertures suivantes.
+    if (memorisee) cookie(nav.getAttribute('data-fil-filtres'), memorisee);
     if (!dansAdresse && memorisee && CATEGORIES.indexOf(memorisee) !== -1 && memorisee !== actuelle) {
       choisir(nav, memorisee, 'replace');
     }

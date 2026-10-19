@@ -295,6 +295,7 @@ class TestMotDePasseOublieSansFauxSucces(_Base):
         with patch("app.repositories.securite.compter_tentatives_recentes", return_value=0), \
              patch("app.repositories.securite.enregistrer_tentative"), \
              patch("app.auth.get_user_by_email", return_value=utilisateur), \
+             patch("app.repositories.utilisateurs.lien_reset_recent", return_value=False), \
              patch(JETON), patch(ENVOYER, return_value=False):
             self.client.post("/mot-de-passe-oublie", data={"email": "x@midgard.tn"})
         return self._flashes()

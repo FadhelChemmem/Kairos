@@ -165,8 +165,14 @@ class TestInstantSimule(_Temps):
         self.simuler(self.auj + datetime.timedelta(days=9))
         page = self.texte(self.client.get(f"/projets/{self.p1}"))
         self.assertNotIn("à l'instant", page)
-        self.assertRegex(page, r"\d+ \w+\.? à \d+\xa0h\xa0\d\d")
-        self.assertIn('title="Horodatage réel\u00a0: ', page)
+        # Lot 20 (décision du gérant) : « il y a » se lit par rapport à
+        # l'instant simulé ; un post créé SOUS la date simulée en est daté.
+        from app.utils import date_courte
+        self.assertIn(f"le {date_courte(self.auj)}", page)                 # 9 jours (simulés) plus tôt
+        self.assertNotIn("Horodatage réel", page)
+        self.client.post("/posts", data={"projet_id": str(self.p1), "type_code": "information", "contenu": "Simulé"})
+        jour = self.sql("SELECT (created_at AT TIME ZONE 'Africa/Tunis')::date AS d FROM post WHERE contenu = 'Simulé'")
+        self.assertEqual(jour[0]["d"], self.auj + datetime.timedelta(days=9))
 
     def test_aujourdhui_au_fuseau_de_la_personne(self):
         from app import horloge, utils

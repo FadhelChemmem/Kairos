@@ -461,7 +461,9 @@ class TestNotificationsEtDroits(_Projets):
         page = self.visible(self.client.get(f"/utilisateurs/{self.inter}/profil"))
         self.assertNotIn("Absent", page)
         inactif = self.user("intervenant", "VD", actif=False)
-        self.assertEqual(self.client.get(f"/utilisateurs/{inactif}/profil").status_code, 404)
+        # Lot 20 (revue N6) : même réponse qu'un identifiant inexistant.
+        self.assertEqual(self.client.get(f"/utilisateurs/{inactif}/profil").status_code, 302)
+        self.assertEqual(self.client.get("/utilisateurs/999999/profil").status_code, 302)
         # Information « toutes les équipes » : jamais chez le client.
         self.login(self.admin)
         self.client.post("/posts", data={"type_code": "information", "contenu": "Info RH interne",

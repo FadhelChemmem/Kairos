@@ -167,14 +167,22 @@ class TestMigrations(BaseIntegration):
         """Base « comme en prod avant les migrations » : flask migrer joue tout, dans l'ordre,
         puis ne rejoue rien."""
         import os, sys
-        base = "kairos_it_montee"
-        psql = ["psql", URL.rsplit("/", 1)[0] + "/postgres", "-v", "ON_ERROR_STOP=1", "-q"]
-        subprocess.run(psql + ["-c", f"DROP DATABASE IF EXISTS {base}"], check=True, capture_output=True)
-        subprocess.run(psql + ["-c", f"CREATE DATABASE {base}"], check=True, capture_output=True)
+        # Lot 20 (revue QA n° 17f) : dans un clone superficiel, la « racine »
+        # n'est pas le premier commit du projet (test faussement rouge) ;
+        # base nommée par processus (deux exécutions en parallèle).
+        superficiel = subprocess.run(["git", "rev-parse", "--is-shallow-repository"], cwd=self.RACINE,
+                                     capture_output=True, text=True).stdout.strip()
+        if superficiel != "false":
+            self.skipTest("historique git incomplet (clone superficiel) : schéma d'origine inconnu")
         racine_commit = subprocess.run(["git", "rev-list", "--max-parents=0", "HEAD"], cwd=self.RACINE,
                                        capture_output=True, text=True).stdout.split()
         if not racine_commit:
             self.skipTest("historique git indisponible")
+        base = f"kairos_it_montee_{os.getpid()}"
+        psql = ["psql", URL.rsplit("/", 1)[0] + "/postgres", "-v", "ON_ERROR_STOP=1", "-q"]
+        subprocess.run(psql + ["-c", f"DROP DATABASE IF EXISTS {base}"], check=True, capture_output=True)
+        subprocess.run(psql + ["-c", f"CREATE DATABASE {base}"], check=True, capture_output=True)
+        self.addCleanup(subprocess.run, psql + ["-c", f"DROP DATABASE IF EXISTS {base}"], capture_output=True)
         origine = subprocess.run(["git", "show", f"{racine_commit[-1]}:schema.sql"], cwd=self.RACINE,
                                  capture_output=True, text=True, check=True).stdout
         subprocess.run(["psql", URL.rsplit("/", 1)[0] + "/" + base, "-v", "ON_ERROR_STOP=1", "-q"],

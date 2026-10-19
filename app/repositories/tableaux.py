@@ -207,7 +207,7 @@ def taches_de_mes_projets(uid: int, limit: int = 200) -> list[dict]:
                OR EXISTS (SELECT 1 FROM tache_intervenant ti WHERE ti.tache_id = t.id AND ti.utilisateur_id = %(uid)s))
           -- Lot 18 : « créée par moi » ne suffit plus si je ne vois plus le projet.
           AND EXISTS (SELECT 1 FROM v_projet_visibilite vv WHERE vv.projet_id = p.id AND vv.utilisateur_id = %(uid)s)
-        ORDER BY (t.date_echeance < CURRENT_DATE - 90), t.date_echeance NULLS LAST, p.code, t.id
+        ORDER BY (t.date_echeance < fn_aujourdhui() - 90), t.date_echeance NULLS LAST, p.code, t.id
         LIMIT %(limit)s
         """,
         {"uid": uid, "limit": limit},

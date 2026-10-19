@@ -5,6 +5,7 @@ tests/test_smoke.py). Le comportement sur vraie base (lecture seule
 réelle, audit, gardes SQL) est dans tests_integration/test_lot12.py.
 """
 import contextlib
+import time
 import datetime
 import html
 import importlib
@@ -204,6 +205,9 @@ class TestTransactions(unittest.TestCase):
         conn.closed = 0
         faux = MagicMock()
         faux.getconn.return_value = conn
+        # Connexion « qui vient de servir » : pas de SELECT 1 de contrôle
+        # (lot 20, voir db._connexion_vivante).
+        db._derniere_utilisation[id(conn)] = time.monotonic()
         with patch.object(db, "_pool", faux):
             yield conn
 

@@ -48,7 +48,7 @@
                          'chef_projet': 'a changé le chef de projet',
                          'intervenant_tache': "a changé les intervenants d’une tâche",
                          'echeance_tache': "a changé l’échéance d’une tâche",
-                         'intervenant_projet': 'a retiré un intervenant du projet',
+                         'intervenant_projet': 'a changé les intervenants du projet',
                          'blocage_tache': 'a signalé un blocage', 'deblocage_tache': 'a levé le blocage'}[post.evenement] %}
         <div class="post-entete-ligne"><a href="{{ auteur_url }}" class="post-auteur-lien">{{ post.auteur_prenom }} {{ post.auteur_nom }}</a> {{ phrase }}</div>
       {% elif post.est_repost or post.parent_post_id %}
@@ -63,7 +63,7 @@
       <div class="post-meta">
         {# Information d'équipe sans projet (migration 0009) : ses équipes
            destinataires à la place du projet. #}
-        {% if post.projet_id is none %}<span>{{ 'Équipes' if post.equipes|default([])|length > 1 else 'Équipe' }}&nbsp;: {{ post.equipes|default([])|join(', ') }}</span> · {% elif show_projet %}<a href="{{ url_for('projets.detail', projet_id=post.projet_id) }}" class="lien-discret">{{ post.projet_code }}_{{ post.projet_nom }}</a> · {% endif %}{% if post.created_at %}<time datetime="{{ post.created_at.isoformat() }}" title="{{ 'Horodatage réel : ' if g.date_simulee }}{{ date_fr(post.created_at) }} à {{ post.created_at.strftime('%H:%M') }}">{{ post.created_at|il_y_a }}</time>{% endif %}{% if post.modifie_le %} · <span title="Modifié {{ post.modifie_le|il_y_a }}">modifié</span>{% endif %}{% if post.nouveau|default(false) %} <span class="fil-nouveau-puce">Nouveau</span>{% endif %}
+        {% if post.projet_id is none %}<span>{{ 'Équipes' if post.equipes|default([])|length > 1 else 'Équipe' }}&nbsp;: {{ post.equipes|default([])|join(', ') }}</span> · {% elif show_projet %}<a href="{{ url_for('projets.detail', projet_id=post.projet_id) }}" class="lien-discret">{{ post.projet_code }}_{{ post.projet_nom }}</a> · {% endif %}{% if post.created_at %}<time datetime="{{ post.created_at.isoformat() }}" title="{{ date_fr(post.created_at) }} à {{ post.created_at.strftime('%H:%M') }}">{{ post.created_at|il_y_a }}</time>{% endif %}{% if post.modifie_le %} · <span title="Modifié {{ post.modifie_le|il_y_a }}">modifié</span>{% endif %}{% if post.nouveau|default(false) %} <span class="fil-nouveau-puce">Nouveau</span>{% endif %}
       </div>
     </div>
     <div class="post-entete-droite">
@@ -204,6 +204,11 @@
     {% endif %}
   {% endfor %}
 
+  {% if post.suites_taches|default([]) and post.projet_id %}
+    {# Lot 20 (test Chrome FP3) : la suite donnée à ce post. #}
+    <p class="post-suites post-meta">Suite&nbsp;:
+      {%- for st in post.suites_taches %} tâche <a href="{{ url_for('projets.detail', projet_id=post.projet_id, tache=st.id) }}" class="post-auteur-lien">«&nbsp;{{ st.titre }}&nbsp;»</a>{{ ',' if not loop.last }}{% endfor %}</p>
+  {% endif %}
   {% if post.parent_post_id %}
     <div class="post-parent">
       <div class="post-parent-entete">

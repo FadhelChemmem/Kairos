@@ -210,18 +210,24 @@ def il_y_a(dt) -> str:
     """Formatage relatif façon réseau social ("il y a 1 h", "hier"),
     comme dans les maquettes.
 
-    Lot 13 (audit temps T-M5) : sous date simulée (mode test), la date
-    absolue de l'horodatage RÉEL (« 9 oct. à 13 h 08 », au fuseau de la
-    personne) — « il y a 11 min » à côté d'une date simulée trompait."""
+    Lot 20 (décision du gérant) : sous date simulée (mode test), les
+    horodatages sont SIMULÉS eux aussi (fn_maintenant) ; « il y a … » se lit
+    alors par rapport à l'instant simulé. Un horodatage postérieur à
+    l'instant simulé (créé avant la simulation, dans le « futur » simulé)
+    s'affiche en date absolue (« 9 oct. à 13 h 08 »)."""
     from . import horloge
 
     if dt is None:
         return ""
     if horloge.date_simulee() is not None:
-        local = dt.astimezone(horloge.maintenant_reel().tzinfo) if dt.tzinfo else dt
-        jour = date_courte(local.date(), avec_annee=local.year != horloge.aujourdhui_reel().year)
-        return f"{jour} à {local.hour}\u00a0h\u00a0{local.minute:02d}"
-    now = datetime.datetime.now(dt.tzinfo) if dt.tzinfo else datetime.datetime.now()
+        maintenant = horloge.maintenant()
+        if dt.tzinfo and dt > maintenant + datetime.timedelta(minutes=1):
+            local = dt.astimezone(maintenant.tzinfo)
+            jour = date_courte(local.date(), avec_annee=local.year != maintenant.year)
+            return f"{jour} à {local.hour}\u00a0h\u00a0{local.minute:02d}"
+        now = maintenant if dt.tzinfo else maintenant.replace(tzinfo=None)
+    else:
+        now = datetime.datetime.now(dt.tzinfo) if dt.tzinfo else datetime.datetime.now()
     delta = now - dt
     secondes = delta.total_seconds()
 

@@ -127,17 +127,17 @@ class TestPanneauDeTache(_Partiel):
         html = r.get_data(as_text=True)
         self.assertTrue(html.lstrip().startswith('<div class="taskrow'))
         self.assertNotIn("task-join-btn", html.split("</div>")[0] + html.split('role="cell" class="taskrow-etat"')[0])
-        # Pièce jointe (intervenant de la tâche) : le panneau la montre.
+        # Pièce jointe : plus jamais sur une tâche (lot 20, décision du gérant).
         r = self.client.post(f"/fichiers/taches/{self.t1}/upload", headers=cible,
                              data={"fichier": (io.BytesIO(b"x" * 10), "plan.pdf")}, content_type="multipart/form-data")
-        self.assertEqual(r.status_code, 200)
-        self.assertIn("plan.pdf", r.get_data(as_text=True))
-        # Client : 403 (JSON).
+        self.assertEqual(r.status_code, 410)
+        self.assertEqual(self.sql("SELECT count(*) AS n FROM tache_piece_jointe")[0]["n"], 0)
+        # Client : refusé aussi (404 s'il ne voit pas le projet, 410 sinon).
         client = self.user("client")
         self.login(client)
         r = self.client.post(f"/fichiers/taches/{self.t1}/upload", headers=cible,
                              data={"fichier": (io.BytesIO(b"x"), "a.pdf")}, content_type="multipart/form-data")
-        self.assertIn(r.status_code, (403, 404))
+        self.assertIn(r.status_code, (404, 410))
 
 
 class TestFicheProjet(_Partiel):
