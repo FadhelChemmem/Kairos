@@ -1,4 +1,6 @@
-"""Upload et téléchargement des pièces jointes (tâches et posts)."""
+"""Téléchargement des pièces jointes (tâches et posts) et des photos de
+profil. Lot 20 : plus aucun envoi de fichier sur une tâche (l'ancienne
+route répond 410) ; les fichiers d'un post passent par app/routes/posts.py."""
 from flask import Blueprint, abort, current_app, flash, g, request, send_from_directory
 
 from .. import partiel

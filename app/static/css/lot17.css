@@ -122,3 +122,36 @@ html.k-js .pj-champ textarea { padding-bottom: 42px; min-height: 96px; }
 @media (max-width: 900px) { .acc-lien-taches { display: inline-block; } }
 /* « + Nouvelle tâche » dans l'en-tête de la carte Tâches. */
 .carte-taches-entete { display: flex; align-items: center; justify-content: space-between; gap: var(--esp-3); flex-wrap: wrap; }
+/* Lot 21 (demande du gérant) : Information épinglée en tête du fil de la
+   fiche projet — encadré vert, titre « Épinglé ». */
+.fil-epingle-zone:empty { display: none; }
+.fil-epingle {
+  margin: 0 0 var(--esp-3, 12px); padding: 10px 10px 12px; border-radius: 14px;
+  background: var(--brand-bg-soft); border: 1px solid color-mix(in srgb, var(--accent-fill) 35%, transparent);
+}
+.fil-epingle-titre {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 2px 4px 10px;
+  font-size: 13px; font-weight: 700; color: var(--brand-text); text-transform: none;
+}
+.fil-epingle-sous-titre { font-weight: 500; color: var(--text-muted); }
+.fil-epingle .post-card { margin: 0; }
+.pill-epingle { background: var(--brand-bg-soft); color: var(--brand-text); margin-right: 6px; }
+/* Lot 21 (demande du gérant) : bascule « Me concernant » du fil de la fiche. */
+.fil-moi {
+  display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; min-height: 36px; padding: 0 4px;
+  font-size: 13px; font-weight: 600; color: var(--text-secondary); text-decoration: none; border-radius: 9px;
+}
+.fil-moi:hover { color: var(--text); }
+.fil-moi:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.fil-moi-piste {
+  position: relative; width: 34px; height: 20px; border-radius: 999px; flex-shrink: 0;
+  background: var(--control-border); transition: background-color .15s;
+}
+.fil-moi-bouton {
+  position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--surface); box-shadow: 0 1px 2px rgb(0 0 0 / 25%); transition: transform .15s;
+}
+.fil-moi[aria-checked="true"] { color: var(--brand-text); }
+.fil-moi[aria-checked="true"] .fil-moi-piste { background: var(--accent-fill); }
+.fil-moi[aria-checked="true"] .fil-moi-bouton { transform: translateX(14px); background: var(--on-accent); }
+@media (prefers-reduced-motion: reduce) { .fil-moi-piste, .fil-moi-bouton { transition: none; } }

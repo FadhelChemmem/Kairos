@@ -247,12 +247,15 @@ def a_deja_la_notification(user_id: int, message: str) -> bool:
     jour ne prévient qu'une fois). Lot 13 (audit temps T-M1) : au fuseau de
     la personne, jamais celui de la session (Tunis, déjà le lendemain le
     soir en Guyane). Lot 20 : l'horodatage suit la date simulée (mode test),
-    le jour comparé aussi."""
+    le jour comparé aussi. Lot 21 : une écriture n'est jamais datée dans le
+    futur réel (fn_maintenant plafonné) : le jour comparé est celui de
+    fn_maintenant(), pas fn_aujourdhui() qui peut être dans le futur."""
     row = db.query_one(
         """
         SELECT 1 FROM notification n JOIN utilisateur u ON u.id = n.utilisateur_id
         WHERE n.utilisateur_id = %s AND n.message = %s
-          AND (n.created_at AT TIME ZONE u.fuseau)::date = fn_aujourdhui(u.fuseau)
+          AND (n.created_at AT TIME ZONE u.fuseau)::date
+              = (fn_maintenant() AT TIME ZONE u.fuseau)::date
         """,
         (user_id, message),
     )

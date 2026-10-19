@@ -14,15 +14,22 @@
   var derniereDemande = 0;
   champCode.addEventListener('input', function () { modifieManuellement = true; });
   var champLie = document.getElementById('phase_liee_id');
-  function recalculer() {
-    if (modifieManuellement || !urlCodePropose) return;
+  // Lot 21 (test Chrome) : client repris de la phase liée, tant que le
+  // champ n'a pas été modifié à la main.
+  var champClient = document.getElementById('client');
+  var clientModifie = false;
+  if (champClient) champClient.addEventListener('input', function () { clientModifie = true; });
+  function recalculer(e) {
+    var reprendreClient = !!(e && e.target === champLie && champClient && !clientModifie && champLie.value);
+    if ((modifieManuellement && !reprendreClient) || !urlCodePropose) return;
     var numero = ++derniereDemande;
     fetch(urlCodePropose + '?phase=' + encodeURIComponent(champPhase.value)
           + (champLie && champLie.value ? '&phase_liee_id=' + encodeURIComponent(champLie.value) : ''))
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        if (numero !== derniereDemande || modifieManuellement) return;
-        if (data.code) champCode.value = data.code;
+        if (numero !== derniereDemande) return;
+        if (reprendreClient && data.client && !clientModifie) champClient.value = data.client;
+        if (!modifieManuellement && data.code) champCode.value = data.code;
       })
       .catch(function () { /* le code affiché reste une proposition valable */ });
   }

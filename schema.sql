@@ -73,7 +73,7 @@ RETURNS TRIGGER AS $$
 DECLARE
   v_user_id BIGINT := fn_app_user_id();
 BEGIN
-  NEW.updated_at = now();
+  NEW.updated_at = fn_maintenant();
   IF v_user_id IS NOT NULL THEN
     NEW.updated_by = v_user_id;
   END IF;
@@ -272,6 +272,19 @@ CREATE TABLE projet_intervenant (
   PRIMARY KEY (projet_id, utilisateur_id)
 );
 CREATE INDEX idx_projet_intervenant_user ON projet_intervenant(utilisateur_id);
+
+-- Lot 21 (migration 0025) : personnes qui ont participé à un projet puis en
+-- ont été retirées — lecture seule gardée (v_projet_visibilite). Défaut
+-- fn_maintenant() posé plus bas (fonction définie plus loin).
+CREATE TABLE projet_ancien_membre (
+  projet_id      BIGINT NOT NULL REFERENCES projet(id) ON DELETE CASCADE,
+  utilisateur_id BIGINT NOT NULL REFERENCES utilisateur(id),
+  depuis         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (projet_id, utilisateur_id)
+);
+CREATE INDEX idx_projet_ancien_membre_user ON projet_ancien_membre(utilisateur_id);
+COMMENT ON TABLE projet_ancien_membre IS
+  'Personnes qui ont participé à un projet puis en ont été retirées (0025) : lecture seule gardée (v_projet_visibilite).';
 
 -- ---------------------------------------------------------------------
 -- Contrainte métier (2026-09-16) : un utilisateur avec le rôle RH ne
@@ -518,8 +531,17 @@ CREATE TABLE post (
   -- LOGIQUE par l'auteur, le chef, un co-chef ou l'Admin (« Annuler »).
   modifie_le     TIMESTAMPTZ,
   supprime_le    TIMESTAMPTZ,
-  supprime_par   BIGINT REFERENCES utilisateur(id)
+  supprime_par   BIGINT REFERENCES utilisateur(id),
+  -- Lot 21 (migration 0025) : Information épinglée en tête du fil du projet.
+  epingle_le     TIMESTAMPTZ,
+  epingle_par    BIGINT REFERENCES utilisateur(id),
+  CONSTRAINT post_epingle_check CHECK (
+    epingle_le IS NULL
+    OR (projet_id IS NOT NULL AND type_code = 'information' AND evenement IS NULL AND supprime_le IS NULL))
 );
+CREATE UNIQUE INDEX ux_post_epingle_projet ON post(projet_id) WHERE epingle_le IS NOT NULL;
+COMMENT ON COLUMN post.epingle_le IS 'Épinglé en tête du fil du projet (0025) : un seul post par projet.';
+COMMENT ON COLUMN post.epingle_par IS 'Qui a épinglé le post (chef, co-chef ou Admin).';
 CREATE TRIGGER trg_post_updated_at
   BEFORE UPDATE ON post
   FOR EACH ROW EXECUTE FUNCTION set_updated_at_and_by();
@@ -856,6 +878,7 @@ WHERE u.actif = true
         JOIN tache_intervenant ti ON ti.tache_id = t.id
         WHERE t.projet_id = p.id AND ti.utilisateur_id = u.id
       )
+      OR EXISTS (SELECT 1 FROM projet_ancien_membre am WHERE am.projet_id = p.id AND am.utilisateur_id = u.id)
     ))
   );
 
@@ -1190,6 +1213,36 @@ DROP TRIGGER IF EXISTS trg_dailylog_entree_controle ON dailylog_entree;
 CREATE TRIGGER trg_dailylog_entree_controle
   BEFORE INSERT OR UPDATE OF heures ON dailylog_entree
   FOR EACH ROW EXECUTE FUNCTION fn_dailylog_entree_controle();
+
+-- Lot 21 (migration 0025) : pas d'heures nouvelles sur une tâche close après
+-- sa date de fin (gardé en base : la saisie et la clôture peuvent se croiser).
+CREATE OR REPLACE FUNCTION fn_dailylog_tache_close()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_etat TEXT;
+  v_fin  DATE;
+BEGIN
+  IF NEW.tache_id IS NULL OR current_setting('kairos.reprise_historique', true) = 'on' THEN
+    RETURN NEW;
+  END IF;
+  -- Ligne inchangée ou baissée (correction) : jamais refusée.
+  IF TG_OP = 'UPDATE' AND NEW.tache_id IS NOT DISTINCT FROM OLD.tache_id AND NEW.date = OLD.date
+     AND NEW.heures <= OLD.heures THEN
+    RETURN NEW;
+  END IF;
+  -- FOR SHARE : une clôture en cours (FOR UPDATE) passe d'abord, ou attend.
+  SELECT etat::TEXT, date_fin INTO v_etat, v_fin FROM tache WHERE id = NEW.tache_id FOR SHARE;
+  IF v_etat IN ('termine', 'verifie', 'abandonne', 'arret') AND v_fin IS NOT NULL AND NEW.date > v_fin THEN
+    RAISE EXCEPTION 'Daily log : la tâche % est close depuis le % (pas d''heures après sa date de fin).', NEW.tache_id, v_fin
+      USING ERRCODE = 'check_violation', CONSTRAINT = 'dailylog_tache_close';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trg_dailylog_tache_close ON dailylog_entree;
+CREATE TRIGGER trg_dailylog_tache_close
+  BEFORE INSERT OR UPDATE ON dailylog_entree
+  FOR EACH ROW EXECUTE FUNCTION fn_dailylog_tache_close();
 
 -- ---------------------------------------------------------------------
 -- 5. Cohérence du jour, DIFFÉRÉE au COMMIT (l'ordre des écritures dans la
@@ -1557,7 +1610,7 @@ DECLARE
   v TEXT := current_setting('kairos.instant_simule', true);
   t TIMESTAMPTZ;
 BEGIN
-  IF v IS NULL OR v !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?([+-][0-9]{2}:[0-9]{2}|Z)$' THEN
+  IF v IS NULL OR v !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]{1,6})?)?([+-][0-9]{2}:[0-9]{2}|Z)$' THEN
     RETURN NULL;
   END IF;
   t := v::TIMESTAMPTZ;
@@ -1591,16 +1644,64 @@ $$ LANGUAGE sql STABLE;
 -- l'horodatage des créations ; l'audit garde l'heure réelle.
 CREATE OR REPLACE FUNCTION fn_maintenant()
 RETURNS TIMESTAMPTZ AS $$
-  SELECT COALESCE(fn_instant_simule(), now())
-$$ LANGUAGE sql STABLE;
+  SELECT LEAST(COALESCE(fn_instant_simule(), clock_timestamp()), clock_timestamp())
+$$ LANGUAGE sql VOLATILE;
 COMMENT ON FUNCTION fn_maintenant() IS
-  'Instant simulé de la requête (mode test) ou now() : horodatage des créations (0024).';
+  'Horodatage d''une écriture (0024, 0025) : instant simulé (mode test) ou instant réel de l''écriture, jamais après l''instant réel.';
 
 ALTER TABLE projet ALTER COLUMN created_at SET DEFAULT fn_maintenant();
 ALTER TABLE tache ALTER COLUMN created_at SET DEFAULT fn_maintenant();
 ALTER TABLE post ALTER COLUMN created_at SET DEFAULT fn_maintenant();
 ALTER TABLE post_commentaire ALTER COLUMN created_at SET DEFAULT fn_maintenant();
 ALTER TABLE notification ALTER COLUMN created_at SET DEFAULT fn_maintenant();
+ALTER TABLE projet_co_chef ALTER COLUMN created_at SET DEFAULT fn_maintenant();
+ALTER TABLE projet_intervenant ALTER COLUMN created_at SET DEFAULT fn_maintenant();
+ALTER TABLE post_reaction ALTER COLUMN created_at SET DEFAULT fn_maintenant();
+ALTER TABLE projet_ancien_membre ALTER COLUMN depuis SET DEFAULT fn_maintenant();
+
+-- Lot 21 (migration 0025) : anciens participants, lecture seule gardée.
+CREATE OR REPLACE FUNCTION fn_garder_ancien_membre()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_projet BIGINT;
+  v_user   BIGINT;
+BEGIN
+  IF TG_TABLE_NAME = 'tache_intervenant' THEN
+    SELECT projet_id INTO v_projet FROM tache WHERE id = OLD.tache_id;
+    v_user := OLD.utilisateur_id;
+  ELSIF TG_TABLE_NAME = 'projet' THEN
+    IF NEW.chef_projet_id IS NOT DISTINCT FROM OLD.chef_projet_id THEN
+      RETURN NULL;
+    END IF;
+    v_projet := OLD.id;
+    v_user := OLD.chef_projet_id;
+  ELSE
+    v_projet := OLD.projet_id;
+    v_user := OLD.utilisateur_id;
+  END IF;
+  -- Projet en cours de suppression (cascade) : rien à garder.
+  IF v_projet IS NOT NULL AND v_user IS NOT NULL
+     AND EXISTS (SELECT 1 FROM projet WHERE id = v_projet) THEN
+    INSERT INTO projet_ancien_membre (projet_id, utilisateur_id)
+    VALUES (v_projet, v_user)
+    ON CONFLICT DO NOTHING;
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_ancien_membre_co_chef ON projet_co_chef;
+CREATE TRIGGER trg_ancien_membre_co_chef AFTER DELETE ON projet_co_chef
+  FOR EACH ROW EXECUTE FUNCTION fn_garder_ancien_membre();
+DROP TRIGGER IF EXISTS trg_ancien_membre_intervenant ON projet_intervenant;
+CREATE TRIGGER trg_ancien_membre_intervenant AFTER DELETE ON projet_intervenant
+  FOR EACH ROW EXECUTE FUNCTION fn_garder_ancien_membre();
+DROP TRIGGER IF EXISTS trg_ancien_membre_tache ON tache_intervenant;
+CREATE TRIGGER trg_ancien_membre_tache AFTER DELETE ON tache_intervenant
+  FOR EACH ROW EXECUTE FUNCTION fn_garder_ancien_membre();
+DROP TRIGGER IF EXISTS trg_ancien_membre_chef ON projet;
+CREATE TRIGGER trg_ancien_membre_chef AFTER UPDATE OF chef_projet_id ON projet
+  FOR EACH ROW EXECUTE FUNCTION fn_garder_ancien_membre();
 
 -- Lot 20 (migration 0024) : notifications liées à un commentaire ; index des
 -- clés étrangères post_id et tache_id.
@@ -1662,5 +1763,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0021_lot15_posts_et_preferences'),
   ('0022_lot17_fil_vu'),
   ('0023_equipes_vd_et_etat_projet'),
-  ('0024_lot20_droits_dates_et_garde')
+  ('0024_lot20_droits_dates_et_garde'),
+  ('0025_lot21_participants_horloge_et_gardes')
 ON CONFLICT (version) DO NOTHING;

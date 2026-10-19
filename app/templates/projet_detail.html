@@ -28,7 +28,7 @@
         <h2 class="acc-section-titre" id="posts-projet-titre">Fil du projet</h2>
         {# Lot 14 (revue produit P1-3) : Tout · Échanges · Activité. #}
         {% import "partials/fil_filtres.html" as film %}
-        {{ film.filtres('projet', fil_categorie, '#fil-posts', 'projets.detail', {'projet_id': projet.id}) }}
+        {{ film.filtres('projet', fil_categorie, '#fil-posts', 'projets.detail', {'projet_id': projet.id, 'moi': ('1' if fil_moi else none)}) }}
       </div>
       <div class="fil-outils">
         {# Vrai champ de filtre (audit n°2) : masque, côté navigateur, les
@@ -39,8 +39,18 @@
         </label>
         {# Lot 15 : seul bouton de publication de la fiche (« + Tâche » de la
            carte Tâches faisait doublon : même fenêtre). #}
+        {# Lot 21 (demande du gérant) : tout le fil, ou seulement ce qui me
+           concerne (mes posts, mes mentions, les suites données à mes posts). #}
+        <a href="{{ url_for('projets.detail', projet_id=projet.id, fil=fil_categorie, moi=(none if fil_moi else '1')) }}"
+           class="fil-moi" id="fil-moi" role="switch" aria-checked="{{ 'true' if fil_moi else 'false' }}"
+           data-fil-moi data-fil-cible="#fil-posts"
+           title="Mes posts, ceux où je suis tagué et les suites données à mes posts">
+          <span class="fil-moi-piste" aria-hidden="true"><span class="fil-moi-bouton"></span></span>
+          <span class="fil-moi-libelle">Me concernant</span>
+        </a>
         {% include "partials/fil_outils.html" %}
       </div>
+      {% include "partials/fil_epingle.html" %}
       {% include "partials/fil_projet.html" %}
       {% include "partials/fil_suite.html" %}
       <div id="filtre-posts-vide" class="fil-filtre-vide" role="status"></div>

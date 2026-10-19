@@ -961,16 +961,19 @@
     // --- outils du jour ----------------------------------------------------
     function updateCopy() {
       var c = jour && jour.copie;
+      // Lot 21 (test Chrome) : un dernier jour rempli dont aucune ligne ne
+      // peut être reprise (tâche ou projet clos depuis) le dit.
+      var rien = !!(c && !(c.lignes || []).length);
       copierBtn.innerHTML = SVG_COPIE;
-      copierBtn.appendChild(document.createTextNode(c ? tr(T.copier_le, dateCourte(c.date)) : T.copier_aucun));
-      copierBtn.disabled = !c || chargement;
-      copierBtn.title = c ? '' : T.copier_aucun_titre;
+      copierBtn.appendChild(document.createTextNode(c && !rien ? tr(T.copier_le, dateCourte(c.date)) : T.copier_aucun));
+      copierBtn.disabled = !c || rien || chargement;
+      copierBtn.title = rien ? tr(T.copier_rien_titre, dateCourte(c.date)) : (c ? '' : T.copier_aucun_titre);
     }
     function cloneRows() { return rows.map(function (r) { return Object.assign({}, r); }); }
     copierBtn.addEventListener('click', function () {
       flush();
       var c = jour && jour.copie;
-      if (!c || isAbsent()) return;
+      if (!c || !(c.lignes || []).length || isAbsent()) return;
       var k0 = sel, avant = cloneRows();
       var copies = c.lignes.map(ligneVersRow);
       // les lignes que la personne ne peut pas modifier restent telles quelles

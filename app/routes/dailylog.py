@@ -85,9 +85,10 @@ TEXTES_DAILYLOG = {
     "copier_le": "Copier le {x}",
     "copier_aucun": "Copier la veille",
     "copier_aucun_titre": "Aucune journée précédente avec des heures",
+    "copier_rien_titre": "Rien à copier du {x}\u00a0: ses heures portent sur des tâches ou des projets clos depuis",
     "copie_depuis": "Copié depuis le {x}",
-    "copie_exclues": " — {x} ligne non reprise\u00a0: projet clos, pas encore commencé ou plus visible",
-    "copie_exclues_pl": " — {x} lignes non reprises\u00a0: projet clos, pas encore commencé ou plus visible",
+    "copie_exclues": " — {x} ligne non reprise\u00a0: tâche ou projet clos, pas encore commencé ou plus ouvert",
+    "copie_exclues_pl": " — {x} lignes non reprises\u00a0: tâche ou projet clos, pas encore commencé ou plus ouverts",
     "annuler": "Annuler",
     "annuler_dispo": " — bouton Annuler disponible",
     "marquer_absent": "Marquer absent",
@@ -371,11 +372,13 @@ def _copie(proprio: dict, date, droits: dict) -> dict | None:
         return None
     jour = dl.lire_jour(proprio["id"], source)
     infos = dl.projets_info([l["projet_id"] for l in jour["lignes"]], proprio["id"], g.user["id"])
-    taches_info = dl.taches_infos([l["tache_id"] for l in jour["lignes"] if l.get("tache_id")])
+    taches_info = dl.taches_infos([l["tache_id"] for l in jour["lignes"] if l.get("tache_id")], proprio["id"])
     lignes, exclues, total = [], 0, 0
     for ligne in jour["lignes"]:
         projet = infos.get(ligne["projet_id"])
-        if (projet is None or not projet["visible"] or not projet.get("peut_agir", True)
+        info_tache = taches_info.get(ligne["tache_id"]) if ligne.get("tache_id") else None
+        sienne = bool(info_tache and info_tache.get("intervenant") and dl.tache_saisissable(info_tache, date))
+        if (projet is None or not projet["visible"] or not (projet.get("peut_agir", True) or sienne)
                 or dl.projet_saisissable(projet, date)
                 or (ligne.get("tache_id") and not dl.tache_saisissable(taches_info.get(ligne["tache_id"]), date))):
             exclues += 1
@@ -386,8 +389,8 @@ def _copie(proprio: dict, date, droits: dict) -> dict | None:
             continue
         total += minutes
         lignes.append({**ligne, "minutes": minutes, "hors_grille": False, "modifiable": True})
-    if not lignes:
-        return None
+    # Lot 21 (test Chrome) : rien à reprendre — le jour source est quand même
+    # donné, l'écran explique pourquoi « Copier » est inactif.
     return {"date": source.isoformat(), "lignes": lignes, "exclues": exclues}
 
 
@@ -575,9 +578,16 @@ def _ecrire(proprio: dict, date, aujourdhui, corps: dict, absent: bool, lignes_b
         erreurs.append({"code": "absent_avec_heures"})
     if erreurs:
         raise ErreurApi(422, "validation", "Saisie refusée.", erreurs=erreurs)
-    taches_info = dl.taches_infos([l["tache_id"] for l in lignes if l["tache_id"]])
+    taches_info = dl.taches_infos([l["tache_id"] for l in lignes if l["tache_id"]], proprio["id"])
     taches = {i: t["projet_id"] for i, t in taches_info.items()}
     demandees = {l["cle"]: l["minutes"] for l in lignes}
+
+    def _tache_encore_sienne(ligne: dict, jour) -> bool:
+        """Lot 21 (revue R9) : une personne d'une autre équipe garde ses
+        heures sur SA tâche jusqu'à la date de fin de celle-ci, même si le
+        projet ne lui est plus ouvert qu'en lecture."""
+        info = taches_info.get(ligne["tache_id"]) if ligne["tache_id"] else None
+        return bool(info and info.get("intervenant") and dl.tache_saisissable(info, jour))
 
     def preparer(existantes: dict, absent_actuel: bool):
         infos = dl.projets_info({l["projet_id"] for l in lignes} | {cle[0] for cle in existantes},
@@ -611,7 +621,7 @@ def _ecrire(proprio: dict, date, aujourdhui, corps: dict, absent: bool, lignes_b
             refus = None if baisse else dl.projet_saisissable(projet, date)
             if refus:
                 errs.append({"code": refus, "ligne": l["i"]})
-            elif not baisse and not projet.get("peut_agir", True):
+            elif not baisse and not projet.get("peut_agir", True) and not _tache_encore_sienne(l, date):
                 errs.append({"code": "projet_lecture_seule", "ligne": l["i"]})
             if l["tache_id"] and taches.get(l["tache_id"]) != l["projet_id"]:
                 errs.append({"code": "tache_hors_projet", "ligne": l["i"]})
@@ -649,9 +659,12 @@ def _ecrire(proprio: dict, date, aujourdhui, corps: dict, absent: bool, lignes_b
         code = getattr(exc, "pgcode", None)
         if code in ("23514", "23503", "23505"):  # garde-fous de la base (0014), clé étrangère
             current_app.logger.warning("Daily log refusé par la base : %s", exc)
-            if "dailylog_futur_reel" in str(getattr(getattr(exc, "diag", None), "constraint_name", "") or "") \
-                    or "vraie date du jour" in str(exc):
+            contrainte = str(getattr(getattr(exc, "diag", None), "constraint_name", "") or "")
+            if "dailylog_futur_reel" in contrainte or "vraie date du jour" in str(exc):
                 raise ErreurApi(422, "futur_reel")
+            if "dailylog_tache_close" in contrainte:
+                # Lot 21 (revue R8) : tâche close pendant la saisie.
+                raise ErreurApi(422, "validation", "Saisie refusée.", erreurs=[{"code": "tache_close"}])
             raise ErreurApi(422, "refus_base")
         if code == "42501":
             current_app.logger.warning("Daily log refusé par la base (droits) : %s", exc)

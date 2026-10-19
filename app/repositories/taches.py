@@ -388,7 +388,7 @@ def search(user_id: int, q: str, limit: int = 6) -> list[dict]:
     )
 
 
-def _verrouiller_projet(cur, projet_id: int, *, ouvert: bool = True) -> None:
+def _verrouiller_projet(cur, projet_id: int) -> None:
     """À appeler EN PREMIER dans toute transaction qui peut changer l'état
     d'une tâche (audit données lot 10, I2). Sans ce verrou, deux tâches
     bloquées clôturées en même temps voient chacune l'autre encore bloquée
@@ -402,8 +402,11 @@ def _verrouiller_projet(cur, projet_id: int, *, ouvert: bool = True) -> None:
     # Lot 20 (revue 12a) : l'état du projet est relu SOUS le verrou — une
     # tâche ne se rouvre ni ne se crée dans un projet clos entre-temps.
     projet = cur.fetchone()
-    if ouvert and projet is not None and projet["etat"] in ("termine", "abandonne"):
+    if projet is not None and projet["etat"] in ("termine", "abandonne"):
         raise ProjetClos()
+
+
+verrouiller_projet_ouvert = _verrouiller_projet
 
 
 # « Annuler » d'un toast (lot 13, contre-expertise UX N9) : rejoué dans ce
@@ -589,8 +592,13 @@ def add_intervenant(tache_id: int, projet_id: int, utilisateur_id: int, current_
 
     Lot 11 : lève TacheClose si la tâche est close — le bouton n'est plus
     proposé, mais une requête forgée (ou une page restée ouverte) passait.
-    FOR SHARE : un changement d'état concurrent attend la fin de l'ajout."""
+    FOR SHARE : un changement d'état concurrent attend la fin de l'ajout.
+    Lot 21 (revue R6) : le verrou du projet d'abord, comme toute écriture
+    de tâche — un chef qui rejoint (trigger 0013 : il devient co-chef)
+    n'interbloque plus avec la clôture du projet ; projet clos entre-temps :
+    ProjetClos."""
     with db.get_cursor(user_id=current_user_id) as cur:
+        _verrouiller_projet(cur, projet_id)
         cur.execute("SELECT etat FROM tache WHERE id = %s AND projet_id = %s FOR SHARE", (tache_id, projet_id))
         ligne = cur.fetchone()
         if ligne is None:
@@ -615,6 +623,16 @@ class MotifBlocageRequis(Exception):
 MOTIF_BLOCAGE_MAX = 500
 
 
+class TacheDejaBloquee(Exception):
+    """Blocage d'une tâche déjà bloquée (lot 21, revue R16 : panneau resté
+    ouvert ailleurs) : le motif et l'auteur du blocage en cours ne sont plus
+    remplacés en silence. `motif` : celui du blocage en cours."""
+
+    def __init__(self, motif=None):
+        super().__init__(motif)
+        self.motif = motif
+
+
 class TacheModifiee(Exception):
     """« Annuler » périmé (recette du lot 14, n° 5) : la tâche n'est plus
     dans l'état que le geste annulé avait produit (quelqu'un l'a changée
@@ -626,16 +644,23 @@ def normaliser_motif(texte: str | None) -> str | None:
     caractères de format retirés (largeur nulle U+200B, U+FEFF, U+2060…),
     caractères de contrôle et blancs (espaces insécables compris) ramenés à
     une espace ; None s'il ne reste ni lettre, ni chiffre, ni ponctuation,
-    ni symbole (motif « invisible »)."""
+    ni symbole (motif « invisible »). Lot 21 (test Chrome V20) : les
+    retours à la ligne (Maj+Entrée) sont gardés — lignes vides retirées,
+    chaque ligne nettoyée comme avant."""
     import unicodedata
 
-    morceaux = []
-    for c in texte or "":
-        categorie = unicodedata.category(c)
-        if categorie == "Cf":
-            continue
-        morceaux.append(" " if categorie.startswith(("C", "Z")) or c.isspace() else c)
-    propre = " ".join("".join(morceaux).split())
+    lignes = []
+    for ligne in (texte or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        morceaux = []
+        for c in ligne:
+            categorie = unicodedata.category(c)
+            if categorie == "Cf":
+                continue
+            morceaux.append(" " if categorie.startswith(("C", "Z")) or c.isspace() else c)
+        propre = " ".join("".join(morceaux).split())
+        if propre:
+            lignes.append(propre)
+    propre = "\n".join(lignes)
     if not any(unicodedata.category(c)[0] in "LNPS" for c in propre):
         return None
     return propre
@@ -663,11 +688,12 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, 
     n'existe pas ou n'appartient pas à ce projet.
 
     `date_fin` (PROMPT_CORRECTIONS.md P1 #9) : effacée seulement quand la
-    tâche est ROUVERTE (En cours / Bloqué / Arrêt) — une tâche rouverte ne
-    doit plus afficher une date de fin qui ne correspond plus à rien. Le
-    passage à "Vérifié" (étape normale APRÈS la clôture) ou "Abandonné"
-    garde en revanche la date de clôture (audit n°2 : elle était effacée
-    à tort dès qu'une tâche terminée était vérifiée).
+    tâche est ROUVERTE (En cours / Bloqué) — une tâche rouverte ne doit plus
+    afficher une date de fin qui ne correspond plus à rien. Le passage à
+    "Vérifié" (étape normale APRÈS la clôture) garde la date de clôture
+    (audit n°2). Lot 21 (revue R21) : une tâche qui QUITTE En cours / Bloqué
+    pour Abandonné, Arrêt ou Vérifié reçoit la date du jour (date
+    d'écriture), sinon le Daily log la croyait ouverte.
 
     `peut_gerer` (décision du gérant, lot 10) : vrai pour le chef titulaire,
     un co-chef ou l'Admin (projets.user_can_manage). Sans lui, passer la
@@ -687,8 +713,8 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, 
     automatique 'blocage_tache' (« a signalé un blocage ») ; la sortie du
     blocage donne 'deblocage_tache' (« a levé le blocage »). En annulation
     (retour au blocage d'avant), un motif absent garde celui de la tâche,
-    et le même motif garde la date et l'auteur du blocage d'origine. Une
-    tâche déjà bloquée ne change que de motif.
+    et le même motif garde la date et l'auteur du blocage d'origine. Lot 21
+    (revue R16) : bloquer une tâche déjà bloquée lève TacheDejaBloquee.
 
     `version_attendue` (« Annuler », recette du lot 14 n° 5) : version de
     la tâche (voir `version`) produite par le geste annulé ; si la tâche a
@@ -727,14 +753,22 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, 
         if not peut_gerer and (etat in ETATS_RESERVES_GESTION or avant["etat"] in ETATS_RESERVES_GESTION):
             raise EtatReserve(MESSAGE_ETAT_RESERVE)
         if etat == "bloque":
-            if motif is None and not annulation and avant["etat"] != "bloque":
+            if avant["etat"] == "bloque" and not annulation:
+                raise TacheDejaBloquee(avant.get("bloque_motif"))
+            if motif is None and not annulation:
                 raise MotifBlocageRequis()
             motif = motif or avant.get("bloque_motif")
         cur.execute(
             """
             UPDATE tache
             SET etat = %(etat)s,
-                date_fin = CASE WHEN %(etat)s IN ('en_cours', 'bloque', 'arret') THEN NULL ELSE date_fin END,
+                -- Lot 21 (revue R21) : toute tâche close (Terminée, Vérifiée,
+                -- Abandonnée, Arrêtée) a une date de fin — le Daily log s'y
+                -- fie ; rouverte, elle la perd.
+                date_fin = CASE WHEN %(etat)s IN ('en_cours', 'bloque') THEN NULL
+                                WHEN etat IN ('en_cours', 'bloque') OR date_fin IS NULL
+                                     THEN fn_date_ecriture((SELECT fuseau FROM utilisateur WHERE id = %(uid)s))
+                                ELSE date_fin END,
                 bloque_le = CASE WHEN %(etat)s <> 'bloque' THEN bloque_le
                                  WHEN etat = 'bloque' AND bloque_le IS NOT NULL THEN bloque_le
                                  WHEN %(annulation)s AND bloque_motif IS NOT DISTINCT FROM %(motif)s
@@ -822,19 +856,6 @@ def set_titre(tache_id: int, projet_id: int, titre: str, current_user_id: int) -
             (projet_id, tache_id, current_user_id, f"{avant['titre']} → {titre}"),
         )
         return True
-
-
-def add_piece_jointe(tache_id: int, nom_fichier: str, chemin: str, uploaded_by: int) -> int:
-    with db.get_cursor(user_id=uploaded_by) as cur:
-        cur.execute(
-            """
-            INSERT INTO tache_piece_jointe (tache_id, nom_fichier, chemin, uploaded_by)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id
-            """,
-            (tache_id, nom_fichier, chemin, uploaded_by),
-        )
-        return cur.fetchone()["id"]
 
 
 def get_piece_jointe(piece_id: int) -> dict | None:

@@ -317,31 +317,39 @@ class TestRappelDailyLogLot11b(BaseIntegration):
                          ("Daily log du jeudi 8 octobre non rempli", [datetime.date(2026, 10, 8)]))
 
     def test_ancien_format_reconnu_apres_migration(self):
+        # Lot 21 (revue R3) : dates relatives à aujourd'hui — le marquage « lu »
+        # suit la fenêtre de 14 jours de la VRAIE date (avec des dates fixes,
+        # le test échouait à partir du 21/10/2026).
+        auj = datetime.date.today()
+        jeudi = auj - datetime.timedelta(days=(auj.weekday() - 3) % 7)
+        lundi, mardi, mercredi = (jeudi - datetime.timedelta(days=n) for n in (3, 2, 1))
+        self.u = {**self.u, "debut_daily_log": lundi}
         self.sql("INSERT INTO notification (utilisateur_id, categorie, message) VALUES (%s, 'rh_info', %s)",
-                 (self.moi, "Rappel DailyLog : vous n'avez pas rempli votre journée du 07/10/2026."))
+                 (self.moi, f"Rappel DailyLog : vous n'avez pas rempli votre journée du {mercredi:%d/%m/%Y}."))
         # Un texte qui commence pareil sans être un rappel du Daily log n'est pas touché.
         self.sql("INSERT INTO notification (utilisateur_id, categorie, message) VALUES (%s, 'projet', %s)",
-                 (self.moi, "Rappel DailyLog : réunion du 06/10/2026."))
+                 (self.moi, f"Rappel DailyLog : réunion du {mardi:%d/%m/%Y}."))
         for _ in range(2):  # 0017 rejouable
             with self.db.get_cursor() as cur:
                 cur.execute(MIGRATION_0017.read_text(encoding="utf-8"))
             self.rejouer_migrations_suivantes("0017_chef_projet_et_rappels_dailylog")
         anciens = self.rappels()
-        self.assertEqual([a["rappel_jours"] for a in anciens], [[datetime.date(2026, 10, 7)], None])
-        self.verifier()
+        self.assertEqual([a["rappel_jours"] for a in anciens], [[mercredi], None])
+        self.verifier(jeudi)
         nouveau = self.rappels()[-1]
-        self.assertEqual(nouveau["rappel_jours"], [datetime.date(2026, 10, 5), datetime.date(2026, 10, 6)])
-        self.assertEqual(nouveau["message"], "2 jours de Daily log non remplis\u00a0: lundi 5 et mardi 6 octobre")
+        self.assertEqual(nouveau["rappel_jours"], [lundi, mardi])
+        self.assertTrue(nouveau["message"].startswith("2 jours de Daily log non remplis\u00a0: lundi"),
+                        nouveau["message"])
         # Marquage « lu » : l'ancien dès son jour rempli, le groupé quand TOUS ses jours le sont.
         from app.repositories import notifications
-        self.remplir(datetime.date(2026, 10, 7))
-        self.remplir(datetime.date(2026, 10, 5))
+        self.remplir(mercredi)
+        self.remplir(lundi)
         with self.app.app_context():
             notifications.marquer_rappels_dailylog_lus(self.moi)
         lus = [r["lu"] for r in self.rappels()]
         self.assertEqual(lus, [True, False, False])
         self.sql("INSERT INTO dailylog_jour (utilisateur_id, date, absent) VALUES (%s, %s, true)",
-                 (self.moi, datetime.date(2026, 10, 6)))
+                 (self.moi, mardi))
         with self.app.app_context():
             notifications.marquer_rappels_dailylog_lus(self.moi)
         self.assertEqual([r["lu"] for r in self.rappels()], [True, False, True])

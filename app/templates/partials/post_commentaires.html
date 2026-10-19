@@ -24,7 +24,7 @@
   {# Lot 14 : replié tant qu'on n'a pas cliqué sur « Commenter » (avec
      JavaScript seulement : html.k-js) ; ouvert après l'envoi d'un
      commentaire (composer_ouvert), le focus y reste. #}
-  {% if post.projet_etat not in ('termine', 'abandonne') %}
+  {% if post.projet_etat not in ('termine', 'abandonne') and not post.lecture_seule|default(false) %}
   <div class="post-commenter" id="post-{{ post.id }}-composer"{% if not composer_ouvert|default(false) %} data-replie{% endif %}>
     {{ cm.composer_commentaire(post, next_url) }}
   </div>

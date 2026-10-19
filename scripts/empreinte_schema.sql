@@ -1,6 +1,7 @@
 -- Empreinte du schéma indépendante de l'ordre des colonnes et de NOT VALID.
 -- Lot 20 (revue QA n° 17a) : commentaires (COMMENT ON) des tables, vues,
--- colonnes et fonctions compris.
+-- colonnes et fonctions compris. Lot 21 (contre-expertise R28) : aussi ceux
+-- des types, des triggers et des contraintes.
 SELECT 'col' AS k, table_name || '.' || column_name || ' ' || data_type || ' ' || is_nullable || ' ' || coalesce(column_default, '') AS v
 FROM information_schema.columns WHERE table_schema = 'public'
 UNION ALL
@@ -30,4 +31,16 @@ UNION ALL
 SELECT 'cmt', p.proname || '() ' || md5(d.description)
 FROM pg_proc p JOIN pg_description d ON d.objoid = p.oid AND d.classoid = 'pg_proc'::regclass
 WHERE p.pronamespace = 'public'::regnamespace
+UNION ALL
+SELECT 'cmt', 'type ' || t.typname || ' ' || md5(d.description)
+FROM pg_type t JOIN pg_description d ON d.objoid = t.oid AND d.classoid = 'pg_type'::regclass
+WHERE t.typnamespace = 'public'::regnamespace
+UNION ALL
+SELECT 'cmt', 'trigger ' || tg.tgrelid::regclass || '.' || tg.tgname || ' ' || md5(d.description)
+FROM pg_trigger tg JOIN pg_description d ON d.objoid = tg.oid AND d.classoid = 'pg_trigger'::regclass
+WHERE NOT tg.tgisinternal
+UNION ALL
+SELECT 'cmt', 'contrainte ' || co.conrelid::regclass || '.' || co.conname || ' ' || md5(d.description)
+FROM pg_constraint co JOIN pg_description d ON d.objoid = co.oid AND d.classoid = 'pg_constraint'::regclass
+WHERE co.connamespace = 'public'::regnamespace
 ORDER BY 1, 2;

@@ -20,13 +20,27 @@
 #
 # Retour arrière (affiché à la fin), DANS CET ORDRE (lot 20, revue QA n° 6) :
 #   git switch --detach avant-deploiement
+#   git tag -f deploye HEAD
 #   sudo docker tag kairos-web:avant-deploiement kairos-web:latest
 #   sudo bash scripts/restore_db.sh <sauvegarde>.sql.gz
 # restore_db.sh redémarre `web`, qui applique les migrations de SON image :
 # restaurer avec la nouvelle image encore en place re-migrait aussitôt la
-# base restaurée (ancien code sur une base migrée, sans message).
+# base restaurée (ancien code sur une base migrée, sans message). Le tag
+# `deploye` remis sur l'ancienne version : un nouveau `deploy.sh` (après
+# `git switch master`) redéploie la nouvelle au lieu de dire « Déjà à jour ».
+#
+# Lot 21 (revue R4) : tout le script est une fonction lue d'un bloc — la
+# mise à jour du code (git merge) ne change plus le script en cours de
+# lecture ; s'il a changé, il est relancé dans sa nouvelle version.
+# Lot 21 (revue R5) : `.deploiement_en_cours` garde les repères d'une
+# tentative qui a échoué (version, image et sauvegarde d'AVANT) : une
+# relance ne les remplace pas par ceux de la nouvelle version.
 set -euo pipefail
 cd "$(dirname "$0")"
+
+REPERES=".deploiement_en_cours"
+
+main() {
 
 rouge() { printf '\033[31m%s\033[0m\n' "$*"; }
 vert()  { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -65,20 +79,36 @@ if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)" ]; then
   git log --oneline "$avant..HEAD"
 else
   git log --oneline HEAD..origin/master
+  ancien="$(git rev-parse HEAD)"
   git merge --ff-only origin/master || stop "master local a divergé de GitHub (ne pas forcer : m'envoyer « git log --oneline -5 »)."
+  if [ -z "${KAIROS_DEPLOY_RELANCE:-}" ] && ! git diff --quiet "$ancien" HEAD -- deploy.sh; then
+    echo "deploy.sh a changé avec cette version : relance dans sa nouvelle version."
+    KAIROS_DEPLOY_RELANCE=1 exec bash "$0" "$@"
+  fi
 fi
 apres="$(git rev-parse --short HEAD)"
 
 etape "3/6 Sauvegarde"
-bash scripts/backup_db.sh || stop "la sauvegarde a échoué : déploiement annulé (le code est à jour mais l'appli n'a pas redémarré)."
+sortie_sauvegarde="$(bash scripts/backup_db.sh)" || { printf '%s\n' "$sortie_sauvegarde"; stop "la sauvegarde a échoué : déploiement annulé (le code est à jour mais l'appli n'a pas redémarré)."; }
+printf '%s\n' "$sortie_sauvegarde"
+sauvegarde="$(printf '%s\n' "$sortie_sauvegarde" | sed -n 's/^Sauvegarde base écrite : //p' | tail -1)"
 
 etape "4/6 Repères de retour arrière"
-git tag -f avant-deploiement "$avant" >/dev/null
 image="$(docker compose images web --format json 2>/dev/null | grep -o '"Repository":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
 image="${image:-kairos-web}"
-if docker image inspect "$image:latest" >/dev/null 2>&1; then
-  docker tag "$image:latest" "$image:avant-deploiement"
-  echo "Image précédente gardée : $image:avant-deploiement"
+if [ -f "$REPERES" ]; then
+  # Relance après un échec : les repères d'AVANT la première tentative
+  # restent (l'image en place peut déjà être la nouvelle, la base déjà migrée).
+  avant="$(sed -n 's/^avant=//p' "$REPERES")"
+  sauvegarde="$(sed -n 's/^sauvegarde=//p' "$REPERES")"
+  rouge "Tentative précédente inachevée : repères de retour arrière gardés ($avant, ${sauvegarde:-sauvegarde inconnue})."
+else
+  git tag -f avant-deploiement "$avant" >/dev/null
+  if docker image inspect "$image:latest" >/dev/null 2>&1; then
+    docker tag "$image:latest" "$image:avant-deploiement"
+    echo "Image précédente gardée : $image:avant-deploiement"
+  fi
+  printf 'avant=%s\nsauvegarde=%s\n' "$avant" "$sauvegarde" > "$REPERES"
 fi
 
 etape "5/6 Reconstruction et redémarrage"
@@ -109,9 +139,15 @@ docker compose exec -T db sh -c 'psql -X -At -U "$POSTGRES_USER" -d "$POSTGRES_D
   <<< "SELECT 'Dernière migration : ' || max(version) FROM schema_migrations;" || true
 
 git tag -f deploye HEAD >/dev/null
+rm -f "$REPERES"
 vert ""
 vert "OK : Kairos déployé ($avant -> $apres)."
-echo "Retour arrière si besoin (dans cet ordre : code, image, puis base) :"
+echo "Retour arrière si besoin (dans cet ordre : code, repère, image, puis base) :"
 echo "  git switch --detach avant-deploiement"
+echo "  git tag -f deploye HEAD"
 echo "  sudo docker tag $image:avant-deploiement $image:latest"
-echo "  sudo bash scripts/restore_db.sh <sauvegarde ci-dessus>.sql.gz"
+echo "  sudo bash scripts/restore_db.sh ${sauvegarde:-<sauvegarde faite avant le déploiement>.sql.gz}"
+}
+
+main "$@"
+exit $?

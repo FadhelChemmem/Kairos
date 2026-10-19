@@ -17,6 +17,7 @@
 // #post-<id> absente de la catégorie affichée bascule sur « Tout » et un
 // regroupement replié qui la contient est déplié ; un post plus ancien que
 // la première page est chargé (?jusqua=<id>, recette du lot 14 n° 13).
+// Lot 21 : bascule « Me concernant » de la fiche projet (?moi=1).
 (function () {
   function norm(s) {
     if (window.KairosTexte) return window.KairosTexte.sansAccents(s || '');
@@ -79,8 +80,12 @@
   // bascule à l'ouverture qui marquait « vu » l'onglet par défaut).
   function cookie(page, valeur) {
     if (!/^[a-z]+$/.test(page || '') || CATEGORIES.indexOf(valeur) === -1) return;
-    document.cookie = 'kairos_fil_' + page + '=' + valeur + '; path=/; max-age=31536000; SameSite=Lax' +
-      (window.location.protocol === 'https:' ? '; Secure' : '');
+    // Lot 21 (revue R31) : un document où l'accès aux cookies lève
+    // (iframe isolée) garde des onglets fonctionnels, choix non mémorisé.
+    try {
+      document.cookie = 'kairos_fil_' + page + '=' + valeur + '; path=/; max-age=31536000; SameSite=Lax' +
+        (window.location.protocol === 'https:' ? '; Secure' : '');
+    } catch (e) { /* choix non mémorisé */ }
   }
   function ecrire(page, valeur) {
     cookie(page, valeur);
@@ -91,7 +96,8 @@
     var u = new URL(window.location.href);
     u.searchParams.set('fil', fil);
     u.searchParams.delete('avant');
-    if (jusqua) u.searchParams.set('jusqua', jusqua); else u.searchParams.delete('jusqua');
+    // Lot 21 : un post demandé par son ancre se cherche dans tout le fil.
+    if (jusqua) { u.searchParams.set('jusqua', jusqua); u.searchParams.delete('moi'); } else u.searchParams.delete('jusqua');
     return u.pathname + u.search + (avecAncre ? u.hash : '');
   }
   function courante(nav) {
@@ -109,6 +115,17 @@
   function choisir(nav, fil, historique, declencheur, avecAncre, jusqua) {
     var K = window.Kairos;
     var cible = nav.getAttribute('data-fil-cible');
+    // Lot 21 (revue R26 / F5) : l'entrée quittée garde sa catégorie dans
+    // l'adresse — Retour la rend (sans elle, le serveur prendrait le choix
+    // mémorisé, c'est-à-dire la nouvelle catégorie).
+    var avant = courante(nav);
+    if (historique === 'push' && avant && !parametre('fil')) {
+      try {
+        var u = new URL(window.location.href);
+        u.searchParams.set('fil', avant);
+        window.history.replaceState(window.history.state, '', u.pathname + u.search + u.hash);
+      } catch (e) { /* adresse laissée telle quelle */ }
+    }
     marquer(nav, fil);
     if (!K || !K.requete || !document.querySelector(cible)) { window.location.href = adresse(fil, avecAncre, jusqua); return; }
     K.requete({ url: adresse(fil, avecAncre, jusqua), methode: 'GET', cible: cible, mode: 'outer', historique: historique,
@@ -129,6 +146,55 @@
     choisir(nav, fil, 'push', nav.contains(a) ? a : null);
     if (!nav.contains(a)) { var seg = nav.querySelector('a[data-fil="' + fil + '"]'); if (seg) seg.focus(); }
   }, true);
+
+  // --- Bascule « Me concernant » (lot 21, fiche projet) ---------------------
+  // a[data-fil-moi][role=switch] : mes posts, mes mentions et les suites
+  // données à mes posts, ou tout le fil. Même mécanique que la catégorie
+  // (liste remplacée en partiel, ?moi=1 dans l'adresse, Retour la rend) ;
+  // l'état affiché suit la liste reçue (data-fil-moi).
+  function adresseMoi(actif) {
+    var u = new URL(window.location.href);
+    if (actif) u.searchParams.set('moi', '1'); else u.searchParams.delete('moi');
+    u.searchParams.delete('avant');
+    u.searchParams.delete('jusqua');
+    return u;
+  }
+  function majMoi(actif) {
+    Array.prototype.forEach.call(document.querySelectorAll('[role="switch"][data-fil-moi]'), function (b) {
+      b.setAttribute('aria-checked', actif ? 'true' : 'false');
+      try { var u = adresseMoi(!actif); b.setAttribute('href', u.pathname + u.search); } catch (e) { /* lien gardé */ }
+    });
+  }
+  function basculerMoi(lien, actif) {
+    var K = window.Kairos;
+    var interrupteur = document.querySelector('[role="switch"][data-fil-moi]');
+    var cible = (interrupteur && interrupteur.getAttribute('data-fil-cible')) || '#fil-posts';
+    var u = adresseMoi(actif);
+    var nav = navDe(cible);
+    var categorie = nav && courante(nav);
+    if (categorie) u.searchParams.set('fil', categorie);
+    var url = u.pathname + u.search;
+    majMoi(actif);
+    if (!K || !K.requete || !document.querySelector(cible)) { window.location.href = url; return; }
+    K.requete({ url: url, methode: 'GET', cible: cible, mode: 'outer', historique: 'push',
+      declencheur: interrupteur || lien, synchroniser: true });
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[data-fil-moi], a[data-fil-moi-lien]');
+    if (!a || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    var actif = a.hasAttribute('data-fil-moi') ? a.getAttribute('aria-checked') !== 'true' : false;
+    basculerMoi(a, actif);
+    if (!a.hasAttribute('data-fil-moi')) { var sw = document.querySelector('[role="switch"][data-fil-moi]'); if (sw) sw.focus(); }
+  }, true);
+  // Un interrupteur se bascule aussi à la barre d'espace.
+  document.addEventListener('keydown', function (e) {
+    var a = e.target;
+    if ((e.key === ' ' || e.key === 'Spacebar') && a && a.matches && a.matches('[role="switch"][data-fil-moi]')) {
+      e.preventDefault();
+      a.click();
+    }
+  });
 
   // Lot 17 : l'onglet ouvert n'a plus de nouveautés (le serveur le note vu).
   document.addEventListener('click', function (e) {
@@ -162,6 +228,7 @@
     if (!r || !r.id) return;
     var nav = navDe('#' + r.id);
     if (nav && r.hasAttribute('data-fil-categorie')) marquer(nav, r.getAttribute('data-fil-categorie'));
+    if (r.hasAttribute('data-fil-moi')) majMoi(r.getAttribute('data-fil-moi') === '1');
     if (plus && plus.liste.contains(r) && plus.liste !== r) {
       var n = plus.liste.querySelectorAll('.fil-item').length - plus.n;
       plus = null;

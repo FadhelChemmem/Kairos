@@ -55,3 +55,4 @@ recharge_chronos_*.md
 *.tar.gz
 *.dump
 *.backup
+.deploiement_en_cours

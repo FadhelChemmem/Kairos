@@ -41,17 +41,33 @@ def is_image_filename(filename: str) -> bool:
 
 def est_vraie_image(file_storage) -> bool:
     """Lot 20 (revue 16e) : photo de profil non vide et dont le contenu est
-    bien une image JPEG, PNG, GIF ou WEBP (signature des premiers octets) —
-    un texte renommé « .png » ou un fichier vide étaient acceptés."""
+    bien une image JPEG, PNG, GIF ou WEBP. Lot 21 (revue R30) : la structure
+    est contrôlée, pas seulement les premiers octets — en-tête et fin du
+    format (PNG : bloc IHDR puis IEND ; JPEG : marqueurs SOI et EOI ; GIF :
+    terminateur ; WEBP : taille RIFF exacte), ce qui écarte un fichier
+    texte ou HTML qui commence par une fausse signature."""
     flux = file_storage.stream
     try:
         position = flux.tell()
-        debut = flux.read(12)
+        donnees = flux.read(MAX_OCTETS_AVATAR + 1)
         flux.seek(position)
     except (OSError, ValueError, AttributeError):
         return False
-    return (debut.startswith(b"\xff\xd8\xff") or debut.startswith(b"\x89PNG\r\n\x1a\n")
-            or debut[:6] in (b"GIF87a", b"GIF89a") or (debut[:4] == b"RIFF" and debut[8:12] == b"WEBP"))
+    if not donnees or len(donnees) > MAX_OCTETS_AVATAR:
+        return False
+    if donnees.startswith(b"\x89PNG\r\n\x1a\n"):
+        return donnees[12:16] == b"IHDR" and donnees.rstrip(b"\x00")[-8:-4] == b"IEND"
+    if donnees.startswith(b"\xff\xd8\xff"):
+        return donnees.rstrip(b"\x00")[-2:] == b"\xff\xd9"
+    if donnees[:6] in (b"GIF87a", b"GIF89a"):
+        return len(donnees) > 13 and donnees.rstrip(b"\x00")[-1:] == b"\x3b" and b"<" not in donnees[:64]
+    if donnees[:4] == b"RIFF" and donnees[8:12] == b"WEBP":
+        return int.from_bytes(donnees[4:8], "little") + 8 == len(donnees)
+    return False
+
+
+# Photo de profil : 10 Mo au plus (au-delà, refusée).
+MAX_OCTETS_AVATAR = 10 * 1024 * 1024
 
 
 def refus_fichier(file_storage) -> str | None:

@@ -244,6 +244,45 @@ class TestRepriseLot10(unittest.TestCase):
         self.assertEqual(report["dailylog_heures_orphelines"], {3: 5.5, None: 1.0})
 
 
+class TestDateDeBlocageChronos(unittest.TestCase):
+    """Lot 21 (contre-expertise R29 / NB8) : `blockedDate` de Chronos est la
+    date du blocage ; la dernière modification ne sert que s'il manque."""
+
+    @staticmethod
+    def _tache(tid, state, cree, maj, bloquee=None):
+        return {"id": tid, "name": f"T{tid}", "startDate": "2025-04-01 00:00:00", "dueDate": "2025-06-01 00:00:00",
+                "blockedDate": bloquee, "doneDate": None, "isVerified": 0, "state": state,
+                "meta": '{"projectID": 3}', "createdAt": cree, "updatedAt": maj}
+
+    def test_blocked_date_prise_puis_repli(self):
+        data = {"intervenants": [], "tasks": [
+            self._tache(4, "blocked", "2025-04-01 08:00:00", "2025-05-01 08:00:00", "2025-04-10 00:00:00"),
+            self._tache(5, "blocked", "2025-04-01 08:00:00", "2025-05-02 08:00:00"),
+            self._tache(6, "doing", "2025-04-20 08:00:00", "2025-04-20 08:00:00", "2025-04-12 00:00:00")]}
+        taches, _ids = build_taches(data, {3}, defaultdict(list))
+        par_id = {t["id"]: t for t in taches}
+        self.assertEqual(par_id[4]["bloque_le"], "2025-04-10 00:00:00")
+        self.assertEqual(par_id[5]["bloque_le"], "2025-05-02 08:00:00")
+        self.assertIsNone(par_id[6]["bloque_le"])
+
+    def test_tache_creee_apres_le_vrai_blocage_debloque_le_projet(self):
+        from migrate_from_chronos import appliquer_coherence
+
+        data = {"intervenants": [], "tasks": [
+            self._tache(4, "blocked", "2025-04-01 08:00:00", "2025-05-01 08:00:00", "2025-04-10 00:00:00"),
+            self._tache(7, "doing", "2025-04-20 08:00:00", "2025-04-20 08:00:00")]}
+        taches, _ids = build_taches(data, {3}, defaultdict(list))
+        projets = [{"id": 3, "code": "26003X", "etat": "en_cours"}]
+        appliquer_coherence(projets, taches, defaultdict(list))
+        self.assertEqual(projets[0]["etat"], "en_cours")
+        # Sans blockedDate : la dernière modification (01/05) fait foi.
+        data["tasks"][0]["blockedDate"] = None
+        taches, _ids = build_taches(data, {3}, defaultdict(list))
+        projets = [{"id": 3, "code": "26003X", "etat": "en_cours"}]
+        appliquer_coherence(projets, taches, defaultdict(list))
+        self.assertEqual(projets[0]["etat"], "bloque")
+
+
 @unittest.skipUnless(os.environ.get("KAIROS_TEST_DATABASE_URL") and shutil.which("psql"),
                      "KAIROS_TEST_DATABASE_URL et psql requis")
 class TestRepriseChargeeDansPostgres(unittest.TestCase):

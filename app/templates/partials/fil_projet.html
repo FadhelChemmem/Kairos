@@ -2,12 +2,19 @@
    cible quand l'état du projet change (commentaires et publication
    fermés ou rouverts). Lot 14 : remplacée quand on change de catégorie
    (Tout · Échanges · Activité), évènements automatiques regroupés.
-   Contexte : fil_entrees, fil_categorie, projet ; facultatif : oob. #}
-<div id="fil-posts" class="fil-liste" data-fil-categorie="{{ fil_categorie }}"{% if oob %} data-partiel-oob{% endif %}>
+   Lot 21 : data-fil-moi, bascule « Me concernant » (filtre-fil.js).
+   Contexte : fil_entrees, fil_categorie, projet ; facultatif : fil_moi, oob. #}
+<div id="fil-posts" class="fil-liste" data-fil-categorie="{{ fil_categorie }}" data-fil-moi="{{ '1' if fil_moi|default(false) else '0' }}"{% if oob %} data-partiel-oob{% endif %}>
   {% with show_projet=false, next_url=url_for('projets.detail', projet_id=projet.id, fil=fil_categorie), oob=false %}
     {% include "partials/fil_entrees.html" %}
   {% endwith %}
-  {% if not fil_entrees %}
+  {% if not fil_entrees and fil_moi|default(false) %}
+    {# Lot 21 : bascule « Me concernant » sans résultat. #}
+    <div class="card fil-vide-carte" data-partiel-vide>
+      <p class="fil-vide-texte">Rien ne vous concerne ici pour l’instant&nbsp;: ni post de vous, ni mention de votre nom.</p>
+      <a href="{{ url_for('projets.detail', projet_id=projet.id, fil=fil_categorie) }}" class="btn-fantome btn-petit" data-fil-moi-lien>Voir tout le fil</a>
+    </div>
+  {% elif not fil_entrees %}
     {% with texte_tout='Aucun post pour l’instant.', fil_cible='#fil-posts', fil_lien_activite=url_for('projets.detail', projet_id=projet.id, fil='activite') %}
       {% include "partials/fil_vide.html" %}
     {% endwith %}

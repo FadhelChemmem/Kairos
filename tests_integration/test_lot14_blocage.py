@@ -452,7 +452,7 @@ class TestRecetteBlocage(_Blocage):
         self.login(self.inter)
         r = self.client.post(action["url"], data=action["donnees"], headers=partiel(action["cible"]))
         self.assertEqual(r.status_code, 409)
-        self.assertIn("La tâche a changé entre-temps", r.get_json()["message"])
+        self.assertIn("La tâche a changé depuis ce geste", r.get_json()["message"])
         bloc = self.tache_bloc()
         self.assertEqual((bloc["etat"], bloc["bloque_motif"], bloc["bloque_par"]), ("bloque", "Blocage du chef", self.chef))
         # Même chose pour l'« Annuler » d'une levée : le chef a re-bloqué
@@ -469,7 +469,7 @@ class TestRecetteBlocage(_Blocage):
         # Sans JavaScript (requête classique) : message, retour à la tâche.
         r = self.client.post(action["url"], data=action["donnees"])
         self.assertEqual(r.status_code, 302)
-        self.assertIn("La tâche a changé entre-temps", self.flash(r))
+        self.assertIn("La tâche a changé depuis ce geste", self.flash(r))
 
     def aide(self, qui):
         self.login(qui)

@@ -128,7 +128,10 @@ Notifications et fil de posts (étape 1, complète). Flask + PostgreSQL
   proposées par échéance (la plus proche d'abord), 5 à la fois avec
   « + Afficher 5 de plus » (puis les projets suivis), parmi celles EN COURS
   À LA DATE AFFICHÉE ; pas d'heures sur une tâche après sa clôture ni sur
-  un projet dont la personne a été retirée. API JSON : voir
+  un projet dont la personne a été retirée. Lot 21 : une personne d'une
+  autre équipe garde ses heures sur SA tâche jusqu'à la date de fin de
+  celle-ci ; toute tâche close a une date de fin (Abandonnée et Arrêtée
+  comprises), contrôlée aussi en base. API JSON : voir
   `app/routes/dailylog.py`.
 - **Notifications** : cloche dans la barre du haut avec compteur temps
   réel, page `/notifications`, déclenchées par mention (post/commentaire),
@@ -146,6 +149,21 @@ rôle Client, fil "Information" hors-projet ciblé par équipe.
 le CSRF (Flask-WTF), la déconnexion se fait en POST, et chaque accès à un
 projet, une tâche, un post ou une pièce jointe vérifie que l'utilisateur
 voit bien ce projet.
+
+**Anciens participants** (lot 21, décision du 19/10) : toute personne qui
+a participé à un projet (tâche, post, commentaire, heures, ancien chef ou
+co-chef) en garde la lecture une fois retirée (table
+`projet_ancien_membre`) et peut reprendre ses anciens écrits (pièces
+jointes et mentions comprises) ; elle n'agit plus, sauf si le chef la
+rajoute, si une de ses anciennes tâches est rouverte, ou — membre de
+l'équipe du projet — si elle le rejoint. Jamais un Client ni le RH.
+
+**Fil de la fiche projet** (lot 21, demandes du gérant) : une Information
+peut être **épinglée** en tête du fil (une par projet, par le chef, un
+co-chef ou l'Admin : menu « ⋯ » du post) — l'endroit des informations
+importantes ; l'interrupteur **« Me concernant »** ne garde que mes posts,
+ceux où je suis tagué (post ou commentaire) et les suites données à mes
+posts (`?moi=1`, combinable avec Tout · Échanges · Activité).
 
 ## Démarrer avec Docker (recommandé)
 
@@ -308,7 +326,9 @@ cd /mnt/Pool/Kairos && sudo bash deploy.sh
 
 Il déploie aussi un patch appliqué directement sur le serveur (`git am`)
 puis poussé : le tag `deploye` retient la dernière version réellement
-déployée. À la main, l'équivalent :
+déployée. Si la mise à jour modifie `deploy.sh` lui-même, il se relance
+aussitôt dans sa nouvelle version (lot 21) en gardant ses repères de
+retour arrière (fichier `.deploiement_en_cours`). À la main, l'équivalent :
 
 ```bash
 git pull

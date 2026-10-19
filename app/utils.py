@@ -212,19 +212,22 @@ def il_y_a(dt) -> str:
 
     Lot 20 (décision du gérant) : sous date simulée (mode test), les
     horodatages sont SIMULÉS eux aussi (fn_maintenant) ; « il y a … » se lit
-    alors par rapport à l'instant simulé. Un horodatage postérieur à
-    l'instant simulé (créé avant la simulation, dans le « futur » simulé)
-    s'affiche en date absolue (« 9 oct. à 13 h 08 »)."""
+    alors par rapport à l'instant simulé. Un horodatage dans le futur
+    (postérieur à l'instant simulé, ou écrit sous une date simulée future
+    avant le lot 21) s'affiche en date absolue (« 9 oct. à 13 h 08 »)."""
     from . import horloge
 
     if dt is None:
         return ""
+    maintenant = horloge.maintenant()
+    # Lot 21 (test Chrome V4) : un horodatage dans le futur (écrit sous une
+    # date simulée, ou postérieur à l'instant simulé) s'affiche toujours en
+    # date absolue, jamais « à l'instant ».
+    if dt.tzinfo and dt > maintenant + datetime.timedelta(minutes=1):
+        local = dt.astimezone(maintenant.tzinfo)
+        jour = date_courte(local.date(), avec_annee=local.year != maintenant.year)
+        return f"{jour} à {local.hour}\u00a0h\u00a0{local.minute:02d}"
     if horloge.date_simulee() is not None:
-        maintenant = horloge.maintenant()
-        if dt.tzinfo and dt > maintenant + datetime.timedelta(minutes=1):
-            local = dt.astimezone(maintenant.tzinfo)
-            jour = date_courte(local.date(), avec_annee=local.year != maintenant.year)
-            return f"{jour} à {local.hour}\u00a0h\u00a0{local.minute:02d}"
         now = maintenant if dt.tzinfo else maintenant.replace(tzinfo=None)
     else:
         now = datetime.datetime.now(dt.tzinfo) if dt.tzinfo else datetime.datetime.now()

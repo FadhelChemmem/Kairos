@@ -35,7 +35,7 @@ BEGIN
   IF fn_etat_projet_recalcule('bloque', p) <> 'en_cours' OR fn_etat_projet_recalcule('en_cours', p) <> 'en_cours' THEN
     RAISE EXCEPTION 'projet sans tâche bloquée : %', fn_etat_projet_recalcule('bloque', p);
   END IF;
-  UPDATE tache SET etat = 'bloque' WHERE id = t1;
+  UPDATE tache SET etat = 'bloque', bloque_le = fn_maintenant() WHERE id = t1;  -- comme l'appli (0025 : horodatage à l'écriture)
   IF fn_etat_projet_recalcule('en_cours', p) <> 'bloque' THEN
     RAISE EXCEPTION 'projet avec une tâche bloquée : %', fn_etat_projet_recalcule('en_cours', p);
   END IF;

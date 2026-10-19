@@ -161,7 +161,7 @@ def _enregistrer_avatar_si_fourni(user_id: int, current_user_id: int) -> None:
         try:
             delete_upload(ancien)
         except Exception:
-            current_app.logger.warning("Ancienne photo de profil non supprimée : %s", ancien)
+            current_app.logger.warning("Ancienne photo de profil non supprimée\u00a0: %s", ancien)
 
 
 # Rôles qui ne voient des projets que par leur équipe (lot 13, audit rôles M4).

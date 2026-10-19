@@ -167,7 +167,9 @@ window.KairosFloatingWindow = (function () {
       // clic réellement hors du cadre (sur le fond).
       var r = dialogEl.getBoundingClientRect();
       if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) return;
-      if (aEteModifiee(dialogEl)) { demanderFermeture(dialogEl); return; }
+      // Lot 21 (revue F1) : la fenêtre qui fournit sa propre demande de
+      // fermeture (panneau de tâche : historique) la reçoit aussi ici.
+      if (aEteModifiee(dialogEl)) { demander(dialogEl); return; }
       if (opts.fermeture) { opts.fermeture(); return; }
       fermer(dialogEl);
     });
@@ -183,7 +185,7 @@ window.KairosFloatingWindow = (function () {
         return;
       }
       e.preventDefault();
-      demanderFermeture(dialogEl);
+      demander(dialogEl);
     });
   }
 

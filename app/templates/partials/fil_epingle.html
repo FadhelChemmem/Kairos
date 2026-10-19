@@ -1,0 +1,19 @@
+{# Information épinglée en tête du fil de la fiche projet (lot 21, demande
+   du gérant : l'endroit des informations importantes du projet). Une seule
+   par projet, visible quelle que soit la catégorie du fil, jamais répétée
+   dans la liste. Remplacée en partiel (#fil-epingle) quand on épingle ou
+   désépingle. Contexte : fil_epingle, projet ; facultatif : oob. #}
+<div id="fil-epingle" class="fil-epingle-zone"{% if oob %} data-partiel-oob{% endif %}>
+  {%- if fil_epingle %}
+  <section class="fil-epingle" aria-labelledby="fil-epingle-titre">
+    <h3 class="fil-epingle-titre" id="fil-epingle-titre">
+      <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+      Épinglé
+      <span class="fil-epingle-sous-titre">Informations importantes du projet</span>
+    </h3>
+    {% with post=fil_epingle, show_projet=false, next_url=url_for('projets.detail', projet_id=projet.id), oob=false %}
+      {% include "partials/fil_item.html" %}
+    {% endwith %}
+  </section>
+  {%- endif -%}
+</div>

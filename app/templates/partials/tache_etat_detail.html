@@ -23,7 +23,7 @@
   {% set libelle = {'termine': 'Terminée', 'verifie': 'Vérifiée', 'abandonne': 'Abandonnée', 'arret': 'Arrêtée'}[t.etat] %}
   {% set qui = ((cloture.prenom ~ ' ' ~ cloture.nom)|trim) if cloture|default(none) and t.etat in ('termine', 'verifie') else '' %}
   <div class="tache-etat-encadre tache-etat-encadre-{{ 'close' if t.etat in ('termine', 'verifie') else 'arret' }}" id="tache-{{ t.id }}-cloture-detail">
-    <p class="tache-etat-encadre-texte"><b>{{ libelle }}{% if t.etat in ('termine', 'verifie') and t.date_fin %} le {{ t.date_fin|date_courte(true) }}{% endif %}</b>{% if qui %} par {{ qui }}{% endif %}</p>
+    <p class="tache-etat-encadre-texte"><b>{{ libelle }}{% if t.etat in ('termine', 'verifie', 'abandonne', 'arret') and t.date_fin %} le {{ t.date_fin|date_courte(true) }}{% endif %}</b>{% if qui %} par {{ qui }}{% endif %}</p>
     {% if peut_rouvrir and cible is defined %}
     <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" data-partiel="{{ cible }}" data-focus-apres="#tache-{{ t.id }}-etat-en_cours" class="tache-etat-encadre-actions">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

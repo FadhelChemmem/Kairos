@@ -345,25 +345,23 @@ def projet_saisissable(projet: dict, date) -> str | None:
     return None
 
 
-def taches_projet(tache_ids) -> dict:
-    """{tache_id: projet_id} pour vérifier qu'une tâche est bien du projet
-    de sa ligne."""
-    return {i: t["projet_id"] for i, t in taches_infos(tache_ids).items()}
-
-
-def taches_infos(tache_ids) -> dict:
-    """{tache_id: {projet_id, ouverte_le(date) -> bool}} : projet de la tâche
-    et dernier jour où elle était ouverte (lot 20 : pas d'heures nouvelles
-    sur une tâche close après sa date de fin)."""
+def taches_infos(tache_ids, utilisateur_id: int | None = None) -> dict:
+    """{tache_id: {projet_id, ouverte, fermee_le, intervenant}} : projet de la
+    tâche, dernier jour où elle était ouverte (lot 20 : pas d'heures
+    nouvelles sur une tâche close après sa date de fin ; lot 21 : toute
+    tâche close a une date de fin) et si `utilisateur_id` en est
+    intervenant (lot 21, revue R9)."""
     ids = sorted({int(i) for i in tache_ids if i})
     if not ids:
         return {}
     return {r["id"]: dict(r) for r in db.query_all(
         """
-        SELECT id, projet_id, (etat IN ('en_cours', 'bloque')) AS ouverte,
-               COALESCE(date_fin, (updated_at AT TIME ZONE 'Africa/Tunis')::date) AS fermee_le
-        FROM tache WHERE id = ANY(%s)
-        """, (ids,))}
+        SELECT t.id, t.projet_id, (t.etat IN ('en_cours', 'bloque')) AS ouverte,
+               COALESCE(t.date_fin, (t.updated_at AT TIME ZONE 'Africa/Tunis')::date) AS fermee_le,
+               EXISTS (SELECT 1 FROM tache_intervenant ti
+                        WHERE ti.tache_id = t.id AND ti.utilisateur_id = %s) AS intervenant
+        FROM tache t WHERE t.id = ANY(%s)
+        """, (utilisateur_id, ids))}
 
 
 def tache_saisissable(info: dict | None, date) -> bool:
@@ -414,7 +412,9 @@ def list_lignes_suggerees(user_id: int, gere_par: int | None = None) -> dict:
     - `recentes` : 5 projets où j'ai saisi récemment, hors `mine`.
     Le reste passe par la recherche serveur (`rechercher_projets`).
     `gere_par` (correction par un chef) : seulement les projets que ce chef
-    gère, visibles par la personne corrigée."""
+    gère, visibles par la personne corrigée. Lot 21 (revue R14) : jamais un
+    projet où la personne n'est plus qu'en lecture seule (retirée) — la
+    saisie y serait refusée."""
     filtre_gere = ""
     params = {"uid": user_id, "gere": gere_par}
     if gere_par is not None:
@@ -426,7 +426,7 @@ def list_lignes_suggerees(user_id: int, gere_par: int | None = None) -> dict:
                    {_NB_TACHES} AS nb_taches
             FROM projet p
             WHERE p.etat IN ('en_cours', 'bloque') {filtre_gere}
-              AND EXISTS (SELECT 1 FROM v_projet_visibilite v WHERE v.projet_id = p.id AND v.utilisateur_id = %(uid)s)
+              AND EXISTS (SELECT 1 FROM v_projet_action v WHERE v.projet_id = p.id AND v.utilisateur_id = %(uid)s)
             ORDER BY p.nom, p.code
             LIMIT 200
             """,
@@ -448,7 +448,7 @@ def list_lignes_suggerees(user_id: int, gere_par: int | None = None) -> dict:
                          WHERE t.projet_id = p.id AND ti.utilisateur_id = %(uid)s
                            AND t.etat IN ('en_cours', 'bloque'))
               )
-          AND EXISTS (SELECT 1 FROM v_projet_visibilite v WHERE v.projet_id = p.id AND v.utilisateur_id = %(uid)s)
+          AND EXISTS (SELECT 1 FROM v_projet_action v WHERE v.projet_id = p.id AND v.utilisateur_id = %(uid)s)
         ORDER BY p.nom, p.code
         LIMIT 200
         """,
@@ -462,7 +462,7 @@ def list_lignes_suggerees(user_id: int, gere_par: int | None = None) -> dict:
         JOIN projet p ON p.id = t.projet_id
         WHERE t.etat IN ('en_cours', 'bloque') AND p.etat IN ('en_cours', 'bloque')
           AND EXISTS (SELECT 1 FROM tache_intervenant ti WHERE ti.tache_id = t.id AND ti.utilisateur_id = %(uid)s)
-          AND EXISTS (SELECT 1 FROM v_projet_visibilite v WHERE v.projet_id = p.id AND v.utilisateur_id = %(uid)s)
+          AND EXISTS (SELECT 1 FROM v_projet_action v WHERE v.projet_id = p.id AND v.utilisateur_id = %(uid)s)
         ORDER BY p.nom, t.titre
         LIMIT 200
         """,
@@ -477,7 +477,7 @@ def list_lignes_suggerees(user_id: int, gere_par: int | None = None) -> dict:
         FROM dailylog_entree d
         JOIN projet p ON p.id = d.projet_id
         WHERE d.utilisateur_id = %(uid)s AND p.etat IN ('en_cours', 'bloque') AND p.id <> ALL(%(exclure)s)
-          AND EXISTS (SELECT 1 FROM v_projet_visibilite v WHERE v.projet_id = p.id AND v.utilisateur_id = %(uid)s)
+          AND EXISTS (SELECT 1 FROM v_projet_action v WHERE v.projet_id = p.id AND v.utilisateur_id = %(uid)s)
         GROUP BY p.id, p.code, p.nom, p.date_debut
         ORDER BY derniere DESC
         LIMIT 5
@@ -513,15 +513,21 @@ def lignes_proposees(user: dict, date) -> list[dict]:
     clôture). Projets visibles et où elle peut agir (v_projet_action).
     Jamais stockées : la route les joint à l'état du jour."""
     params = {"uid": user["id"], "date": date}
+    en_cours_a_la_date = """
+        COALESCE(p.date_debut, (p.created_at AT TIME ZONE 'Africa/Tunis')::date) <= %(date)s
+        AND (p.etat IN ('en_cours', 'bloque') OR (p.date_cloture IS NOT NULL AND p.date_cloture >= %(date)s))"""
+    # Lot 21 (revue R9) : sa tâche reste proposée jusqu'à sa date de fin,
+    # même si elle ne lui donne plus que la lecture du projet (autre équipe,
+    # tâche close aujourd'hui) ; un projet seul exige le droit d'agir.
     projet_ouvert = """
         EXISTS (SELECT 1 FROM v_projet_action v WHERE v.projet_id = p.id AND v.utilisateur_id = %(uid)s)
-        AND COALESCE(p.date_debut, (p.created_at AT TIME ZONE 'Africa/Tunis')::date) <= %(date)s
-        AND (p.etat IN ('en_cours', 'bloque') OR (p.date_cloture IS NOT NULL AND p.date_cloture >= %(date)s))"""
+        AND """ + en_cours_a_la_date
     taches = db.query_all(
         f"""
         SELECT p.id AS projet_id, p.code, p.nom, t.id AS tache_id, t.titre AS tache_titre
         FROM tache t JOIN projet p ON p.id = t.projet_id
-        WHERE {projet_ouvert}
+        WHERE EXISTS (SELECT 1 FROM v_projet_visibilite v WHERE v.projet_id = p.id AND v.utilisateur_id = %(uid)s)
+          AND {en_cours_a_la_date}
           AND EXISTS (SELECT 1 FROM tache_intervenant ti WHERE ti.tache_id = t.id AND ti.utilisateur_id = %(uid)s)
           AND COALESCE(t.date_debut, (t.created_at AT TIME ZONE 'Africa/Tunis')::date - 1) <= %(date)s
           AND (t.etat IN ('en_cours', 'bloque')
@@ -556,7 +562,9 @@ def lignes_proposees(user: dict, date) -> list[dict]:
     avec_tache = {t["projet_id"] for t in taches}
     sortie += [{"projet_id": p["projet_id"], "tache_id": None, "code": p["code"], "nom": p["nom"],
                 "tache_titre": None} for p in projets if p["projet_id"] not in avec_tache]
-    return sortie[:MAX_PROPOSEES]
+    # Lot 21 (revue, question 15) : 60 tâches au plus, PUIS 60 projets au
+    # plus — les projets suivis ne sont plus évincés par les tâches.
+    return sortie
 
 
 # ---------------------------------------------------------------------
@@ -577,7 +585,7 @@ def membres_equipe(gere_par: int | None) -> list[dict]:
             SELECT {colonnes} FROM utilisateur u
             WHERE u.actif AND (u.role IN ('chef_de_projet', 'intervenant')
                   OR (u.role = 'admin' AND EXISTS (SELECT 1 FROM dailylog_entree d WHERE d.utilisateur_id = u.id
-                                                     AND d.date >= CURRENT_DATE - 90)))
+                                                     AND d.date >= fn_aujourdhui() - 90)))
             ORDER BY u.prenom, u.nom, u.id
             """
         )
@@ -700,7 +708,7 @@ def rechercher_projets(q: str, user_id: int, date, gere_par: int | None = None, 
                OR (p.etat IN ('termine', 'abandonne') AND p.date_cloture >= %(date)s))
           AND (p.date_debut IS NULL OR p.date_debut <= %(date)s)
           AND fn_recherche(p.code || ' ' || p.nom) LIKE fn_recherche(%(motif)s)
-          AND EXISTS (SELECT 1 FROM v_projet_visibilite v WHERE v.projet_id = p.id AND v.utilisateur_id = %(uid)s)
+          AND EXISTS (SELECT 1 FROM v_projet_action v WHERE v.projet_id = p.id AND v.utilisateur_id = %(uid)s)
           {filtre_gere}
         ORDER BY p.nom, p.code
         LIMIT %(limit)s

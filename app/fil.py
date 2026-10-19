@@ -59,6 +59,20 @@ def categorie_demandee(page: str | None = None) -> str:
     return valeur if valeur in CATEGORIES else CATEGORIE_DEFAUT
 
 
+def moi_demande() -> bool:
+    """Bascule « Me concernant » de la fiche projet (lot 21, demande du
+    gérant) : `?moi=1` dans l'adresse ; pour une action (POST), celle de la
+    page d'où elle part (Referer interne, comme la catégorie). Jamais le
+    Referer pour un GET : sans `moi` dans l'adresse demandée, tout le fil
+    (l'interrupteur éteint envoie l'adresse sans `moi`)."""
+    valeur = request.args.get("moi")
+    if valeur is None and request.referrer and request.method == "POST":
+        parts = urlsplit(request.referrer)
+        if not parts.netloc or parts.netloc == request.host:
+            valeur = (parse_qs(parts.query).get("moi") or [None])[0]
+    return valeur == "1"
+
+
 def taille_jusqua(taille: int, rang) -> int:
     """Taille de la première page pour qu'elle contienne le post demandé
     par `?jusqua=<id>` : `rang(post_id)` donne sa position dans le fil (0 :

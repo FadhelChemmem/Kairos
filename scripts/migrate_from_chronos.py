@@ -495,6 +495,10 @@ def build_taches(data, valid_projet_ids, report):
             date_echeance=date_echeance_t,
             date_fin=mysql_date_only(t["doneDate"]),
             created_at=created_at, updated_at=updated_at,
+            # Lot 21 (contre-expertise R29) : date du blocage = `blockedDate`
+            # de Chronos quand il est renseigné, sinon la dernière
+            # modification (comme au lot 20).
+            bloque_le=((mysql_dt_to_pg(t.get("blockedDate")) or updated_at) if etat == "bloque" else None),
         ))
 
     valid_tache_ids = {t["id"] for t in taches}
@@ -527,8 +531,8 @@ def appliquer_coherence(projets, taches, report):
             t["date_fin"] = p.get("date_cloture")
     # Lot 20 (revue 5c) : même règle que fn_etat_projet_recalcule (0023/0024) —
     # Bloqué tant qu'une tâche bloquée n'a pas été suivie d'une tâche En
-    # cours CRÉÉE après son blocage (date du blocage = sa dernière
-    # modification dans Chronos, reprise dans bloque_le).
+    # cours CRÉÉE après son blocage (date du blocage : `blockedDate` de
+    # Chronos, sinon sa dernière modification — reprise dans bloque_le).
     def _instant(v):
         return str(v or "")
 
@@ -536,7 +540,7 @@ def appliquer_coherence(projets, taches, report):
     for b in taches:
         if b["etat"] != "bloque":
             continue
-        depuis = _instant(b.get("updated_at") or b.get("created_at"))
+        depuis = _instant(b.get("bloque_le") or b.get("updated_at") or b.get("created_at"))
         if not any(c["projet_id"] == b["projet_id"] and c["etat"] == "en_cours"
                    and _instant(c.get("created_at")) > depuis for c in taches):
             bloques.add(b["projet_id"])
@@ -775,8 +779,9 @@ def emit_sql(path, utilisateurs, projets, projet_lots, liens_phase, taches,
             "date_fin, bloque_le, created_by, created_at, updated_at) SELECT "
             f"{t['id']}, {t['projet_id']}, {sql_val(t['titre'])}, {sql_val(t['etat'])}::tache_etat_enum, "
             f"{sql_val(t['date_debut'])}, {sql_val(t['date_echeance'])}, {sql_val(t['date_fin'])}, "
-            # Lot 20 (revue 5c) : date du blocage = dernière modification Chronos.
-            f"{sql_val(t['updated_at']) if t['etat'] == 'bloque' else 'NULL'}, "
+            # Lot 21 (R29) : date du blocage = blockedDate Chronos, sinon la
+            # dernière modification.
+            f"{sql_val(t.get('bloque_le') or t['updated_at']) if t['etat'] == 'bloque' else 'NULL'}, "
             f"chef_projet_id, {sql_val(t['created_at'])}, {sql_val(t['updated_at'])} "
             f"FROM projet WHERE id = {t['projet_id']};"
         )

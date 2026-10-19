@@ -389,6 +389,15 @@ ETATS_TACHE_OUVERTS = ("en_cours", "bloque")
 ETAT_TACHE_A_LA_CLOTURE = {"termine": "termine", "abandonne": "abandonne"}
 
 
+class EtatProjetChange(Exception):
+    """Lot 21 (revue R19) : fenêtre Informations périmée — le projet a été
+    clos (`clos`) ou rouvert depuis son ouverture ; rien n'est enregistré."""
+
+    def __init__(self, clos: bool):
+        super().__init__(clos)
+        self.clos = clos
+
+
 class ClotureAConfirmer(Exception):
     """Clore (Terminé / Abandonné) un projet qui a des tâches ouvertes
     demande une confirmation (décision 2, lot 13) : rien n'est enregistré ;
@@ -494,6 +503,7 @@ def update_projet(
     acteur_admin: bool = False,
     taches_a_clore: list[int] | None = None,
     bilan: dict | None = None,
+    etat_affiche: str | None = None,
 ) -> dict | None:
     """Édition des informations du projet — fenêtre flottante
     "Informations" (retour Fadhel, 2026-09-28), réservée au chef de
@@ -527,7 +537,10 @@ def update_projet(
       la vraie date, décision 5) ;
     - `bilan` (dict fourni par l'appelant) : reçoit `etat_avant` et
       `taches_closes` (nombre réellement clos), pour un message juste quand
-      la confirmation est renvoyée sur un projet déjà clos (double envoi)."""
+      la confirmation est renvoyée sur un projet déjà clos (double envoi).
+
+    Lot 21 (revue R19) : `etat_affiche`, l'état vu à l'ouverture de la
+    fenêtre ; si le projet a été clos ou rouvert depuis, EtatProjetChange."""
     from ..utils import projet_etat_style
     from .taches import recalculer_etat_projet
 
@@ -538,6 +551,10 @@ def update_projet(
         # changements d'état) : chef, état et co-chefs lus et écrits ensemble.
         cur.execute("SELECT etat, chef_projet_id FROM projet WHERE id = %s FOR UPDATE", (projet_id,))
         avant = cur.fetchone()
+        # Lot 21 (revue R19) : clos ou rouvert depuis l'ouverture de la fenêtre.
+        if (avant is not None and etat_affiche is not None
+                and (avant["etat"] in ETATS_CLOS) != (etat_affiche in ETATS_CLOS)):
+            raise EtatProjetChange(avant["etat"] in ETATS_CLOS)
         closes = []
         if avant is not None and etat_ecrit in ETATS_CLOS:
             cur.execute(
@@ -634,7 +651,8 @@ def list_intervenants(projet_id: int) -> list[dict]:
     panneau "Intervenants" jusqu'ici) —, dédupliquées et triées : le chef
     de projet d'abord, puis les AUTRES personnes dont le rôle global est
     "chef_de_projet" (qu'elles soient ici co-chef ou simple intervenant),
-    puis le reste des intervenants."""
+    puis le reste des intervenants. Lot 21 : `actuel` faux pour qui n'est
+    plus que sur des tâches closes (« Ancien intervenant »)."""
     sql = """
         WITH gens AS (
             SELECT p.chef_projet_id AS utilisateur_id, 'Chef de projet' AS role_label, 1 AS label_ord
@@ -654,7 +672,15 @@ def list_intervenants(projet_id: int) -> list[dict]:
 
             SELECT ti.utilisateur_id, NULL, 3
             FROM tache_intervenant ti JOIN tache t ON t.id = ti.tache_id
-            WHERE t.projet_id = %(pid)s
+            WHERE t.projet_id = %(pid)s AND t.etat IN ('en_cours', 'bloque')
+
+            UNION ALL
+
+            -- Lot 21 (test Chrome V1) : seulement sur des tâches closes —
+            -- « Ancien intervenant », qu'on peut rajouter au projet.
+            SELECT ti.utilisateur_id, 'Ancien intervenant', 4
+            FROM tache_intervenant ti JOIN tache t ON t.id = ti.tache_id
+            WHERE t.projet_id = %(pid)s AND t.etat NOT IN ('en_cours', 'bloque')
         ),
         dedup AS (
             -- Une personne peut apparaître via plusieurs sources (co-chef ET
@@ -666,6 +692,7 @@ def list_intervenants(projet_id: int) -> list[dict]:
         )
         SELECT u.id, u.prenom, u.nom, u.poste, u.avatar_chemin,
                COALESCE(d.role_label, u.poste, 'Intervenant') AS role_label,
+               (d.label_ord < 4) AS actuel,
                CASE
                  WHEN d.label_ord = 1 THEN 1
                  WHEN u.role = 'chef_de_projet' THEN 2
@@ -814,7 +841,11 @@ def add_co_chef(projet_id: int, utilisateur_id: int, current_user_id: int) -> No
     """« Rejoindre ce projet » pour un chef de projet (retour Fadhel,
     2026-09-29, PR8) : il rejoint comme co-chef, pas comme intervenant.
     Lot 20 : post automatique dans l'Activité du projet."""
+    from . import taches
+
     with db.get_cursor(user_id=current_user_id) as cur:
+        # Lot 21 (revue R20) : état du projet relu sous son verrou.
+        taches.verrouiller_projet_ouvert(cur, projet_id)
         cur.execute(
             """
             INSERT INTO projet_co_chef (projet_id, utilisateur_id)
@@ -900,11 +931,15 @@ def retirer_intervenant(projet_id: int, utilisateur_id: int, current_user_id: in
     (evenement 'intervenant_projet') ; les lignes retirées sont tracées par
     les triggers d'audit. Renvoie {post_id, personne, co_chef, taches}
     (titres des tâches quittées) ; RetraitRefuse sinon."""
+    from . import taches
+
     with db.get_cursor(user_id=current_user_id) as cur:
-        cur.execute("SELECT chef_projet_id FROM projet WHERE id = %s FOR NO KEY UPDATE", (projet_id,))
+        cur.execute("SELECT chef_projet_id, etat FROM projet WHERE id = %s FOR NO KEY UPDATE", (projet_id,))
         projet = cur.fetchone()
         if projet is None:
             raise RetraitRefuse("Projet introuvable.")
+        if projet["etat"] in ("termine", "abandonne"):
+            raise taches.ProjetClos()  # lot 21 (revue R20) : clos entre-temps
         if projet["chef_projet_id"] == utilisateur_id:
             raise RetraitRefuse("Le chef de projet titulaire ne se retire pas : confiez d'abord le projet à "
                                 "un autre chef (fenêtre Informations).")
@@ -954,7 +989,11 @@ def add_intervenant(projet_id: int, utilisateur_id: int, current_user_id: int) -
     d'intervenant — jamais co-chef de son propre projet. Retourne True si
     un rattachement a été CRÉÉ (False s'il existait déjà), pour ne notifier
     qu'une fois."""
+    from . import taches
+
     with db.get_cursor(user_id=current_user_id) as cur:
+        # Lot 21 (revue R20) : état du projet relu sous son verrou.
+        taches.verrouiller_projet_ouvert(cur, projet_id)
         cur.execute("SELECT role FROM utilisateur WHERE id = %s", (utilisateur_id,))
         row = cur.fetchone()
         if row and row["role"] == "chef_de_projet":

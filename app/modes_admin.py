@@ -165,6 +165,7 @@ def appliquer() -> None:
     g.mode_admin = None
     g.date_simulee = None
     g.heure_simulee = None
+    g.simulation_posee_le = None
     g.lecture_seule = False
     g.admin_reel_agit = None
     mode = session.get(CLE_MODE)
@@ -184,6 +185,10 @@ def appliquer() -> None:
         if valide and mode_test_actif():
             g.date_simulee = valide
             g.heure_simulee = lire_heure(date.get("heure"))
+            # Lot 21 (revue R10) : instant réel où l'heure a été choisie —
+            # l'heure simulée avance ensuite avec le temps réel.
+            pose = date.get("pose_le")
+            g.simulation_posee_le = pose if isinstance(pose, (int, float)) and not isinstance(pose, bool) else None
         else:
             session.pop(CLE_DATE, None)
             if valide:

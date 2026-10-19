@@ -98,9 +98,15 @@ def ids_entiers(valeurs, maximum: int = MAX_IDS) -> list[int]:
     (ordre conservé), `maximum` au plus (les suivants sont ignorés).
     `str.isdigit()` accepte « ² » ou « ٣ » que `int()` refuse ensuite
     (erreur 500) : on n'accepte que des chiffres ASCII."""
-    valeurs = list(valeurs)[: maximum * 2]
-    ids = dict.fromkeys(int(x) for x in valeurs if isinstance(x, str) and _ID.fullmatch(x))
-    return list(ids)[:maximum]
+    ids: dict[int, None] = {}
+    for x in valeurs:
+        # Lot 21 (R-22) : tri AVANT la limite — des valeurs invalides ou en
+        # double en tête ne font plus ignorer les identifiants valables.
+        if isinstance(x, str) and _ID.fullmatch(x):
+            ids[int(x)] = None
+            if len(ids) >= maximum:
+                break
+    return list(ids)
 
 
 def premiere_erreur(*messages: str | None) -> str | None:

@@ -1,4 +1,6 @@
 """Requêtes SQL liées au fil de posts (feed), réactions et commentaires."""
+import re
+
 from .. import db
 
 # Qui voit un post (migration 0009, posts "Information", retour Fadhel,
@@ -33,6 +35,11 @@ _POST_VISIBLE = """
     )
 """
 
+# Lot 21 (revue R18) : le post d'origine cité « En réponse à » n'est montré
+# qu'à qui peut le lire (une réponse à un ancien post d'une autre équipe ne
+# fait plus lire son texte).
+_PARENT_VISIBLE = re.sub(r"\bp\.", "parent.", _POST_VISIBLE)
+
 # Lot 14 (revue produit P1-3) : post automatique (« Activité ») — tout
 # évènement sauf « Donner suite » (repost) et la clôture d'une tâche
 # accompagnée d'un message écrit par la personne (« Échanges »). Voir app/fil.py.
@@ -48,7 +55,7 @@ _FILTRE_CATEGORIE = {"tout": "TRUE", "echanges": "NOT " + _EST_ACTIVITE, "activi
 
 _FEED_SELECT = """
     SELECT p.id, p.type_code, p.contenu, p.lien, p.created_at, p.tache_id, p.parent_post_id,
-           p.modifie_le, p.supprime_le,
+           p.modifie_le, p.supprime_le, p.epingle_le,
            p.projet_id, proj.code AS projet_code, proj.nom AS projet_nom, proj.etat AS projet_etat,
            -- Équipes destinataires d'une Information sans projet (migration 0009).
            COALESCE(
@@ -88,6 +95,12 @@ _FEED_SELECT = """
            ) OR (p.projet_id IS NOT NULL AND EXISTS (
               SELECT 1 FROM utilisateur ua WHERE ua.id = %(uid)s AND ua.role = 'admin'
            ))) AND NOT EXISTS (SELECT 1 FROM utilisateur ux WHERE ux.id = %(uid)s AND ux.role IN ('client', 'rh')), false) AS je_gere,
+           -- Lot 21 : projet en lecture seule pour le lecteur (personne
+           -- retirée, ancienne tâche close) — ni « Vu », ni commentaire, ni
+           -- « Donner suite » proposés (le serveur les refuse déjà).
+           (p.projet_id IS NOT NULL AND NOT EXISTS (
+              SELECT 1 FROM v_projet_action va WHERE va.projet_id = p.projet_id AND va.utilisateur_id = %(uid)s
+           )) AS lecture_seule,
            (SELECT count(*) FROM post_reaction r WHERE r.post_id = p.id) AS nb_reactions,
            (SELECT count(*) FROM post_commentaire c WHERE c.post_id = p.id AND c.supprime_le IS NULL) AS nb_commentaires,
            (SELECT pr.reaction_code FROM post_reaction pr
@@ -158,11 +171,13 @@ _FEED_SELECT = """
               ) x),
              '[]'
            ) AS mentions,
-           parent.contenu AS parent_contenu, parent.type_code AS parent_type_code,
+           CASE WHEN """ + _PARENT_VISIBLE + """ THEN parent.contenu END AS parent_contenu,
+           parent.type_code AS parent_type_code,
            (parent.supprime_le IS NOT NULL) AS parent_supprime,
+           (parent.id IS NOT NULL AND NOT """ + _PARENT_VISIBLE + """) AS parent_invisible,
            parent.evenement AS parent_evenement,
            parent_auteur.prenom AS parent_auteur_prenom, parent_auteur.nom AS parent_auteur_nom,
-           parent_tache.titre AS parent_tache_titre,
+           CASE WHEN """ + _PARENT_VISIBLE + """ THEN parent_tache.titre END AS parent_tache_titre,
            -- Lot 20 (test Chrome FP3) : tâches créées par « Donner suite »
            -- depuis ce post — la requête montre qu'elle a eu une suite (le
            -- post de création, lui, est regroupé dans « Activité »).
@@ -293,17 +308,89 @@ def _rang_dans_fil(condition: str, params: dict, categorie: str, post_id: int) -
     return int(ligne["n"] or 0) if ligne else 0
 
 
-def rang_dans_fil_projet(projet_id: int, current_user_id: int, categorie: str, post_id: int) -> int:
-    return _rang_dans_fil("p.projet_id = %(pid)s", {"uid": current_user_id, "pid": projet_id}, categorie, post_id)
+def rang_dans_fil_projet(projet_id: int, current_user_id: int, categorie: str, post_id: int,
+                         moi: bool = False) -> int:
+    return _rang_dans_fil(_condition_fiche(moi), {"uid": current_user_id, "pid": projet_id}, categorie, post_id)
 
 
 def rang_dans_fil_mes_projets(current_user_id: int, categorie: str, post_id: int) -> int:
     return _rang_dans_fil(_CONDITION_MES_PROJETS, {"uid": current_user_id}, categorie, post_id)
 
 
+# Fil de la fiche projet : le post épinglé est affiché à part, en tête
+# (lot 21), jamais une seconde fois dans la liste.
+_CONDITION_FICHE = "p.projet_id = %(pid)s AND p.epingle_le IS NULL"
+
+# Bascule « Me concernant » (lot 21, demande du gérant) : mes posts, ceux où
+# je suis tagué (dans le post ou un commentaire non supprimé) et les suites
+# données à mes posts.
+_CONDITION_MOI = """
+    (p.auteur_id = %(uid)s
+     OR EXISTS (SELECT 1 FROM post_mention pm WHERE pm.post_id = p.id AND pm.utilisateur_id = %(uid)s)
+     OR EXISTS (SELECT 1 FROM post_commentaire pc
+                WHERE pc.post_id = p.id AND pc.supprime_le IS NULL
+                  AND (pc.mentionne_user_id = %(uid)s
+                       OR EXISTS (SELECT 1 FROM post_commentaire_mention pcm
+                                  WHERE pcm.commentaire_id = pc.id AND pcm.utilisateur_id = %(uid)s)))
+     OR EXISTS (SELECT 1 FROM post pp WHERE pp.id = p.parent_post_id AND pp.auteur_id = %(uid)s
+                AND pp.supprime_le IS NULL))
+"""
+
+
+def _condition_fiche(moi: bool) -> str:
+    return _CONDITION_FICHE + (" AND " + _CONDITION_MOI if moi else "")
+
+
 def list_feed_projet(projet_id: int, current_user_id: int, limit: int = 30, categorie: str = "tout",
-                     avant=None) -> list[dict]:
-    return _lire_fil("p.projet_id = %(pid)s", {"uid": current_user_id, "pid": projet_id}, limit, categorie, avant)
+                     avant=None, moi: bool = False) -> list[dict]:
+    return _lire_fil(_condition_fiche(moi), {"uid": current_user_id, "pid": projet_id}, limit, categorie, avant)
+
+
+def get_post_epingle(projet_id: int, viewer_id: int) -> dict | None:
+    """Information épinglée en tête du fil du projet (lot 21, demande du
+    gérant : « un endroit où écrire les informations importantes »), telle
+    que le fil l'affiche ; None s'il n'y en a pas."""
+    ligne = db.query_one("SELECT id FROM post WHERE projet_id = %s AND epingle_le IS NOT NULL "
+                         "AND supprime_le IS NULL", (projet_id,))
+    return get_post_carte(ligne["id"], viewer_id) if ligne else None
+
+
+class EpinglageRefuse(Exception):
+    """Post qui ne peut pas être épinglé (pas une Information écrite de ce
+    projet, ou supprimé)."""
+
+
+def epingler(post_id: int, projet_id: int, current_user_id: int) -> int | None:
+    """Épingle `post_id` en tête du fil de `projet_id` (lot 21) ; l'ancien
+    post épinglé est désépinglé dans la même transaction, sous le verrou du
+    projet (taches.ProjetClos si le projet est clos). Retourne l'id du post
+    désépinglé, s'il y en avait un autre."""
+    from .taches import verrouiller_projet_ouvert
+
+    with db.get_cursor(user_id=current_user_id) as cur:
+        verrouiller_projet_ouvert(cur, projet_id)
+        cur.execute("SELECT id FROM post WHERE id = %s AND projet_id = %s AND type_code = 'information' "
+                    "AND evenement IS NULL AND supprime_le IS NULL FOR UPDATE", (post_id, projet_id))
+        if cur.fetchone() is None:
+            raise EpinglageRefuse()
+        cur.execute("UPDATE post SET epingle_le = NULL, epingle_par = NULL "
+                    "WHERE projet_id = %s AND epingle_le IS NOT NULL AND id <> %s RETURNING id",
+                    (projet_id, post_id))
+        ancien = cur.fetchone()
+        cur.execute("UPDATE post SET epingle_le = fn_maintenant(), epingle_par = %s "
+                    "WHERE id = %s AND epingle_le IS NULL", (current_user_id, post_id))
+        return ancien["id"] if ancien else None
+
+
+def desepingler(post_id: int, projet_id: int, current_user_id: int) -> bool:
+    """Retire l'épingle (lot 21). Faux si le post n'était pas épinglé."""
+    from .taches import verrouiller_projet_ouvert
+
+    with db.get_cursor(user_id=current_user_id) as cur:
+        verrouiller_projet_ouvert(cur, projet_id)
+        cur.execute("UPDATE post SET epingle_le = NULL, epingle_par = NULL "
+                    "WHERE id = %s AND projet_id = %s AND epingle_le IS NOT NULL", (post_id, projet_id))
+        return cur.rowcount == 1
 
 
 def list_feed_mes_projets(current_user_id: int, limit: int = 30, categorie: str = "tout", avant=None) -> list[dict]:
@@ -356,14 +443,16 @@ def instant_base():
     """Horloge de la base, à relever AVANT de lire le fil (lot 18, revue QA) :
     un post validé pendant la lecture n'est alors pas compté comme vu. Lot
     20 : l'instant simulé en mode test (les posts y sont datés ainsi)."""
-    ligne = db.query_one("SELECT COALESCE(fn_instant_simule(), clock_timestamp()) AS t")
+    ligne = db.query_one("SELECT fn_maintenant() AS t")
     return ligne["t"] if ligne else None
 
 
 def marquer_fil_vu(user_id: int, categories, instant=None) -> None:
     """La personne vient de regarder ces catégories du fil, jusqu'à `instant`
     (un horodatage, ou un dict catégorie → horodatage ; maintenant — simulé
-    en mode test — par défaut). Lot 20 : jamais en arrière (GREATEST)."""
+    en mode test — par défaut). Lot 20 : jamais en arrière (GREATEST) ; lot
+    21 : jamais après l'instant réel (un post daté du futur par un test
+    reste « nouveau »)."""
     cats = [c for c in categories if c in CATEGORIES_VUES]
     if not cats:
         return
@@ -371,7 +460,7 @@ def marquer_fil_vu(user_id: int, categories, instant=None) -> None:
     db.execute(
         """
         INSERT INTO utilisateur_fil_vu (utilisateur_id, categorie, vu_le)
-        SELECT %s, c, COALESCE(i, fn_maintenant())
+        SELECT %s, c, LEAST(COALESCE(i, fn_maintenant()), fn_maintenant())
         FROM unnest(%s::text[], %s::timestamptz[]) AS x(c, i)
         ON CONFLICT (utilisateur_id, categorie)
         DO UPDATE SET vu_le = GREATEST(utilisateur_fil_vu.vu_le, EXCLUDED.vu_le)
@@ -456,6 +545,18 @@ def peut_voir(post_id: int, projet_id: int | None, user_id: int) -> bool:
     ) is not None
 
 
+def _projet_ouvert(cur, requete: str, ident: int) -> None:
+    """Lot 21 (revue R7) : l'état du projet est relu SOUS verrou (FOR SHARE :
+    une clôture en cours passe d'abord) — une Requête ou un commentaire ne
+    se publient plus dans un projet clos entre-temps (taches.ProjetClos)."""
+    from .taches import ProjetClos
+
+    cur.execute(requete, (ident,))
+    ligne = cur.fetchone()
+    if ligne is not None and ligne["etat"] in ("termine", "abandonne"):
+        raise ProjetClos()
+
+
 def create_post(
     projet_id: int | None,
     auteur_id: int,
@@ -495,6 +596,8 @@ def create_post(
     (migration 0009) — les équipes destinataires sont enregistrées dans la
     même transaction."""
     with db.get_cursor(user_id=auteur_id) as cur:
+        if projet_id is not None:
+            _projet_ouvert(cur, "SELECT etat FROM projet WHERE id = %s FOR SHARE", projet_id)
         cur.execute(
             """
             INSERT INTO post (projet_id, tache_id, parent_post_id, auteur_id, type_code, contenu, lien)
@@ -572,6 +675,8 @@ def add_comment(
     `mention_ids` (migration 0009) : personnes taguées "@Prénom Nom" dans
     le texte, déjà filtrées par l'appelant (routes/posts.py)."""
     with db.get_cursor(user_id=auteur_id) as cur:
+        _projet_ouvert(cur, """SELECT p.etat FROM post po JOIN projet p ON p.id = po.projet_id
+                               WHERE po.id = %s FOR SHARE OF p""", post_id)
         cur.execute(
             """
             INSERT INTO post_commentaire (post_id, auteur_id, contenu, mentionne_user_id, parent_commentaire_id)
@@ -614,7 +719,7 @@ def modifier_commentaire(commentaire_id: int, auteur_id: int, contenu: str, ment
     with db.get_cursor(user_id=auteur_id) as cur:
         cur.execute(
             """
-            UPDATE post_commentaire SET contenu = %s, modifie_le = now()
+            UPDATE post_commentaire SET contenu = %s, modifie_le = fn_maintenant()
             WHERE id = %s AND auteur_id = %s
             RETURNING id
             """,
@@ -773,7 +878,7 @@ def modifier_post(post_id: int, auteur_id: int, contenu: str, lien: str | None,
     with db.get_cursor(user_id=auteur_id) as cur:
         cur.execute(
             """
-            UPDATE post SET contenu = %s, lien = %s, modifie_le = now()
+            UPDATE post SET contenu = %s, lien = %s, modifie_le = fn_maintenant()
             WHERE id = %s AND auteur_id = %s AND supprime_le IS NULL
             RETURNING id
             """,
@@ -812,8 +917,10 @@ def supprimer_post(post_id: int, current_user_id: int) -> str | None:
     l'horodatage de la suppression (lié au jeton), None si déjà supprimé."""
     with db.get_cursor(user_id=current_user_id) as cur:
         cur.execute(
-            "UPDATE post SET supprime_le = now(), supprime_par = %s WHERE id = %s AND supprime_le IS NULL "
-            "RETURNING supprime_le",
+            # Lot 21 : un post supprimé n'est plus épinglé (« Annuler » le
+            # rétablit sans épingle).
+            "UPDATE post SET supprime_le = now(), supprime_par = %s, epingle_le = NULL, epingle_par = NULL "
+            "WHERE id = %s AND supprime_le IS NULL RETURNING supprime_le",
             (current_user_id, post_id),
         )
         ligne = cur.fetchone()

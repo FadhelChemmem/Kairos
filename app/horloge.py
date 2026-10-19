@@ -72,15 +72,29 @@ def _zone(fuseau: str | ZoneInfo | None) -> ZoneInfo:
 
 
 def instant_simule() -> datetime.datetime | None:
-    """Instant simulé (aware, fuseau de Tunis), None sans simulation."""
+    """Instant simulé (aware, fuseau de Tunis), None sans simulation.
+
+    Lot 21 (revue R10) : à la microseconde, et une heure choisie AVANCE avec
+    le temps réel écoulé depuis qu'elle a été posée (sans dépasser la fin du
+    jour simulé) — un blocage puis une création de tâche ne tombent plus au
+    même instant figé."""
     jour = date_simulee()
     if jour is None:
         return None
     tunis = ZoneInfo(FUSEAU_DEFAUT)
     heure = heure_simulee()
+    reel = datetime.datetime.now(datetime.timezone.utc)
     if heure is None:
-        heure = datetime.datetime.now(datetime.timezone.utc).astimezone(tunis).time().replace(microsecond=0)
-    return datetime.datetime.combine(jour, heure, tzinfo=tunis)
+        return datetime.datetime.combine(jour, reel.astimezone(tunis).time(), tzinfo=tunis)
+    instant = datetime.datetime.combine(jour, heure, tzinfo=tunis)
+    from flask import g
+
+    pose = g.get("simulation_posee_le")
+    if isinstance(pose, (int, float)) and not isinstance(pose, bool):
+        ecoule = max(0.0, reel.timestamp() - pose)
+        fin_du_jour = datetime.datetime.combine(jour, datetime.time.max, tzinfo=tunis)
+        instant = min(instant + datetime.timedelta(seconds=ecoule), fin_du_jour)
+    return instant
 
 
 def maintenant_reel(fuseau: str | ZoneInfo | None = None) -> datetime.datetime:

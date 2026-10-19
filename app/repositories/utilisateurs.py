@@ -1,4 +1,5 @@
 """Requêtes SQL liées aux utilisateurs (hors authentification, voir auth.py)."""
+import datetime
 import json
 
 from .. import db
@@ -361,18 +362,20 @@ def revoquer_sessions(user_id: int) -> None:
     )
 
 
-def lien_reset_recent(user_id: int, minutes: int) -> bool:
+def lien_reset_recent(user_id: int, minutes: int, duree_validite: datetime.timedelta) -> bool:
     """Vrai si un lien de réinitialisation encore valable a été émis il y a
     moins de `minutes` (lot 20, revue 10b : une nouvelle demande ne
     l'écrase plus aussitôt — sinon n'importe qui annulait le lien d'un
-    collègue en redemandant)."""
+    collègue en redemandant). `duree_validite` : RESET_TOKEN_TTL
+    (app/auth.py), passé par l'appelant (lot 21, R-16 : plus de copie en
+    dur de la durée du lien)."""
     return db.query_one(
         """
         SELECT 1 AS ok FROM utilisateur
         WHERE id = %s AND reset_token_hash IS NOT NULL AND reset_token_expires_at > now()
-          AND reset_token_expires_at - interval '1 hour' > now() - make_interval(mins => %s)
+          AND reset_token_expires_at - make_interval(secs => %s) > now() - make_interval(mins => %s)
         """,
-        (user_id, minutes),
+        (user_id, duree_validite.total_seconds(), minutes),
     ) is not None
 
 

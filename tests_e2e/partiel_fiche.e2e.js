@@ -304,6 +304,9 @@ module.exports = async function scenarioFiche(h) {
     // Clic à la souris (le clic de Playwright fait défiler la page vers
     // la bulle de confirmation, positionnée en absolu).
     async () => { const bb = await p.locator('.k-confirmation button:has-text("Retirer")').boundingBox();
+      // Bulle ouverte à l'instant : une image le temps qu'elle soit posée
+      // (un clic dans la même milliseconde n'est pas un geste humain).
+      await pause(100);
       await p.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); },
     async () => sql('SELECT count(*) FROM projet_intervenant WHERE projet_id=1 AND utilisateur_id=150') === '0'
       && await p.locator('#projet-intervenant-150').count() === 0,

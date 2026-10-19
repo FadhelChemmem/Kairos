@@ -3,7 +3,6 @@ Claude Code du 19/10/2026, avec les décisions du gérant (retiré en lecture
 seule, date simulée partout, plus de pièce jointe sur une tâche, numéro
 d'affaire APS → APD, verrou de 14 jours pour le chef aussi)."""
 import datetime
-import io
 import json
 from urllib.parse import unquote
 

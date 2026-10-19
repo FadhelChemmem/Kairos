@@ -74,7 +74,7 @@
            est taguée d'office. #}
         {# Projet clos : ni réponse ni modification (décision Fadhel, lot 7). #}
         {% set clos = post.projet_etat in ('termine', 'abandonne') %}
-        {% if not clos %}
+        {% if not clos and not post.lecture_seule|default(false) %}
         <button type="button" class="post-comment-action" data-repondre="{{ c.parent_commentaire_id if reponse else c.id }}"{% if reponse and c.auteur_id != g.user.id %} data-mention="@{{ c.auteur_prenom }} {{ c.auteur_nom }} "{% endif %}>Répondre</button>
         {% endif %}
         {% if c.auteur_id == g.user.id and not clos %}

@@ -268,6 +268,8 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     const champTel = pt.locator('#carte-intervenants .search-combobox-input');
     await champTel.scrollIntoViewIfNeeded();
     await champTel.click();
+    // Liste ouverte à la prise de focus : attendue (machine chargée).
+    await pt.locator('#carte-intervenants .search-combobox-list').waitFor({ state: 'visible', timeout: 3000 }).catch(() => {});
     const liste = await pt.locator('#carte-intervenants .search-combobox-list').boundingBox();
     etape('375 px : la liste tient dans la largeur', liste && liste.x >= 0 && liste.x + liste.width <= 375, liste);
     etape('375 px : toujours aucun débordement', await debordement(pt) === 0);
@@ -521,6 +523,72 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
       etape('320 × 225 (zoom 400 %) : barres non fixes', await pc.evaluate(() => getComputedStyle(document.querySelector('.k-nav-basse')).position === 'static'
         && getComputedStyle(document.querySelector('.topbar')).position === 'static'));
       await tel.close();
+    }
+
+    {
+      // Lot 21 (demande du gérant) : une Information épinglée en tête du fil.
+      sql("INSERT INTO projet (id, code, nom, phase, chef_projet_id, equipe_code, etat) VALUES (30, '21130X', 'Épingle', 'EXE', 2, 'MIDGARD', 'en_cours')");
+      sql("INSERT INTO projet_intervenant (projet_id, utilisateur_id) VALUES (30, 3)");
+      const info = sql("INSERT INTO post (projet_id, auteur_id, type_code, contenu) VALUES (30, 3, 'information', 'Accès chantier : badge à l’accueil, casque obligatoire.') RETURNING id").split('\n')[0];
+      sql("INSERT INTO post (projet_id, auteur_id, type_code, contenu) VALUES (30, 2, 'information', 'Réunion de synthèse lundi 9 h.')");
+      let ctx = await contexte(navigateur, 'ali@x.tn');
+      let pc = await ouvrir(ctx, '/projets/30');
+      await pc.click(`#post-${info} .post-menu > summary`);
+      await pc.click(`#post-${info} .post-menu-item:has-text("Épingler en tête du projet")`);
+      const zone = await attendre(() => pc.evaluate(() => {
+        const z = document.querySelector('#fil-epingle .fil-epingle'); return z && z.textContent.includes('Épinglé') && z.textContent.includes('Accès chantier'); }));
+      etape('épingler : encadré « Épinglé » en tête du fil, sans rechargement', !!zone);
+      etape('épingler : en base', sql('SELECT count(*) FROM post WHERE epingle_le IS NOT NULL AND projet_id = 30') === '1');
+      etape('épingler : le post n’est affiché qu’une fois',
+        await pc.evaluate((id) => document.querySelectorAll('#post-' + id).length, info) === 1);
+      etape('épingler : encadré au-dessus de la liste du fil', await pc.evaluate(() =>
+        document.querySelector('#fil-epingle').compareDocumentPosition(document.querySelector('#fil-posts')) & Node.DOCUMENT_POSITION_FOLLOWING));
+      await capture(pc, 'lot21-epingle-1280-clair.png');
+      await pc.click(`#fil-epingle .post-menu > summary`);
+      await pc.click(`#fil-epingle .post-menu-item:has-text("Désépingler")`);
+      etape('désépingler : encadré retiré', await attendre(() => pc.evaluate(() => !document.querySelector('#fil-epingle .fil-epingle'))));
+      await pc.click(`#post-${info} .post-menu > summary`);
+      await pc.click(`#post-${info} .post-menu-item:has-text("Épingler en tête du projet")`);
+      await attendre(() => pc.evaluate(() => !!document.querySelector('#fil-epingle .fil-epingle')));
+      await ctx.close();
+      ctx = await contexte(navigateur, 'rim@x.tn', { largeur: 375, hauteur: 800, theme: 'dark' });
+      pc = await ouvrir(ctx, '/projets/30');
+      etape('375 px sombre : encadré visible, sans débordement', await pc.evaluate(() => {
+        const z = document.querySelector('#fil-epingle .fil-epingle'); return !!z && z.scrollWidth <= z.clientWidth + 1
+          && document.documentElement.scrollWidth <= window.innerWidth + 1; }));
+      etape('intervenante : pas d’action « Épingler »', await pc.evaluate(() =>
+        ![...document.querySelectorAll('.post-menu-item')].some((b) => /pingler/.test(b.textContent))));
+      await pc.evaluate(() => document.querySelector('#fil-epingle').scrollIntoView());
+      await capture(pc, 'lot21-epingle-375-sombre.png');
+      await ctx.close();
+
+      // Lot 21 (demande du gérant) : bascule « Me concernant ».
+      const reunion = sql("SELECT id FROM post WHERE projet_id = 30 AND auteur_id = 2").split('\n')[0];
+      const sien = sql("INSERT INTO post (projet_id, auteur_id, type_code, contenu) VALUES (30, 3, 'information', 'Plans de Rim envoyés.') RETURNING id").split('\n')[0];
+      const tague = sql("INSERT INTO post (projet_id, auteur_id, type_code, contenu) VALUES (30, 2, 'information', 'Rim, peux-tu relire ?') RETURNING id").split('\n')[0];
+      sql(`INSERT INTO post_mention (post_id, utilisateur_id) VALUES (${tague}, 3)`);
+      ctx = await contexte(navigateur, 'rim@x.tn');
+      pc = await ouvrir(ctx, '/projets/30?fil=tout');
+      const visibles = () => pc.evaluate(() => [...document.querySelectorAll('#fil-posts .post-card')].map((c) => c.id));
+      etape('« Me concernant » : interrupteur éteint par défaut', await pc.getAttribute('#fil-moi', 'aria-checked') === 'false');
+      await pc.click('#fil-moi');
+      const filtre = await attendre(async () => { const v = await visibles(); return v.includes('post-' + sien) && v.includes('post-' + tague) && !v.includes('post-' + reunion) ? v : null; });
+      etape('« Me concernant » : mes posts et mes mentions seulement, sans rechargement', !!filtre, await visibles());
+      etape('« Me concernant » : interrupteur allumé, adresse ?moi=1', await pc.getAttribute('#fil-moi', 'aria-checked') === 'true'
+        && /moi=1/.test(pc.url()));
+      etape('« Me concernant » : post épinglé toujours en tête', await pc.evaluate(() => !!document.querySelector('#fil-epingle .fil-epingle')));
+      await pc.click('#fil-filtre-projet-echanges');
+      await attendre(async () => /fil=echanges/.test(pc.url()));
+      etape('« Me concernant » : gardé en changeant de catégorie', /moi=1/.test(pc.url()) && !(await visibles()).includes('post-' + reunion));
+      await capture(pc, 'lot21-me-concernant-1280.png');
+      await pc.focus('#fil-moi');
+      await pc.keyboard.press('Space');
+      etape('« Me concernant » : barre d’espace rend tout le fil', !!await attendre(async () => (await visibles()).includes('post-' + reunion))
+        && await pc.getAttribute('#fil-moi', 'aria-checked') === 'false' && !/moi=1/.test(pc.url()));
+      await pc.goBack();
+      etape('« Me concernant » : Retour rend la vue filtrée', !!await attendre(async () => !(await visibles()).includes('post-' + reunion)
+        && await pc.getAttribute('#fil-moi', 'aria-checked') === 'true'));
+      await ctx.close();
     }
 
     etape('aucune erreur JavaScript', erreursJs.length === 0, erreursJs);

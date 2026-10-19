@@ -63,7 +63,7 @@ from migrate_from_chronos import (  # noqa: E402
 )
 from mysqldump_parser import load_dump  # noqa: E402
 
-MIGRATION_ATTENDUE = "0024_lot20_droits_dates_et_garde"
+MIGRATION_ATTENDUE = "0025_lot21_participants_horloge_et_gardes"
 
 # Données métier effacées puis rechargées (ou laissées vides) — ordre
 # indifférent pour TRUNCATE. Toute table de la base doit figurer ici ou
@@ -74,7 +74,7 @@ TABLES_EFFACEES = (
     "post_reaction", "post_equipe", "post_mention", "post_piece_jointe", "post",
     "dailylog_jour", "dailylog_entree",
     "tache_piece_jointe", "tache_intervenant", "tache",
-    "projet_intervenant", "projet_co_chef", "projet_lot", "projet",
+    "projet_intervenant", "projet_co_chef", "projet_lot", "projet_ancien_membre", "projet",
 )
 
 # Jamais modifiées (empreinte comparée avant/après), sauf audit_log qui
@@ -280,7 +280,8 @@ END $$;""")
       "created_by BIGINT, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ) ON COMMIT DROP;")
     w("CREATE TEMP TABLE rch_projet_lot (projet_id BIGINT, lot_code TEXT) ON COMMIT DROP;")
     w("CREATE TEMP TABLE rch_tache (id BIGINT PRIMARY KEY, projet_id BIGINT, titre TEXT, etat TEXT, etat_chronos TEXT, "
-      "date_debut DATE, date_echeance DATE, date_fin DATE, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ) ON COMMIT DROP;")
+      "date_debut DATE, date_echeance DATE, date_fin DATE, bloque_le TIMESTAMPTZ, created_at TIMESTAMPTZ, "
+      "updated_at TIMESTAMPTZ) ON COMMIT DROP;")
     w("CREATE TEMP TABLE rch_projet_intervenant (projet_id BIGINT, utilisateur_id BIGINT) ON COMMIT DROP;")
     w("CREATE TEMP TABLE rch_tache_intervenant (tache_id BIGINT, utilisateur_id BIGINT) ON COMMIT DROP;")
     w("CREATE TEMP TABLE rch_recap (ordre INT, rubrique TEXT, nombre BIGINT) ON COMMIT DROP;")
@@ -295,9 +296,10 @@ END $$;""")
                p["created_by"], p["created_at"], p["updated_at"]) for p in prep["projets"]])
     _valeurs(w, "rch_projet_lot", ("projet_id", "lot_code"), prep["projet_lots"])
     _valeurs(w, "rch_tache", ("id", "projet_id", "titre", "etat", "etat_chronos", "date_debut", "date_echeance",
-                              "date_fin", "created_at", "updated_at"),
+                              "date_fin", "bloque_le", "created_at", "updated_at"),
              [(t["id"], t["projet_id"], t["titre"], t["etat"], t.get("etat_chronos", t["etat"]), t["date_debut"],
-               t["date_echeance"], t["date_fin"], t["created_at"], t["updated_at"]) for t in prep["taches"]])
+               t["date_echeance"], t["date_fin"], t.get("bloque_le"), t["created_at"], t["updated_at"])
+              for t in prep["taches"]])
     _valeurs(w, "rch_projet_intervenant", ("projet_id", "utilisateur_id"), prep["projet_intervenant"])
     _valeurs(w, "rch_tache_intervenant", ("tache_id", "utilisateur_id"), prep["tache_intervenant"])
     w("")
@@ -409,11 +411,11 @@ FROM rch_projet r JOIN utilisateur u ON u.id = r.chef_projet_id ORDER BY r.id;""
     w("""INSERT INTO projet_lot (projet_id, lot_code)
 SELECT projet_id, lot_code FROM rch_projet_lot ORDER BY 1, 2;""")
     w("-- created_by de la tâche : chef du projet, comme la reprise complète.")
-    w("-- Lot 20 (revue 5c) : date du blocage = dernière modification Chronos.")
+    w("-- Lot 21 (R29) : date du blocage = blockedDate Chronos, sinon dernière modification.")
     w("""INSERT INTO tache (id, projet_id, titre, etat, date_debut, date_echeance, date_fin, bloque_le,
                    created_by, created_at, updated_at)
 SELECT t.id, t.projet_id, t.titre, t.etat::tache_etat_enum, t.date_debut, t.date_echeance, t.date_fin,
-       CASE WHEN t.etat = 'bloque' THEN t.updated_at END,
+       CASE WHEN t.etat = 'bloque' THEN COALESCE(t.bloque_le, t.updated_at) END,
        p.chef_projet_id, t.created_at, t.updated_at
 FROM rch_tache t JOIN projet p ON p.id = t.projet_id ORDER BY t.id;""")
     w("""INSERT INTO projet_intervenant (projet_id, utilisateur_id)

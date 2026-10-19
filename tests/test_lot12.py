@@ -237,7 +237,7 @@ class TestTransactions(unittest.TestCase):
         self.assertEqual(cur.ordres[:2], [("SET LOCAL app.current_user_id = %s", ("3",)),
                                           ("SET LOCAL app.admin_reel_id = %s", ("1",))])
         self.assertEqual(cur.ordres[2][0], "SET LOCAL kairos.instant_simule = %s")
-        self.assertRegex(cur.ordres[2][1][0], r"^2026-10-15T[0-9]{2}:[0-9]{2}:[0-9]{2}\+01:00$")
+        self.assertRegex(cur.ordres[2][1][0], r"^2026-10-15T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}\+01:00$")
         self.assertNotIn("SET TRANSACTION READ ONLY", [o[0] for o in cur.ordres])
 
     def test_ecriture_refusee_par_la_base_devient_lecture_seule(self):

@@ -258,7 +258,7 @@ class _CurseurEspion:
         self.sql.append(" ".join(sql.split()))
 
     def fetchone(self):
-        return {"role": self.role}
+        return {"role": self.role, "etat": "en_cours"}
 
     def fetchall(self):
         # Lot 20 : personnes nommées dans le post « a ajouté … au projet ».

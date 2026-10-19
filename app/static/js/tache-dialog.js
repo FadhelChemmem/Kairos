@@ -14,8 +14,8 @@
 //   Échap ferme ; ↑ / ↓ passent à la tâche précédente / suivante ;
 // - toutes les actions du panneau partent en partiel (kairos-partiel.js) :
 //   état (optimiste, sans « Appliquer »), titre modifié en place (Entrée
-//   ou sortie du champ), clôture, rejoindre, intervenants, échéance ;
-//   pièce jointe envoyée dès le choix du fichier, avec progression.
+//   ou sortie du champ), clôture, rejoindre, intervenants, échéance
+//   (plus de pièce jointe sur une tâche depuis le lot 20).
 //
 // Correctifs du lot 13 (contre-expertise) :
 // - un seul chargement à l'ouverture à la souris (préchargement annulé,
@@ -456,8 +456,33 @@
   // Retour / Avancer : l'adresse dit quelle tâche est ouverte.
   window.addEventListener('popstate', function () {
     var id = new URL(window.location.href).searchParams.get('tache');
+    // Lot 21 (revue F2) : Retour avec une saisie en cours (motif…) — même
+    // question qu'Échap ; l'entrée de la tâche est remise le temps de
+    // répondre (« Continuer la saisie » garde panneau et adresse).
+    if (dialog.open && !fermetureEnCours && tacheCourante && id !== tacheCourante
+        && FW && FW.aEteModifiee(dialog) && K && K.confirmer) {
+      var cible = id;
+      try { window.history.pushState(etatHistorique(tacheCourante), '', adresseAvec(tacheCourante)); entreePoussee = true; } catch (e) { /* */ }
+      if (!cible) { demanderFermeture(); return; }
+      var ligneCible = ligneDe(cible);
+      if (ligneCible) ouvrir(ligneCible, { historique: 'replace' });
+      return;
+    }
     if (!id) { fermer(true); return; }
     if (dialog.open && id === tacheCourante) return;
+    if (!ligneDe(id)) {
+      // Lot 21 (revue F4) : la page revient d'abord en partiel (Retour sur
+      // une autre vue des Deadlines) ; la tâche est ouverte quand le
+      // contenu qui la porte est arrivé.
+      document.addEventListener('kairos:fragment', function reessayer() {
+        document.removeEventListener('kairos:fragment', reessayer);
+        if (new URL(window.location.href).searchParams.get('tache') === id) {
+          ouvrirDemandee(id, 'aucun');
+          if (dialog.open) entreePoussee = !!(window.history.state && window.history.state.kairosTache);
+        }
+      });
+      return;
+    }
     ouvrirDemandee(id, 'aucun');
     // Entrée ?tache= poussée par nous (Avancer) : Échap y revient par Retour.
     if (dialog.open) entreePoussee = !!(window.history.state && window.history.state.kairosTache);
@@ -468,7 +493,13 @@
   /* ---------------------------------------------------------------- */
   function lignesVisibles() {
     return Array.prototype.filter.call(document.querySelectorAll(SELECTEUR_LIGNES), function (l) {
-      return l.offsetParent !== null;
+      if (l.offsetParent !== null) return true;
+      // Lot 21 (revue F3) : lignes du Gantt en « display: contents » (sans
+      // boîte propre) — visibles si une de leurs cellules l'est.
+      if (window.getComputedStyle && window.getComputedStyle(l).display === 'contents') {
+        return Array.prototype.some.call(l.children, function (c) { return c.offsetParent !== null; });
+      }
+      return false;
     });
   }
   function voisine(sens) {
@@ -717,83 +748,6 @@
     if (!form || !form.hasAttribute('data-soumettre-au-choix') || select.tagName !== 'SELECT' || !select.value) return;
     if (form.requestSubmit) form.requestSubmit();
   });
-
-  /* ---------------------------------------------------------------- */
-  /* Pièce jointe : envoi dès le choix, avec progression               */
-  /* ---------------------------------------------------------------- */
-  function jeton() {
-    var m = document.querySelector('meta[name="csrf-token"]');
-    return m ? m.getAttribute('content') : '';
-  }
-  function televerser(form) {
-    var entree = form.querySelector('input[type="file"]');
-    if (!entree || !entree.files || !entree.files.length || form.dataset.envoi) return;
-    if (K && K.lectureSeule && K.lectureSeule()) { K.toast(K.MESSAGE_LECTURE_SEULE, { type: 'info' }); return; }
-    var cible = form.getAttribute('data-partiel');
-    var bloc = form.querySelector('[data-progression]');
-    var barre = bloc ? bloc.querySelector('progress') : null;
-    var pourcent = bloc ? bloc.querySelector('.tache-pj-pourcent') : null;
-    var depot = form.querySelector('[data-dropzone]');
-    form.dataset.envoi = '1';
-    if (bloc) bloc.hidden = false;
-    if (depot) depot.setAttribute('aria-busy', 'true');
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', form.action);
-    xhr.setRequestHeader('X-Kairos-Partiel', cible);
-    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-    xhr.setRequestHeader('X-CSRFToken', jeton());
-    var mode = document.querySelector('meta[name="kairos-mode"]');
-    if (mode && mode.getAttribute('content')) xhr.setRequestHeader('X-Kairos-Mode', mode.getAttribute('content'));
-    xhr.upload.addEventListener('progress', function (ev) {
-      if (!ev.lengthComputable || !barre) return;
-      var p = Math.round(ev.loaded / ev.total * 100);
-      barre.value = p;
-      if (pourcent) pourcent.textContent = p + ' %';
-    });
-    function fin() {
-      delete form.dataset.envoi;
-      if (bloc) bloc.hidden = true;
-      if (depot) depot.removeAttribute('aria-busy');
-    }
-    xhr.addEventListener('load', function () {
-      fin();
-      if (!K) return;
-      K.toasts(K.lireToasts(xhr.getResponseHeader('X-Kairos-Toasts')));
-      if (xhr.status === 401) { K.sessionExpiree(xhr.getResponseHeader('X-Kairos-Connexion')); return; }
-      if (xhr.status >= 200 && xhr.status < 300) {
-        oublierPrecharges();
-        var el = document.querySelector(cible);
-        if (!el) return;
-        var res = K.remplacer(el, xhr.responseText, 'outer', cible);
-        if (res.racine) K.initialiser(res.racine);
-        res.autres.forEach(function (x) { K.initialiser(x); });
-        var nouvelle = document.querySelector(cible + ' input[type="file"]');
-        if (nouvelle) nouvelle.focus();
-        return;
-      }
-      entree.value = '';
-      entree.dispatchEvent(new Event('change'));
-      K.toast(K.messageErreur(xhr.status, xhr.responseText), { type: 'erreur' });
-    });
-    xhr.addEventListener('error', function () {
-      fin();
-      if (K) K.toast('Connexion au serveur impossible\u00a0: le fichier n’a pas été envoyé. Réessayez.', { type: 'erreur' });
-    });
-    xhr.send(new FormData(form));
-  }
-  document.addEventListener('change', function (e) {
-    var form = e.target && e.target.form;
-    if (form && form.hasAttribute('data-televersement') && e.target.type === 'file' && e.target.files && e.target.files.length) {
-      televerser(form);
-    }
-  });
-  document.addEventListener('submit', function (e) {
-    var form = e.target;
-    if (!form.hasAttribute || !form.hasAttribute('data-televersement') || e.defaultPrevented) return;
-    e.preventDefault();
-    e.stopPropagation();
-    televerser(form);
-  }, true);
 
   /* ---------------------------------------------------------------- */
   /* Hors de la fiche projet (Deadlines)                               */

@@ -128,7 +128,7 @@ def get_cursor(user_id: int | None = None, commit: bool = True):
         if admin_reel_id is not None:
             cur.execute("SET LOCAL app.admin_reel_id = %s", (str(int(admin_reel_id)),))
         if instant_simule is not None:
-            cur.execute("SET LOCAL kairos.instant_simule = %s", (instant_simule.isoformat(timespec="seconds"),))
+            cur.execute("SET LOCAL kairos.instant_simule = %s", (instant_simule.isoformat(timespec="microseconds"),))
         yield cur
         if commit:
             conn.commit()
@@ -164,8 +164,9 @@ def get_cursor(user_id: int | None = None, commit: bool = True):
 
 def _connexion_vivante():
     """Connexion du pool, testée si elle n'a pas servi depuis SEUIL_PING
-    secondes (voir plus haut) ; deux remplacements au plus, puis la
-    connexion telle quelle (l'erreur éventuelle remonte normalement)."""
+    secondes (voir plus haut) ; trois connexions testées et écartées au
+    plus, puis une quatrième rendue sans test (l'erreur éventuelle remonte
+    alors normalement)."""
     erreurs = tuple(e for e in (getattr(psycopg2, "OperationalError", None),
                                 getattr(psycopg2, "InterfaceError", None)) if e)
     for _ in range(3):
@@ -183,7 +184,7 @@ def _connexion_vivante():
                 return conn
             except erreurs:
                 pass
-        logger.warning("Connexion Postgres morte écartée du pool (redémarrage de la base ?)")
+        logger.warning("Connexion Postgres morte écartée du pool (redémarrage de la base\u00a0?)")
         with _verrou_usage:
             _derniere_utilisation.pop(id(conn), None)
         try:

@@ -22,10 +22,11 @@ NB_APERCU = 10
 
 def grouper_par_jour(notifs: list[dict]) -> list[dict]:
     """Notifications groupées par jour (lot 13, audit UX §3.2) : « Aujourd'hui »,
-    « Hier », puis la date — jour de l'horodatage RÉEL au fuseau de la
-    personne (jamais la date simulée)."""
-    fuseau = horloge.maintenant_reel().tzinfo
-    aujourdhui = horloge.aujourdhui_reel()
+    « Hier », puis la date, au fuseau de la personne. Lot 21 (revue R22) :
+    les notifications étant datées de l'instant simulé en mode test,
+    « Aujourd'hui » est lui aussi le jour simulé."""
+    fuseau = horloge.maintenant().tzinfo
+    aujourdhui = horloge.aujourdhui()
     groupes: list[dict] = []
     for n in notifs:
         cree = n.get("created_at")

@@ -86,9 +86,16 @@ class TestLignesProposees(unittest.TestCase):
         self.assertIn("v_projet_action", source)
         self.assertEqual(dl.PROPOSEES_PAR_PAGE, 5)
 
-    def test_plafond(self):
-        taches = [{"projet_id": 1, "code": "A", "nom": "A", "tache_id": i, "tache_titre": f"T{i}"} for i in range(70)]
-        self.assertEqual(len(self.appel(taches, [])), dl.MAX_PROPOSEES)
+    def test_plafond_par_requete(self):
+        """Lot 21 (revue, question 15) : 60 tâches au plus PUIS 60 projets au
+        plus (deux requêtes bornées) — les projets ne sont plus évincés."""
+        taches = [{"projet_id": 1, "code": "A", "nom": "A", "tache_id": i, "tache_titre": f"T{i}"} for i in range(60)]
+        projets = [{"projet_id": 2, "code": "B", "nom": "B", "derniere": None}]
+        with patch("app.db.query_all", side_effect=[taches, projets]) as q:
+            sortie = dl.lignes_proposees({"id": 7, "fuseau": "Africa/Tunis"}, datetime.date(2026, 10, 8))
+        self.assertEqual(len(sortie), 61)
+        self.assertEqual(sortie[-1]["projet_id"], 2)
+        self.assertEqual([c.args[1]["limit"] for c in q.call_args_list], [dl.MAX_PROPOSEES, dl.MAX_PROPOSEES])
 
 
 class TestApiEtPages(tdl._BaseDailyLog):

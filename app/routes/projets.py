@@ -505,11 +505,15 @@ def api_code_propose():
     # Phase liée choisie (lot 8) : même numéro que ce projet — seulement
     # s'il est visible (pas de fuite du code d'un projet invisible).
     code_lie = None
+    client_lie = None
     phase_liee_id = request.args.get("phase_liee_id", type=int)
     if phase_liee_id and projets.user_can_view(phase_liee_id, g.user["id"]):
         lie = projets.get_projet(phase_liee_id)
         code_lie = lie["code"] if lie else None
-    return {"code": projets.propose_code(phase, phase_liee_code=code_lie)}
+        # Lot 21 (test Chrome) : la phase suivante d'une affaire reprend son
+        # client (proposé, modifiable).
+        client_lie = (lie or {}).get("client")
+    return {"code": projets.propose_code(phase, phase_liee_code=code_lie), "client": client_lie}
 
 
 NB_CANDIDATS_PHASE_LIEE = 20
@@ -545,19 +549,31 @@ def _phase_liee_choisie(phase_liee_id: int | None) -> list[dict]:
     return [lie] if lie else []
 
 
+def _mentionnables(projet_id: int, actifs: list[dict]) -> list[dict]:
+    """Lot 21 (test Chrome) : « @ » ne propose que les personnes qui voient
+    le projet (le serveur ne notifie qu'elles, lot 13)."""
+    voyant = projets.ids_utilisateurs_voyant(projet_id)
+    return [u for u in actifs if u.get("id") in voyant]
+
+
 def _contexte_fil(projet_id: int, fil_limite: int = film.TAILLE_PAGE) -> dict:
     """Fil de la fiche (lot 14, revue produit P1-3) : catégorie (adresse, ou
     page d'où part l'action en partiel), page à partir du curseur `avant`,
     évènements automatiques regroupés, adresse de la page suivante."""
     categorie = film.categorie_demandee("projet")
+    # Lot 21 (demande du gérant) : bascule « Me concernant ».
+    moi = film.moi_demande()
     fil_limite = film.taille_jusqua(
-        fil_limite, lambda post_id: posts.rang_dans_fil_projet(projet_id, g.user["id"], categorie, post_id))
+        fil_limite, lambda post_id: posts.rang_dans_fil_projet(projet_id, g.user["id"], categorie, post_id, moi))
     lus = posts.list_feed_projet(projet_id, g.user["id"], limit=fil_limite + 1, categorie=categorie,
-                                 avant=film.curseur_demande())
+                                 avant=film.curseur_demande(), moi=moi)
     fil, curseur = film.page(lus, fil_limite)
+    # Lot 21 : l'Information épinglée, en tête du fil quelle que soit la catégorie.
     return dict(fil=fil, fil_entrees=film.regrouper(fil), fil_categorie=categorie,
+                fil_epingle=posts.get_post_epingle(projet_id, g.user["id"]), fil_moi=moi,
                 fil_suite_id="fil-suite", fil_suite_cible="#fil-posts",
-                fil_suite_url=(url_for("projets.detail", projet_id=projet_id, fil=categorie, avant=curseur)
+                fil_suite_url=(url_for("projets.detail", projet_id=projet_id, fil=categorie, avant=curseur,
+                                       moi="1" if moi else None)
                                if curseur else None))
 
 
@@ -588,7 +604,8 @@ def _contexte_fiche(projet: dict, *, fil_limite: int = film.TAILLE_PAGE) -> dict
     )
     # Lot 20 (rapport du 19/10) : dans « Nouvelle tâche », les personnes de
     # l'équipe du projet d'abord, puis les collaborateurs récents.
-    equipe_projet = [i["id"] for i in intervenants if i.get("role") not in ("client", "rh")]
+    equipe_projet = [i["id"] for i in intervenants
+                     if i.get("role") not in ("client", "rh") and i.get("actuel", True)]
     recents = equipe_projet + [i for i in utilisateurs.list_collaborateurs_recents(g.user["id"])
                                if i not in equipe_projet]
 
@@ -606,6 +623,7 @@ def _contexte_fiche(projet: dict, *, fil_limite: int = film.TAILLE_PAGE) -> dict
         nb_en_cours=nb_en_cours,
         utilisateurs_actifs=utilisateurs_actifs,
         utilisateurs_affectables=[u for u in utilisateurs_actifs if u.get("role") != "client"],
+        personnes_mentionnables=_mentionnables(projet_id, utilisateurs_actifs),
         collaborateurs_recents=recents[:8],
         lecture_seule=lecture_seule,
         # Lot 20 (revue 9b) : la phase liée n'est montrée qu'à qui la voit.
@@ -704,7 +722,10 @@ FRAGMENTS_FICHE = {
                "partials/carte_informations.html"],
     "intervenants": ["partials/carte_intervenants.html"],
     "fil": ["partials/fil_nouveaux.html"],
-    "fil_complet": ["partials/fil_projet.html", "partials/fil_outils.html", "partials/fil_suite.html"],
+    "fil_complet": ["partials/fil_epingle.html", "partials/fil_projet.html", "partials/fil_outils.html",
+                    "partials/fil_suite.html"],
+    "epingle": ["partials/fil_epingle.html"],
+    "fil_liste": ["partials/fil_projet.html", "partials/fil_outils.html", "partials/fil_suite.html"],
     "informations": ["partials/projet_informations_form.html"],
     "post": ["partials/fil_item.html"],
 }
@@ -869,6 +890,11 @@ def editer_informations(projet_id: int):
     if request.form.get("confirmer_cloture") == "1":
         taches_a_clore = v.ids_entiers(request.form.getlist("taches_a_clore"), maximum=5000)
     bilan = {}
+    # Lot 21 (revue R19) : état affiché à l'ouverture de la fenêtre — une
+    # fenêtre restée ouverte ne défait plus la clôture (ou la réouverture)
+    # faite entre-temps par quelqu'un d'autre.
+    etat_initial = request.form.get("etat_initial")
+    etat_initial = etat_initial if etat_initial in ETATS_PROJET_VALIDES or etat_initial == "bloque" else None
 
     try:
         changement = projets.update_projet(
@@ -877,10 +903,13 @@ def editer_informations(projet_id: int):
             phase_liee_id=phase_liee_id, current_user_id=g.user["id"],
             honoraires=honoraires, client=client,
             chef_projet_id=nouveau_chef_id, acteur_admin=acteur_admin,
-            taches_a_clore=taches_a_clore, bilan=bilan,
+            taches_a_clore=taches_a_clore, bilan=bilan, etat_affiche=etat_initial,
         )
     except projets.ClotureAConfirmer as attente:
         return _confirmer_cloture(projet_id, etat, attente)
+    except projets.EtatProjetChange as change:
+        return _refus(f"Le projet a été {'clos' if change.clos else 'rouvert'} entre-temps\u00a0: "
+                      "fermez la fenêtre et rouvrez-la pour voir son état actuel.", 409, projet_id)
     except Exception as exc:
         if isinstance(exc, projets.ChangementChefRefuse):
             return _refus(exc.message, 409, projet_id, champs={"chef_projet_id": exc.message})
@@ -930,7 +959,7 @@ def editer_informations(projet_id: int):
 # Champs de la fenêtre Informations renvoyés tels quels par la page de
 # confirmation de clôture (lot 13) : rien d'autre n'est recopié.
 CHAMPS_INFORMATIONS = ("nom", "etat", "lots", "lots_envoyes", "date_debut", "date_fin", "phase_liee_id",
-                       "client", "honoraires", "chef_projet_id")
+                       "client", "honoraires", "chef_projet_id", "etat_initial")
 
 
 def _confirmer_cloture(projet_id: int, etat: str, attente):
@@ -1188,7 +1217,9 @@ def _prevenir_gestion(projet: dict, tache_id: int, message: str) -> tuple[list[d
 # la tâche a changé depuis est refusé (409).
 SEL_ANNULER = "kairos-annuler-etat-tache"
 DUREE_JETON_ANNULER = 30 * 60
-MESSAGE_ANNULER_PERIME = ("La tâche a changé entre-temps (action d’une autre personne)\u00a0: "
+# Lot 21 (question 12 de la revue) : neutre — la tâche a pu changer par un
+# autre geste de la même personne (renommage…).
+MESSAGE_ANNULER_PERIME = ("La tâche a changé depuis ce geste\u00a0: "
                           "«\u00a0Annuler\u00a0» n’est plus possible.")
 
 
@@ -1312,6 +1343,10 @@ def changer_etat_tache(projet_id: int, tache_id: int):
                       champs={"motif": MESSAGE_MOTIF_REQUIS})
     except taches.TacheModifiee:
         return _refus(MESSAGE_ANNULER_PERIME, 409, projet_id, tache_id, vers_tache=True)
+    except taches.TacheDejaBloquee as deja:
+        motif = f"\u00a0(«\u00a0{deja.motif}\u00a0»)" if deja.motif else ""
+        return _refus(f"Cette tâche est déjà bloquée{motif}\u00a0: levez le blocage pour en signaler un autre.",
+                      409, projet_id, tache_id, vers_tache=True)
     except Exception as exc:
         if not taches.est_refus_etat_reserve(exc):
             raise
@@ -1433,6 +1468,11 @@ def cloturer_tache(projet_id: int, tache_id: int):
     Lot 13 : en partiel, la ligne passe dans les tâches closes, toast avec
     « Annuler » (la tâche est rouverte)."""
     if not projets.user_can_view(projet_id, g.user["id"]):
+        abort(404)
+    # Lot 21 (revue R15) : une tâche d'un autre projet que celui de
+    # l'adresse est introuvable ici (404), avant tout autre refus.
+    tache_lue = taches.get_tache(tache_id)
+    if tache_lue is None or tache_lue.get("projet_id") not in (None, projet_id):
         abort(404)
     peut_gerer = projets.user_can_manage(projet_id, g.user["id"])
     autorise = peut_gerer or taches.user_est_intervenant(tache_id, g.user["id"])

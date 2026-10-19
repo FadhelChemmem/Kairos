@@ -35,7 +35,9 @@
   {# Lot 11 (demande du gérant) : un seul champ de recherche ; le choix
      ajoute immédiatement la personne (projet-intervenants.js, en partiel
      depuis le lot 13). Sans JavaScript : liste déroulante + « Ajouter ». #}
-  {% set ids_membres = intervenants|map(attribute='id')|list %}
+  {# Lot 21 (test Chrome V1) : un ancien intervenant (tâches closes
+     seulement, ou retiré) reste proposé : on peut le rajouter. #}
+  {% set ids_membres = intervenants|rejectattr('actuel', 'sameas', false)|map(attribute='id')|list %}
   {% set candidats = utilisateurs_affectables|rejectattr('id', 'in', ids_membres)|list %}
   {% if candidats %}
   <form method="post" action="{{ url_for('projets.ajouter_intervenant', projet_id=projet.id) }}" class="ajout-intervenant" data-ajout-intervenant data-partiel="#carte-intervenants">

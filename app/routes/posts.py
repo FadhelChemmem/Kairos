@@ -4,12 +4,13 @@ commentaire. Chaque action redirige vers la page d'où elle a été
 déclenchée (`next`), pour marcher aussi bien depuis l'accueil que depuis
 une page projet.
 """
-from flask import Blueprint, abort, current_app, flash, g, jsonify, request, url_for
+from flask import Blueprint, abort, current_app, flash, g, jsonify, redirect, request, url_for
 
 from ..auth import login_required
 from ..repositories import notifications as notifications_repo
 from ..repositories import posts as posts_repo
 from ..repositories import projets as projets_repo
+from ..repositories import taches as taches_repo
 from ..repositories import utilisateurs as utilisateurs_repo
 from .. import fil as film
 from .. import partiel
@@ -30,6 +31,13 @@ MESSAGE_PROJET_CLOS = (
 # son équipe (décision Fadhel, lot 7).
 TYPES_CLIENT = {"requete", "information"}
 REACTIONS_VALIDES = {"ok", "pouce"}
+
+
+@bp.errorhandler(taches_repo.ProjetClos)
+def _projet_clos_entre_temps(_exc):
+    """Lot 21 (revue R7) : projet clos pendant la publication (relu sous
+    verrou par le dépôt) : même refus que s'il l'était avant."""
+    return _refus(MESSAGE_PROJET_CLOS, 409)
 
 
 def _safe_redirect(default_endpoint="main.accueil"):
@@ -206,8 +214,6 @@ def creer():
             return _refus(MESSAGE_PROJET_CLOS, 409)
     tache = None
     if tache_id:
-        from ..repositories import taches as taches_repo
-
         tache = taches_repo.get_tache(tache_id)
         if tache is None or not projet_id or tache["projet_id"] != projet_id:
             return _refus("Cette tâche n’appartient pas au projet choisi.", 422, "tache_id")
@@ -887,6 +893,49 @@ def restaurer(post_id: int):
         return _reponse_post(post_id, [partiel.toast("Post rétabli.")])
     flash("Post rétabli.", "success")
     return _safe_redirect()
+
+
+def _reponse_epingle(projet_id: int, message: str):
+    """Réponse d'un geste sur l'épingle : en partiel, l'encadré « Épinglé »
+    et le fil de la fiche ; sinon retour à la fiche."""
+    if partiel.est_partiel():
+        from .projets import _maj_fiche
+
+        return _maj_fiche(projet_id, "epingle", ["fil_liste"], toasts=[partiel.toast(message)])
+    flash(message, "success")
+    return redirect(url_for("projets.detail", projet_id=projet_id))
+
+
+@bp.route("/<int:post_id>/epingler", methods=["POST"])
+@login_required
+def epingler(post_id: int):
+    """Lot 21 (demande du gérant) : épingle une Information en tête du fil
+    de son projet — une seule par projet, la précédente est désépinglée.
+    Chef, co-chef ou Admin ; projet ouvert."""
+    post = _post_visible_ou_404(post_id)
+    if post["projet_id"] is None or not projets_repo.user_can_manage(post["projet_id"], g.user["id"]):
+        abort(403)
+    refus = _refus_si_clos(post)
+    if refus:
+        return refus
+    try:
+        posts_repo.epingler(post_id, post["projet_id"], g.user["id"])
+    except posts_repo.EpinglageRefuse:
+        return _refus("Seule une Information écrite du projet peut être épinglée.", 422)
+    return _reponse_epingle(post["projet_id"], "Post épinglé en tête du projet.")
+
+
+@bp.route("/<int:post_id>/desepingler", methods=["POST"])
+@login_required
+def desepingler(post_id: int):
+    post = _post_visible_ou_404(post_id)
+    if post["projet_id"] is None or not projets_repo.user_can_manage(post["projet_id"], g.user["id"]):
+        abort(403)
+    refus = _refus_si_clos(post)
+    if refus:
+        return refus
+    posts_repo.desepingler(post_id, post["projet_id"], g.user["id"])
+    return _reponse_epingle(post["projet_id"], "Post désépinglé.")
 
 
 # Ancienne route « /posts/<id>/reposter » (repost en un clic) supprimée au

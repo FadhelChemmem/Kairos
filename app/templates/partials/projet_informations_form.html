@@ -53,6 +53,8 @@
        découle des tâches (une tâche bloquée bloque le projet ouvert). Clore
        un projet qui a des tâches ouvertes demande une confirmation. #}
     <label for="dialog-info-etat">État</label>
+    {# Lot 21 (revue R19) : état vu à l'ouverture de la fenêtre. #}
+    <input type="hidden" name="etat_initial" value="{{ projet.etat }}">
     <select id="dialog-info-etat" name="etat" aria-describedby="dialog-info-etat-aide">
       <option value="en_cours" {{ 'selected' if projet.etat in ('en_cours', 'bloque') }}>{{ 'En cours (bloqué : une tâche est bloquée)' if projet.etat == 'bloque' else 'En cours' }}</option>
       <option value="termine" {{ 'selected' if projet.etat == 'termine' }}>Terminé</option>

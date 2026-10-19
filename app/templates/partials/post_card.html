@@ -15,10 +15,17 @@
    auteur, se supprime par lui, le chef, un co-chef ou l'Admin (mêmes règles
    que routes/posts.py : peut_modifier, peut_supprimer). #}
 {% set projet_clos = post.projet_etat in ('termine', 'abandonne') %}
+{# Lot 21 : projet clos, ou lecture seule pour ce lecteur (personne retirée) :
+   ni « Vu », ni « Commenter », ni « Donner suite ». #}
+{% set actions_fermees = projet_clos or post.lecture_seule|default(false) %}
 {% set post_ecrit = post.evenement|default(none) in (none, 'repost') %}
 {% set peut_modifier = post_ecrit and post.auteur_id == g.user.id and not projet_clos %}
 {% set peut_supprimer = post_ecrit and (g.user.role == 'admin' or (not projet_clos and (post.auteur_id == g.user.id or post.je_gere))) %}
 {% set est_requete = post.type_code == 'requete' %}
+{# Lot 21 (demande du gérant) : une Information écrite peut être épinglée en
+   tête du fil de la fiche (chef, co-chef, Admin ; projet ouvert). #}
+{% set peut_epingler = not show_projet|default(false) and post.projet_id and post.je_gere|default(false)
+   and post.type_code == 'information' and post.evenement|default(none) is none and not projet_clos %}
 {% set requete_objet, requete_texte = (post.contenu or '').partition('\n\n')[0], (post.contenu or '').partition('\n\n')[2] %}
 
 <div class="card post-card" id="post-{{ post.id }}">
@@ -80,18 +87,27 @@
       {% set st = post_type_style(post.type_code) %}
       <span class="pill {{ st.classe }}">{{ st.label }}</span>
     {% else %}
+      {% if post.epingle_le|default(none) and show_projet|default(false) %}
+      <span class="pill pill-epingle" title="Épinglé en tête du fil du projet">Épinglé</span>
+      {% endif %}
       {% set st = post_type_style(post.type_code) %}
       <span class="pill {{ st.classe }}">{{ st.label }}</span>
     {% endif %}
-    {% if peut_modifier or peut_supprimer %}
+    {% if peut_modifier or peut_supprimer or peut_epingler %}
       {# Menu « ⋯ » (lot 15) : posé en surimpression, rien ne bouge à l'ouverture. #}
       <details class="post-menu">
-        <summary class="iconbtn post-menu-bouton" aria-label="Actions du post" title="Modifier ou supprimer">
+        <summary class="iconbtn post-menu-bouton" aria-label="Actions du post" title="Actions du post">
           <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
         </summary>
         <div class="post-menu-liste">
           {% if peut_modifier %}
           <a href="#post-{{ post.id }}-edition" class="post-menu-item" data-post-modifier="{{ post.id }}">Modifier</a>
+          {% endif %}
+          {% if peut_epingler %}
+          <form method="post" action="{{ url_for('posts.desepingler' if post.epingle_le else 'posts.epingler', post_id=post.id) }}" data-partiel="#fil-epingle">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="post-menu-item">{{ 'Désépingler' if post.epingle_le else 'Épingler en tête du projet' }}</button>
+          </form>
           {% endif %}
           {% if peut_supprimer %}
           <form method="post" action="{{ url_for('posts.supprimer', post_id=post.id) }}" data-partiel="#post-{{ post.id }}">
@@ -218,6 +234,9 @@
       <div class="post-parent-corps">
         {% if post.parent_supprime %}
           <span class="post-parent-titre texte-discret">Post supprimé.</span>
+        {% elif post.parent_invisible|default(false) %}
+          {# Lot 21 (revue R18) : post d'origine que ce lecteur ne voit pas. #}
+          <span class="post-parent-titre texte-discret">Post d’une autre équipe.</span>
         {% elif post.parent_tache_titre and post.parent_evenement and post.parent_evenement != 'repost' %}
           {# Post automatique d'une tâche ; une requête qui CITE une tâche garde son texte. #}
           <span class="pill pill-sm {{ post_tache_pill.classe }}">{{ post_tache_pill.label }}</span>
@@ -253,7 +272,7 @@
       {# Lot 10 (audit front I3) : nom accessible = texte + compteur visible
          (toujours juste), l'état passe par aria-pressed ; état pressé en
          classe (.est-presse), contrasté dans les deux thèmes. #}
-      <button type="submit"{% if projet_clos %} disabled{% endif %} aria-pressed="{{ 'true' if post.ma_reaction else 'false' }}" {% if post.reacteurs %}title="Vu par&nbsp;: {% for r in post.reacteurs %}{{ r.prenom }} {{ r.nom }}{% if not loop.last %}, {% endif %}{% endfor %}"{% endif %} class="post-action{{ ' est-presse' if post.ma_reaction }}">
+      <button type="submit"{% if actions_fermees %} disabled{% endif %} aria-pressed="{{ 'true' if post.ma_reaction else 'false' }}" {% if post.reacteurs %}title="Vu par&nbsp;: {% for r in post.reacteurs %}{{ r.prenom }} {{ r.nom }}{% if not loop.last %}, {% endif %}{% endfor %}"{% endif %} class="post-action{{ ' est-presse' if post.ma_reaction }}">
         <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg> <span class="post-action-libelle-vu" aria-hidden="true">Vu</span><span class="sr-only">Marquer comme vu, déjà vu par</span> <span class="post-reaction-count">{{ post.nb_reactions }}</span>
       </button>
     </form>
@@ -261,7 +280,7 @@
        par défaut : plus de 20 formulaires ouverts sur la page), avec le
        nombre de commentaires ; un simple texte si le projet est clos.
        Le champ est sous les commentaires : rien ne bouge au-dessus. #}
-    {% if projet_clos %}
+    {% if actions_fermees %}
     {% include "partials/post_compteur.html" %}
     {% else %}
     <button type="button" class="post-action post-action-commenter" id="post-{{ post.id }}-commenter" data-commenter="{{ post.id }}" aria-expanded="false" aria-controls="post-{{ post.id }}-composer">
@@ -278,9 +297,11 @@
        projet terminé ou abandonné (vérifié aussi par le serveur). #}
     {# Un Client ne publie que sur un projet : pas de "Reposter" sur une
        Information d'équipe sans projet (lot 7). #}
-    {% if post.projet_id or g.user.role != 'client' %}
+    {% if (post.projet_id or g.user.role != 'client') and not post.lecture_seule|default(false) %}
+    {# Lot 21 (test Chrome) : qui gère le projet donne le plus souvent suite
+       par une tâche — la fenêtre s'ouvre sur l'onglet Tâche. #}
     <button type="button" class="post-action post-action-reposter"
-            data-open-post-dialog data-intent="information"
+            data-open-post-dialog data-intent="{{ 'tache' if post.je_gere and post.projet_id else 'information' }}"
             data-intents="{{ ('tache,' if post.je_gere else '') ~ 'information,requete' if post.projet_id else 'information' }}"
             data-gere="{{ '1' if post.je_gere else '0' }}"
             data-parent-post-id="{{ post.id }}"

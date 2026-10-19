@@ -46,7 +46,8 @@ class TestDeploy(unittest.TestCase):
         self.git("checkout", "-q", "-b", "master", cwd=self.poste)
         shutil.copy(RACINE / "deploy.sh", self.poste / "deploy.sh")
         (self.poste / "scripts").mkdir()
-        (self.poste / "scripts" / "backup_db.sh").write_text("echo sauvegarde faite\n", encoding="utf-8")
+        (self.poste / "scripts" / "backup_db.sh").write_text(
+            "echo \"Sauvegarde base écrite : /sauvegardes/kairos_$(date +%s%N).sql.gz\"\n", encoding="utf-8")
         self.commit(self.poste, "A")
         self.git("push", "-q", "origin", "master", cwd=self.poste)
         self.serveur = self.tmp / "serveur"
@@ -120,17 +121,79 @@ class TestDeploy(unittest.TestCase):
         self.assertIn("des fichiers suivis sont modifiés localement", r.stdout)
         self.assertNotIn("compose up", appels)
 
-    def test_retour_arriere_affiche_code_image_puis_base(self):
+    def test_retour_arriere_affiche_code_repere_image_puis_base(self):
         """Lot 20 (revue QA n° 6) : restaurer la base AVANT de remettre
-        l'ancienne image la faisait re-migrer aussitôt par la nouvelle."""
+        l'ancienne image la faisait re-migrer aussitôt par la nouvelle. Lot 21
+        (revue R5) : le repère `deploye` revient aussi, et la sauvegarde à
+        restaurer est nommée."""
         r, _ = self.deployer()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         fin = r.stdout[r.stdout.index("Retour arrière si besoin"):]
-        positions = [fin.index(m) for m in ("git switch --detach avant-deploiement",
+        positions = [fin.index(m) for m in ("git switch --detach avant-deploiement", "git tag -f deploye HEAD",
                                             "docker tag kairos-web:avant-deploiement kairos-web:latest",
-                                            "scripts/restore_db.sh")]
+                                            "scripts/restore_db.sh /sauvegardes/kairos_")]
         self.assertEqual(positions, sorted(positions))
         self.assertNotIn("up -d --no-build", fin)
+        self.assertFalse((self.serveur / ".deploiement_en_cours").exists())
+
+    def test_relance_apres_echec_garde_les_reperes_d_avant(self):
+        """Lot 21 (revue R5) : une relance après un échec à l'étape 6 ne
+        remplace pas l'image et la sauvegarde d'avant par celles de la
+        nouvelle version."""
+        a = self.git("rev-parse", "HEAD", cwd=self.serveur)
+        self.git("tag", "deploye", a, cwd=self.serveur)
+        self.git("pull", "-q", "origin", "master", cwd=self.poste)
+        self.commit(self.poste, "B")
+        self.git("push", "-q", "origin", "master", cwd=self.poste)
+        self.env["FAUX_LOG_EN_PLUS"] = "web-1  | Traceback (most recent call last):"
+        r, appels = self.deployer()
+        self.assertEqual(r.returncode, 1)
+        premiere = r.stdout.split("Sauvegarde base écrite : ")[1].split()[0]
+        self.assertIn("tag kairos-web:latest kairos-web:avant-deploiement", appels)
+        self.assertTrue((self.serveur / ".deploiement_en_cours").exists())
+        del self.env["FAUX_LOG_EN_PLUS"]
+        r, appels = self.deployer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Tentative précédente inachevée", r.stdout)
+        self.assertNotIn("tag kairos-web:latest kairos-web:avant-deploiement", appels)
+        self.assertEqual(self.tag("avant-deploiement"), a)
+        self.assertIn(f"scripts/restore_db.sh {premiere}", r.stdout)
+        self.assertFalse((self.serveur / ".deploiement_en_cours").exists())
+
+    def test_apres_retour_arriere_le_deploiement_suivant_redeploie(self):
+        """Lot 21 (revue R5) : après le retour arrière affiché, un nouveau
+        deploy.sh sur master redéploie la nouvelle version."""
+        a = self.git("rev-parse", "HEAD", cwd=self.serveur)
+        self.git("tag", "deploye", a, cwd=self.serveur)
+        self.git("pull", "-q", "origin", "master", cwd=self.poste)
+        b = self.commit(self.poste, "B")
+        self.git("push", "-q", "origin", "master", cwd=self.poste)
+        r, _ = self.deployer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        # Retour arrière tel qu'affiché (code et repère).
+        self.git("switch", "-q", "--detach", "avant-deploiement", cwd=self.serveur)
+        self.git("tag", "-f", "deploye", "HEAD", cwd=self.serveur)
+        self.git("switch", "-q", "master", cwd=self.serveur)
+        r, appels = self.deployer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("Déjà à jour", r.stdout)
+        self.assertIn("compose up -d --build", appels)
+        self.assertEqual(self.tag("deploye"), b)
+
+    def test_nouveau_deploy_sh_relance_dans_sa_nouvelle_version(self):
+        """Lot 21 (revue R4) : une version poussée qui change deploy.sh est
+        déployée par le NOUVEAU script, pas par celui en cours de lecture."""
+        self.git("tag", "deploye", self.git("rev-parse", "HEAD", cwd=self.serveur), cwd=self.serveur)
+        self.git("pull", "-q", "origin", "master", cwd=self.poste)
+        script = (self.poste / "deploy.sh").read_text(encoding="utf-8")
+        (self.poste / "deploy.sh").write_text(script.replace('vert "OK : Kairos déployé', 'vert "NOUVEAU SCRIPT OK : Kairos déployé'),
+                                              encoding="utf-8")
+        self.commit(self.poste, "B")
+        self.git("push", "-q", "origin", "master", cwd=self.poste)
+        r, _ = self.deployer()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("relance dans sa nouvelle version", r.stdout)
+        self.assertIn("NOUVEAU SCRIPT OK", r.stdout)
 
     def test_ligne_d_acces_contenant_erreur_ignoree(self):
         """Lot 20 (revue QA n° 17b) : une recherche du mot « Erreur » n'est

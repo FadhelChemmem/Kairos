@@ -37,7 +37,9 @@ jobs:
           python-version: "3.12"   # même version que le Dockerfile
           cache: pip
       - name: Installer les dépendances
-        run: pip install -r requirements.txt
+        # fonttools et brotli : contrôle des polices (lot 21, revue R33 : le
+        # test était toujours sauté, en CI aussi).
+        run: pip install -r requirements.txt fonttools brotli
       - name: Tests de fumée et unitaires (psycopg2 simulé)
         run: python -m unittest discover -s tests -v
 

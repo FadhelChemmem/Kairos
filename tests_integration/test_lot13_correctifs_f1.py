@@ -68,6 +68,11 @@ class TestRoles(_Projets):
         (notif,) = self.notifs(autre)
         self.assertEqual(notif["projet_id"], self.p1)
         self.login(autre)
+        # Lot 21 (décision du 19/10) : un ancien participant garde la lecture.
+        r = self.client.post(f"/notifications/{notif['id']}/ouvrir")
+        self.assertEqual((r.status_code, r.headers["Location"]), (302, f"/projets/{self.p1}"))
+        # Sans trace de participation : plus d'accès, renvoi aux notifications.
+        self.sql("DELETE FROM projet_ancien_membre WHERE projet_id = %s AND utilisateur_id = %s", (self.p1, autre))
         r = self.client.post(f"/notifications/{notif['id']}/ouvrir")
         self.assertEqual((r.status_code, r.headers["Location"]), (302, "/notifications"))
         self.assertIn("Vous n’avez plus accès à ce projet.", self.flash(r))

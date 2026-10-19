@@ -233,8 +233,11 @@
 
 {# Personnes proposées après "@" dans un commentaire (comment-composer.js)
    — seulement sur les pages qui affichent le fil. #}
-{% if utilisateurs_actifs is defined and utilisateurs_actifs %}
-<script type="application/json" id="kairos-personnes">{{ utilisateurs_actifs|map('personne_mentionnable')|list|tojson }}</script>
+{# Lot 21 (test Chrome) : sur la fiche d'un projet, seulement les personnes
+   qui le voient (personnes_mentionnables) — pas un client d'une autre équipe. #}
+{% set mentionnables = personnes_mentionnables if personnes_mentionnables is defined else (utilisateurs_actifs if utilisateurs_actifs is defined else []) %}
+{% if mentionnables %}
+<script type="application/json" id="kairos-personnes">{{ mentionnables|map('personne_mentionnable')|list|tojson }}</script>
 {% endif %}
 </body>
 </html>
