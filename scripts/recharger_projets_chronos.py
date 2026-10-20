@@ -63,7 +63,7 @@ from migrate_from_chronos import (  # noqa: E402
 )
 from mysqldump_parser import load_dump  # noqa: E402
 
-MIGRATION_ATTENDUE = "0025_lot21_participants_horloge_et_gardes"
+MIGRATION_ATTENDUE = "0026_lot23_filtres_memorises"
 
 # Données métier effacées puis rechargées (ou laissées vides) — ordre
 # indifférent pour TRUNCATE. Toute table de la base doit figurer ici ou

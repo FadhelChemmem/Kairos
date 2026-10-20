@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests_integration.base import URL, fermer_pool
-from tests_integration.test_lot20 import _Lot20, partiel
+from tests_integration.test_lot20 import _Lot20, partiel, toasts
 
 RACINE = Path(__file__).resolve().parent.parent
 
@@ -240,9 +240,15 @@ class TestBlocageEtVerrous(_Lot20):
                          headers=partiel(f"#tache-fenetre-{self.t1}"))
         r = self.client.post(f"/projets/{self.p1}/taches/{self.t1}/etat", data={"etat": "bloque", "motif": "Autre"},
                              headers=partiel(f"#tache-fenetre-{self.t1}"))
-        self.assertEqual(r.status_code, 409)
+        # Lot 23 (test Chrome W11) : panneau rafraîchi (blocage en cours), refus en toast.
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual([(t["type"], t["texte"][:30]) for t in toasts(r)],
+                         [("erreur", "Cette tâche est déjà bloquée\u00a0(")])
+        self.assertIn("Plans", self.texte(r))
         self.assertEqual(self.sql("SELECT bloque_motif FROM tache WHERE id = %s", (self.t1,))[0]["bloque_motif"],
                          "Plans")
+        r = self.client.post(f"/projets/{self.p1}/taches/{self.t1}/etat", data={"etat": "bloque", "motif": "Autre"})
+        self.assertEqual(r.status_code, 302)                     # sans JavaScript : retour au panneau
 
     def test_motif_garde_ses_retours_a_la_ligne(self):
         self.login(self.inter)

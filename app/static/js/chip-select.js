@@ -70,8 +70,17 @@
       // Entrée dans ce champ de filtre soumettait le formulaire parent
       // (ex. publier une tâche avant d'avoir choisi un intervenant) —
       // audit n°2.
+      // Lot 23 (test Chrome) : au clavier, Entrée choisit la première
+      // personne trouvée (signalée), ↓ passe aux puces.
       filterInput.addEventListener('keydown', function (evt) {
-        if (evt.key === 'Enter') evt.preventDefault();
+        if (evt.key === 'Enter') {
+          evt.preventDefault();
+          var premiere = premiereTrouvee();
+          if (premiere) premiere.click();
+        } else if (evt.key === 'ArrowDown') {
+          var visibles = puceVisibles();
+          if (visibles.length) { evt.preventDefault(); visibles[0].focus(); }
+        }
       });
       wrap.appendChild(filterInput);
     }
@@ -144,9 +153,32 @@
         }
       });
 
+      // Lot 23 : flèches entre les puces visibles ; ↑ depuis la première
+      // revient au champ de recherche.
+      chip.addEventListener('keydown', function (evt) {
+        var sens = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[evt.key];
+        if (!sens) return;
+        var visibles = puceVisibles();
+        var i = visibles.indexOf(chip);
+        if (i === -1) return;
+        evt.preventDefault();
+        if (i + sens < 0) { if (filterInput) filterInput.focus(); return; }
+        var suivante = visibles[Math.min(i + sens, visibles.length - 1)];
+        if (suivante) suivante.focus();
+      });
+
       cloud.appendChild(chip);
       chips.push(chip);
     });
+
+    function puceVisibles() {
+      return chips.filter(function (c) { return !c.classList.contains('chip-hidden') && !c._opt.disabled; });
+    }
+    function premiereTrouvee() {
+      if (!filterInput || !filterInput.value.trim()) return null;
+      var q = sansAccents(filterInput.value.trim());
+      return puceVisibles().filter(function (c) { return !c._opt.selected && contientMots(c.dataset.label, q); })[0] || null;
+    }
 
     var modeRecent = !!(filterInput && select.dataset.chipRecent);
     var MAX_RESULTATS = 8;
@@ -171,6 +203,8 @@
         }
         chip.classList.toggle('chip-hidden', !visible);
       });
+      var premiere = premiereTrouvee();
+      chips.forEach(function (chip) { chip.classList.toggle('chip-premiere', chip === premiere); });
     }
 
     if (filterInput) {

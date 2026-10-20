@@ -912,6 +912,12 @@ def modifier_post(post_id: int, auteur_id: int, contenu: str, lien: str | None,
         return retirees
 
 
+def mentions_du_post(post_id: int) -> list[int]:
+    """Personnes mentionnées par un post (lot 23)."""
+    return [int(r["utilisateur_id"]) for r in
+            db.query_all("SELECT utilisateur_id FROM post_mention WHERE post_id = %s", (post_id,))]
+
+
 def supprimer_post(post_id: int, current_user_id: int) -> str | None:
     """Suppression LOGIQUE (« Annuler » : restaurer_post). Retourne
     l'horodatage de la suppression (lié au jeton), None si déjà supprimé."""

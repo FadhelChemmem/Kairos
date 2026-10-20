@@ -97,8 +97,8 @@
         </div>
       </div>
       </div>
-      <button type="submit" class="btn k-sans-js">Filtrer</button>
-      {# Lot 22 : le choix des filtres est mémorisé ; ce lien l'oublie. #}
+      <button type="submit" class="btn k-sans-js" name="choix" value="1">Filtrer</button>
+      {# Lot 22 : le choix des filtres est mémorisé (lot 23 : par personne) ; ce lien l'oublie. #}
       <a href="{{ url_for('projets.liste', defaut=1) }}" class="bouton-texte projets-filtres-defaut">Filtres par défaut</a>
     </div>
   </form>

@@ -223,6 +223,8 @@ def accueil():
         **fil,
         dailylog_jours_manques=dailylog_jours_manques,
         dailylog_aujourdhui=dailylog_aujourdhui,
+        # Lot 23 (demande du gérant) : jour ouvré pas encore rempli → carte en rouge.
+        dailylog_jour_ouvre=aujourdhui_local.weekday() < 5,
         dailylog_minutes=dailylog_minutes,
         dailylog_objectif=dailylog_objectif,
         aujourdhui=aujourdhui_local,

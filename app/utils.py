@@ -446,6 +446,37 @@ def personnes_recentes_d_abord(personnes: list[dict], recents_ids: list[int] | N
     return devant + [{**p, "recent": False} for p in personnes if p["id"] not in deja]
 
 
+_URL_TEXTE = None
+
+
+def avec_liens(contenu: str | None):
+    """Texte d'un post ou d'un commentaire, échappé, où chaque adresse web
+    (http:// ou https://) devient un lien cliquable, ouvert dans un nouvel
+    onglet (lot 23, test Chrome). La ponctuation finale (point, virgule,
+    parenthèse fermante sans ouvrante…) reste hors du lien."""
+    import re
+
+    from markupsafe import Markup, escape
+
+    global _URL_TEXTE
+    if _URL_TEXTE is None:
+        _URL_TEXTE = re.compile(r"https?://[^\s<>\"'«»]+", re.IGNORECASE)
+    texte = contenu or ""
+    morceaux, pos = [], 0
+    for m in _URL_TEXTE.finditer(texte):
+        url = m.group(0)
+        while url and (url[-1] in ".,;:!?]}" or (url[-1] == ")" and url.count("(") < url.count(")"))):
+            url = url[:-1]
+        if len(url) <= len("https://"):
+            continue
+        morceaux.append(escape(texte[pos:m.start()]))
+        morceaux.append(Markup('<a href="{0}" class="lien-texte" target="_blank" rel="noopener noreferrer">{0}</a>')
+                        .format(url))
+        pos = m.start() + len(url)
+    morceaux.append(escape(texte[pos:]))
+    return Markup("").join(morceaux)
+
+
 def texte_avec_mentions(contenu: str | None, mentions: list[dict] | None):
     """Texte d'un commentaire, échappé, où chaque "@Prénom Nom" d'une
     personne réellement taguée (post_commentaire_mention, migration 0009)
@@ -456,7 +487,9 @@ def texte_avec_mentions(contenu: str | None, mentions: list[dict] | None):
 
     from markupsafe import Markup, escape
 
-    html = str(escape(contenu or ""))
+    # Lot 23 : adresses web cliquables ; les mentions ne sont cherchées
+    # qu'en dehors des liens.
+    html = str(avec_liens(contenu))
     noms = sorted(
         {f"@{m.get('prenom', '')} {m.get('nom', '')}".strip() for m in (mentions or [])},
         key=len, reverse=True,
@@ -465,7 +498,10 @@ def texte_avec_mentions(contenu: str | None, mentions: list[dict] | None):
         motif = re.compile(
             "(" + "|".join(re.escape(str(escape(n))) for n in noms) + r")(?!\w)", re.IGNORECASE,
         )
-        html = motif.sub(lambda m: f'<span class="post-comment-mention">{m.group(1)}</span>', html)
+        morceaux = re.split(r"(<a [^>]*>.*?</a>)", html)
+        html = "".join(m if m.startswith("<a ") else
+                       motif.sub(lambda x: f'<span class="post-comment-mention">{x.group(1)}</span>', m)
+                       for m in morceaux)
     return Markup(html)
 
 
@@ -557,6 +593,7 @@ def register(app):
     )
     app.jinja_env.filters["personne_mentionnable"] = lambda u: {"id": u["id"], "prenom": u["prenom"], "nom": u["nom"]}
     app.jinja_env.filters["il_y_a"] = il_y_a
+    app.jinja_env.filters["avec_liens"] = avec_liens
     app.jinja_env.filters["date_courte"] = date_courte
     app.jinja_env.filters["date_longue"] = date_longue
     app.jinja_env.filters["heures"] = heures

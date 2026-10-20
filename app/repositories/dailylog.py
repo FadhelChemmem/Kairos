@@ -532,6 +532,10 @@ def lignes_proposees(user: dict, date) -> list[dict]:
           AND COALESCE(t.date_debut, (t.created_at AT TIME ZONE 'Africa/Tunis')::date - 1) <= %(date)s
           AND (t.etat IN ('en_cours', 'bloque')
                OR COALESCE(t.date_fin, (t.updated_at AT TIME ZONE 'Africa/Tunis')::date) >= %(date)s)
+          -- Lot 23 (retour du gérant) : pas une tâche bloquée ce jour-là
+          -- (en attente : on n'y travaille pas) ; bloquée APRÈS ce jour, elle
+          -- était encore en cours et reste proposée.
+          AND NOT (t.etat = 'bloque' AND COALESCE((t.bloque_le AT TIME ZONE 'Africa/Tunis')::date, %(date)s) <= %(date)s)
         ORDER BY t.date_echeance NULLS LAST, p.code, t.titre, t.id
         LIMIT %(limit)s
         """,

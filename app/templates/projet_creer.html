@@ -45,7 +45,7 @@
     <div class="form-row">
       <label for="chef_projet_id">Chef de projet</label>
       {# Lot 13 (décision 3) : chef de projet ou Admin actif, sélecteur à recherche. #}
-      <select id="chef_projet_id" name="chef_projet_id" data-search-combobox data-search-riche data-search-placeholder="Rechercher un chef de projet…" data-search-vide="Aucun chef de projet trouvé"{{ err.attrs(erreurs, 'chef_projet_id') }}>
+      <select id="chef_projet_id" name="chef_projet_id" data-search-combobox data-search-selection data-search-riche data-search-placeholder="Rechercher un chef de projet…" data-search-vide="Aucun chef de projet trouvé"{{ err.attrs(erreurs, 'chef_projet_id') }}>
         {% for u in utilisateurs_actifs %}
 {% set rs = role_style(u.role) %}
           <option value="{{ u.id }}" {{ 'selected' if u.id == (saisie.chef_projet_id or g.user.id) }} data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}" data-couleur="{{ avatar_color(u.id) }}"{% if u.avatar_chemin %} data-photo="{{ avatar_url(u.id, u.avatar_chemin) }}"{% endif %} data-sous-titre="{{ rs.label }}{% if u.poste and u.poste|lower != rs.label|lower %} · {{ u.poste }}{% endif %}">{{ u.prenom }} {{ u.nom }}</option>
@@ -76,7 +76,7 @@
          EXE qui suit un DCE) — retour Fadhel, lot 7 ; même champ que la
          fenêtre Informations. Candidats chargés à la demande (audit
          a11y-perf M11) : seule la phase déjà choisie est rendue. #}
-      <select id="phase_liee_id" name="phase_liee_id" data-search-combobox data-search-placeholder="Rechercher un projet…"
+      <select id="phase_liee_id" name="phase_liee_id" data-search-combobox data-search-selection data-search-placeholder="Rechercher un projet…"
               data-search-url="{{ url_for('projets.api_phase_liee_candidats') }}"{{ err.attrs(erreurs, 'phase_liee_id') }}>
         <option value="" data-vide>— Aucune —</option>
         {% for p in projets_phase_liee|default([]) %}

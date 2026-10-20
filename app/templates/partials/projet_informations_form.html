@@ -35,7 +35,7 @@
   <div class="form-row">
     {% if chef_modifiable %}
     <label for="dialog-info-chef">Chef de projet</label>
-    <select id="dialog-info-chef" name="chef_projet_id" data-search-combobox data-search-riche data-search-placeholder="Rechercher un chef de projet…" data-search-vide="Aucun chef de projet trouvé" aria-describedby="dialog-info-chef-aide">
+    <select id="dialog-info-chef" name="chef_projet_id" data-search-combobox data-search-selection data-search-riche data-search-placeholder="Rechercher un chef de projet…" data-search-vide="Aucun chef de projet trouvé" aria-describedby="dialog-info-chef-aide">
       {% for u in chefs_possibles %}
         {% set rs = role_style(u.role) if u.role else none %}
         <option value="{{ u.id }}" {{ 'selected' if u.id == projet.chef_projet_id }} data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}" data-couleur="{{ avatar_color(u.id) }}"{% if u.avatar_chemin %} data-photo="{{ avatar_url(u.id, u.avatar_chemin) }}"{% endif %} data-sous-titre="{% if u.inactif %}Compte désactivé · chef actuel{% elif u.id == projet.chef_projet_id %}Chef actuel{% if rs %} · {{ rs.label }}{% endif %}{% else %}{{ rs.label if rs }}{% if u.poste and (not rs or u.poste|lower != rs.label|lower) %} · {{ u.poste }}{% endif %}{% endif %}">{{ u.prenom }} {{ u.nom }}{{ ' (désactivé)' if u.inactif }}</option>
@@ -82,7 +82,7 @@
   </div>
   <div class="form-row form-row-serre">
     <label for="dialog-info-phase-liee">Phase liée <span class="label-note">— facultatif</span></label>
-    <select id="dialog-info-phase-liee" name="phase_liee_id" data-search-combobox data-search-placeholder="Rechercher un projet…"
+    <select id="dialog-info-phase-liee" name="phase_liee_id" data-search-combobox data-search-selection data-search-placeholder="Rechercher un projet…"
             data-search-url="{{ url_for('projets.api_phase_liee_candidats', exclure=projet.id) }}">
       <option value="" data-vide>— Aucune —</option>
       {% for p in projets_phase_liee %}

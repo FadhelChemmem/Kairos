@@ -141,7 +141,7 @@ class TestFenetreInformations(_Base):
     def test_champ_chef_meme_composant_que_le_selecteur(self):
         page = self.page()
         select = page.split('<select id="dialog-info-chef"', 1)[1].split("</select>", 1)[0]
-        self.assertIn('name="chef_projet_id" data-search-combobox data-search-riche', select)
+        self.assertIn('name="chef_projet_id" data-search-combobox data-search-selection data-search-riche', select)
         self.assertIn('aria-describedby="dialog-info-chef-aide"', select)
         self.assertEqual(re.findall(r'<option value="(\d+)"', select), ["1", "5"])  # pas l'intervenant
         self.assertRegex(select, r'<option value="1" selected[^>]*data-sous-titre="Chef actuel · Chef de projet"')

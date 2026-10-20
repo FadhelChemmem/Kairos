@@ -74,7 +74,8 @@
       <div class="k-vide">
         <p class="k-vide-titre">Aucun projet ne correspond à ces filtres</p>
         <p class="k-vide-texte">Élargissez la recherche ou affichez tous les projets visibles.</p>
-        <a href="{{ url_for('projets.liste', filtres_actifs=1) }}" class="btn" data-partiel="#projets-resultats" data-focus-apres="#projets-compte">Afficher tous les projets</a>
+        {# Lot 23 (test Chrome L10) : page entière, les puces suivent. #}
+        <a href="{{ url_for('projets.liste', filtres_actifs=1, choix=1) }}" class="btn">Afficher tous les projets</a>
       </div>
       {% endif %}
     {% endif %}

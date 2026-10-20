@@ -88,7 +88,8 @@ class TestChangementDeChef(_BaseChef):
         self.login(self.autre)
         o = self.client.post(f"/notifications/{n['id']}/ouvrir")
         # Lot 13 (audit rôles M8) : sur le post, dans la fiche.
-        self.assertTrue(o.headers["Location"].endswith(f"/projets/{self.p}#post-{post['id']}"), o.headers["Location"])
+        self.assertTrue(o.headers["Location"].endswith(f"/projets/{self.p}?fil=tout&jusqua={post['id']}#post-{post['id']}"),
+                        o.headers["Location"])
         # Journal d'audit : la ligne du changement, avec son auteur.
         lignes = self.sql("""SELECT utilisateur_id, donnees_avant->>'chef_projet_id' AS avant,
                                     donnees_apres->>'chef_projet_id' AS apres

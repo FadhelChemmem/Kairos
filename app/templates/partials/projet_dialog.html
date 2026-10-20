@@ -52,7 +52,7 @@
       <label for="dialog-projet-chef">Chef de projet</label>
       {# Lot 13 (décision 3, audit rôles I4 / M14) : chef de projet ou Admin
          actif, même sélecteur à recherche que la fenêtre Informations. #}
-      <select id="dialog-projet-chef" name="chef_projet_id" data-search-combobox data-search-riche data-search-placeholder="Rechercher un chef de projet…" data-search-vide="Aucun chef de projet trouvé" aria-describedby="dialog-projet-chef-aide">
+      <select id="dialog-projet-chef" name="chef_projet_id" data-search-combobox data-search-selection data-search-riche data-search-placeholder="Rechercher un chef de projet…" data-search-vide="Aucun chef de projet trouvé" aria-describedby="dialog-projet-chef-aide">
         {% for u in utilisateurs_creation_projet %}
           {% set rs = role_style(u.role) %}
           <option value="{{ u.id }}" {{ 'selected' if u.id == g.user.id }} data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}" data-couleur="{{ avatar_color(u.id) }}"{% if u.avatar_chemin %} data-photo="{{ avatar_url(u.id, u.avatar_chemin) }}"{% endif %} data-sous-titre="{{ rs.label }}{% if u.poste and u.poste|lower != rs.label|lower %} · {{ u.poste }}{% endif %}">{{ u.prenom }} {{ u.nom }}</option>
@@ -81,7 +81,7 @@
       {# Lier le nouveau projet à un projet existant dès sa création (ex. le
          EXE qui suit un DCE) — retour Fadhel, lot 7 ; même champ que la
          fenêtre Informations. #}
-      <select id="dialog-projet-phase-liee" name="phase_liee_id" data-search-combobox data-search-placeholder="Rechercher un projet…"
+      <select id="dialog-projet-phase-liee" name="phase_liee_id" data-search-combobox data-search-selection data-search-placeholder="Rechercher un projet…"
               data-search-url="{{ url_for('projets.api_phase_liee_candidats') }}">
         <option value="" data-vide>— Aucune —</option>
         {% for p in projets_phase_liee|default([]) %}

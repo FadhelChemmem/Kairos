@@ -38,7 +38,9 @@
             <span class="btn btn-danger acc-dl-bouton">Remplir mon Daily log</span>
           </a>
         {% else %}
-          <a href="{{ url_for('dailylog.formulaire') }}" class="acc-dl">
+          {# Lot 23 (demande du gérant) : jour ouvré sans aucune saisie → en rouge. #}
+          {% set dl_a_remplir = not dl_futur and not dailylog_aujourdhui and dailylog_jour_ouvre|default(false) %}
+          <a href="{{ url_for('dailylog.formulaire') }}" class="acc-dl{{ ' acc-dl-a-remplir' if dl_a_remplir }}">
             <span class="acc-dl-texte">
               <strong>Daily log</strong>
               <span>{% if dl_futur %}date simulée future&nbsp;: consultation seule{% elif dailylog_aujourdhui and dailylog_minutes >= dl_obj %}journée complète ({{ (dailylog_minutes / 60)|heures }}){% elif dl_partiel %}{{ (dailylog_minutes / 60)|heures }} sur {{ (dl_obj / 60)|heures }} aujourd’hui{% elif dailylog_aujourdhui %}absence enregistrée aujourd’hui{% else %}à remplir aujourd’hui{% endif %}</span>

@@ -3,7 +3,8 @@
    (une Requête : objet + description), le lien, les pièces jointes
    (retirer, ajouter). Masqué tant qu'on n'a pas choisi « Modifier » (menu
    ⋯) ; sans JavaScript, l'ancre #post-<id>-edition l'affiche (:target).
-   Envoi en partiel : la carte est remplacée (routes/posts.py:modifier). #}
+   Envoi en partiel : la carte est remplacée (routes/posts.py:modifier).
+   Lot 23 : « @ » propose les personnes ; les nouvelles taguées sont prévenues. #}
 <form method="post" action="{{ url_for('posts.modifier', post_id=post.id) }}" enctype="multipart/form-data"
       id="post-{{ post.id }}-edition" class="post-edition" data-post-edition="{{ post.id }}" data-partiel="#post-{{ post.id }}"
       data-focus-apres="#post-{{ post.id }} .post-menu-bouton">
@@ -17,12 +18,12 @@
   </div>
   <div class="form-row">
     <label for="post-{{ post.id }}-texte">Description <span class="label-note">— facultatif</span></label>
-    {% call pj.champ('post-' ~ post.id ~ '-fichier') %}<textarea id="post-{{ post.id }}-texte" name="contenu" maxlength="10000" rows="3">{{ requete_texte }}</textarea>{% endcall %}
+    {% call pj.champ('post-' ~ post.id ~ '-fichier') %}<textarea id="post-{{ post.id }}-texte" name="contenu" maxlength="10000" rows="3" data-mention-input>{{ requete_texte }}</textarea>{% endcall %}
   </div>
   {% else %}
   <div class="form-row">
     <label for="post-{{ post.id }}-texte">Texte</label>
-    {% call pj.champ('post-' ~ post.id ~ '-fichier') %}<textarea id="post-{{ post.id }}-texte" name="contenu" maxlength="10000" rows="3" required>{{ post.contenu or '' }}</textarea>{% endcall %}
+    {% call pj.champ('post-' ~ post.id ~ '-fichier') %}<textarea id="post-{{ post.id }}-texte" name="contenu" maxlength="10000" rows="3" required data-mention-input>{{ post.contenu or '' }}</textarea>{% endcall %}
   </div>
   {% endif %}
   {# Lot 17 : Lien masqué, sauf pour un post qui en a déjà un (il doit

@@ -44,7 +44,9 @@
   }
 
   // --- Suggestions "@" ---------------------------------------------------
-  function initMentions(ta) {
+  function initMentions(ta, opts) {
+    var croissance = !(opts && opts.croissance === false);
+    ta.dataset.mentionInit = '1';
     var wrap = ta.parentNode;
     var liste = document.createElement('div');
     liste.className = 'mention-liste';
@@ -109,7 +111,7 @@
       var pos = debut + texte.length;
       ta.setSelectionRange(pos, pos);
       fermer();
-      autoGrow(ta);
+      if (croissance) autoGrow(ta);
       ta.focus();
     }
 
@@ -133,6 +135,17 @@
     });
     return { ouverte: function () { return !liste.hidden; } };
   }
+
+  // Lot 23 (test Chrome W2) : « @ » propose aussi les personnes dans le
+  // texte d'un post qu'on modifie (textarea[data-mention-input] hors
+  // commentaire), initialisé à la première prise de focus ; le champ garde
+  // sa taille (pas d'agrandissement automatique).
+  document.addEventListener('focusin', function (e) {
+    var ta = e.target;
+    if (!ta || ta.tagName !== 'TEXTAREA' || !ta.hasAttribute('data-mention-input') || ta.dataset.mentionInit) return;
+    if (ta.closest('form[data-comment-composer], .comment-input')) return;
+    initMentions(ta, { croissance: false });
+  });
 
   // --- Fichier glissé / collé / choisi ------------------------------------
   function initFichier(form) {

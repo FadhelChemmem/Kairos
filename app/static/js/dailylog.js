@@ -966,13 +966,22 @@
       var rien = !!(c && !(c.lignes || []).length);
       copierBtn.innerHTML = SVG_COPIE;
       copierBtn.appendChild(document.createTextNode(c && !rien ? tr(T.copier_le, dateCourte(c.date)) : T.copier_aucun));
-      copierBtn.disabled = !c || rien || chargement;
+      // Lot 23 (test Chrome W10) : sans rien à reprendre, le bouton reste
+      // atteignable (aria-disabled) et son clic explique pourquoi — au
+      // clavier et au toucher, pas seulement au survol.
+      copierBtn.disabled = chargement;
+      var inerte = !c || rien;
+      if (inerte) copierBtn.setAttribute('aria-disabled', 'true'); else copierBtn.removeAttribute('aria-disabled');
       copierBtn.title = rien ? tr(T.copier_rien_titre, dateCourte(c.date)) : (c ? '' : T.copier_aucun_titre);
     }
     function cloneRows() { return rows.map(function (r) { return Object.assign({}, r); }); }
     copierBtn.addEventListener('click', function () {
       flush();
       var c = jour && jour.copie;
+      if (copierBtn.getAttribute('aria-disabled') === 'true') {
+        toast(copierBtn.title, { back: copierBtn, warn: true });
+        return;
+      }
       if (!c || !(c.lignes || []).length || isAbsent()) return;
       var k0 = sel, avant = cloneRows();
       var copies = c.lignes.map(ligneVersRow);

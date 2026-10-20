@@ -131,8 +131,11 @@ def ouvrir(notification_id: int):
         return redirect(url_for("projets.detail", projet_id=notif["tache_projet_id"], tache=notif["tache_id"]))
     # Post d'un projet (mention, commentaire…) : la fiche, sur ce post
     # (lot 13, audit rôles M8).
+    # Lot 23 (décision du gérant) : toujours sur « Tout », chargé jusqu'au
+    # post (?jusqua=), qui est signalé une fois à l'arrivée (filtre-fil.js).
     if notif["post_projet_id"]:
-        return redirect(url_for("projets.detail", projet_id=notif["post_projet_id"]) + f"#post-{notif['post_id']}")
+        return redirect(url_for("projets.detail", projet_id=notif["post_projet_id"], fil="tout",
+                                jusqua=notif["post_id"]) + f"#post-{notif['post_id']}")
     # « Ajouté au projet », « a rejoint votre projet » (notification.projet_id,
     # migration 0019, audit rôles I8).
     projet_id = notif["tache_projet_id"] or notif.get("projet_id")
@@ -141,7 +144,7 @@ def ouvrir(notification_id: int):
     # Information d'équipe sans projet (migration 0009) : le post est dans
     # le fil de l'accueil.
     if notif.get("post_id"):
-        return redirect(url_for("main.accueil") + f"#post-{notif['post_id']}")
+        return redirect(url_for("main.accueil", fil="tout", jusqua=notif["post_id"]) + f"#post-{notif['post_id']}")
     return redirect(url_for("notifications.liste"))
 
 

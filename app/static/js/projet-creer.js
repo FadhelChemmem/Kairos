@@ -19,6 +19,10 @@
   var champClient = document.getElementById('client');
   var clientModifie = false;
   if (champClient) champClient.addEventListener('input', function () { clientModifie = true; });
+  // Lot 23 : lots repris aussi, tant qu'aucun n'a été choisi à la main.
+  var champLots = document.getElementById('lots');
+  var lotsModifies = !!(champLots && champLots.selectedOptions && champLots.selectedOptions.length);
+  if (champLots) champLots.addEventListener('change', function () { if (!champLots._repris) lotsModifies = true; });
   function recalculer(e) {
     var reprendreClient = !!(e && e.target === champLie && champClient && !clientModifie && champLie.value);
     if ((modifieManuellement && !reprendreClient) || !urlCodePropose) return;
@@ -29,6 +33,12 @@
       .then(function (data) {
         if (numero !== derniereDemande) return;
         if (reprendreClient && data.client && !clientModifie) champClient.value = data.client;
+        if (reprendreClient && champLots && !lotsModifies && data.lots && data.lots.length) {
+          Array.prototype.forEach.call(champLots.options, function (o) { o.selected = data.lots.indexOf(o.value) !== -1; });
+          champLots._repris = true;
+          champLots.dispatchEvent(new Event('change', { bubbles: true }));
+          champLots._repris = false;
+        }
         if (!modifieManuellement && data.code) champCode.value = data.code;
       })
       .catch(function () { /* le code affiché reste une proposition valable */ });

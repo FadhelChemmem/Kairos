@@ -156,6 +156,8 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     etape('session expirée : « Recharger la page »',
       (await p.locator('#dialog-tache .tache-dialog-erreur').innerText()).includes('session a expiré'));
     await p.keyboard.press('Escape');
+    // Fin de l'animation de fermeture (180 ms) avant la tâche suivante.
+    await attendre(() => p.evaluate(() => !document.getElementById('dialog-tache').open));
     await p.unroute(/\/taches\/5\/fenetre$/);
     // Chargement lent : état « Chargement… » visible, réponse ignorée si fermée.
     await p.route(/\/taches\/6\/fenetre$/, async (r) => { await pause(600); await r.continue().catch(() => {}); });
@@ -615,6 +617,67 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
           l: t.getBoundingClientRect().width, z: z.getBoundingClientRect().width }; }, sien));
       etape('Modifier un post : texte sur toute la largeur, hauteur seulement',
         !!edition && edition.resize === 'vertical' && Math.abs(edition.l - edition.z) <= 1, edition);
+      // Lot 23 (test Chrome W2) : « @ » propose les personnes en modifiant un post.
+      await pc.click(`#post-${sien}-texte`);
+      await pc.keyboard.press('End');
+      await pc.keyboard.type(' @al');
+      const propose = await attendre(() => pc.evaluate((id) => {
+        const l = document.querySelector('#post-' + id + '-edition .mention-liste:not([hidden])');
+        return l ? l.textContent : null; }, sien));
+      etape('Modifier un post : « @al » propose Ali Chef', !!propose && /Ali Chef/.test(propose), propose);
+      await pc.keyboard.press('Enter');
+      etape('Modifier un post : Entrée insère « @Ali Chef »', /@Ali Chef $/.test(await pc.inputValue(`#post-${sien}-texte`)));
+      await ctx.close();
+
+      // Lot 23 (test Chrome L3) : changer d'onglet rend la taille normale.
+      ctx = await contexte(navigateur, 'ali@x.tn');
+      pc = await ouvrir(ctx, '/projets/30?fil=tout');
+      await pc.click('#nouveau-post');
+      await pc.click('label[for="intent-information"]');
+      await pc.evaluate(() => { document.getElementById('dialog-contenu-information').style.height = '500px'; });
+      await pc.click('label[for="intent-requete"]');
+      await pc.click('label[for="intent-information"]');
+      etape('Nouveau post : changer d’onglet rend la taille normale (L3)', await pc.evaluate(() =>
+        !document.getElementById('dialog-contenu-information').style.height));
+      // Lot 23 : intervenants au clavier (recherche, Entrée).
+      await pc.click('label[for="intent-tache"]');
+      const filtreIntervenants = pc.locator('#dialog-nouveau-post .panel-tache .chip-select-filter');
+      await filtreIntervenants.fill('rim');
+      await pc.keyboard.press('Enter');
+      etape('Nouveau post : « rim » puis Entrée choisit Rim Inter', await pc.evaluate(() =>
+        Array.from(document.querySelectorAll('#dialog-intervenants-tache option:checked')).some((o) => /Rim/.test(o.textContent))));
+      await pc.keyboard.press('Escape');
+      await pc.keyboard.press('Escape');
+      if (await pc.evaluate(() => document.getElementById('dialog-nouveau-post').open)) {
+        await pc.click('#dialog-nouveau-post [data-close-post-dialog] >> nth=0').catch(() => {});
+      }
+      // Lot 23 : champ « Chef de projet » sélectionné en entier au focus.
+      await pc.click('#carte-informations button[data-open-informations-dialog]');
+      await pc.waitForSelector('#dialog-informations-projet[open]');
+      const chefInput = pc.locator('#dialog-informations-projet .search-combobox-input').first();
+      await chefInput.click();
+      await pause(50);
+      etape('Informations : le nom du chef est sélectionné au clic (la frappe le remplace)', await pc.evaluate(() => {
+        const i = document.activeElement; return i && i.value && i.selectionStart === 0 && i.selectionEnd === i.value.length; }));
+      await pc.keyboard.press('Escape');
+      await pc.keyboard.press('Escape');
+      await ctx.close();
+
+      // Lot 23 : post épinglé long replié ; notification : « Tout », post signalé.
+      sql(`UPDATE post SET contenu = '${Array.from({ length: 25 }, (_, i) => 'Ligne ' + (i + 1)).join('\n')}' WHERE id = ${info}`);
+      ctx = await contexte(navigateur, 'rim@x.tn');
+      pc = await ouvrir(ctx, `/projets/30?fil=tout&jusqua=${tague}#post-${tague}`);
+      const signale = await attendre(() => pc.evaluate((id) => document.getElementById('post-' + id).classList.contains('post-signale'), tague), 2000);
+      etape('Notification : post signalé une fois à l’arrivée', !!signale);
+      etape('Post signalé : le halo s’efface', !!await attendre(() => pc.evaluate((id) =>
+        !document.getElementById('post-' + id).classList.contains('post-signale'), tague), 4000));
+      const suite = pc.locator('#fil-epingle .fil-epingle-suite');
+      etape('Épinglé long : replié avec « Lire la suite »', await suite.count() === 1
+        && await pc.evaluate(() => document.querySelector('#fil-epingle .post-texte').getBoundingClientRect().height < 260));
+      await suite.click();
+      etape('« Lire la suite » déplie tout (aria-expanded), « Réduire » replie', await suite.getAttribute('aria-expanded') === 'true'
+        && await pc.evaluate(() => document.querySelector('#fil-epingle .post-texte').getBoundingClientRect().height > 300)
+        && /Réduire/.test(await suite.textContent()));
       await ctx.close();
     }
 

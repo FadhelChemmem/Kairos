@@ -459,6 +459,10 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.posts.list_feed_projet": FEED,
             # Lot 21 : Information épinglée en tête du fil de la fiche.
             "app.repositories.posts.get_post_epingle": None,
+            # Lot 23 : filtres mémorisés par personne, mentions d'un post modifié.
+            "app.repositories.utilisateurs.get_filtres": None,
+            "app.repositories.utilisateurs.set_filtres": None,
+            "app.repositories.posts.mentions_du_post": [],
             "app.repositories.posts.get_post": POST_POUR_ACCES,
             "app.repositories.posts.get_piece_jointe": PIECE_JOINTE_POST,
             # Lot 17 : posts non vus du fil, auteur de la dernière clôture.
@@ -724,7 +728,7 @@ class SmokeTestCase(SmokeBase):
             **{"app.repositories.projets.propose_code": "26004D"},
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.get_json(), {"code": "26004D", "client": None})
+        self.assertEqual(resp.get_json(), {"code": "26004D", "client": None, "lots": []})
 
     def test_api_code_propose_rejette_une_phase_invalide(self):
         resp = self._get("/projets/code-propose?phase=BIDON")
@@ -2022,12 +2026,11 @@ class SmokeTestCase(SmokeBase):
         bouton = re.search(r'<button[^>]*data-parent-post-id="1"[^>]*>', body, re.S).group(0)
         self.assertIn('data-intents="information,requete"', bouton)
 
-    def test_reposter_desactive_sur_un_projet_termine(self):
+    def test_reposter_absent_sur_un_projet_termine(self):
+        # Lot 23 (test Chrome) : le bouton n'est plus affiché (avant : désactivé).
         feed = [{**FEED_POST_MANUEL, "projet_etat": "termine"}]
         body = self._get("/accueil", **{"app.repositories.posts.list_feed_mes_projets": feed}).data.decode()
-        bouton = re.search(r'<button[^>]*data-parent-post-id="1"[^>]*>', body, re.S).group(0)
-        self.assertIn("disabled", bouton)
-        self.assertIn("Projet terminé", bouton)
+        self.assertIsNone(re.search(r'<button[^>]*data-parent-post-id="1"[^>]*>', body, re.S))
 
     def test_accueil_fenetre_post_liste_les_personnes(self):
         """Audit n°2 : utilisateurs_actifs n'était pas transmis à l'accueil —
@@ -4606,7 +4609,7 @@ class TestInformationEtComposeur(SmokeBase):
         finally:
             for p in reversed(patchers):
                 p.stop()
-        self.assertTrue(resp.headers["Location"].endswith("/accueil#post-9"))
+        self.assertTrue(resp.headers["Location"].endswith("/accueil?fil=tout&jusqua=9#post-9"))
 
     def test_sql_fil_accueil_inclut_intervenants_de_tache_et_informations(self):
         from app.repositories import posts as posts_repo
@@ -5105,7 +5108,7 @@ class TestPagesLot6(SmokeBase):
         # 2026-10-01 — l'option porte son état initial dans data-mode.
         self.assertIn('<option value="CM" title="Charpente métallique" data-mode="">CM</option>', body)
         self.assertIn('data-chip-tristate data-name-contient="lot_contient" data-name-egal="lot_egal"', body)
-        self.assertIn('id="export-excel" href="/projets/export.xlsx"', body)
+        self.assertIn('id="export-excel" href="/projets/export.xlsx?filtres_actifs=1&amp;etat=en_cours&amp;etat=bloque', body)
         self.assertIn('title="Rendu client&nbsp;: Note de calcul"', body)
         self.assertIn("filtres-une-ligne", body)
 
@@ -5227,7 +5230,8 @@ class TestAuditV3(SmokeBase):
 
     def test_lien_excel_garde_tous_les_filtres(self):
         body = self._get("/projets?filtres_actifs=1&phase=APS&phase=EXE&etat=en_cours").data.decode()
-        self.assertIn('href="/projets/export.xlsx?filtres_actifs=1&amp;phase=APS&amp;phase=EXE&amp;etat=en_cours"', body)
+        # Lot 23 : filtres EFFECTIFS (choix mémorisé compris), dans l'ordre de la liste.
+        self.assertIn('href="/projets/export.xlsx?filtres_actifs=1&amp;etat=en_cours&amp;phase=APS&amp;phase=EXE"', body)
 
     def test_fiche_semaine_derniere_filtree_par_visibilite(self):
         """Un chef de projet ne voit, sur la fiche d'un autre, que les

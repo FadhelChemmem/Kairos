@@ -45,8 +45,8 @@
     <label class="filtre-date" for="journal-au">Au
       <input type="date" id="journal-au" name="date_fin" value="{{ filtres.date_fin }}" aria-label="Au (date de fin)">
     </label>
-    <button type="submit" class="btn k-sans-js">Filtrer</button>
-    <a href="{{ url_for('admin.journal') }}" class="btn-fantome btn-petit journal-reinit" data-partiel="#journal-resultats" data-focus-apres="#journal-table-filtre"{% if not filtre_actif %} hidden{% endif %}>Réinitialiser</a>
+    <button type="submit" class="btn k-sans-js" name="choix" value="1">Filtrer</button>
+    <a href="{{ url_for('admin.journal', defaut=1) }}" class="btn-fantome btn-petit journal-reinit" data-partiel="#journal-resultats" data-focus-apres="#journal-table-filtre"{% if not filtre_actif %} hidden{% endif %}>Réinitialiser</a>
   </form>
 
   {% if suite_page %}<p class="k-muet journal-page-suite">Entrées plus anciennes. <a href="{{ url_for('admin.journal', **filtres_url) }}">Revenir aux plus récentes</a></p>{% endif %}

@@ -47,16 +47,31 @@
     // Phase liée choisie (lot 8) : le code reprend son numéro avec la
     // lettre de la phase (26001D → 26001X), toujours modifiable.
     var champLie = dialog.querySelector('#dialog-projet-phase-liee');
-    var recalculer = function () {
-      if (modifieManuellement) return;
+    // Lot 23 (test Chrome) : client et lots repris de la phase liée, tant
+    // qu'ils n'ont pas été changés à la main (comme la page « Nouveau projet »).
+    var champClient = dialog.querySelector('#dialog-projet-client');
+    var champLots = dialog.querySelector('#dialog-projet-lots');
+    var clientModifie = false, lotsModifies = false;
+    if (champClient) champClient.addEventListener('input', function () { clientModifie = true; });
+    if (champLots) champLots.addEventListener('change', function () { if (!champLots._repris) lotsModifies = true; });
+    var recalculer = function (e) {
+      var reprendre = !!(e && e.target === champLie && champLie.value);
+      if (modifieManuellement && !reprendre) return;
       var numero = ++derniereDemande;
       var url = urlCodePropose + '?phase=' + encodeURIComponent(champPhase.value)
         + (champLie && champLie.value ? '&phase_liee_id=' + encodeURIComponent(champLie.value) : '');
       fetch(url)
         .then(function (r) { return r.json(); })
         .then(function (data) {
-          if (numero !== derniereDemande || modifieManuellement) return;
-          if (data.code) {
+          if (numero !== derniereDemande) return;
+          if (reprendre && champClient && !clientModifie && data.client) champClient.value = data.client;
+          if (reprendre && champLots && !lotsModifies && data.lots && data.lots.length) {
+            Array.prototype.forEach.call(champLots.options, function (o) { o.selected = data.lots.indexOf(o.value) !== -1; });
+            champLots._repris = true;
+            champLots.dispatchEvent(new Event('change', { bubbles: true }));
+            champLots._repris = false;
+          }
+          if (!modifieManuellement && data.code) {
             champCode.value = data.code;
           }
         })

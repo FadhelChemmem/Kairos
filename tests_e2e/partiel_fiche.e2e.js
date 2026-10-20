@@ -303,10 +303,14 @@ module.exports = async function scenarioFiche(h) {
   await mesurer(p, c, 'retirer un intervenant du projet (confirmation en ligne)',
     // Clic à la souris (le clic de Playwright fait défiler la page vers
     // la bulle de confirmation, positionnée en absolu).
-    async () => { const bb = await p.locator('.k-confirmation button:has-text("Retirer")').boundingBox();
+    async () => {
       // Bulle ouverte à l'instant : une image le temps qu'elle soit posée
-      // (un clic dans la même milliseconde n'est pas un geste humain).
+      // (un clic dans la même milliseconde n'est pas un geste humain), et
+      // le toast de l'ajout précédent (en bas à droite) parti de dessus.
       await pause(100);
+      const bb = await p.locator('.k-confirmation button:has-text("Retirer")').boundingBox();
+      await attendre(() => p.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y);
+        return !!e && !!e.closest('.k-confirmation'); }, [bb.x + bb.width / 2, bb.y + bb.height / 2]), 8000);
       await p.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); },
     async () => sql('SELECT count(*) FROM projet_intervenant WHERE projet_id=1 AND utilisateur_id=150') === '0'
       && await p.locator('#projet-intervenant-150').count() === 0,

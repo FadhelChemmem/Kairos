@@ -44,7 +44,10 @@
 .tache-cloture-ligne label[for^="cloture-date"] { color: var(--text-secondary); }
 .tache-cloture-ligne input[type="date"] { width: auto; min-height: 34px; }
 .tache-cloture-types { display: inline-flex; gap: 3px; padding: 3px; margin-left: auto; border-radius: var(--rayon-s); background: var(--hover-bg); }
-.tache-cloture-types input { position: absolute; opacity: 0; pointer-events: none; }
+/* Lot 23 (test Chrome FP5) : les boutons radio cachés prenaient la largeur
+   100 % des champs et dépassaient du panneau (barre horizontale). */
+.tache-cloture-types { position: relative; }
+.tache-cloture-types input { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; margin: 0; padding: 0; left: 0; top: 0; }
 .tache-cloture-types label { padding: 4px 10px; border-radius: calc(var(--rayon-s) - 2px); font-weight: var(--graisse-forte);
   color: var(--text-secondary); cursor: pointer; -webkit-user-select: none; user-select: none; }
 .tache-cloture-types input:checked + label { background: var(--surface); color: var(--text-strong); box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
@@ -163,3 +166,32 @@ textarea { resize: vertical; max-width: 100%; max-height: 70vh; box-sizing: bord
 .pj-champ textarea { width: 100%; }
 /* Lot 22 : « Filtres par défaut » sous les filtres de « Tous les projets ». */
 .projets-filtres-defaut { display: inline-block; margin-top: 6px; font-size: 12.5px; }
+/* Lot 23 (décision du gérant) : post ouvert depuis une notification, signalé
+   une fois — halo vert qui s'efface en 2,4 s. */
+@keyframes post-signale {
+  0%, 35% { box-shadow: 0 0 0 3px var(--accent-fill); }
+  100% { box-shadow: 0 0 0 3px transparent; }
+}
+.post-card.post-signale { animation: post-signale 2.4s ease-out 1; }
+@media (prefers-reduced-motion: reduce) {
+  .post-card.post-signale { animation: none; box-shadow: 0 0 0 3px var(--accent-fill); }
+}
+/* Lot 23 : puce que choisira Entrée dans la recherche (« Nouveau post »). */
+.chip-opt.chip-premiere { box-shadow: inset 0 0 0 1.5px var(--accent-fill); }
+/* Lot 23 (test Chrome) : message de clôture en 16 px sur téléphone, comme
+   les autres champs (pas de zoom automatique d'iOS au focus). */
+@media (max-width: 860px) {
+  .tache-cloture-message textarea, .tache-blocage textarea { font-size: 16px; }
+}
+/* Lot 23 : adresses web cliquables dans les posts et commentaires. */
+.lien-texte { color: var(--brand-text); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+/* Lot 23 : texte du post épinglé replié au-delà de ~8 lignes. */
+.fil-epingle-replie .post-texte.post-corps:not(.post-corps-serre),
+.fil-epingle-replie .post-corps .post-texte.post-corps-second {
+  max-height: 12em; overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 75%, transparent); mask-image: linear-gradient(to bottom, #000 75%, transparent);
+}
+.fil-epingle-suite { margin: 4px 0 0; font-size: 13px; }
+/* Lot 23 (demande du gérant) : Daily log du jour pas encore rempli, en rouge. */
+.acc-dl-a-remplir { border-color: color-mix(in srgb, var(--danger-fill) 45%, var(--border)); box-shadow: inset 3px 0 0 var(--danger-fill); }
+.acc-dl-a-remplir .acc-dl-texte > span, .acc-dl-a-remplir .acc-dl-fleche { color: var(--error-text); font-weight: var(--graisse-forte); }

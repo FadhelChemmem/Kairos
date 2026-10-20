@@ -19,7 +19,7 @@
            repli sans JavaScript. #}
         <form class="dl-qui" method="get" action="{{ url_for('dailylog.formulaire') }}" data-dl-qui>
           <label for="dl-qui-select">Daily log de</label>
-          <select id="dl-qui-select" name="utilisateur" data-search-combobox data-search-placeholder="Rechercher une personne…" data-search-vide="Aucune personne trouvée">
+          <select id="dl-qui-select" name="utilisateur" data-search-combobox data-search-selection data-search-placeholder="Rechercher une personne…" data-search-vide="Aucune personne trouvée">
             <option value="" {{ 'selected' if soi }}>Moi</option>
             {% for p in personnes %}
               <option value="{{ p.id }}" {{ 'selected' if p.id == proprio.id }}>{{ p.nom }}</option>

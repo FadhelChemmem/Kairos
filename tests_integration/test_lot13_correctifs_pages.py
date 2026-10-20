@@ -84,7 +84,7 @@ class TestDailyLogDe(_Temps):
     def test_fragment_de_la_page_d_une_autre_personne(self):
         self.login(self.chef)
         page = self.client.get("/dailylog").get_data(as_text=True)
-        self.assertIn('data-search-combobox data-search-placeholder="Rechercher une personne…"', page)
+        self.assertIn('data-search-combobox data-search-selection data-search-placeholder="Rechercher une personne…"', page)
         self.assertIn('class="dl-tool k-sans-js">Ouvrir</button>', page)
         r = self.client.get(f"/dailylog?utilisateur={self.inter}&date={self.auj.isoformat()}", headers=PARTIEL)
         self.assertEqual(r.status_code, 200)

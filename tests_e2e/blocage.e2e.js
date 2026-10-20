@@ -188,6 +188,10 @@ const toastTexte = (p) => p.locator('#k-toasts .k-toast .k-toast-texte').last().
       && await p.isChecked('#cloture-envoi-2'), await focusDecrit(p));
     etape('fenêtre de clôture par-dessus le panneau : « Terminée » ne bouge pas',
       memes([avantCloture], [await rect(p, '#tache-2-etat-termine')]));
+    // Lot 23 (test Chrome FP5) : rien ne dépasse du panneau (boutons radio cachés).
+    const deborde = await p.evaluate(() => Array.from(document.querySelectorAll('#tache-fenetre-2, #tache-fenetre-2 *'))
+      .filter((e) => e.clientWidth > 1 && e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflowX !== 'visible').map((e) => e.id || e.className));
+    etape('fenêtre de clôture : aucun débordement horizontal du panneau', deborde.length === 0, deborde);
     await capture(p, 'cloture-question-1440.png');
     await p.fill('#cloture-message-2', 'Dossier EXE indice B envoyé au BET');
     await p.click('label[for="cloture-reponse-2"]');

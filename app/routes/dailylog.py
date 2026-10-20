@@ -400,6 +400,17 @@ def jour_json(proprio: dict, date, aujourdhui, contexte: bool = True) -> dict:
     droits = droits_jour(acteur, proprio, date, aujourdhui)
     infos = dl.projets_info([l["projet_id"] for l in jour["lignes"]], proprio["id"], acteur["id"])
     voit_tout = droits["mode"] == "saisie" or acteur["role"] == "admin"
+    # Lot 23 (test Chrome) : ligne d'un projet où la personne n'agit plus
+    # (retirée) et hors de SA tâche encore ouverte à cette date : lecture
+    # seule à l'écran, comme au serveur (plus d'heures nouvelles).
+    infos_taches = dl.taches_infos([l["tache_id"] for l in jour["lignes"] if l.get("tache_id")], proprio["id"])
+
+    def figee(ligne, projet) -> bool:
+        if projet.get("peut_agir", True):
+            return False
+        info = infos_taches.get(ligne["tache_id"]) if ligne.get("tache_id") else None
+        return not (info and info.get("intervenant") and dl.tache_saisissable(info, date))
+
     lignes = []
     for ligne in jour["lignes"]:
         projet = infos.get(ligne["projet_id"]) or {}
@@ -409,7 +420,8 @@ def jour_json(proprio: dict, date, aujourdhui, contexte: bool = True) -> dict:
             lignes.append({"masquee": True, "minutes": ligne["minutes"], "modifiable": False,
                            "hors_grille": ligne["hors_grille"]})
             continue
-        lignes.append({**ligne, "modifiable": _modifiable(droits, projet), "masquee": False})
+        lignes.append({**ligne, "modifiable": _modifiable(droits, projet) and not figee(ligne, projet),
+                       "masquee": False})
     statut = "absent" if jour["absent"] else ("rempli" if lignes else "vide")
     modifie_le = jour["modifie_le"]
     out = {

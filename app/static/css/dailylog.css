@@ -129,7 +129,7 @@ html:has(body.page-dailylog) { scroll-padding-bottom: 140px; }
 .dl9 .dl-daytools { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
 .dl9 .dl-tool { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--dl-control-border); background: var(--dl-surface);
   color: var(--dl-fg); font-size: 12.5px; font-weight: 600; border-radius: var(--dl-r-ctrl); padding: 8px 12px; cursor: pointer; width: auto; }
-.dl9 .dl-tool:disabled { opacity: .55; cursor: default; }
+.dl9 .dl-tool:disabled, .dl9 .dl-tool[aria-disabled="true"] { opacity: .55; cursor: default; }
 .dl9 .dl-tool svg { width: 14px; height: 14px; color: var(--dl-accent-text); }
 .dl9 .dl-tool.dl-on { background: var(--dl-accent-soft); border-color: var(--dl-accent-text); color: var(--dl-accent-ink); }
 
@@ -260,7 +260,7 @@ html:has(body.page-dailylog) { scroll-padding-bottom: 140px; }
   .dl9 .dl-cal-day:hover:not(:disabled) { background: var(--dl-accent-soft); }
   .dl9 .dl-cal-day.dl-sel:hover { background: var(--dl-accent); }
   .dl9 .dl-chip:hover { background: var(--dl-amber); color: var(--dl-surface); }
-  .dl9 .dl-tool:hover:not(:disabled) { background: var(--dl-surface-2); border-color: var(--dl-accent-text); }
+  .dl9 .dl-tool:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--dl-surface-2); border-color: var(--dl-accent-text); }
   .dl9 .dl-step:hover:not(:disabled) { background: var(--dl-surface-2); }
   .dl9 .dl-add:hover { border-color: var(--dl-accent-text); color: var(--dl-accent-text); }
   .dl9 .dl-catrow:hover, .dl9 .dl-cattaches:hover { background: var(--dl-surface-2); }

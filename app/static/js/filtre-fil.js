@@ -147,6 +147,40 @@
     if (!nav.contains(a)) { var seg = nav.querySelector('a[data-fil="' + fil + '"]'); if (seg) seg.focus(); }
   }, true);
 
+  // --- Post épinglé replié (lot 23) ------------------------------------------
+  // Au-delà de ~8 lignes, le texte du post épinglé est replié derrière
+  // « Lire la suite » (l'encadré restait haut de 700 px sur bureau).
+  function replierEpingle(racine) {
+    var r = racine && racine.querySelectorAll ? racine : document;
+    var sections = Array.prototype.slice.call(r.querySelectorAll('.fil-epingle'));
+    if (r.matches && r.matches('.fil-epingle')) sections.push(r);
+    var parents = r.closest ? r.closest('.fil-epingle') : null;
+    if (parents && sections.indexOf(parents) === -1) sections.push(parents);
+    sections.forEach(function (sec) {
+      var texte = sec.querySelector('.post-card > .post-texte.post-corps, .post-card .post-corps .post-texte.post-corps-second');
+      var ancien = sec.querySelector('.fil-epingle-suite');
+      if (ancien) ancien.remove();
+      if (!texte) return;
+      sec.classList.add('fil-epingle-replie');
+      if (texte.scrollHeight <= texte.clientHeight + 2) { sec.classList.remove('fil-epingle-replie'); return; }
+      if (!texte.id) texte.id = 'fil-epingle-texte-' + Math.random().toString(36).slice(2, 8);
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'bouton-texte fil-epingle-suite';
+      b.setAttribute('aria-expanded', 'false');
+      b.setAttribute('aria-controls', texte.id);
+      b.textContent = 'Lire la suite';
+      b.addEventListener('click', function () {
+        var ouvert = sec.classList.toggle('fil-epingle-replie') === false;
+        b.setAttribute('aria-expanded', ouvert ? 'true' : 'false');
+        b.textContent = ouvert ? 'Réduire' : 'Lire la suite';
+      });
+      texte.insertAdjacentElement('afterend', b);
+    });
+  }
+  replierEpingle(document);
+  document.addEventListener('kairos:fragment', function (e) { replierEpingle(e.detail && e.detail.racine); });
+
   // --- Bascule « Me concernant » (lot 21, fiche projet) ---------------------
   // a[data-fil-moi][role=switch] : mes posts, mes mentions et les suites
   // données à mes posts, ou tout le fil. Même mécanique que la catégorie
@@ -220,7 +254,19 @@
     if (!el) return false;
     var det = el.closest('details.fil-groupe-details');
     if (det && !det.open) { det.open = true; el.scrollIntoView({ block: 'start' }); }
+    surligner(el);
     return true;
+  }
+  // Lot 23 (décision du gérant) : le post ouvert depuis une notification est
+  // signalé une fois, sobrement (halo qui s'efface) ; rien de plus ensuite.
+  var dejaSurligne = {};
+  function surligner(el) {
+    if (!el || dejaSurligne[el.id]) return;
+    dejaSurligne[el.id] = true;
+    el.classList.remove('post-signale');
+    void el.offsetWidth;
+    el.classList.add('post-signale');
+    setTimeout(function () { el.classList.remove('post-signale'); }, 2600);
   }
 
   document.addEventListener('kairos:fragment', function (e) {

@@ -130,6 +130,20 @@
   function filtrerIntervenants(pid) {
     if (!selectsPersonnes.length || !projetSelect) return;
     var opt = pid && pid !== AUCUN ? optionProjet(pid) : null;
+    // Lot 23 (test Chrome) : projet sans liste fournie (« Donner suite »
+    // depuis l'accueil sur un projet hors de ma liste) : chargée à la
+    // demande, puis le filtre est rejoué.
+    if (opt && !opt.hasAttribute('data-voient') && !opt.dataset.voientDemande && /^\d+$/.test(String(pid))) {
+      opt.dataset.voientDemande = '1';
+      fetch('/projets/' + pid + '/voient', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (!d || !d.ids) return;
+          opt.setAttribute('data-voient', d.ids.join(' '));
+          if (projetCourant() === String(pid)) filtrerIntervenants(pid);
+        })
+        .catch(function () { /* hors ligne : tout reste proposé, le serveur écarte en le disant */ });
+    }
     var voient = null;
     if (opt && opt.hasAttribute('data-voient')) {
       voient = {};
@@ -266,7 +280,7 @@
       appliquerProjet();
       // Lot 22 (retour du gérant) : un champ agrandi à la souris la fois
       // précédente reprend sa taille normale.
-      dialog.querySelectorAll('textarea').forEach(function (t) { t.style.removeProperty('width'); t.style.removeProperty('height'); });
+      tailleNormale();
 
       if (typeof dialog.showModal === 'function') {
         dialog.showModal();
@@ -292,8 +306,16 @@
     });
   }
 
+  // Taille normale des champs de texte (lot 22 : à l'ouverture ; lot 23,
+  // test Chrome L3 : aussi au changement d'onglet Tâche / Information /
+  // Requête).
+  function tailleNormale() {
+    dialog.querySelectorAll('textarea').forEach(function (t) { t.style.removeProperty('width'); t.style.removeProperty('height'); });
+  }
+
   dialog.querySelectorAll('.composer-radio').forEach(function (r) {
     r.addEventListener('change', function () {
+      tailleNormale();
       // Onglet Information : projet vide par défaut (s'il n'est pas imposé).
       if (projetSelect && !projetImpose && aucunPossible && intentCourant() === 'information') {
         choisirProjet(AUCUN);

@@ -3,16 +3,14 @@ et les actions sur les tâches d'un projet (création, clôture, changement
 d'état)."""
 import datetime
 import re
-from urllib.parse import parse_qsl, quote, urlencode
 
-from flask import (Blueprint, abort, current_app, flash, g, jsonify, make_response, redirect, render_template,
-                   request, url_for)
-from werkzeug.datastructures import MultiDict
+from flask import Blueprint, abort, current_app, flash, g, jsonify, redirect, render_template, request, url_for
 
 from ..auth import login_required
 from ..repositories import notifications as notifications_repo
 from ..repositories import posts, projets, taches, utilisateurs
 from .. import fil as film
+from .. import filtres_memoire
 from .. import horloge, partiel
 from .. import validation as v
 from ..utils import parser_montant, post_type_style, tache_etat_style
@@ -169,39 +167,9 @@ def _parser_date_tache(date_str: str | None):
 PROJETS_PAR_PAGE = 50
 
 
-# Lot 22 (retour du gérant) : le dernier choix de filtres de « Tous les
-# projets » est mémorisé (cookie, ce navigateur) — rouvrir la page depuis
-# le menu, un nouvel onglet ou un F5 sur /projets ne revient plus aux
-# valeurs par défaut. « Filtres par défaut » efface ce choix.
-COOKIE_FILTRES_PROJETS = "kairos_projets_filtres"
-CLES_FILTRES_PROJETS = ("etat", "phase", "chef_id", "lot_contient", "lot_egal")
-MAX_COOKIE_FILTRES = 3000
-
-
-def _source_filtres():
-    """Filtres de l'adresse s'ils y sont (formulaire soumis), sinon le
-    dernier choix mémorisé, sinon None (valeurs par défaut)."""
-    if request.args.get("filtres_actifs"):
-        return request.args
-    brut = request.cookies.get(COOKIE_FILTRES_PROJETS) or ""
-    if brut and len(brut) <= MAX_COOKIE_FILTRES:
-        memorises = MultiDict([(k, v_) for k, v_ in parse_qsl(brut) if k in CLES_FILTRES_PROJETS + ("filtres_actifs",)])
-        if memorises.get("filtres_actifs"):
-            return memorises
-    return None
-
-
-def _memoriser_filtres(reponse, filtres_url: dict):
-    """Choix explicite (formulaire soumis) : gardé un an pour ce navigateur."""
-    if not request.args.get("filtres_actifs"):
-        return reponse
-    valeur = urlencode([(k, x) for k in ("filtres_actifs",) + CLES_FILTRES_PROJETS
-                        for x in (filtres_url[k] if isinstance(filtres_url.get(k), list) else [filtres_url.get(k)])
-                        if x not in (None, "")])
-    if len(valeur) <= MAX_COOKIE_FILTRES:
-        reponse.set_cookie(COOKIE_FILTRES_PROJETS, valeur, max_age=365 * 24 * 3600, path="/projets",
-                           samesite="Lax", httponly=True, secure=current_app.config.get("SESSION_COOKIE_SECURE", False))
-    return reponse
+# Lot 22 : cookie du navigateur ; lot 23 (décision du gérant) : choix
+# mémorisé par personne, en base — voir app/filtres_memoire.py.
+COOKIE_FILTRES_LOT22 = "kairos_projets_filtres"
 
 
 def _filtres_liste() -> dict:
@@ -217,7 +185,7 @@ def _filtres_liste() -> dict:
     # listait tout le monde (Intervenants, Clients...) via
     # utilisateurs.list_actifs() — voir list_chefs_de_projet().
     chefs_de_projet = projets.list_chefs_de_projet(g.user["id"])
-    source = _source_filtres()
+    source = filtres_memoire.source("projets")
     if source is not None:
         etats = source.getlist("etat") or None
         phases = source.getlist("phase") or None
@@ -235,7 +203,9 @@ def _filtres_liste() -> dict:
         # moins un projet (audit n°2) : sinon un intervenant voyait "0 projet"
         # par défaut, sans comprendre pourquoi (aucune puce cochée).
         est_chef = any(c["id"] == g.user["id"] for c in chefs_de_projet)
-        chef_ids = [g.user["id"]] if est_chef else None
+        # Lot 23 (décision du gérant) : l'Admin voit par défaut les projets
+        # de tous les chefs.
+        chef_ids = [g.user["id"]] if est_chef and g.user["role"] != "admin" else None
         lots_contient = None
         lots_egal = None
     q = (request.args.get("q") or "").strip() or None
@@ -261,8 +231,9 @@ def liste():
         return refus
     if request.args.get("defaut"):
         # « Filtres par défaut » : le choix mémorisé est oublié.
+        filtres_memoire.oublier("projets")
         reponse = redirect(url_for("projets.liste"))
-        reponse.delete_cookie(COOKIE_FILTRES_PROJETS, path="/projets")
+        reponse.delete_cookie(COOKIE_FILTRES_LOT22, path="/projets")
         return reponse
     f = _filtres_liste()
     total = projets.compter_projets(user_id=g.user["id"], **_criteres(f))
@@ -301,18 +272,18 @@ def liste():
         contexte["chef_ids"] = [g.user["id"]]
     # Export aux filtres affichés : toute la chaîne de requête (plusieurs
     # valeurs par filtre), sans la page.
-    args_export = [(k, v_) for k, v_ in request.args.items(multi=True) if k != "page"]
-    contexte["export_url"] = url_for("projets.export_excel") + (
-        "?" + "&".join(f"{quote(k)}={quote(v_)}" for k, v_ in args_export) if args_export else "")
+    # Lot 23 (test Chrome L11) : les filtres EFFECTIFS (choix mémorisé
+    # compris), pas seulement ceux de l'adresse.
+    contexte["export_url"] = url_for("projets.export_excel", **filtres_url)
     # Rafraîchissement partiel (lot 13, socle : filtres automatiques,
     # pagination, Retour) : les résultats seuls, le statut et le lien
     # d'export hors cible. X-Requested-With : ancien appel (compatibilité).
     if partiel.est_partiel():
-        return _memoriser_filtres(make_response(partiel.repondre("partials/projets_tableau.html", partiel=True,
-                                                                 **contexte)), filtres_url)
+        filtres_memoire.memoriser("projets", filtres_url)
+        return partiel.repondre("partials/projets_tableau.html", partiel=True, **contexte)
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return _memoriser_filtres(make_response(render_template("partials/projets_tableau.html", **contexte)),
-                                  filtres_url)
+        filtres_memoire.memoriser("projets", filtres_url)
+        return render_template("partials/projets_tableau.html", **contexte)
 
     # Contexte de la fenêtre flottante "+ Nouveau projet" (retour Fadhel,
     # 2026-09-28, voir partials/projet_dialog.html) — calculé seulement
@@ -336,7 +307,8 @@ def liste():
         # (api_phase_liee_candidats) au lieu de 200 <option> dans la page.
         contexte["projets_phase_liee"] = []
 
-    return _memoriser_filtres(make_response(render_template("projets_liste.html", **contexte)), filtres_url)
+    filtres_memoire.memoriser("projets", filtres_url)
+    return render_template("projets_liste.html", **contexte)
 
 
 @bp.route("/export.xlsx")
@@ -558,7 +530,11 @@ def api_code_propose():
         # Lot 21 (test Chrome) : la phase suivante d'une affaire reprend son
         # client (proposé, modifiable).
         client_lie = (lie or {}).get("client")
-    return {"code": projets.propose_code(phase, phase_liee_code=code_lie), "client": client_lie}
+        # Lot 23 (test Chrome) : ses lots aussi.
+        lots_lie = [l["code"] for l in projets.list_lots(phase_liee_id)] if lie else []
+    else:
+        lots_lie = []
+    return {"code": projets.propose_code(phase, phase_liee_code=code_lie), "client": client_lie, "lots": lots_lie}
 
 
 NB_CANDIDATS_PHASE_LIEE = 20
@@ -702,6 +678,17 @@ def _contexte_fiche(projet: dict, *, fil_limite: int = film.TAILLE_PAGE) -> dict
         contexte["chefs_possibles"] = chefs
         contexte["chef_modifiable"] = not projet_clos or g.user["role"] == "admin"
     return contexte
+
+
+@bp.route("/<int:projet_id>/voient")
+@login_required
+def api_voient(projet_id: int):
+    """Lot 23 (test Chrome) : ids des personnes qui voient le projet — la
+    fenêtre « + Nouveau post » ouverte par « Donner suite » sur un projet
+    absent de sa liste ne propose qu'elles (au lieu d'un refus après coup)."""
+    if not projets.user_can_view(projet_id, g.user["id"]):
+        abort(404)
+    return {"ids": sorted(projets.ids_utilisateurs_voyant(projet_id))}
 
 
 @bp.route("/<int:projet_id>/taches-choix")
@@ -1390,8 +1377,13 @@ def changer_etat_tache(projet_id: int, tache_id: int):
         return _refus(MESSAGE_ANNULER_PERIME, 409, projet_id, tache_id, vers_tache=True)
     except taches.TacheDejaBloquee as deja:
         motif = f"\u00a0(«\u00a0{deja.motif}\u00a0»)" if deja.motif else ""
-        return _refus(f"Cette tâche est déjà bloquée{motif}\u00a0: levez le blocage pour en signaler un autre.",
-                      409, projet_id, tache_id, vers_tache=True)
+        message = f"Cette tâche est déjà bloquée{motif}\u00a0: levez le blocage pour en signaler un autre."
+        # Lot 23 (test Chrome W11) : en partiel, le panneau resté ouvert
+        # ailleurs est rafraîchi (il montre le blocage en cours), avec le
+        # refus en toast — rien n'est écrit.
+        if partiel.est_partiel():
+            return _reponse_tache(projet_id, tache_id, [partiel.toast(message, "erreur")])
+        return _refus(message, 409, projet_id, tache_id, vers_tache=True)
     except Exception as exc:
         if not taches.est_refus_etat_reserve(exc):
             raise

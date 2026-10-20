@@ -810,7 +810,9 @@ class TestAutresPages(_BaseDailyLog):
         self.assertIn("absence enregistrée aujourd’hui", html)
         html = self.appel("get", "/accueil", **{"app.repositories.dailylog.jour_renseigne": False}).data.decode()
         self.assertIn("à remplir aujourd’hui", html)
-        self.assertIn('class="acc-dl"', html)
+        # Lot 23 (demande du gérant) : en rouge un jour ouvré, sinon neutre.
+        ouvre = dl.aujourdhui_pour({"fuseau": "Africa/Tunis"}).weekday() < 5
+        self.assertIn('class="acc-dl acc-dl-a-remplir"' if ouvre else 'class="acc-dl"', html)
 
     def test_profil_absent_et_lien_corriger(self):
         jour = dl.aujourdhui_pour(EMPLOYE)

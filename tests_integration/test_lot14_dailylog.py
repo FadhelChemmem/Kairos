@@ -60,12 +60,14 @@ class TestPropositions(_Base):
         """Lot 20 (demande du gérant) : ses tâches EN COURS CE JOUR-LÀ par
         échéance (la terminée aujourd'hui l'était encore ce matin), puis ses
         AUTRES projets en cours, en « projet seul »."""
-        self.sql("UPDATE tache SET date_echeance = %s WHERE id = %s", (self.auj + datetime.timedelta(days=2), self.t2))
+        self.sql("UPDATE tache SET date_echeance = %s WHERE id = %s", (self.auj + datetime.timedelta(days=1), self.t2))
+        self.sql("UPDATE tache SET date_echeance = %s WHERE id = %s", (self.auj + datetime.timedelta(days=2), self.t3))
         j = self.jour(self.moi, self.auj)
         cles = [(l["projet_id"], l["tache_id"]) for l in j["proposees"]]
-        self.assertEqual(cles[0], (self.pa, self.t2))                  # échéance la plus proche d'abord
-        self.assertCountEqual(cles[:3], [(self.pa, self.t1), (self.pa, self.t2), (self.pa, self.t3)])
-        self.assertEqual(cles[3:], [(self.pb, None)])   # pa : déjà proposé par ses tâches
+        # Lot 23 (retour du gérant) : la tâche bloquée (t2) n'est pas proposée.
+        self.assertEqual(cles[0], (self.pa, self.t3))                  # échéance la plus proche d'abord
+        self.assertCountEqual(cles[:2], [(self.pa, self.t1), (self.pa, self.t3)])
+        self.assertEqual(cles[2:], [(self.pb, None)])   # pa : déjà proposé par ses tâches
         self.assertEqual(j["lignes"], [])
         self.assertEqual(self.sql("SELECT count(*) AS n FROM dailylog_entree")[0]["n"], 0)  # jamais stockées
 
@@ -110,6 +112,8 @@ class TestPropositions(_Base):
         """Lot 20 : en revenant en arrière, ce qui était en cours CE JOUR-LÀ
         (une tâche close depuis y est, une tâche créée depuis n'y est pas)."""
         avant = self.auj - datetime.timedelta(days=3)
+        while avant.weekday() >= 5:                     # rien n'est proposé un week-end
+            avant -= datetime.timedelta(days=1)
         self.sql("UPDATE tache SET created_at = now() WHERE id = %s", (self.t1,))       # créée après
         self.sql("UPDATE tache SET date_debut = %s WHERE id = %s", (self.auj, self.t2))  # commencée après
         self.sql("UPDATE tache SET date_fin = %s WHERE id = %s", (self.auj - datetime.timedelta(days=1), self.t3))
@@ -134,7 +138,7 @@ class TestPropositions(_Base):
         r = self.client.put(f"/dailylog/api/jour/{self.auj.isoformat()}", json={"version": 0, "lignes": lignes})
         self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
         self.assertEqual(self.sql("SELECT sum(heures) AS h FROM dailylog_entree WHERE utilisateur_id = %s",
-                                  (self.moi,))[0]["h"], 8)   # 3 tâches + 1 projet × 2 h
+                                  (self.moi,))[0]["h"], 6)   # 2 tâches (pas la bloquée) + 1 projet × 2 h
 
 
 class TestEquipe(_Base):

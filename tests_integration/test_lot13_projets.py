@@ -419,7 +419,9 @@ class TestNotificationsEtDroits(_Projets):
         n = self.notifs(self.inter)[-1]
         self.login(self.inter)
         r = self.client.post(f"/notifications/{n['id']}/ouvrir")
-        self.assertTrue(r.headers["Location"].endswith(f"/projets/{self.p1}#post-{post_id}"), r.headers["Location"])
+        # Lot 23 (décision du gérant) : sur « Tout », chargé jusqu'au post.
+        self.assertTrue(r.headers["Location"].endswith(f"/projets/{self.p1}?fil=tout&jusqua={post_id}#post-{post_id}"),
+                        r.headers["Location"])
 
     def test_reponse_previent_l_auteur_du_commentaire(self):
         self.login(self.chef)

@@ -454,6 +454,36 @@ def get_preferences(user_id: int) -> dict:
 PREFERENCES_PAR_ROLE = {"client": {"accueil_deadlines"}, "rh": set()}
 
 
+# Lot 23 (migration 0026) : filtres mémorisés par page (app/filtres_memoire.py).
+PAGES_FILTRES = ("projets", "equipe", "journal")
+
+
+def get_filtres(user_id: int, page: str) -> str | None:
+    if page not in PAGES_FILTRES:
+        raise ValueError(page)
+    row = db.query_one("SELECT filtres->>%s AS v FROM utilisateur_preference WHERE utilisateur_id = %s",
+                       (page, user_id))
+    return row["v"] if row else None
+
+
+def set_filtres(user_id: int, page: str, valeur: str | None) -> None:
+    """Retient (ou oublie, `valeur` None) le choix de filtres de `page`."""
+    if page not in PAGES_FILTRES:
+        raise ValueError(page)
+    db.execute(
+        """
+        INSERT INTO utilisateur_preference (utilisateur_id, filtres)
+        VALUES (%(uid)s, CASE WHEN %(v)s::text IS NULL THEN '{}'::jsonb ELSE jsonb_build_object(%(p)s::text, %(v)s::text) END)
+        ON CONFLICT (utilisateur_id) DO UPDATE SET
+          filtres = CASE WHEN %(v)s::text IS NULL THEN utilisateur_preference.filtres - %(p)s::text
+                         ELSE utilisateur_preference.filtres || jsonb_build_object(%(p)s::text, %(v)s::text) END,
+          updated_at = now()
+        """,
+        {"uid": user_id, "p": page, "v": valeur},
+        user_id=user_id,
+    )
+
+
 def set_preference(user_id: int, cle: str, valeur: bool) -> None:
     if cle not in PREFERENCES:
         raise ValueError(cle)

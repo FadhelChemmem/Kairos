@@ -1166,8 +1166,12 @@ CREATE TABLE IF NOT EXISTS utilisateur_preference (
   utilisateur_id        BIGINT PRIMARY KEY REFERENCES utilisateur(id),
   accueil_deadlines     BOOLEAN,                -- NULL = jamais choisie (lot 20, migration 0024)
   dailylog_proposer     BOOLEAN NOT NULL DEFAULT true,
-  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- 0026 (lot 23) : filtres mémorisés par page (app/filtres_memoire.py).
+  filtres               JSONB NOT NULL DEFAULT '{}'::jsonb
 );
+COMMENT ON COLUMN utilisateur_preference.filtres IS
+  'Filtres mémorisés par page (0026) : {"projets": "etat=…&chef_id=…", "equipe": …, "journal": …}.';
 
 -- 0022 (lot 17) : dernière consultation du fil de l'accueil par catégorie.
 CREATE TABLE IF NOT EXISTS utilisateur_fil_vu (
@@ -1764,5 +1768,6 @@ INSERT INTO schema_migrations (version) VALUES
   ('0022_lot17_fil_vu'),
   ('0023_equipes_vd_et_etat_projet'),
   ('0024_lot20_droits_dates_et_garde'),
-  ('0025_lot21_participants_horloge_et_gardes')
+  ('0025_lot21_participants_horloge_et_gardes'),
+  ('0026_lot23_filtres_memorises')
 ON CONFLICT (version) DO NOTHING;

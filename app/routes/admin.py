@@ -14,7 +14,7 @@ import re
 
 from flask import Blueprint, abort, flash, render_template, request, url_for
 
-from .. import horloge, partiel
+from .. import filtres_memoire, horloge, partiel
 from ..auth import role_required
 from ..repositories import audit as audit_repo
 from ..utils import date_fr
@@ -113,19 +113,22 @@ def _filtres():
     """Filtres de l'adresse, validés (lot 13, audit rôles M15 : un filtre
     invalide est ignoré, mais on le dit)."""
     ignores = []
-    table_cible = request.args.get("table") or None
+    # Lot 23 (décision du gérant) : table, action et auteur mémorisés par
+    # personne (app/filtres_memoire.py) ; les dates restent dans l'adresse.
+    source = filtres_memoire.source("journal") or {}
+    table_cible = source.get("table") or None
     if table_cible not in audit_repo.TABLES_FILTRABLES:
         if table_cible:
             ignores.append("table")
         table_cible = None
 
-    action = request.args.get("action") or None
+    action = source.get("action") or None
     if action not in audit_repo.ACTIONS_VALIDES:
         if action:
             ignores.append("action")
         action = None
 
-    utilisateur_id_str = request.args.get("utilisateur_id")
+    utilisateur_id_str = source.get("utilisateur_id")
     utilisateur_id = next(iter(ids_entiers([utilisateur_id_str or ""])), None)
     if utilisateur_id_str and utilisateur_id is None:
         ignores.append("auteur")
@@ -156,7 +159,12 @@ def _filtres():
 @bp.route("/journal")
 @role_required("admin")
 def journal():
+    retour = filtres_memoire.redirection("journal", "admin.journal", date_debut=request.args.get("date_debut"),
+                                        date_fin=request.args.get("date_fin"))
+    if retour is not None:
+        return retour
     filtres, criteres = _filtres()
+    filtres_memoire.memoriser("journal", filtres)
     curseur = _lire_curseur(request.args.get("avant"))
     deja = request.args.get("n", 0, type=int) if curseur else 0
     deja = max(0, min(deja or 0, 1_000_000))

@@ -819,7 +819,14 @@ def modifier(post_id: int):
                                       else "posts/information")
             ajoutees.append((nom, chemin))
             chemins.append(chemin)
-        retirees = posts_repo.modifier_post(post_id, g.user["id"], contenu, lien, retirees_demandees, ajoutees)
+        # Lot 23 (test Chrome W2) : « @Prénom Nom » dans le texte modifié
+        # tague la personne (décision du 19/10 : aussi pour une personne
+        # retirée qui reprend son ancien post) ; seules les nouvelles sont
+        # prévenues.
+        deja = set(posts_repo.mentions_du_post(post_id))
+        tags = _tags_du_texte(post, contenu)
+        retirees = posts_repo.modifier_post(post_id, g.user["id"], contenu, lien, retirees_demandees, ajoutees,
+                                            mention_ids=tags)
     except Exception:
         for chemin in chemins:
             delete_upload(chemin)
@@ -828,6 +835,13 @@ def modifier(post_id: int):
         for chemin in chemins:
             delete_upload(chemin)
         abort(404)
+    nouveaux = [uid for uid in tags if uid not in deja]
+    if nouveaux:
+        notifications_repo.creer_pour_plusieurs(
+            nouveaux, "projet",
+            f"{g.user['prenom']} {g.user['nom']} vous a mentionné dans un post{_extrait(contenu)}.",
+            post_id=post_id, exclure_id=g.user["id"],
+        )
     texte = "Post modifié."
     if retirees:
         texte = f"Post modifié\u00a0: {len(retirees)} fichier{'s' if len(retirees) > 1 else ''} retiré{'s' if len(retirees) > 1 else ''}."

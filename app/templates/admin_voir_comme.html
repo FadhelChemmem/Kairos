@@ -33,7 +33,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="form-row">
         <label for="voir-comme-compte">Compte</label>
-        <select id="voir-comme-compte" name="utilisateur_id" data-search-combobox data-search-riche data-search-placeholder="Rechercher un compte (nom ou rôle)…" data-search-vide="Aucun compte trouvé">
+        <select id="voir-comme-compte" name="utilisateur_id" data-search-combobox data-search-selection data-search-riche data-search-placeholder="Rechercher un compte (nom ou rôle)…" data-search-vide="Aucun compte trouvé">
           <option value="" disabled selected>Choisir un compte…</option>
           {% for u in comptes %}
             {% set rs = role_style(u.role) %}

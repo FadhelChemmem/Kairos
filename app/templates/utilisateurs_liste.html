@@ -62,7 +62,7 @@
       <option value="actifs" {{ 'selected' if actif_param == 'actifs' }}>Actifs seulement</option>
       <option value="inactifs" {{ 'selected' if actif_param == 'inactifs' }}>Inactifs seulement</option>
     </select>
-    <button type="submit" class="btn-secondary k-sans-js">Filtrer</button>
+    <button type="submit" class="btn-secondary k-sans-js" name="choix" value="1">Filtrer</button>
     {% if peut_gerer %}
       <a href="{{ url_for('utilisateurs.creer') }}" class="quickadd quickadd-primary quickadd-grand">+ Nouvel utilisateur</a>
     {% endif %}

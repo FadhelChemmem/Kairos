@@ -163,7 +163,21 @@ peut être **épinglée** en tête du fil (une par projet, par le chef, un
 co-chef ou l'Admin : menu « ⋯ » du post) — l'endroit des informations
 importantes ; l'interrupteur **« Me concernant »** ne garde que mes posts,
 ceux où je suis tagué (post ou commentaire) et les suites données à mes
-posts (`?moi=1`, combinable avec Tout · Échanges · Activité).
+posts (`?moi=1`, combinable avec Tout · Échanges · Activité). Lot 23 : le
+texte épinglé se replie au-delà de ~8 lignes (« Lire la suite ») ; les
+adresses web des posts et commentaires sont cliquables ; une notification
+ouvre la fiche sur « Tout », jusqu'au post, signalé une fois.
+
+**Filtres mémorisés par personne** (lot 23, décision du gérant) : « Tous les
+projets » (puces), « Équipe » (équipe, rôle, état) et le « Journal d'audit »
+(table, action, auteur) rouvrent sur le dernier choix fait à l'écran, sur
+tout PC (`utilisateur_preference.filtres`, `app/filtres_memoire.py`) ; un
+ancien onglet rechargé ne l'écrase pas ; « Filtres par défaut » /
+« Réinitialiser » l'oublient (`?defaut=1`). Par défaut, l'Admin voit les
+projets en cours et bloqués de tous les chefs.
+
+**Daily log** (lot 23) : une tâche bloquée ce jour-là n'est pas proposée ; la
+carte de l'accueil est en rouge un jour ouvré sans aucune saisie.
 
 ## Démarrer avec Docker (recommandé)
 

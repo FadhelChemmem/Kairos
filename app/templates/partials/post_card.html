@@ -139,7 +139,7 @@
        de clôture (« Tâche terminée. » sans message). #}
     <div class="post-corps post-corps-serre">
       <div class="post-corps-fort">{{ post.tache_titre }}</div>
-      {% if post.contenu %}<div class="post-texte post-corps-second">{{ post.contenu }}</div>{% endif %}
+      {% if post.contenu %}<div class="post-texte post-corps-second">{{ post.contenu|avec_liens }}</div>{% endif %}
     </div>
   {% elif post.evenement|default(none) in ('etat_projet', 'chef_projet', 'intervenant_projet') %}
     <div class="post-texte post-corps post-corps-serre post-corps-second">{{ post.contenu }}</div>
@@ -148,10 +148,10 @@
   {% elif est_requete and requete_texte %}
     <div class="post-corps post-corps-serre">
       <div class="post-corps-fort post-texte">{{ requete_objet }}</div>
-      <div class="post-texte post-corps-second">{{ requete_texte }}</div>
+      <div class="post-texte post-corps-second">{{ requete_texte|avec_liens }}</div>
     </div>
   {% else %}
-    <div class="post-texte post-corps">{{ post.contenu }}</div>
+    <div class="post-texte post-corps">{{ post.contenu|avec_liens }}</div>
   {% endif %}
   {# Lot 15 : tâche citée par une Requête. #}
   {% if post_ecrit and post.tache_id and post.tache_titre %}
@@ -297,7 +297,9 @@
        projet terminé ou abandonné (vérifié aussi par le serveur). #}
     {# Un Client ne publie que sur un projet : pas de "Reposter" sur une
        Information d'équipe sans projet (lot 7). #}
-    {% if (post.projet_id or g.user.role != 'client') and not post.lecture_seule|default(false) %}
+    {# Lot 23 (test Chrome) : plus de « Donner suite » sur un projet clos
+       (le serveur le refuse) — le bouton n'est plus affiché. #}
+    {% if (post.projet_id or g.user.role != 'client') and not post.lecture_seule|default(false) and not projet_clos %}
     {# Lot 21 (test Chrome) : qui gère le projet donne le plus souvent suite
        par une tâche — la fenêtre s'ouvre sur l'onglet Tâche. #}
     <button type="button" class="post-action post-action-reposter"
@@ -309,7 +311,7 @@
             data-projet-id="{{ post.projet_id or 'aucun' }}"
             data-projet-label="{{ (post.projet_code ~ '_' ~ post.projet_nom) if post.projet_id else 'Aucun projet (information d’équipe)' }}"
             aria-label="Donner suite"
-            {% if projet_clos %}disabled title="Projet {{ 'terminé' if post.projet_etat == 'termine' else 'abandonné' }}&nbsp;: on ne peut plus y donner suite"{% else %}title="Créer une tâche, une information ou une requête liée à ce post"{% endif %}>
+            title="Créer une tâche, une information ou une requête liée à ce post">
       <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
       <span class="post-action-libelle">Donner suite</span>
     </button>

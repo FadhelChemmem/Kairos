@@ -387,7 +387,7 @@ class TestVoirCommeRoutes(_Base):
         page = self.texte(resp)
         self.assertNotIn("Agir comme", page)
         self.assertNotIn("bandeau-admin", page)
-        self.assertIn('data-search-combobox data-search-riche', page)
+        self.assertIn('data-search-combobox data-search-selection data-search-riche', page)
         self.assertIn('<option value="3"', page)
         self.assertIn('<option value="4"', page)
         self.assertNotIn("mode_test.", " ".join(r.endpoint for r in self.app.url_map.iter_rules()))

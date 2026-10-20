@@ -75,16 +75,22 @@ class TestListeDesProjets(_Base):
 
     def test_recherche_ignore_le_filtre_chef_moi_et_le_dit(self):
         chefs = [{"id": 1, "prenom": "Fadhel", "nom": "Chemmem", "avatar_chemin": None}]
+        # Lot 23 : un chef de projet (l'Admin voit par défaut tous les chefs).
+        chef = {"app.auth.get_user_by_id": {**smoke.USER, "role": "chef_de_projet"}}
         resp, liste, compte = self._liste("/projets?q=louison", total=1, **{
-            "app.repositories.projets.list_chefs_de_projet": chefs})
+            "app.repositories.projets.list_chefs_de_projet": chefs}, **chef)
         self.assertIsNone(liste.call_args.kwargs["chef_ids"])
         self.assertIsNone(compte.call_args.kwargs["chef_ids"])
         self.assertEqual(liste.call_args.kwargs["etats"], ["en_cours", "bloque"])
         self.assertIn("le filtre «&nbsp;Chef de projet&nbsp;: vous&nbsp;» est ignoré", resp.get_data(as_text=True))
         # Sans texte : le filtre par défaut s'applique.
-        resp, liste, _ = self._liste("/projets", total=1, **{"app.repositories.projets.list_chefs_de_projet": chefs})
+        resp, liste, _ = self._liste("/projets", total=1, **{"app.repositories.projets.list_chefs_de_projet": chefs},
+                                     **chef)
         self.assertEqual(liste.call_args.kwargs["chef_ids"], [1])
         self.assertNotIn("est ignoré", resp.get_data(as_text=True))
+        # Admin : tous les chefs par défaut (décision du gérant, lot 23).
+        _, liste, _ = self._liste("/projets", total=1, **{"app.repositories.projets.list_chefs_de_projet": chefs})
+        self.assertIsNone(liste.call_args.kwargs["chef_ids"])
 
     def test_recherche_garde_un_filtre_chef_explicite_vers_un_autre(self):
         _, liste, _ = self._liste("/projets?filtres_actifs=1&chef_id=7&q=tour", total=1)

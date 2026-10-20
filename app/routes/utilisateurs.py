@@ -14,7 +14,7 @@ from flask import (
 )
 
 from .. import fil as film
-from .. import horloge, mailer, partiel
+from .. import filtres_memoire, horloge, mailer, partiel
 from ..auth import (
     MOT_DE_PASSE_MIN_LEN, generer_lien_reset, hash_password, login_required,
     password_fingerprint, role_required, verify_password,
@@ -439,13 +439,22 @@ def profil_personne(user_id: int):
 @role_required("admin", "rh", "chef_de_projet")
 def liste():
     q = request.args.get("q") or None
-    equipe_code = request.args.get("equipe_code") or None
-    role = request.args.get("role") or None
+    # Lot 23 (décision du gérant) : équipe, rôle et état mémorisés par
+    # personne (app/filtres_memoire.py) ; la recherche reste dans l'adresse.
+    retour = filtres_memoire.redirection("equipe", "utilisateurs.liste", q=q)
+    if retour is not None:
+        return retour
+    source = filtres_memoire.source("equipe") or {}
+    equipe_code = source.get("equipe_code") or None
+    role = source.get("role") or None
     # Valeur hors role_enum (URL forgée) : erreur 500 « invalid input value
     # for enum » auparavant (audit sécurité I14) -> filtre ignoré.
     if role not in (None, "admin", "chef_de_projet", "intervenant", "rh", "client"):
         role = None
-    actif_param = request.args.get("actif") or None
+    actif_param = source.get("actif") or None
+    if actif_param not in (None, "actifs", "inactifs", "tous"):
+        actif_param = None
+    filtres_memoire.memoriser("equipe", {"equipe_code": equipe_code, "role": role, "actif": actif_param})
     actif = {"actifs": True, "inactifs": False}.get(actif_param)
 
     tous = utilisateurs_repo.list_tous(q=q, equipe_code=equipe_code, role=role, actif=actif)
