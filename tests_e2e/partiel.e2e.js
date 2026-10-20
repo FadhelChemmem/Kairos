@@ -19,7 +19,7 @@ const { execFileSync } = require('child_process');
 const path = require('path');
 let playwright;
 try { playwright = require(process.env.PLAYWRIGHT_MODULE || 'playwright'); }
-catch (e) { playwright = require('/home/claude/.npm-global/lib/node_modules/playwright'); }
+catch (e) { playwright = require(path.join(execFileSync('npm', ['root', '-g']).toString().trim(), 'playwright')); }  // lot 24 (R34) : sans chemin propre à une machine
 const { chromium } = playwright;
 
 const BASE = process.env.KAIROS_E2E_URL || 'http://127.0.0.1:8798';
@@ -196,18 +196,18 @@ const interrupteur = (id) => `#actif-${id}`;
     etape('bouton « Filtrer » masqué (filtres automatiques)', !(await p.locator('form.filtres-utilisateurs button[type=submit]').isVisible()));
     await p.click('#filtre-utilisateurs-q');
     await p.keyboard.type('compte0', { delay: 40 });
-    await attendre(async () => (await etat(p)).url === '/utilisateurs?q=compte0', 3000);
+    await attendre(async () => (await etat(p)).url === '/utilisateurs?filtres_actifs=1&q=compte0', 3000);
     let e = await etat(p);
-    etape('frappe : adresse ?q=compte0, focus gardé dans le champ', e.url === '/utilisateurs?q=compte0' && e.focus === 'filtre-utilisateurs-q', e);
+    etape('frappe : adresse ?q=compte0, focus gardé dans le champ', e.url === '/utilisateurs?filtres_actifs=1&q=compte0' && e.focus === 'filtre-utilisateurs-q', e);
     etape('frappe : 10 lignes', await p.locator('.urow').count() === 10);
     etape('frappe : compteur « 10 résultats sur … »', /^10 résultats sur \d+ comptes$/.test((await p.textContent('#utilisateurs-compte')).trim()));
     await p.selectOption('select[name=role]', 'rh');
-    await attendre(async () => (await etat(p)).url === '/utilisateurs?q=compte0&role=rh', 3000);
+    await attendre(async () => (await etat(p)).url === '/utilisateurs?filtres_actifs=1&q=compte0&role=rh', 3000);
     etape('liste Rôle : appliquée sans bouton', await p.locator('.urow').count() === 0
       && await p.locator('#utilisateurs-resultats .k-vide').count() === 1);
     await capture(p, 'e2e-13-filtres-vide.png');
     await p.goBack();
-    await attendre(async () => (await etat(p)).url === '/utilisateurs?q=compte0' && await p.locator('.urow').count() === 10, 3000);
+    await attendre(async () => (await etat(p)).url === '/utilisateurs?filtres_actifs=1&q=compte0' && await p.locator('.urow').count() === 10, 3000);
     e = await etat(p);
     etape('Retour 1 : filtre précédent, sans rechargement', e.marque && await p.inputValue('select[name=role]') === ''
       && await p.inputValue('#filtre-utilisateurs-q') === 'compte0', e);

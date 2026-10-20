@@ -3,7 +3,7 @@
 from flask import Blueprint, current_app, g, render_template, request, url_for
 
 from .. import fil as film
-from .. import partiel
+from .. import horloge, partiel
 from ..auth import login_required
 from ..repositories import dailylog as dailylog_repo
 from ..repositories import posts, projets, taches, utilisateurs
@@ -154,7 +154,14 @@ def accueil():
     if role == "client":
         dailylog_jours_manques, dailylog_aujourdhui = [], None
     else:
-        dailylog_jours_manques = dailylog_repo.jours_manques_recents(g.user, aujourdhui=aujourdhui_local)
+        reel = dailylog_repo.aujourdhui_reel_pour(g.user)
+        if aujourdhui_local > reel:
+            # Lot 24 (HD-10) : date simulée future — les oublis se comptent
+            # au jour et à l'heure RÉELS (le jour réel avant 16 h n'en est pas un).
+            dailylog_jours_manques = dailylog_repo.jours_manques_recents(
+                g.user, aujourdhui=reel, maintenant=horloge.maintenant_reel())
+        else:
+            dailylog_jours_manques = dailylog_repo.jours_manques_recents(g.user, aujourdhui=aujourdhui_local)
         dailylog_aujourdhui = dailylog_repo.jour_renseigne(user_id, aujourdhui_local)
         if dailylog_aujourdhui:
             dailylog_minutes = sum(dailylog_repo.heures_en_minutes(e["heures"])
@@ -223,8 +230,11 @@ def accueil():
         **fil,
         dailylog_jours_manques=dailylog_jours_manques,
         dailylog_aujourdhui=dailylog_aujourdhui,
-        # Lot 23 (demande du gérant) : jour ouvré pas encore rempli → carte en rouge.
-        dailylog_jour_ouvre=aujourdhui_local.weekday() < 5,
+        # Lot 23 (demande du gérant) : jour ouvré pas encore rempli → carte en
+        # rouge. Lot 24 (HD-11, HD-12) : jamais le week-end ni avant l'arrivée.
+        dailylog_jour_ouvre=(aujourdhui_local.weekday() < 5
+                             and aujourdhui_local >= (dailylog_repo.debut_daily_log(g.user) or aujourdhui_local)),
+        dailylog_week_end=aujourdhui_local.weekday() >= 5,
         dailylog_minutes=dailylog_minutes,
         dailylog_objectif=dailylog_objectif,
         aujourdhui=aujourdhui_local,

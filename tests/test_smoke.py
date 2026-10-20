@@ -463,6 +463,9 @@ class SmokeBase(unittest.TestCase):
             "app.repositories.utilisateurs.get_filtres": None,
             "app.repositories.utilisateurs.set_filtres": None,
             "app.repositories.posts.mentions_du_post": [],
+            # Lot 24 : notifications Windows (catégories du compte).
+            "app.repositories.push.get_categories": None,
+            "app.repositories.push.compter": 0,
             "app.repositories.posts.get_post": POST_POUR_ACCES,
             "app.repositories.posts.get_piece_jointe": PIECE_JOINTE_POST,
             # Lot 17 : posts non vus du fil, auteur de la dernière clôture.
@@ -2103,15 +2106,17 @@ class SmokeTestCase(SmokeBase):
     def test_projets_liste_ajax_ne_renvoie_que_le_tableau(self):
         # Retour Fadhel (2026-09-27) : la recherche/les filtres sur "Tous
         # les projets" ne doivent rafraîchir que le tableau, pas toute la
-        # page — voir la branche X-Requested-With de routes/projets.liste
-        # et partials/projets_tableau.html.
+        # page — voir la branche partielle de routes/projets.liste et
+        # partials/projets_tableau.html (lot 24 : l'ancienne branche
+        # X-Requested-With seule, plus utilisée, est retirée).
         self._login()
         patchers = self._patched(**{"app.repositories.projets.list_projets": [PROJET_LISTE_SANS_HEURES],
                                     "app.repositories.projets.compter_projets": 1})
         for p in patchers:
             p.start()
         try:
-            resp = self.client.get("/projets", headers={"X-Requested-With": "XMLHttpRequest"})
+            resp = self.client.get("/projets", headers={"X-Kairos-Partiel": "#projets-resultats",
+                                                        "X-Requested-With": "XMLHttpRequest"})
         finally:
             for p in reversed(patchers):
                 p.stop()
@@ -3653,6 +3658,8 @@ class TestControlesDAccesStricts(unittest.TestCase):
             {
                 "nom": "Tour Meridian — révisé", "etat": "termine", "lots": ["GO"],
                 "date_debut": "2025-02-03", "date_fin": "2026-10-01", "phase_liee_id": "",
+                # Lot 24 (SB-01) : l'état affiché part avec le formulaire.
+                "etat_initial": "en_cours",
             },
         )
         self.assertEqual(resp.status_code, 302)
@@ -5727,7 +5734,8 @@ class TestLot8(SmokeBase):
         """Relecture : dates inchangées → pas de contrôle de dates (projet
         repris de Chronos avec fin < début, ou tâche avant le début)."""
         ancien = {**PROJET, "date_debut": datetime.date(2026, 3, 1), "date_fin": datetime.date(2026, 2, 1)}
-        data = {"nom": "Renommé", "etat": "termine", "date_debut": "2026-03-01", "date_fin": "2026-02-01"}
+        data = {"nom": "Renommé", "etat": "termine", "date_debut": "2026-03-01", "date_fin": "2026-02-01",
+                "etat_initial": "en_cours"}
         self.assertFalse(self._refuse("/projets/1/informations", data, "app.repositories.projets.update_projet",
                                       **{"app.repositories.projets.get_projet": ancien,
                                          "app.repositories.taches.premiere_date": datetime.date(2025, 1, 1)}))

@@ -29,7 +29,7 @@ const { execFileSync } = require('child_process');
 const path = require('path');
 let playwright;
 try { playwright = require(process.env.PLAYWRIGHT_MODULE || 'playwright'); }
-catch (e) { playwright = require('/opt/node-tools/node_modules/playwright'); }
+catch (e) { playwright = require(path.join(execFileSync('npm', ['root', '-g']).toString().trim(), 'playwright')); }  // lot 24 (R34) : sans chemin propre à une machine
 const { chromium } = playwright;
 
 const BASE = process.env.KAIROS_E2E_URL || 'http://127.0.0.1:8798';
@@ -171,10 +171,11 @@ async function segment(p, page, liste, fil, nom, opts = {}) {
     await attendre(async () => (await categorie(p, '#fil-liste')) === 'tout');
     // Lot 20 (revue 12d) : le serveur lit le choix (cookie) — la page
     // s'ouvre directement sur « Tout », sans bascule ni adresse réécrite.
-    etape('choix mémorisé (cookie lu par le serveur) : accueil rouvert directement sur « Tout »',
+    // Lot 24 (décision du gérant) : choix retenu PAR PERSONNE, en base —
+    // plus de cookie ni de localStorage du navigateur.
+    etape('choix mémorisé (par personne, lu par le serveur) : accueil rouvert directement sur « Tout »',
       (await categorie(p, '#fil-liste')) === 'tout' && (await courante(p, 'accueil')) === 'tout'
-      && await p.evaluate(() => !/fil=/.test(location.search) && localStorage.getItem('kairos-fil-accueil') === 'tout'
-        && /kairos_fil_accueil=tout/.test(document.cookie)));
+      && await p.evaluate(() => !/fil=/.test(location.search) && !/kairos_fil_accueil=/.test(document.cookie)));
     // localStorage inaccessible : la page marche (défaut du serveur).
     const bloque = await navigateur.newContext({ viewport: { width: 1440, height: 900 } });
     await bloque.addInitScript(() => { Object.defineProperty(window, 'localStorage', { get() { throw new Error('bloqué'); } }); });
@@ -289,8 +290,10 @@ async function segment(p, page, liste, fil, nom, opts = {}) {
     await Promise.all([p.waitForNavigation(), p.click('a[href="/accueil"]')]);
     await p.waitForLoadState('networkidle');
     await pause(300);
-    etape('accueil ouvert depuis la fiche en « Activité » : « Échanges » (défaut de la page), sans requête de plus',
-      (await courante(p, 'accueil')) === 'echanges' && (await categorie(p, '#fil-liste')) === 'echanges'
+    // Lot 24 : l'accueil rouvre sur SON onglet retenu pour la personne
+    // (« Tout », choisi plus haut), jamais celui de la fiche.
+    etape('accueil ouvert depuis la fiche en « Activité » : son propre onglet (« Tout »), sans requête de plus',
+      (await courante(p, 'accueil')) === 'tout' && (await categorie(p, '#fil-liste')) === 'tout'
       && !partielsAccueil.some((u) => /fil=/.test(u)), [await courante(p, 'accueil'), partielsAccueil]);
     await p.close();
 

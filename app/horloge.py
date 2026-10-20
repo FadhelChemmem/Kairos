@@ -75,26 +75,56 @@ def instant_simule() -> datetime.datetime | None:
     """Instant simulé (aware, fuseau de Tunis), None sans simulation.
 
     Lot 21 (revue R10) : à la microseconde, et une heure choisie AVANCE avec
-    le temps réel écoulé depuis qu'elle a été posée (sans dépasser la fin du
-    jour simulé) — un blocage puis une création de tâche ne tombent plus au
-    même instant figé."""
+    le temps réel écoulé depuis qu'elle a été posée — un blocage puis une
+    création de tâche ne tombent plus au même instant figé.
+
+    Lot 24 (contre-expertise N-HORL, SA-01, SB-05, HD-03 à HD-05) :
+    - sans heure choisie, l'heure de départ est l'heure réelle de Tunis au
+      moment où la date a été posée, puis elle avance de même (plus de recul
+      de 24 h au passage de minuit réel) ;
+    - à l'approche de minuit simulé, le temps simulé ralentit (mille fois
+      plus lent à partir de 23:59:00) au lieu de se figer : les gestes
+      restent dans le jour simulé et dans l'ordre, sur plus de 16 h de
+      session ;
+    - une date posée avant ce lot (sans `pose_le`) compte comme posée au
+      premier passage (modes_admin.appliquer)."""
     jour = date_simulee()
     if jour is None:
         return None
     tunis = ZoneInfo(FUSEAU_DEFAUT)
     heure = heure_simulee()
     reel = datetime.datetime.now(datetime.timezone.utc)
-    if heure is None:
-        return datetime.datetime.combine(jour, reel.astimezone(tunis).time(), tzinfo=tunis)
-    instant = datetime.datetime.combine(jour, heure, tzinfo=tunis)
     from flask import g
 
     pose = g.get("simulation_posee_le")
-    if isinstance(pose, (int, float)) and not isinstance(pose, bool):
-        ecoule = max(0.0, reel.timestamp() - pose)
-        fin_du_jour = datetime.datetime.combine(jour, datetime.time.max, tzinfo=tunis)
-        instant = min(instant + datetime.timedelta(seconds=ecoule), fin_du_jour)
-    return instant
+    if not isinstance(pose, (int, float)) or isinstance(pose, bool):
+        pose = None
+    if heure is None:
+        depart = datetime.datetime.fromtimestamp(pose, tunis) if pose is not None else reel.astimezone(tunis)
+        heure = depart.time()
+    instant = datetime.datetime.combine(jour, heure, tzinfo=tunis)
+    if pose is None:
+        return instant
+    return avancer(instant, max(0.0, reel.timestamp() - pose))
+
+
+SEUIL_RALENTI = datetime.time(23, 59)
+FACTEUR_RALENTI = 1000
+
+
+def avancer(instant: datetime.datetime, ecoule: float) -> datetime.datetime:
+    """Instant simulé posé à `instant`, `ecoule` secondes réelles plus tard :
+    il avance au rythme réel jusqu'à 23:59:00 du jour simulé, puis mille fois
+    plus lentement, sans jamais passer au lendemain (lot 24)."""
+    jour, tz = instant.date(), instant.tzinfo
+    seuil = datetime.datetime.combine(jour, SEUIL_RALENTI, tzinfo=tz)
+    fin = datetime.datetime.combine(jour, datetime.time.max, tzinfo=tz)
+    if instant < seuil:
+        avant_seuil = (seuil - instant).total_seconds()
+        if ecoule <= avant_seuil:
+            return instant + datetime.timedelta(seconds=ecoule)
+        instant, ecoule = seuil, ecoule - avant_seuil
+    return min(instant + datetime.timedelta(seconds=ecoule / FACTEUR_RALENTI), fin)
 
 
 def maintenant_reel(fuseau: str | ZoneInfo | None = None) -> datetime.datetime:

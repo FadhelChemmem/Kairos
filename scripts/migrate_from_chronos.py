@@ -529,6 +529,14 @@ def appliquer_coherence(projets, taches, report):
         t["etat"] = nouvel
         if t.get("date_fin") is None:
             t["date_fin"] = p.get("date_cloture")
+    # Lot 24 (contre-expertise NB7 / SB-02) : toute tâche close a une date de
+    # fin — sinon le Daily log la croyait encore ouverte (un renommage
+    # rouvrait la saisie). Chronos sans `doneDate` : sa dernière
+    # modification, à défaut sa création.
+    for t in taches:
+        if t["etat"] not in ("en_cours", "bloque") and t.get("date_fin") is None:
+            dates = [v for v in (t.get("updated_at"), t.get("created_at")) if isinstance(v, str)]
+            t["date_fin"] = next((d for d in map(mysql_date_only, dates) if d), None)
     # Lot 20 (revue 5c) : même règle que fn_etat_projet_recalcule (0023/0024) —
     # Bloqué tant qu'une tâche bloquée n'a pas été suivie d'une tâche En
     # cours CRÉÉE après son blocage (date du blocage : `blockedDate` de

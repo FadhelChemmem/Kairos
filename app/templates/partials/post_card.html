@@ -148,10 +148,12 @@
   {% elif est_requete and requete_texte %}
     <div class="post-corps post-corps-serre">
       <div class="post-corps-fort post-texte">{{ requete_objet }}</div>
-      <div class="post-texte post-corps-second">{{ requete_texte|avec_liens }}</div>
+      <div class="post-texte post-corps-second">{{ texte_avec_mentions(requete_texte, post.mentions|default([])) }}</div>
     </div>
   {% else %}
-    <div class="post-texte post-corps">{{ post.contenu|avec_liens }}</div>
+    {# Lot 24 (test Chrome A4) : « @Prénom Nom » mis en forme comme dans
+       les commentaires (personnes réellement taguées). #}
+    <div class="post-texte post-corps">{{ texte_avec_mentions(post.contenu, post.mentions|default([])) }}</div>
   {% endif %}
   {# Lot 15 : tâche citée par une Requête. #}
   {% if post_ecrit and post.tache_id and post.tache_titre %}

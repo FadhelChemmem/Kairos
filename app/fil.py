@@ -54,9 +54,42 @@ def categorie_demandee(page: str | None = None) -> str:
         parts = urlsplit(request.referrer)
         if not parts.netloc or parts.netloc == request.host:
             valeur = (parse_qs(parts.query).get("fil") or [None])[0]
-    if valeur is None and page in PAGES_MEMORISEES:
-        valeur = request.cookies.get(COOKIE_CATEGORIE + page)
+    if page in PAGES_MEMORISEES:
+        if valeur is None:
+            valeur = _categorie_memorisee(page)
+        elif valeur in CATEGORIES and request.args.get("fil") == valeur:
+            _memoriser_categorie(page, valeur)
     return valeur if valeur in CATEGORIES else CATEGORIE_DEFAUT
+
+
+def _categorie_memorisee(page: str) -> str | None:
+    """Lot 24 (décision du gérant, Q3) : onglet du fil retenu PAR PERSONNE
+    (utilisateur_preference.filtres, clé fil_<page>), retrouvé sur tout PC ;
+    « Agir comme » / « Voir comme » montrent celui de la personne. Repli :
+    l'ancien cookie du navigateur (lot 20), hors des modes de l'Admin."""
+    from flask import g
+
+    from . import filtres_memoire
+
+    valeur = filtres_memoire._lire("fil_" + page)
+    if valeur is None and not g.get("admin_reel"):
+        valeur = request.cookies.get(COOKIE_CATEGORIE + page)
+    return valeur
+
+
+def _memoriser_categorie(page: str, valeur: str) -> None:
+    """Un changement d'onglet À L'ÉCRAN (requête partielle GET, hors Retour /
+    Avancer et hors « Afficher plus ») est retenu ; rien en « Voir comme »
+    ni en « Agir comme » (filtres_memoire._ecrire). Une fois par requête."""
+    from flask import g
+
+    from . import filtres_memoire, partiel
+
+    if (request.method != "GET" or not partiel.est_partiel() or request.args.get("avant")
+            or request.headers.get("X-Kairos-Historique") == "1" or g.get("_categorie_memorisee")):
+        return
+    g._categorie_memorisee = True
+    filtres_memoire._ecrire("fil_" + page, valeur)
 
 
 def moi_demande() -> bool:

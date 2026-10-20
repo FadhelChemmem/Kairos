@@ -145,6 +145,9 @@ def create_app(config_class=Config) -> Flask:
             "font-src 'self'; "
             "img-src 'self' data: blob:; "
             "connect-src 'self'; "
+            # Lot 24 : service worker (/sw.js) et manifeste de l'appli installable.
+            "worker-src 'self'; "
+            "manifest-src 'self'; "
             "object-src 'none'; "
             "base-uri 'self'; "
             "frame-ancestors 'none';"
@@ -320,6 +323,7 @@ def create_app(config_class=Config) -> Flask:
     from .routes.admin import bp as admin_bp
     from .routes.taches_fenetre import bp as taches_fenetre_bp
     from .routes.modes_admin import bp as modes_admin_bp, bp_test as mode_test_bp
+    from .routes.push import bp as push_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(projets_bp)
@@ -332,6 +336,8 @@ def create_app(config_class=Config) -> Flask:
     app.register_blueprint(admin_bp)
     app.register_blueprint(taches_fenetre_bp)
     app.register_blueprint(modes_admin_bp)
+    # Lot 24 : application installable et notifications Windows.
+    app.register_blueprint(push_bp)
     # « Agir comme » et date simulée : routes inexistantes hors mode test.
     if app.config.get("MODE_TEST") is True:
         app.register_blueprint(mode_test_bp)
@@ -412,6 +418,17 @@ def _register_cli(app: Flask) -> None:
                     click.echo(f"Mode test coupé : {n} rappel(s) simulé(s) supprimé(s).")
         except Exception as exc:
             click.echo(f"Purge des rappels simulés impossible : {exc}", err=True)
+
+    @app.cli.command("cles-push")
+    def cles_push_cmd():
+        """Lot 24 : nouvelle paire de clés VAPID pour les notifications
+        Windows — les deux lignes affichées vont dans .env (avec
+        VAPID_SUJET=mailto:…), puis redémarrer l'appli. Ne JAMAIS les
+        remettre dans le dépôt. Changer de clés désabonne tous les PC."""
+        from . import push
+
+        for nom, valeur in push.generer_cles().items():
+            click.echo(f"{nom}={valeur}")
 
     @app.cli.command("migrer")
     def migrer_cmd():

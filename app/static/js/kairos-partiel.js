@@ -46,6 +46,9 @@
   var win = env.window;
   var doc = env.document;
   var fetchFn = env.fetch || function (u, o) { return win.fetch(u, o); };
+  // Lot 24 (contre-expertise FR7) : navigateur sans fetch — formulaires et
+  // liens gardent leur comportement natif (navigation complète).
+  function sansFetch() { return !env.fetch && typeof win.fetch !== 'function'; }
   var maintenant = env.maintenant || function () { return Date.now(); };
   var minuter = env.setTimeout || function (f, d) { return win.setTimeout(f, d); };
   var annulerMinuteur = env.clearTimeout || function (t) { return win.clearTimeout(t); };
@@ -781,6 +784,7 @@
     } catch (e) { return adresse; }
   }
   K.sansTache = sansTache;
+  K.sansFetch = sansFetch;
 
   /**
    * K.requete({ url, methode, corps, cible, mode, historique, declencheur,
@@ -790,7 +794,7 @@
     var methode = String(o.methode || 'GET').toUpperCase();
     var cible = typeof o.cible === 'string' ? doc.querySelector(o.cible) : o.cible;
     var selecteur = typeof o.cible === 'string' ? o.cible : (cible && cible.id ? '#' + cible.id : null);
-    if (!cible || !selecteur) {
+    if (!cible || !selecteur || sansFetch()) {
       // Cible absente : vraie navigation (GET) ; un POST reste à la charge de l'appelant.
       if (methode === 'GET') win.location.assign(o.url);
       return Promise.resolve(null);
@@ -849,6 +853,9 @@
     }
 
     var entetes = { 'X-Kairos-Partiel': selecteur, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html, application/json;q=0.9' };
+    // Lot 24 (filtres, Q13/Q14) : une page rejouée par Retour / Avancer
+    // n'est pas un geste à l'écran — le serveur ne mémorise pas ses filtres.
+    if (o.historiqueRejoue) entetes['X-Kairos-Historique'] = '1';
     var options = { method: methode, headers: entetes, credentials: 'same-origin' };
     if (etat.ctrl) options.signal = etat.ctrl.signal;
     if (methode !== 'GET' && o.corps) options.body = o.corps;
@@ -1121,7 +1128,7 @@
       }
       var envoyeur = e.submitter || null;
       var cibleAttr = (envoyeur && envoyeur.getAttribute('data-partiel')) || form.getAttribute('data-partiel');
-      if (!cibleAttr) return;
+      if (!cibleAttr || sansFetch()) return;
       e.preventDefault();
       if (envoyeur && envoyeur.getAttribute('aria-disabled') === 'true') return;
       if (minuteursAuto && minuteursAuto.get(form)) { annulerMinuteur(minuteursAuto.get(form)); minuteursAuto.delete(form); }
@@ -1134,6 +1141,7 @@
     doc.addEventListener('click', function (e) {
       var a = e.target.closest && e.target.closest('a[data-partiel]');
       if (!a || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      if (sansFetch()) return;
       e.preventDefault();
       K.requete({
         url: a.getAttribute('href'), methode: 'GET', cible: a.getAttribute('data-partiel'),
@@ -1199,7 +1207,8 @@
       if (!st || !doc.querySelector(st.cible)) return;
       if (sansTache(avant) === sansTache(win.location.href)) return;
       synchroniserFormulaires();
-      K.requete({ url: win.location.pathname + win.location.search, methode: 'GET', cible: st.cible, mode: st.mode, historique: 'aucun', transition: false });
+      K.requete({ url: win.location.pathname + win.location.search, methode: 'GET', cible: st.cible, mode: st.mode, historique: 'aucun', transition: false,
+                  historiqueRejoue: true });
     });
   }
 
@@ -1259,6 +1268,18 @@
     minuter(function () { K.toasts(liste); }, 150);
   }
 
+  /** Lot 24 (filtres, contre-expertise FI-04) : « choix=1 » (Filtrer sans
+   *  JavaScript, « Afficher tous les projets ») a servi une fois ; retiré de
+   *  l'adresse, un F5 ou un Retour ne réécrit pas le choix mémorisé. */
+  function retirerChoix() {
+    try {
+      var url = new URL(win.location.href);
+      if (!url.searchParams.has('choix')) return;
+      url.searchParams.delete('choix');
+      win.history.replaceState(win.history.state, '', url.pathname + url.search + url.hash);
+    } catch (e) { /* navigateur ancien : sans effet */ }
+  }
+
   K.demarrer = function () {
     doc.addEventListener('keydown', function (e) {
       if (e.defaultPrevented || e.altKey || e.shiftKey || !(e.ctrlKey || e.metaKey) || (e.key !== 'z' && e.key !== 'Z')) return;
@@ -1273,6 +1294,7 @@
       placerZone();
       surveillerFenetres();
       toastsInitiaux();
+      retirerChoix();
       marquerEntreeInitiale();
       K.initialiser(doc);
     };

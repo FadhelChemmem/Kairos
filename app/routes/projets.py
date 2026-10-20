@@ -4,7 +4,7 @@ d'état)."""
 import datetime
 import re
 
-from flask import Blueprint, abort, current_app, flash, g, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, flash, g, jsonify, make_response, redirect, render_template, request, url_for
 
 from ..auth import login_required
 from ..repositories import notifications as notifications_repo
@@ -170,11 +170,13 @@ PROJETS_PAR_PAGE = 50
 # Lot 22 : cookie du navigateur ; lot 23 (décision du gérant) : choix
 # mémorisé par personne, en base — voir app/filtres_memoire.py.
 COOKIE_FILTRES_LOT22 = "kairos_projets_filtres"
+LOTS_FILTRABLES = ("CM", "GO")
 
 
-def _filtres_liste() -> dict:
+def _filtres_liste(oubli_permis: bool = True) -> dict:
     """Filtres de "Tous les projets" (liste, rafraîchissement AJAX et
-    export Excel utilisent exactement les mêmes)."""
+    export Excel utilisent exactement les mêmes). Lot 24 (FI-09) : l'export
+    n'oublie jamais le choix mémorisé (`oubli_permis` faux)."""
     # Filtres à puces (voir projets_liste.html) : tant que le formulaire n'a
     # pas été soumis une première fois (marqueur filtres_actifs), on
     # applique les valeurs par défaut demandées par Fadhel (2026-09-19) —
@@ -185,7 +187,7 @@ def _filtres_liste() -> dict:
     # listait tout le monde (Intervenants, Clients...) via
     # utilisateurs.list_actifs() — voir list_chefs_de_projet().
     chefs_de_projet = projets.list_chefs_de_projet(g.user["id"])
-    source = filtres_memoire.source("projets")
+    source = filtres_memoire.source("projets", oubli_permis=oubli_permis)
     if source is not None:
         etats = source.getlist("etat") or None
         phases = source.getlist("phase") or None
@@ -194,8 +196,10 @@ def _filtres_liste() -> dict:
         # "contient" (le projet A ce lot, même parmi d'autres) et "="
         # (le projet n'a QUE ce lot) — deux listes distinctes. Voir
         # projets_liste.html (data-chip-tristate) et list_projets.
-        lots_contient = source.getlist("lot_contient") or None
-        lots_egal = source.getlist("lot_egal") or None
+        # Lot 24 (test Chrome Q7) : un code de lot inconnu (adresse forgée)
+        # est ignoré.
+        lots_contient = [x for x in source.getlist("lot_contient") if x in LOTS_FILTRABLES] or None
+        lots_egal = [x for x in source.getlist("lot_egal") if x in LOTS_FILTRABLES] or None
     else:
         etats = ["en_cours", "bloque"]
         phases = list(PHASES)
@@ -215,6 +219,12 @@ def _filtres_liste() -> dict:
     chef_ignore = bool(q) and chef_ids == [g.user["id"]]
     if chef_ignore:
         chef_ids = None
+    # Lot 24 (FI-10) : un chef choisi (mémorisé) qui n'a plus de projet en
+    # cours ou bloqué garde sa puce — le filtre appliqué reste visible.
+    connus = {c["id"] for c in chefs_de_projet}
+    manquants = [i for i in (chef_ids or []) if i not in connus]
+    if manquants:
+        chefs_de_projet = chefs_de_projet + projets.chefs_par_ids(manquants)
     return dict(etats=etats, phases=phases, chef_ids=chef_ids, lots_contient=lots_contient,
                 lots_egal=lots_egal, q=q, chefs_de_projet=chefs_de_projet, chef_ignore=chef_ignore)
 
@@ -230,11 +240,11 @@ def liste():
     if refus:
         return refus
     if request.args.get("defaut"):
-        # « Filtres par défaut » : le choix mémorisé est oublié.
-        filtres_memoire.oublier("projets")
-        reponse = redirect(url_for("projets.liste"))
-        reponse.delete_cookie(COOKIE_FILTRES_LOT22, path="/projets")
-        return reponse
+        # « Filtres par défaut » : le choix mémorisé est oublié (pas par un
+        # Retour du navigateur, lot 24).
+        if filtres_memoire.geste() or not partiel.est_partiel():
+            filtres_memoire.oublier("projets")
+        return redirect(url_for("projets.liste"))
     f = _filtres_liste()
     total = projets.compter_projets(user_id=g.user["id"], **_criteres(f))
     nb_pages = max(1, -(-total // PROJETS_PAR_PAGE))
@@ -281,9 +291,6 @@ def liste():
     if partiel.est_partiel():
         filtres_memoire.memoriser("projets", filtres_url)
         return partiel.repondre("partials/projets_tableau.html", partiel=True, **contexte)
-    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        filtres_memoire.memoriser("projets", filtres_url)
-        return render_template("partials/projets_tableau.html", **contexte)
 
     # Contexte de la fenêtre flottante "+ Nouveau projet" (retour Fadhel,
     # 2026-09-28, voir partials/projet_dialog.html) — calculé seulement
@@ -308,7 +315,11 @@ def liste():
         contexte["projets_phase_liee"] = []
 
     filtres_memoire.memoriser("projets", filtres_url)
-    return render_template("projets_liste.html", **contexte)
+    reponse = make_response(render_template("projets_liste.html", **contexte))
+    # Lot 24 (SR-R19) : le cookie du lot 22, plus lu nulle part, est effacé.
+    if COOKIE_FILTRES_LOT22 in request.cookies:
+        reponse.delete_cookie(COOKIE_FILTRES_LOT22, path="/projets")
+    return reponse
 
 
 @bp.route("/export.xlsx")
@@ -327,7 +338,7 @@ def export_excel():
         return refus
     # Toutes les lignes (lot 11 : plus de plafond), mêmes filtres et même
     # ordre que la liste affichée.
-    lignes = projets.list_projets(user_id=g.user["id"], limit=None, **_criteres(_filtres_liste()))
+    lignes = projets.list_projets(user_id=g.user["id"], limit=None, **_criteres(_filtres_liste(oubli_permis=False)))
     classeur = Workbook()
     feuille = classeur.active
     feuille.title = "Projets"
@@ -586,12 +597,14 @@ def _contexte_fil(projet_id: int, fil_limite: int = film.TAILLE_PAGE) -> dict:
     moi = film.moi_demande()
     fil_limite = film.taille_jusqua(
         fil_limite, lambda post_id: posts.rang_dans_fil_projet(projet_id, g.user["id"], categorie, post_id, moi))
+    # Lot 21 : l'Information épinglée, en tête du fil quelle que soit la
+    # catégorie. Lot 24 (EC-03) : lue d'abord, puis exclue de la liste.
+    epingle = posts.get_post_epingle(projet_id, g.user["id"])
     lus = posts.list_feed_projet(projet_id, g.user["id"], limit=fil_limite + 1, categorie=categorie,
-                                 avant=film.curseur_demande(), moi=moi)
+                                 avant=film.curseur_demande(), moi=moi, exclure=epingle["id"] if epingle else None)
     fil, curseur = film.page(lus, fil_limite)
-    # Lot 21 : l'Information épinglée, en tête du fil quelle que soit la catégorie.
     return dict(fil=fil, fil_entrees=film.regrouper(fil), fil_categorie=categorie,
-                fil_epingle=posts.get_post_epingle(projet_id, g.user["id"]), fil_moi=moi,
+                fil_epingle=epingle, fil_moi=moi,
                 fil_suite_id="fil-suite", fil_suite_cible="#fil-posts",
                 fil_suite_url=(url_for("projets.detail", projet_id=projet_id, fil=categorie, avant=curseur,
                                        moi="1" if moi else None)
@@ -720,7 +733,7 @@ def detail(projet_id: int):
     # Lot 14 : changement de catégorie du fil (liste remplacée) ou
     # « Afficher plus » (page suivante ajoutée à la fin), en partiel.
     if partiel.est_partiel() == "#fil-posts":
-        contexte = dict(projet=projet, **_contexte_fil(projet_id))
+        contexte = dict(projet=projet, fil_epingle_oob=True, **_contexte_fil(projet_id))
         if film.curseur_demande():
             return partiel.repondre("partials/fil_page.html", show_projet=False,
                                     next_url=url_for("projets.detail", projet_id=projet_id,
@@ -764,7 +777,7 @@ FRAGMENTS_FICHE = {
 
 
 def _maj_fiche(projet_id: int, racine: str | None, parties, *, tache_id: int | None = None,
-               toasts: list | None = None, statut: int = 200, **extra):
+               toasts: list | None = None, statut: int = 200, gabarit_racine: str | None = None, **extra):
     """Réponse partielle d'une action de la fiche projet (lot 13) : le
     fragment `racine` (la cible de la requête) puis les fragments `parties`
     hors cible (data-partiel-oob) — tous calculés comme la page complète,
@@ -786,7 +799,8 @@ def _maj_fiche(projet_id: int, racine: str | None, parties, *, tache_id: int | N
     contexte.update(extra)
     gabarits = [g_ for p in parties if p != racine for g_ in FRAGMENTS_FICHE[p]]
     return partiel.repondre("partials/fiche_maj.html", statut=statut, toasts=toasts,
-                            racine=FRAGMENTS_FICHE[racine][0] if racine else None, parties=gabarits, **contexte)
+                            racine=FRAGMENTS_FICHE[racine][0] if racine else gabarit_racine, parties=gabarits,
+                            **contexte)
 
 
 def _reponse_tache(projet_id: int, tache_id: int, toasts: list | None = None, *, deplacee: bool = False,
@@ -925,8 +939,16 @@ def editer_informations(projet_id: int):
     # Lot 21 (revue R19) : état affiché à l'ouverture de la fenêtre — une
     # fenêtre restée ouverte ne défait plus la clôture (ou la réouverture)
     # faite entre-temps par quelqu'un d'autre.
-    etat_initial = request.form.get("etat_initial")
-    etat_initial = etat_initial if etat_initial in ETATS_PROJET_VALIDES or etat_initial == "bloque" else None
+    etat_initial_brut = request.form.get("etat_initial")
+    etat_initial = etat_initial_brut if etat_initial_brut in ETATS_PROJET_VALIDES or etat_initial_brut == "bloque" else None
+    # Lot 24 (contre-expertise SB-01) : état affiché envoyé mais vide ou
+    # invalide (page abîmée, requête forgée) : un passage ouvert ↔ clos est
+    # refusé — la fenêtre est à rouvrir. (Champ absent : ancien comportement,
+    # pour les formulaires d'avant le lot 21 et les scripts.)
+    if (etat_initial_brut is not None and etat_initial is None
+            and (actuel.get("etat") in projets.ETATS_CLOS) != (etat in projets.ETATS_CLOS)):
+        return _refus("La fenêtre n’est plus à jour : fermez-la et rouvrez-la pour changer l’état du projet.",
+                      409, projet_id)
 
     try:
         changement = projets.update_projet(

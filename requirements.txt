@@ -34,3 +34,6 @@ openpyxl==3.1.5
 # (zoneinfo, Africa/Tunis et America/Cayenne) — la base des fuseaux n'est
 # pas toujours présente dans l'image python:3.12-slim.
 tzdata==2025.2
+# Lot 24 : notifications Windows (Web Push) — clés VAPID et chiffrement
+# aes128gcm écrits avec cette seule bibliothèque (app/push.py).
+cryptography==50.0.1

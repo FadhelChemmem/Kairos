@@ -36,7 +36,7 @@ class TestBandeauDateSimulee(_Temps):
         self.entrer(self.guyane, mode="agir")
         page = self.visible(self.client.get("/accueil"))
         self.assertNotIn(TEXTE_FUTUR, page)
-        self.assertRegex(page, r"\(à Cayenne : \w+ \d+ \w+ \d{4}, \d+ h 30\)")
+        self.assertRegex(page, r"\(à Cayenne : \w+ \d+(?:er)? \w+ \d{4}, \d+ h 30\)")
         self.client.post("/admin/revenir")
         self.entrer(self.inter, mode="agir")
         self.assertIn(TEXTE_FUTUR, self.visible(self.client.get("/accueil")))

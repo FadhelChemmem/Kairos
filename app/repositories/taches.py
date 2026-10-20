@@ -421,10 +421,13 @@ TOUT_CONTENU = object()
 
 
 def _retirer_post_annule(cur, projet_id: int, auteur_id: int, evenement: str, contenu,
-                         tache_id: int | None = None) -> bool:
+                         tache_id: int | None = None, tout_auteur: bool = False) -> bool:
     """Supprime le dernier post automatique `evenement` de l'auteur (sur la
     tâche, ou sur le projet sans tâche), récent et intact, de contenu
-    `contenu` (TOUT_CONTENU : quel qu'il soit). Vrai si un post a été retiré."""
+    `contenu` (TOUT_CONTENU : quel qu'il soit). Vrai si un post a été retiré.
+    `tout_auteur` (lot 24, contre-expertise R17) : quel qu'en soit l'auteur —
+    l'état du projet revient à ce qu'il était avant ce post (deux « Annuler »
+    croisés ne laissent plus deux posts « état du projet »)."""
     tout = contenu is TOUT_CONTENU
     cur.execute(
         """
@@ -433,7 +436,7 @@ def _retirer_post_annule(cur, projet_id: int, auteur_id: int, evenement: str, co
                 SELECT id FROM post
                 WHERE projet_id = %(p)s AND tache_id IS NOT DISTINCT FROM %(t)s AND evenement = %(e)s
                 ORDER BY created_at DESC, id DESC LIMIT 1)
-          AND p.auteur_id = %(a)s
+          AND (%(tout_auteur)s OR p.auteur_id = %(a)s)
           AND (%(tout)s OR p.contenu IS NOT DISTINCT FROM %(c)s)
           AND p.created_at > fn_maintenant() - make_interval(secs => %(d)s)
           AND NOT EXISTS (SELECT 1 FROM post_commentaire c WHERE c.post_id = p.id)
@@ -444,7 +447,7 @@ def _retirer_post_annule(cur, projet_id: int, auteur_id: int, evenement: str, co
         RETURNING p.id
         """,
         {"p": projet_id, "t": tache_id, "e": evenement, "a": auteur_id, "c": None if tout else contenu,
-         "tout": tout, "d": DELAI_ANNULATION_SECONDES},
+         "tout": tout, "d": DELAI_ANNULATION_SECONDES, "tout_auteur": tout_auteur},
     )
     return cur.fetchone() is not None
 
@@ -485,7 +488,7 @@ def recalculer_etat_projet(cur, projet_id: int, current_user_id: int | None,
     avant, apres = str(row["ancien"]), str(row["etat"])
     if current_user_id is not None and not (annulation and _retirer_post_annule(
             cur, projet_id, current_user_id, "etat_projet",
-            f"{projet_etat_style(apres)['label']} → {projet_etat_style(avant)['label']}")):
+            f"{projet_etat_style(apres)['label']} → {projet_etat_style(avant)['label']}", tout_auteur=True)):
         cur.execute(
             """
             INSERT INTO post (projet_id, auteur_id, type_code, contenu, evenement)
@@ -774,8 +777,9 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, 
                                  WHEN %(annulation)s AND bloque_motif IS NOT DISTINCT FROM %(motif)s
                                       AND bloque_le IS NOT NULL THEN bloque_le
                                  -- Lot 20 : instant simulé (mode test), comme les
-                                 -- dates de création qu'on lui compare.
-                                 ELSE fn_maintenant() END,
+                                 -- dates de création qu'on lui compare ; lot 24
+                                 -- (HD-06) : jamais avant la création de la tâche.
+                                 ELSE GREATEST(fn_maintenant(), created_at) END,
                 bloque_par = CASE WHEN %(etat)s <> 'bloque' THEN bloque_par
                                   WHEN (etat = 'bloque' OR %(annulation)s) AND bloque_motif IS NOT DISTINCT FROM %(motif)s
                                        AND bloque_par IS NOT NULL THEN bloque_par

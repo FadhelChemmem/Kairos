@@ -133,7 +133,10 @@ class TestDatesEtHeures(_Base):
                          {"date_echeance": datetime.date(2026, 10, 20)}], auj)
         self.assertEqual(g["rows"][0]["label_barre"], "◀ en retard de 37 j")
         self.assertEqual(g["rows"][0]["retard"], "en retard de 37 j")
-        self.assertEqual(g["rows"][1]["label_barre"], "20 oct.")  # plus « 20/10 »
+        # Lot 24 (SR-02) : l'année s'écrit hors de l'année en cours.
+        from app.utils import date_courte
+        self.assertEqual(g["rows"][1]["label_barre"], date_courte(datetime.date(2026, 10, 20)))
+        self.assertTrue(g["rows"][1]["label_barre"].startswith("20 oct."))  # plus « 20/10 »
 
     def test_heures_en_heures_et_minutes(self):
         from decimal import Decimal

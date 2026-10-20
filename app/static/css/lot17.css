@@ -74,9 +74,11 @@
 
 /* --- Pièces jointes d'un post : collées, glissées ou « Joindre » ------- */
 .pj-zone { display: flex; flex-direction: column; gap: 6px; border-radius: var(--rayon-m); }
-.pj-champ { position: relative; }
-html.k-js .pj-champ textarea { padding-bottom: 42px; min-height: 96px; }
-.pj-joindre { position: absolute; right: 8px; bottom: 8px; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px;
+/* Lot 24 (test Chrome A5) : « Joindre » sous le champ, à droite — posé
+   dans le champ, il cachait la dernière ligne visible d'un long texte. */
+.pj-champ { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+html.k-js .pj-champ textarea { min-height: 96px; }
+.pj-joindre { position: static; align-self: flex-end; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px;
   border: 1px solid var(--border); border-radius: var(--rayon-s); background: var(--surface);
   font: inherit; font-size: var(--texte-s); font-weight: var(--graisse-forte); color: var(--text-secondary); cursor: pointer; }
 .pj-joindre:hover { color: var(--text-strong); border-color: var(--border-hover); }
@@ -181,7 +183,7 @@ textarea { resize: vertical; max-width: 100%; max-height: 70vh; box-sizing: bord
 /* Lot 23 (test Chrome) : message de clôture en 16 px sur téléphone, comme
    les autres champs (pas de zoom automatique d'iOS au focus). */
 @media (max-width: 860px) {
-  .tache-cloture-message textarea, .tache-blocage textarea { font-size: 16px; }
+  .tache-blocage textarea { font-size: 16px; }
 }
 /* Lot 23 : adresses web cliquables dans les posts et commentaires. */
 .lien-texte { color: var(--brand-text); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
@@ -195,3 +197,15 @@ textarea { resize: vertical; max-width: 100%; max-height: 70vh; box-sizing: bord
 /* Lot 23 (demande du gérant) : Daily log du jour pas encore rempli, en rouge. */
 .acc-dl-a-remplir { border-color: color-mix(in srgb, var(--danger-fill) 45%, var(--border)); box-shadow: inset 3px 0 0 var(--danger-fill); }
 .acc-dl-a-remplir .acc-dl-texte > span, .acc-dl-a-remplir .acc-dl-fleche { color: var(--error-text); font-weight: var(--graisse-forte); }
+/* Lot 24 : dates de la tâche, notifications Windows. */
+.tache-dates span { white-space: nowrap; }
+.k-fieldset-nu { border: 0; padding: 0; margin: 10px 0 0; min-width: 0; }
+.k-fieldset-nu legend { padding: 0; margin-bottom: 4px; }
+html.k-js .push-zone.k-js-seul { display: block !important; margin-top: 8px; }
+.push-boutons { display: flex; flex-wrap: wrap; gap: 8px; }
+.push-etat { margin: 0 0 8px; }
+.push-ouvrir { padding: 16px; }
+/* Lot 24 (test Chrome A6) : liste « @ » d'un post au-dessus du champ — en
+   dessous, elle cachait « Joindre » et l'aide « Ctrl+V ». */
+.pj-champ .mention-liste { top: auto; bottom: calc(100% + 4px); }
+.ucell-form { display: flex; align-items: center; }

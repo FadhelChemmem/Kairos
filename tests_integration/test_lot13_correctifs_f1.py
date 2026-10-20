@@ -62,6 +62,9 @@ class TestRoles(_Projets):
     def test_notification_d_un_projet_devenu_invisible(self):
         autre = self.user("intervenant", equipe="URBS")
         self.sql("INSERT INTO projet_intervenant (projet_id, utilisateur_id) VALUES (%s, %s)", (self.p1, autre))
+        # Lot 24 : seul celui qui a participé garde la lecture (ici, un post).
+        self.sql("INSERT INTO post (projet_id, auteur_id, type_code, contenu) VALUES (%s, %s, 'information', 'x')",
+                 (self.p1, autre))
         self.login(self.chef)
         r = self.client.post(f"/projets/{self.p1}/intervenants/{autre}/retirer")
         self.assertEqual(r.status_code, 302)

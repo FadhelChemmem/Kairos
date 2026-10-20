@@ -54,9 +54,12 @@
     var clientModifie = false, lotsModifies = false;
     if (champClient) champClient.addEventListener('input', function () { clientModifie = true; });
     if (champLots) champLots.addEventListener('change', function () { if (!champLots._repris) lotsModifies = true; });
+    // Lot 24 (FR2) : reprise demandée gardée jusqu'à une réponse appliquée.
+    var repriseDue = false;
     var recalculer = function (e) {
-      var reprendre = !!(e && e.target === champLie && champLie.value);
-      if (modifieManuellement && !reprendre) return;
+      if (e && e.target === champLie) repriseDue = !!champLie.value;
+      var reprendre = repriseDue && !!(champLie && champLie.value);
+      if ((modifieManuellement && !reprendre) || !window.fetch) return;
       var numero = ++derniereDemande;
       var url = urlCodePropose + '?phase=' + encodeURIComponent(champPhase.value)
         + (champLie && champLie.value ? '&phase_liee_id=' + encodeURIComponent(champLie.value) : '');
@@ -64,6 +67,7 @@
         .then(function (r) { return r.json(); })
         .then(function (data) {
           if (numero !== derniereDemande) return;
+          if (reprendre) repriseDue = false;
           if (reprendre && champClient && !clientModifie && data.client) champClient.value = data.client;
           if (reprendre && champLots && !lotsModifies && data.lots && data.lots.length) {
             Array.prototype.forEach.call(champLots.options, function (o) { o.selected = data.lots.indexOf(o.value) !== -1; });

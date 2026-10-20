@@ -406,7 +406,9 @@ def jour_json(proprio: dict, date, aujourdhui, contexte: bool = True) -> dict:
     infos_taches = dl.taches_infos([l["tache_id"] for l in jour["lignes"] if l.get("tache_id")], proprio["id"])
 
     def figee(ligne, projet) -> bool:
-        if projet.get("peut_agir", True):
+        # Lot 24 : la règle vise la personne elle-même ; une correction par
+        # l'Admin ou un chef garde la baisse permise (revue 1 du lot 10).
+        if projet.get("peut_agir", True) or acteur["id"] != proprio["id"]:
             return False
         info = infos_taches.get(ligne["tache_id"]) if ligne.get("tache_id") else None
         return not (info and info.get("intervenant") and dl.tache_saisissable(info, date))
@@ -604,6 +606,19 @@ def _ecrire(proprio: dict, date, aujourdhui, corps: dict, absent: bool, lignes_b
     def preparer(existantes: dict, absent_actuel: bool):
         infos = dl.projets_info({l["projet_id"] for l in lignes} | {cle[0] for cle in existantes},
                                 proprio["id"], acteur["id"])
+        manquantes = [cle[1] for cle in existantes if cle[1] and cle[1] not in taches_info]
+        if manquantes:
+            taches_info.update(dl.taches_infos(manquantes, proprio["id"]))
+
+        def figee(projet_id, tache_id) -> bool:
+            """Lot 24 (contre-expertise HD-01) : même règle qu'à l'écran
+            (jour_json) — ligne d'un projet où la personne n'agit plus, hors
+            de SA tâche encore ouverte : ni hausse, ni baisse, ni suppression."""
+            projet = infos.get(projet_id)
+            if projet is None or projet.get("peut_agir", True) or acteur["id"] != proprio["id"]:
+                return False
+            return not _tache_encore_sienne({"tache_id": tache_id}, date)
+
         errs = []
         hausse = False
         for l in lignes:
@@ -633,7 +648,8 @@ def _ecrire(proprio: dict, date, aujourdhui, corps: dict, absent: bool, lignes_b
             refus = None if baisse else dl.projet_saisissable(projet, date)
             if refus:
                 errs.append({"code": refus, "ligne": l["i"]})
-            elif not baisse and not projet.get("peut_agir", True) and not _tache_encore_sienne(l, date):
+            elif figee(l["projet_id"], l["tache_id"]) or (
+                    not baisse and not projet.get("peut_agir", True) and not _tache_encore_sienne(l, date)):
                 errs.append({"code": "projet_lecture_seule", "ligne": l["i"]})
             if l["tache_id"] and taches.get(l["tache_id"]) != l["projet_id"]:
                 errs.append({"code": "tache_hors_projet", "ligne": l["i"]})
@@ -641,7 +657,7 @@ def _ecrire(proprio: dict, date, aujourdhui, corps: dict, absent: bool, lignes_b
                 errs.append({"code": "tache_close", "ligne": l["i"]})
         voulues = {} if absent else dict(demandees)
         for cle, minutes in existantes.items():
-            if cle in demandees or _modifiable(droits, infos.get(cle[0])):
+            if cle in demandees or (_modifiable(droits, infos.get(cle[0])) and not figee(*cle)):
                 continue
             if absent:
                 errs.append({"code": "ligne_non_modifiable", "projet_id": cle[0]})
@@ -785,7 +801,9 @@ def api_taches():
     infos = dl.projets_info([projet_id], proprio["id"], g.user["id"])
     projet = infos.get(projet_id)
     droits = droits_jour(g.user, proprio, date, dl.aujourdhui_pour(proprio))
-    if projet is None or not projet["visible"] or not _modifiable(droits, projet):
+    # Lot 24 (MX-04) : un projet en lecture seule (ancien participant) ne
+    # donne pas ses tâches, comme la recherche de projets.
+    if projet is None or not projet["visible"] or not projet.get("peut_agir") or not _modifiable(droits, projet):
         raise ErreurApi(404, "projet_introuvable", "Projet introuvable.")
     return jsonify({"projet_id": projet_id, "taches": dl.taches_ouvertes(projet_id)})
 

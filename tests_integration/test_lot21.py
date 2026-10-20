@@ -277,8 +277,9 @@ class TestBlocageEtVerrous(_Lot20):
     def test_route_post_409_si_le_projet_se_ferme_pendant_la_requete(self):
         self.login(self.chef)
         self.sql("UPDATE projet SET etat = 'termine' WHERE id = %s", (self.p1,))
-        with patch("app.routes.posts._refus_si_clos", return_value=None), \
-                patch("app.repositories.projets.get_projet_etat", create=True, return_value="en_cours"):
+        # Lot 24 (revue SR-R06) : seul le contrôle de la route est contourné
+        # (l'ancien patch visait une fonction qui n'existe pas).
+        with patch("app.routes.posts._refus_si_clos", return_value=None):
             post = self.sql("INSERT INTO post (projet_id, auteur_id, type_code, contenu) VALUES (%s, %s, "
                             "'information', 'x') RETURNING id", (self.p1, self.chef))[0]["id"]
             r = self.client.post(f"/posts/{post}/commenter", data={"contenu": "Tard"}, headers=partiel("#x"))
@@ -310,6 +311,9 @@ class TestHorloge(_Lot20):
 
     def test_instant_simule_avance_et_debloque_le_projet(self):
         jour = self.auj - datetime.timedelta(days=2)
+        # Lot 24 (HD-06) : la tâche existait ce jour-là (un blocage n'est
+        # jamais daté avant la création de sa tâche).
+        self.sql("UPDATE tache SET created_at = now() - interval '30 days' WHERE id = %s", (self.t1,))
         self.login(self.admin)
         self.entrer(self.chef, mode="agir")
         self.client.post("/admin/date-simulee", data={"date": jour.isoformat(), "heure": "09:00"})
@@ -389,6 +393,15 @@ class TestFilEtFiche(_Lot20):
                              headers=partiel("#x"))
         self.assertLess(r.status_code, 400, r.get_data(as_text=True)[:300])
         self.assertEqual(self.compter("SELECT count(*) AS n FROM post_mention"), 1)
+        # Lot 24 (revue R-07) : des ids TOUS différents au-delà du plafond —
+        # la route n'en lit pas plus que MAX_IDS (rien n'est écrit pour eux).
+        from app import validation
+        ids = [str(i) for i in range(10 ** 6, 10 ** 6 + validation.MAX_IDS + 50)] + [str(self.inter)]
+        r = self.client.post("/posts", data={"projet_id": str(self.p1), "type_code": "information",
+                                             "contenu": "Plafond", "mentions": ids}, headers=partiel("#x"))
+        self.assertLess(r.status_code, 400, r.get_data(as_text=True)[:300])
+        dernier = self.sql("SELECT max(id) AS id FROM post")[0]["id"]
+        self.assertEqual(self.compter("SELECT count(*) AS n FROM post_mention WHERE post_id = %s", (dernier,)), 0)
 
     def test_code_propose_donne_le_client_de_la_phase_liee(self):
         self.sql("UPDATE projet SET client = 'Cité Nord', phase = 'APS' WHERE id = %s", (self.p1,))
@@ -570,7 +583,13 @@ class TestPostEpingle(_Lot20):
         self.assertIn("Épinglé", zone)
         self.assertIn("Réunion lundi", zone)
         self.assertEqual(page.count(f'id="post-{b}"'), 1)
+        # Lot 24 (revue SR-R04) : sur « Tout », où une Information est dans la
+        # liste, le post épinglé n'y est pas répété.
+        self.assertEqual(self.texte(self.client.get(f"/projets/{self.p1}?fil=tout")).count(f'id="post-{b}"'), 1)
         self.assertNotIn(f'action="/posts/{b}/desepingler"', page)      # l'intervenant n'épingle pas
+        # Lot 24 (mutant E3) : désépingler est réservé à qui gère le projet.
+        self.assertEqual(self.client.post(f"/posts/{b}/desepingler", headers=partiel("#fil-epingle")).status_code, 403)
+        self.assertEqual(self.epingles(), [b])
         # Sur l'accueil : la mention « Épinglé » sur la carte.
         accueil = self.texte(self.client.get("/accueil"))
         self.assertIn("pill-epingle", accueil)

@@ -43,7 +43,7 @@
           <a href="{{ url_for('dailylog.formulaire') }}" class="acc-dl{{ ' acc-dl-a-remplir' if dl_a_remplir }}">
             <span class="acc-dl-texte">
               <strong>Daily log</strong>
-              <span>{% if dl_futur %}date simulée future&nbsp;: consultation seule{% elif dailylog_aujourdhui and dailylog_minutes >= dl_obj %}journée complète ({{ (dailylog_minutes / 60)|heures }}){% elif dl_partiel %}{{ (dailylog_minutes / 60)|heures }} sur {{ (dl_obj / 60)|heures }} aujourd’hui{% elif dailylog_aujourdhui %}absence enregistrée aujourd’hui{% else %}à remplir aujourd’hui{% endif %}</span>
+              <span>{% if dl_futur %}date simulée future&nbsp;: consultation seule{% elif dailylog_aujourdhui and dailylog_minutes >= dl_obj %}journée complète ({{ (dailylog_minutes / 60)|heures }}){% elif dl_partiel %}{{ (dailylog_minutes / 60)|heures }} sur {{ (dl_obj / 60)|heures }} aujourd’hui{% elif dailylog_aujourdhui %}absence enregistrée aujourd’hui{% elif dailylog_week_end|default(false) %}week-end{% elif not dailylog_jour_ouvre|default(true) %}rien à remplir aujourd’hui{% else %}à remplir aujourd’hui{% endif %}</span>
             </span>
             <span class="acc-dl-fleche" aria-hidden="true">→</span>
           </a>

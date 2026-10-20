@@ -24,6 +24,25 @@
       <label class="k-option"><input type="checkbox" data-pref-raccourcis checked> <span>Raccourcis d’une seule touche (<kbd>g</kbd> <kbd>n</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>/</kbd> <kbd>?</kbd>) sur ce navigateur</span></label>
       <button type="button" class="btn btn-petit k-marge-haut" data-aide-raccourcis>Voir les raccourcis</button>
     </div>
+    {# Lot 24 (décision du gérant) : Kairos comme une application Windows,
+       notifications affichées par Windows (app/push.py, push.js). #}
+    <div class="card" id="notifications-windows">
+      <h2 class="carte-titre carte-titre-form">Notifications Windows</h2>
+      <p class="aide-champ k-carte-texte">Installez Kairos comme une application (Chrome ou Edge&#8239;: menu ⋮ puis «&nbsp;Installer Kairos&nbsp;»), puis activez les notifications&#8239;: elles s’affichent dans Windows, même fenêtre fermée.</p>
+      <button type="button" class="btn btn-petit k-marge-haut" data-push-installer hidden>Installer Kairos sur ce PC</button>
+      <div class="push-zone k-js-seul" data-push data-push-cle="{{ url_for('push.cle') }}" data-push-etat-url="{{ url_for('push.etat') }}"
+           data-push-abonner="{{ url_for('push.abonner') }}" data-push-desabonner="{{ url_for('push.desabonner') }}"
+           data-push-essai-url="{{ url_for('push.essai') }}"{% if g.get('admin_reel') %} data-push-mode-admin{% endif %}>
+        <p class="aide-champ push-etat" data-push-etat role="status">Vérification…</p>
+        <div class="push-boutons">
+          <button type="button" class="btn btn-petit" data-push-activer hidden>Activer les notifications sur ce PC</button>
+          <button type="button" class="btn btn-petit" data-push-essai hidden>Envoyer une notification d’essai</button>
+          <button type="button" class="btn-fantome btn-petit" data-push-desactiver hidden>Désactiver sur ce PC</button>
+        </div>
+      </div>
+      <p class="aide-champ k-sans-js">JavaScript est nécessaire pour activer les notifications sur ce PC.</p>
+      {% include "partials/push_categories.html" %}
+    </div>
   </div>
 
   <!-- Colonne droite : Daily log de la semaine dernière (ni le RH ni un

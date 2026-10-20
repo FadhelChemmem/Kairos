@@ -239,6 +239,8 @@
     if (select.dataset.chipInit) return;
     select.dataset.chipInit = '1';
     select.style.display = 'none';
+    // Lot 24 (FI-03) : le name du repli sans JavaScript ne se soumet plus.
+    select.removeAttribute('name');
 
     var nameContient = select.dataset.nameContient || 'lot_contient';
     var nameEgal = select.dataset.nameEgal || 'lot_egal';

@@ -38,7 +38,9 @@
     {# Lot 13 (pilote du socle partiel) : interrupteur optimiste — la ligne
        seule est remplacée, défilement et focus conservés, toast « Annuler ».
        Sans JavaScript : POST puis redirection, filtres conservés. #}
-    <form method="post" action="{{ url_for('utilisateurs.toggle_actif', user_id=u.id) }}" role="cell" data-partiel="#u-{{ u.id }}" data-optimiste="bascule">
+    {# Lot 24 (axe-core, aria-allowed-role) : la cellule est un <div>, plus le <form>. #}
+    <div role="cell" class="ucell-form">
+    <form method="post" action="{{ url_for('utilisateurs.toggle_actif', user_id=u.id) }}" data-partiel="#u-{{ u.id }}" data-optimiste="bascule">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="q" value="{{ q }}">
       <input type="hidden" name="equipe_code" value="{{ equipe_code or '' }}">
@@ -53,6 +55,7 @@
         <span class="toggle-knob"></span>
       </button>
     </form>
+    </div>
   {% else %}
     <span role="cell" class="ucell-pill"><span class="pill pill-sm {{ 'pill-vert' if u.actif else 'pill-neutre' }}">{{ 'Actif' if u.actif else 'Inactif' }}</span></span>
   {% endif %}

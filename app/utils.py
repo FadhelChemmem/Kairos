@@ -361,6 +361,23 @@ def jours_blocage(bloque_le) -> int | None:
     return max(0, (maintenant.date() - jour).days)
 
 
+def jour_local(instant):
+    """Date d'un horodatage au fuseau de la personne connectée (Tunis à
+    défaut) — lot 24 : dates de début, de blocage d'une tâche. Une date
+    simple est rendue telle quelle ; None reste None."""
+    import datetime as _dt
+
+    if not isinstance(instant, _dt.date):
+        return None
+    if not isinstance(instant, _dt.datetime):
+        return instant
+    if instant.tzinfo is None:
+        return instant.date()
+    from . import horloge
+
+    return instant.astimezone(horloge._zone(None)).date()
+
+
 def depuis_blocage(bloque_le) -> str:
     """« depuis 3 j », « depuis aujourd’hui » ; "" si la date est inconnue."""
     jours = jours_blocage(bloque_le)
@@ -465,8 +482,20 @@ def avec_liens(contenu: str | None):
     morceaux, pos = [], 0
     for m in _URL_TEXTE.finditer(texte):
         url = m.group(0)
-        while url and (url[-1] in ".,;:!?]}" or (url[-1] == ")" and url.count("(") < url.count(")"))):
-            url = url[:-1]
+        # Lot 24 (N-ES01) : épluchage linéaire — le solde des parenthèses
+        # est calculé une fois puis tenu à jour (plus de count() par tour).
+        fin = len(url)
+        solde = url.count("(") - url.count(")")
+        while fin:
+            c = url[fin - 1]
+            if c in ".,;:!?]}":
+                fin -= 1
+            elif c == ")" and solde < 0:
+                fin -= 1
+                solde += 1
+            else:
+                break
+        url = url[:fin]
         if len(url) <= len("https://"):
             continue
         morceaux.append(escape(texte[pos:m.start()]))
@@ -595,5 +624,6 @@ def register(app):
     app.jinja_env.filters["il_y_a"] = il_y_a
     app.jinja_env.filters["avec_liens"] = avec_liens
     app.jinja_env.filters["date_courte"] = date_courte
+    app.jinja_env.filters["jour_local"] = jour_local
     app.jinja_env.filters["date_longue"] = date_longue
     app.jinja_env.filters["heures"] = heures

@@ -3,3 +3,6 @@
    Contexte : fil_entrees, show_projet, next_url, fil_suite_id, fil_suite_url, fil_suite_cible. #}
 {% include "partials/fil_entrees.html" %}
 {% with oob=true, fil_fin=true %}{% include "partials/fil_suite.html" %}{% endwith %}
+{#- Lot 24 (contre-expertise EC-02) : sur la fiche, l'encadré « Épinglé »
+    suit la liste (un post désépinglé ailleurs n'apparaît pas deux fois). #}
+{% if fil_epingle_oob %}{% with oob=true %}{% include "partials/fil_epingle.html" %}{% endwith %}{% endif %}

@@ -341,22 +341,43 @@
         if (vientDuFocus) { evt.preventDefault(); vientDuFocus = false; }
       });
       input.addEventListener('blur', function () { vientDuFocus = false; });
+      // Lot 24 (contre-expertise FR1) : après un choix, le champ garde le
+      // focus ; un nouveau clic resélectionne tout le nom (la frappe le
+      // remplace au lieu de s'y ajouter).
+      var fermeeAuClic = false;
+      input.addEventListener('mousedown', function () { fermeeAuClic = list.hidden && document.activeElement === input; });
+      input.addEventListener('click', function () {
+        if (fermeeAuClic && input.value && input.value === labelFor(select.value)) input.select();
+        fermeeAuClic = false;
+      });
       input.addEventListener('keydown', function (evt) {
         vientDuFocus = false;
         // Échap : le projet d'avant revient, de nouveau tout sélectionné.
         if (evt.key === 'Escape') setTimeout(function () { if (document.activeElement === input) input.select(); }, 0);
       });
+      // Lot 24 (décision du gérant, B1) : sur un champ facultatif (option
+      // « — Aucune — », data-vide), « × » VIDE le choix ; sur un champ
+      // obligatoire, il sert à chercher un autre nom (l'ancien revient si
+      // on n'en choisit pas).
+      var optionVide = select.querySelector('option[data-vide]');
       var effacer = document.createElement('button');
       effacer.type = 'button';
       effacer.className = 'search-combobox-effacer';
       effacer.tabIndex = -1;
-      effacer.setAttribute('aria-label', 'Effacer la recherche');
+      effacer.setAttribute('aria-label', optionVide ? 'Vider le choix' : 'Effacer la recherche');
+      effacer.title = optionVide ? 'Vider le choix' : 'Chercher un autre nom';
       effacer.textContent = '×';
       wrap.appendChild(effacer);
       wrap.classList.add('search-combobox-avec-effacer');
       // mousedown : le champ garde le focus (sinon sa sortie restaurerait le texte).
       effacer.addEventListener('mousedown', function (evt) { evt.preventDefault(); });
       effacer.addEventListener('click', function () {
+        if (optionVide && select.value !== optionVide.value) {
+          choisir(optionVide);
+          input.value = '';
+          if (document.activeElement !== input) input.focus();
+          return;
+        }
         input.value = '';
         if (document.activeElement !== input) input.focus();
         afficher('');

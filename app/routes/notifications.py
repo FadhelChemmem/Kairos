@@ -5,7 +5,7 @@ en a un."""
 import datetime
 import re
 
-from flask import Blueprint, abort, flash, jsonify, redirect, g, render_template, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, g, render_template, request, url_for
 
 from .. import horloge, modes_admin, partiel
 from ..auth import login_required
@@ -64,7 +64,12 @@ def _fragment(cible: str | None, toasts=None):
 def liste():
     if partiel.est_partiel():
         return _fragment(partiel.est_partiel())
-    return render_template("notifications_liste.html", **_contexte_liste())
+    # Lot 24 : notification Windows cliquée — la page l'ouvre aussitôt par
+    # son formulaire POST habituel (push.js) ; jamais d'écriture sur un GET.
+    ouvrir_id = request.args.get("ouvrir", type=int)
+    if ouvrir_id and notifications_repo.get_notification(ouvrir_id, g.user["id"]) is None:
+        ouvrir_id = None
+    return render_template("notifications_liste.html", ouvrir_id=ouvrir_id, **_contexte_liste())
 
 
 @bp.route("/compte")

@@ -84,7 +84,7 @@ class TestDeploy(unittest.TestCase):
         self.git("push", "-q", "origin", "master", cwd=self.serveur)
         r, appels = self.deployer()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("patch appliqué sur ce serveur", r.stdout)
+        self.assertIn("patch appliqué ou relance", r.stdout)
         self.assertIn("compose up -d --build", appels)
         self.assertEqual(self.tag("avant-deploiement"), a)
         self.assertEqual(self.tag("deploye"), self.git("rev-parse", "HEAD", cwd=self.serveur))
@@ -194,6 +194,37 @@ class TestDeploy(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("relance dans sa nouvelle version", r.stdout)
         self.assertIn("NOUVEAU SCRIPT OK", r.stdout)
+
+    def test_relance_par_un_chemin_relatif_depuis_un_autre_dossier(self):
+        """Lot 24 (contre-expertise MD-5) : `cd <parent> && bash Kairos/deploy.sh`
+        relance bien le nouveau script (plus de « No such file », rc=127)."""
+        self.git("tag", "deploye", self.git("rev-parse", "HEAD", cwd=self.serveur), cwd=self.serveur)
+        self.git("pull", "-q", "origin", "master", cwd=self.poste)
+        script = (self.poste / "deploy.sh").read_text(encoding="utf-8")
+        (self.poste / "deploy.sh").write_text(script.replace('vert "OK : Kairos déployé', 'vert "NOUVEAU SCRIPT OK : Kairos déployé'),
+                                              encoding="utf-8")
+        self.commit(self.poste, "B")
+        self.git("push", "-q", "origin", "master", cwd=self.poste)
+        r = subprocess.run(["bash", f"{self.serveur.name}/deploy.sh"], env=self.env, capture_output=True, text=True,
+                           cwd=self.serveur.parent)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("NOUVEAU SCRIPT OK", r.stdout)
+
+    def test_echec_imprime_le_retour_arriere_et_la_date_des_reperes(self):
+        """Lot 24 (MD-4) : un échec dit comment revenir en arrière (repère à
+        supprimer compris) ; une relance dit de quand datent les repères."""
+        a = self.git("rev-parse", "HEAD", cwd=self.serveur)
+        self.git("tag", "deploye", a, cwd=self.serveur)
+        self.git("pull", "-q", "origin", "master", cwd=self.poste)
+        self.commit(self.poste, "B")
+        self.git("push", "-q", "origin", "master", cwd=self.poste)
+        self.env["FAUX_LOG_EN_PLUS"] = "web-1  | Traceback (most recent call last):"
+        r, _ = self.deployer()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("git switch --detach avant-deploiement", r.stdout)
+        self.assertIn("rm -f .deploiement_en_cours", r.stdout)
+        r, _ = self.deployer()
+        self.assertRegex(r.stdout, r"Tentative précédente inachevée du \d{2}/\d{2}/\d{4} \d{2}:\d{2}")
 
     def test_ligne_d_acces_contenant_erreur_ignoree(self):
         """Lot 20 (revue QA n° 17b) : une recherche du mot « Erreur » n'est

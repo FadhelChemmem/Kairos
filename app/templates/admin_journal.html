@@ -21,6 +21,8 @@
 
   <form method="get" action="{{ url_for('admin.journal') }}" class="filtres-journal" role="search" aria-label="Filtrer le journal"
         data-partiel="#journal-resultats" data-partiel-auto="change">
+    {# Lot 24 (FI-01) : « formulaire envoyé » — toutes les listes sur « Tous » est un choix. #}
+    <input type="hidden" name="filtres_actifs" value="1">
     <select name="table" id="journal-table-filtre" aria-label="Table">
       <option value="">Toutes les tables</option>
       {% for t in tables %}

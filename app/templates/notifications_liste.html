@@ -3,6 +3,14 @@
 {# Pas de fil sur cette page (lot 11, audit front M8). #}
 {% block scripts_fil %}{% endblock %}
 {% block body %}
+{% if ouvrir_id %}
+{# Lot 24 : notification Windows cliquée — ouverte aussitôt (push.js) ;
+   sans JavaScript, ce bouton. #}
+<form method="post" action="{{ url_for('notifications.ouvrir', notification_id=ouvrir_id) }}" class="push-ouvrir" data-auto-envoi>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="btn">Ouvrir la notification</button>
+</form>
+{% endif %}
 
 <div class="subbar">
   <div class="subbar-inner k-lecture">

@@ -133,7 +133,8 @@
     // Lot 23 (test Chrome) : projet sans liste fournie (« Donner suite »
     // depuis l'accueil sur un projet hors de ma liste) : chargée à la
     // demande, puis le filtre est rejoué.
-    if (opt && !opt.hasAttribute('data-voient') && !opt.dataset.voientDemande && /^\d+$/.test(String(pid))) {
+    // Lot 24 (FR7) : sans fetch, tout reste proposé (le serveur écarte en le disant).
+    if (opt && window.fetch && !opt.hasAttribute('data-voient') && !opt.dataset.voientDemande && /^\d+$/.test(String(pid))) {
       opt.dataset.voientDemande = '1';
       fetch('/projets/' + pid + '/voient', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
         .then(function (r) { return r.ok ? r.json() : null; })
@@ -179,7 +180,7 @@
   }
   function chargerTaches(pid) {
     if (!tacheRequete || !ouvreur) return;   // seulement fenêtre ouverte
-    if (!pid || pid === AUCUN) { remplirTaches(pid, []); return; }
+    if (!pid || pid === AUCUN || !window.fetch) { remplirTaches(pid, []); return; }
     // Lot 16 : rechargée à chaque fois (une tâche créée ou close entre-temps).
     remplirTaches(pid, []);   // jamais la tâche d'un autre projet pendant le chargement
     var url = tacheRequete.getAttribute('data-taches-url').replace('999999999', pid);

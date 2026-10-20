@@ -825,8 +825,12 @@ def modifier(post_id: int):
         # prévenues.
         deja = set(posts_repo.mentions_du_post(post_id))
         tags = _tags_du_texte(post, contenu)
+        # Lot 24 (« Me concernant », Q10) : un « @Prénom Nom » effacé du
+        # texte retire la mention (sans notification) ; les personnes
+        # taguées par les puces à la création, hors du texte, restent.
+        effacees = [uid for uid in _tags_du_texte(post, post.get("contenu") or "") if uid not in tags]
         retirees = posts_repo.modifier_post(post_id, g.user["id"], contenu, lien, retirees_demandees, ajoutees,
-                                            mention_ids=tags)
+                                            mention_ids=tags, mentions_effacees=effacees)
     except Exception:
         for chemin in chemins:
             delete_upload(chemin)
@@ -878,13 +882,17 @@ def supprimer(post_id: int):
     post = _post_visible_ou_404(post_id)
     if not peut_supprimer(post):
         abort(403)
-    quand = posts_repo.supprimer_post(post_id, g.user["id"])
+    quand = posts_repo.supprimer_post(post_id, g.user["id"], projet_ouvert_requis=g.user["role"] != "admin")
+    # Lot 24 (EC-06) : déjà supprimé par quelqu'un d'autre au même moment —
+    # message neutre, sans « Annuler » qui ne pourrait plus servir.
+    texte = "Post supprimé." if quand else "Ce post était déjà supprimé."
     if partiel.est_partiel():
-        action = _action_annuler("post", post_id, "suppr", url_for("posts.restaurer", post_id=post_id), {"t": quand},
-                                 f"#post-{post_id}")
+        action = (_action_annuler("post", post_id, "suppr", url_for("posts.restaurer", post_id=post_id),
+                                  {"t": quand, "ep": 1 if post.get("epingle_le") else 0}, f"#post-{post_id}")
+                  if quand else None)
         return partiel.repondre("partials/post_supprime.html", post_id=post_id,
-                                toasts=[partiel.toast("Post supprimé.", action=action)])
-    flash("Post supprimé.", "success")
+                                toasts=[partiel.toast(texte, "succes" if quand else "info", action=action)])
+    flash(texte, "success" if quand else "info")
     return _safe_redirect()
 
 
@@ -904,19 +912,32 @@ def restaurer(post_id: int):
     if not posts_repo.restaurer_post(post_id, g.user["id"], jeton["t"]):
         return _refus(MESSAGE_ANNULER_PERIME, 409)
     if partiel.est_partiel():
+        if jeton.get("ep") and post.get("projet_id"):
+            # Lot 24 (contre-expertise EC-01) : le post était épinglé — il
+            # revient sans épingle (règle du lot 21) : sur la fiche,
+            # l'encadré « Épinglé » se vide et la carte rejoint le fil ;
+            # ailleurs (accueil), la carte remplace la cible comme d'habitude.
+            from .projets import _maj_fiche
+
+            carte = posts_repo.get_post_carte(post_id, g.user["id"])
+            if carte is None:
+                abort(404)
+            return _maj_fiche(post["projet_id"], None, ["epingle", "fil_liste"], toasts=[partiel.toast("Post rétabli.")],
+                              gabarit_racine="partials/post_card.html", post=carte, show_projet=_show_projet(),
+                              next_url=_next_sans_ancre())
         return _reponse_post(post_id, [partiel.toast("Post rétabli.")])
     flash("Post rétabli.", "success")
     return _safe_redirect()
 
 
-def _reponse_epingle(projet_id: int, message: str):
+def _reponse_epingle(projet_id: int, message: str, type_toast: str = "succes"):
     """Réponse d'un geste sur l'épingle : en partiel, l'encadré « Épinglé »
     et le fil de la fiche ; sinon retour à la fiche."""
     if partiel.est_partiel():
         from .projets import _maj_fiche
 
-        return _maj_fiche(projet_id, "epingle", ["fil_liste"], toasts=[partiel.toast(message)])
-    flash(message, "success")
+        return _maj_fiche(projet_id, "epingle", ["fil_liste"], toasts=[partiel.toast(message, type_toast)])
+    flash(message, "success" if type_toast == "succes" else "info")
     return redirect(url_for("projets.detail", projet_id=projet_id))
 
 
@@ -935,6 +956,9 @@ def epingler(post_id: int):
     try:
         posts_repo.epingler(post_id, post["projet_id"], g.user["id"])
     except posts_repo.EpinglageRefuse:
+        # Lot 24 (EC-04) : supprimé entre-temps → message juste.
+        if (posts_repo.get_post(post_id) or {}).get("supprime_le") is not None:
+            return _refus("Ce post vient d’être supprimé.", 409)
         return _refus("Seule une Information écrite du projet peut être épinglée.", 422)
     return _reponse_epingle(post["projet_id"], "Post épinglé en tête du projet.")
 
@@ -948,7 +972,10 @@ def desepingler(post_id: int):
     refus = _refus_si_clos(post)
     if refus:
         return refus
-    posts_repo.desepingler(post_id, post["projet_id"], g.user["id"])
+    fait = posts_repo.desepingler(post_id, post["projet_id"], g.user["id"])
+    # Lot 24 (EC-06) : rien à faire (déjà désépinglé) → message neutre.
+    if not fait:
+        return _reponse_epingle(post["projet_id"], "Ce post n’était plus épinglé.", "info")
     return _reponse_epingle(post["projet_id"], "Post désépinglé.")
 
 

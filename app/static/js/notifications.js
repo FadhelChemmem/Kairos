@@ -32,6 +32,10 @@
       b.hidden = !n;
     });
     if (cloche) cloche.setAttribute('aria-label', libelle(n));
+    // Lot 24 : pastille sur l'icône de l'appli installée (barre des tâches).
+    try {
+      if (navigator.setAppBadge) { if (n) navigator.setAppBadge(n).catch(function () {}); else navigator.clearAppBadge().catch(function () {}); }
+    } catch (e) { /* navigateur sans pastille */ }
     document.querySelectorAll('[data-notifs-lien]').forEach(function (a) { a.setAttribute('aria-label', libelle(n)); });
   }
   window.KairosNotifications = { majBadge: majBadge, nb: nb };
@@ -75,6 +79,7 @@
     };
   }
   document.addEventListener('kairos:fragment', function () { majBadge(nb()); });
+  if (navigator.setAppBadge && document.getElementById('notifs-nb')) majBadge(nb());
 
   // --- Badge tenu à jour --------------------------------------------------
   var urlCompte = cloche && cloche.getAttribute('data-url-compte');

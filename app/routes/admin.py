@@ -159,12 +159,15 @@ def _filtres():
 @bp.route("/journal")
 @role_required("admin")
 def journal():
-    retour = filtres_memoire.redirection("journal", "admin.journal", date_debut=request.args.get("date_debut"),
-                                        date_fin=request.args.get("date_fin"))
+    # Lot 24 (FI-05) : une page suivante (« Charger 100 de plus ») garde son
+    # adresse, jamais renvoyée vers le choix mémorisé.
+    retour = (None if request.args.get("avant") else
+              filtres_memoire.redirection("journal", "admin.journal", date_debut=request.args.get("date_debut"),
+                                          date_fin=request.args.get("date_fin")))
     if retour is not None:
         return retour
     filtres, criteres = _filtres()
-    filtres_memoire.memoriser("journal", filtres)
+    filtres_memoire.memoriser("journal", dict(filtres, filtres_actifs="1"))
     curseur = _lire_curseur(request.args.get("avant"))
     deja = request.args.get("n", 0, type=int) if curseur else 0
     deja = max(0, min(deja or 0, 1_000_000))

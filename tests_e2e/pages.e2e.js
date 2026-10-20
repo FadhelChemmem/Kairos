@@ -18,7 +18,7 @@ const { execFileSync } = require('child_process');
 const path = require('path');
 let playwright;
 try { playwright = require(process.env.PLAYWRIGHT_MODULE || 'playwright'); }
-catch (e) { playwright = require('/opt/node-tools/node_modules/playwright'); }
+catch (e) { playwright = require(path.join(execFileSync('npm', ['root', '-g']).toString().trim(), 'playwright')); }  // lot 24 (R34) : sans chemin propre à une machine
 const { chromium } = playwright;
 
 const BASE = process.env.KAIROS_E2E_URL || 'http://127.0.0.1:8798';
@@ -248,7 +248,7 @@ async function maxAnimation(p, ms = 600) {
     await p.focus('#journal-action-filtre');
     await interaction(p, 'Journal : filtre Action (au changement)',
       () => p.selectOption('#journal-action-filtre', 'INSERT'),
-      async () => (await etat(p)).url === '/admin/journal?action=INSERT' && !(await p.evaluate(() => document.querySelector('#journal-resultats[aria-busy]'))),
+      async () => (await etat(p)).url === '/admin/journal?filtres_actifs=1&action=INSERT' && !(await p.evaluate(() => document.querySelector('#journal-resultats[aria-busy]'))),
       { focus: '#journal-action-filtre' });
     etape('Journal : « Réinitialiser » visible avec un filtre', await p.isVisible('.journal-reinit'));
     await retour(p, 'Journal : filtre', async () => (await etat(p)).url === '/admin/journal' && await p.locator('.journal-ligne').count() === 100

@@ -171,13 +171,13 @@ _FEED_SELECT = """
               ) x),
              '[]'
            ) AS mentions,
-           CASE WHEN """ + _PARENT_VISIBLE + """ THEN parent.contenu END AS parent_contenu,
+           CASE WHEN pv.visible THEN parent.contenu END AS parent_contenu,
            parent.type_code AS parent_type_code,
            (parent.supprime_le IS NOT NULL) AS parent_supprime,
-           (parent.id IS NOT NULL AND NOT """ + _PARENT_VISIBLE + """) AS parent_invisible,
+           (parent.id IS NOT NULL AND NOT pv.visible) AS parent_invisible,
            parent.evenement AS parent_evenement,
            parent_auteur.prenom AS parent_auteur_prenom, parent_auteur.nom AS parent_auteur_nom,
-           CASE WHEN """ + _PARENT_VISIBLE + """ THEN parent_tache.titre END AS parent_tache_titre,
+           CASE WHEN pv.visible THEN parent_tache.titre END AS parent_tache_titre,
            -- Lot 20 (test Chrome FP3) : tâches créées par « Donner suite »
            -- depuis ce post — la requête montre qu'elle a eu une suite (le
            -- post de création, lui, est regroupé dans « Activité »).
@@ -194,6 +194,9 @@ _FEED_SELECT = """
     LEFT JOIN post parent ON parent.id = p.parent_post_id
     LEFT JOIN utilisateur parent_auteur ON parent_auteur.id = parent.auteur_id
     LEFT JOIN tache parent_tache ON parent_tache.id = parent.tache_id
+    -- Lot 24 (revue SR-R09) : visibilité du post d'origine calculée une
+    -- seule fois par ligne (elle l’était trois fois, le fil lisait 70 pour cent plus lentement).
+    LEFT JOIN LATERAL (SELECT """ + _PARENT_VISIBLE + """ AS visible) pv ON parent.id IS NOT NULL
 """
 
 
@@ -342,8 +345,13 @@ def _condition_fiche(moi: bool) -> str:
 
 
 def list_feed_projet(projet_id: int, current_user_id: int, limit: int = 30, categorie: str = "tout",
-                     avant=None, moi: bool = False) -> list[dict]:
-    return _lire_fil(_condition_fiche(moi), {"uid": current_user_id, "pid": projet_id}, limit, categorie, avant)
+                     avant=None, moi: bool = False, exclure: int | None = None) -> list[dict]:
+    """`exclure` (lot 24, contre-expertise EC-03) : id du post affiché dans
+    l'encadré « Épinglé », lu AVANT la liste — un post épinglé ou désépinglé
+    entre les deux lectures n'apparaît jamais deux fois."""
+    condition = _condition_fiche(moi) + (" AND p.id <> %(exclu)s" if exclure else "")
+    return _lire_fil(condition, {"uid": current_user_id, "pid": projet_id, "exclu": exclure},
+                     limit, categorie, avant)
 
 
 def get_post_epingle(projet_id: int, viewer_id: int) -> dict | None:
@@ -377,7 +385,8 @@ def epingler(post_id: int, projet_id: int, current_user_id: int) -> int | None:
                     "WHERE projet_id = %s AND epingle_le IS NOT NULL AND id <> %s RETURNING id",
                     (projet_id, post_id))
         ancien = cur.fetchone()
-        cur.execute("UPDATE post SET epingle_le = fn_maintenant(), epingle_par = %s "
+        # Lot 24 (HD-06) : jamais daté avant le post (date simulée passée).
+        cur.execute("UPDATE post SET epingle_le = GREATEST(fn_maintenant(), created_at), epingle_par = %s "
                     "WHERE id = %s AND epingle_le IS NULL", (current_user_id, post_id))
         return ancien["id"] if ancien else None
 
@@ -522,7 +531,7 @@ def get_post(post_id: int) -> dict | None:
         """
         SELECT p.id, p.projet_id, p.tache_id, p.parent_post_id, p.auteur_id, p.type_code,
                p.evenement, p.contenu, p.lien, p.supprime_le, p.supprime_par, p.created_at,
-               proj.etat AS projet_etat
+               p.epingle_le, proj.etat AS projet_etat
         FROM post p LEFT JOIN projet proj ON proj.id = p.projet_id
         WHERE p.id = %s
         """,
@@ -679,11 +688,14 @@ def add_comment(
                                WHERE po.id = %s FOR SHARE OF p""", post_id)
         cur.execute(
             """
-            INSERT INTO post_commentaire (post_id, auteur_id, contenu, mentionne_user_id, parent_commentaire_id)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO post_commentaire (post_id, auteur_id, contenu, mentionne_user_id, parent_commentaire_id,
+                                          created_at)
+            -- Lot 24 (HD-06) : jamais daté avant son post (date simulée passée).
+            SELECT %s, %s, %s, %s, %s, GREATEST(fn_maintenant(), p.created_at)
+            FROM post p WHERE p.id = %s
             RETURNING id
             """,
-            (post_id, auteur_id, contenu, mentionne_user_id, parent_commentaire_id),
+            (post_id, auteur_id, contenu, mentionne_user_id, parent_commentaire_id, post_id),
         )
         commentaire_id = cur.fetchone()["id"]
 
@@ -719,7 +731,7 @@ def modifier_commentaire(commentaire_id: int, auteur_id: int, contenu: str, ment
     with db.get_cursor(user_id=auteur_id) as cur:
         cur.execute(
             """
-            UPDATE post_commentaire SET contenu = %s, modifie_le = fn_maintenant()
+            UPDATE post_commentaire SET contenu = %s, modifie_le = GREATEST(fn_maintenant(), created_at)
             WHERE id = %s AND auteur_id = %s
             RETURNING id
             """,
@@ -870,7 +882,8 @@ def get_piece_jointe(piece_id: int) -> dict | None:
 
 def modifier_post(post_id: int, auteur_id: int, contenu: str, lien: str | None,
                   pj_retirees: list[int], pj_ajoutees: list[tuple[str, str]],
-                  mention_ids: list[int] | None = None) -> list[int] | None:
+                  mention_ids: list[int] | None = None,
+                  mentions_effacees: list[int] | None = None) -> list[int] | None:
     """Texte, lien et pièces jointes d'un post, PAR SON AUTEUR. Les pièces
     retirées le sont logiquement (fichier purgé 30 jours après). Retourne
     les pièces effectivement retirées, None si le post n'est pas modifiable
@@ -878,7 +891,7 @@ def modifier_post(post_id: int, auteur_id: int, contenu: str, lien: str | None,
     with db.get_cursor(user_id=auteur_id) as cur:
         cur.execute(
             """
-            UPDATE post SET contenu = %s, lien = %s, modifie_le = fn_maintenant()
+            UPDATE post SET contenu = %s, lien = %s, modifie_le = GREATEST(fn_maintenant(), created_at)
             WHERE id = %s AND auteur_id = %s AND supprime_le IS NULL
             RETURNING id
             """,
@@ -902,6 +915,9 @@ def modifier_post(post_id: int, auteur_id: int, contenu: str, lien: str | None,
                 "INSERT INTO post_piece_jointe (post_id, nom_fichier, chemin, uploaded_by) VALUES (%s, %s, %s, %s)",
                 (post_id, nom_fichier, chemin, auteur_id),
             )
+        if mentions_effacees:
+            cur.execute("DELETE FROM post_mention WHERE post_id = %s AND utilisateur_id = ANY(%s::bigint[])",
+                        (post_id, [int(i) for i in mentions_effacees]))
         if mention_ids is not None:
             cur.execute("SELECT utilisateur_id FROM post_mention WHERE post_id = %s", (post_id,))
             avant = {int(r["utilisateur_id"]) for r in cur.fetchall()}
@@ -918,10 +934,22 @@ def mentions_du_post(post_id: int) -> list[int]:
             db.query_all("SELECT utilisateur_id FROM post_mention WHERE post_id = %s", (post_id,))]
 
 
-def supprimer_post(post_id: int, current_user_id: int) -> str | None:
+def supprimer_post(post_id: int, current_user_id: int, *, projet_ouvert_requis: bool = False) -> str | None:
     """Suppression LOGIQUE (« Annuler » : restaurer_post). Retourne
-    l'horodatage de la suppression (lié au jeton), None si déjà supprimé."""
+    l'horodatage de la suppression (lié au jeton), None si déjà supprimé.
+
+    `projet_ouvert_requis` (lot 24, contre-expertise EC-05) : sauf pour
+    l'Admin, le projet du post est verrouillé et doit être ouvert
+    (taches.ProjetClos) — une clôture simultanée passe avant ou après, jamais
+    au milieu."""
+    from .taches import verrouiller_projet_ouvert
+
     with db.get_cursor(user_id=current_user_id) as cur:
+        if projet_ouvert_requis:
+            cur.execute("SELECT projet_id FROM post WHERE id = %s", (post_id,))
+            ligne = cur.fetchone()
+            if ligne and ligne["projet_id"] is not None:
+                verrouiller_projet_ouvert(cur, ligne["projet_id"])
         cur.execute(
             # Lot 21 : un post supprimé n'est plus épinglé (« Annuler » le
             # rétablit sans épingle).

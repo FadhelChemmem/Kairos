@@ -150,9 +150,10 @@ def date_simulee():
     valeur = {"admin": admin["id"], "date": date.isoformat()}
     if heure is not None:
         valeur["heure"] = heure.strftime("%H:%M")
-        # Lot 21 (revue R10) : l'heure simulée avance avec le temps réel
-        # (deux gestes successifs ne tombent plus au même instant).
-        valeur["pose_le"] = time.time()
+    # Lot 21 (revue R10) : l'heure simulée avance avec le temps réel (deux
+    # gestes successifs ne tombent plus au même instant). Lot 24 (HD-04) :
+    # sans heure aussi, depuis l'heure réelle du moment où la date est posée.
+    valeur["pose_le"] = time.time()
     session[modes.CLE_DATE] = valeur
     modes.journaliser(modes.TABLE_DATE, "ENTREE", admin["id"], date=date.isoformat(), heure=valeur.get("heure"),
                       compte_vu_id=g.user["id"] if g.get("admin_reel") else None)

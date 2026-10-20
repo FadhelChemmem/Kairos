@@ -37,6 +37,8 @@ PAQUETS: dict[str, tuple[str, ...]] = {
         "js/recherche-globale.js",
         "js/raccourcis.js",
         "js/notifications.js",
+        # Lot 24 : service worker, appli installable, notifications Windows.
+        "js/push.js",
     ),
     "app.css": ("css/app.css", "css/lot13-pages.css", "css/lot14-a2.css", "css/lot14-a3.css",
                 "css/lot13-visuel.css", "css/lot14-a1.css", "css/lot14-a4.css", "css/lot15.css", "css/lot17.css"),

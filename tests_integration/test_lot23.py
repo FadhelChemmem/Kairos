@@ -17,7 +17,8 @@ class TestFiltresMemorisesParPersonne(_Lot20):
         self.client.get("/utilisateurs?q=&equipe_code=URBS&role=&actif=", headers=PARTIEL)
         # Page ouverte par le menu : redirigée vers l'adresse du choix (Retour fiable).
         r = self.client.get("/utilisateurs")
-        self.assertEqual((r.status_code, r.headers["Location"]), (302, "/utilisateurs?equipe_code=URBS"))
+        self.assertEqual((r.status_code, r.headers["Location"]),
+                         (302, "/utilisateurs?filtres_actifs=1&equipe_code=URBS"))
         self.assertRegex(self.texte(self.client.get(r.headers["Location"])), r'<option value="URBS" selected')
         # Retour du navigateur vers l'adresse sans filtre (partiel) : tout le monde.
         self.assertNotRegex(self.texte(self.client.get("/utilisateurs", headers=PARTIEL)), r'URBS" selected')
@@ -36,16 +37,23 @@ class TestFiltresMemorisesParPersonne(_Lot20):
         self.assertNotRegex(self.texte(self.client.get("/admin/journal", follow_redirects=True)),
                             r'<option value="INSERT" selected')
 
-    def test_voir_comme_n_ecrit_rien_agir_comme_ecrit_pour_la_personne(self):
+    def test_voir_comme_et_agir_comme_n_ecrivent_rien(self):
+        """Lot 24 (décision du 20/10) : ni en « Voir comme » ni en « Agir
+        comme » — l'Admin lit les filtres de la personne sans les changer."""
+        self.sql("INSERT INTO utilisateur_preference (utilisateur_id, filtres) VALUES (%s, %s)",
+                 (self.chef, '{"projets": "filtres_actifs=1&etat=bloque"}'))
         self.entrer(self.chef, mode="voir")
         r = self.client.get("/projets?filtres_actifs=1&etat=termine", headers=PARTIEL)
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(self.compter("SELECT count(*) AS n FROM utilisateur_preference WHERE filtres <> '{}'"), 0)
         self.client.post("/admin/revenir")
         self.entrer(self.chef, mode="agir")
+        self.assertIn('href="/projets/export.xlsx?filtres_actifs=1&etat=bloque"', self.texte(self.client.get("/projets")))
         self.client.get("/projets?filtres_actifs=1&etat=termine", headers=PARTIEL)
+        self.client.get("/projets?defaut=1")
         self.assertEqual(self.sql("SELECT filtres->>'projets' AS f FROM utilisateur_preference "
-                                  "WHERE utilisateur_id = %s", (self.chef,))[0]["f"], "filtres_actifs=1&etat=termine")
+                                  "WHERE utilisateur_id = %s", (self.chef,))[0]["f"], "filtres_actifs=1&etat=bloque")
+        self.assertEqual(self.compter("SELECT count(*) AS n FROM utilisateur_preference WHERE utilisateur_id <> %s",
+                                      (self.chef,)), 0)
 
     def test_admin_tous_les_chefs_par_defaut_et_export_aux_filtres_effectifs(self):
         self.login(self.admin)

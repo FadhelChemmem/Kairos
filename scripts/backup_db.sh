@@ -50,7 +50,9 @@ POSTGRES_DB="$(lire_env POSTGRES_DB kairos)"
 
 DEST="${KAIROS_BACKUP_DIR:-$(lire_env KAIROS_BACKUP_DIR backups)}"
 
-DATE="$(date +%Y-%m-%d_%H%M)"
+# Lot 24 (contre-expertise MD-1) : à la seconde — deux sauvegardes dans la
+# même minute (relance de deploy.sh) ne s'écrasent plus.
+DATE="$(date +%Y-%m-%d_%H%M%S)"
 mkdir -p "$DEST"
 
 # --- Base de données (pg_dump) ---

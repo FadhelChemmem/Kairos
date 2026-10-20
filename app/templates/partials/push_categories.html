@@ -1,0 +1,12 @@
+{# Lot 24 : catégories envoyées en notification Windows (toutes par défaut).
+   Contexte : push_categories (liste ou None = toutes), push_libelles. #}
+<form method="post" action="{{ url_for('push.categories') }}" id="push-categories" class="push-categories" data-partiel="#push-categories">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <fieldset class="k-fieldset-nu">
+    <legend class="aide-champ">Envoyer dans Windows&nbsp;:</legend>
+    {% for code, libelle in push_libelles.items() %}
+    <label class="k-option"><input type="checkbox" name="categories" value="{{ code }}"{% if push_categories is none or code in push_categories %} checked{% endif %}> <span>{{ libelle }}</span></label>
+    {% endfor %}
+  </fieldset>
+  <button type="submit" class="btn btn-petit k-marge-haut">Enregistrer ce choix</button>
+</form>

@@ -188,7 +188,14 @@ def appliquer() -> None:
             # Lot 21 (revue R10) : instant réel où l'heure a été choisie —
             # l'heure simulée avance ensuite avec le temps réel.
             pose = date.get("pose_le")
-            g.simulation_posee_le = pose if isinstance(pose, (int, float)) and not isinstance(pose, bool) else None
+            if not isinstance(pose, (int, float)) or isinstance(pose, bool):
+                # Lot 24 (HD-05) : date posée avant le lot 21 (ou sans heure
+                # avant le lot 24) : comptée comme posée maintenant.
+                import time as _time
+
+                pose = _time.time()
+                session[CLE_DATE] = dict(date, pose_le=pose)
+            g.simulation_posee_le = pose
         else:
             session.pop(CLE_DATE, None)
             if valide:

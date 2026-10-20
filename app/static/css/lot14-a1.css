@@ -37,12 +37,7 @@
 /* --- Bloc « Terminer la tâche » (message facultatif) ------------------- */
 .tache-cloture { align-items: flex-end; }
 .tache-cloture-titre { flex-basis: 100%; margin: 0; }
-.tache-cloture-message { flex-basis: 100%; display: flex; flex-direction: column; gap: 4px; }
-.tache-cloture-message label { font-size: 12px; }
-.tache-cloture-message textarea {
-  width: 100%; box-sizing: border-box; min-height: 52px; resize: vertical;
-  font: inherit; font-size: var(--texte-m);
-}
+/* Lot 24 (revue SR-R12) : règles de .tache-cloture-message retirées (classe plus utilisée). */
 
 /* --- Fil : motif d'un blocage --------------------------------------------- */
 .post-blocage-motif { color: var(--text); }

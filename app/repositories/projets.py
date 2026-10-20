@@ -268,6 +268,17 @@ def compter_projets(
     return int(row["n"]) if row else 0
 
 
+def chefs_par_ids(ids) -> list[dict]:
+    """Lot 24 (FI-10) : nom et photo de chefs choisis dans le filtre qui ne
+    sont plus chefs d'un projet en cours ou bloqué (même forme que
+    list_chefs_de_projet)."""
+    ids = [int(i) for i in ids or []]
+    if not ids:
+        return []
+    return db.query_all("SELECT id, prenom, nom, avatar_chemin FROM utilisateur WHERE id = ANY(%s) "
+                        "ORDER BY prenom, nom", (ids,))
+
+
 def list_chefs_de_projet(user_id: int | None = None) -> list[dict]:
     """Personnes ayant effectivement été chef de projet d'au moins un
     projet — alimente le filtre "Chef de projet" de /projets.

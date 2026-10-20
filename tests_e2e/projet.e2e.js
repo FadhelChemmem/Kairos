@@ -25,7 +25,7 @@ const { execFileSync } = require('child_process');
 const path = require('path');
 let playwright;
 try { playwright = require(process.env.PLAYWRIGHT_MODULE || 'playwright'); }
-catch (e) { playwright = require('/home/claude/.npm-global/lib/node_modules/playwright'); }
+catch (e) { playwright = require(path.join(execFileSync('npm', ['root', '-g']).toString().trim(), 'playwright')); }  // lot 24 (R34) : sans chemin propre à une machine
 const { chromium } = playwright;
 
 const BASE = process.env.KAIROS_E2E_URL || 'http://127.0.0.1:8798';
@@ -534,7 +534,7 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
       const info = sql("INSERT INTO post (projet_id, auteur_id, type_code, contenu) VALUES (30, 3, 'information', 'Accès chantier : badge à l’accueil, casque obligatoire.') RETURNING id").split('\n')[0];
       sql("INSERT INTO post (projet_id, auteur_id, type_code, contenu) VALUES (30, 2, 'information', 'Réunion de synthèse lundi 9 h.')");
       let ctx = await contexte(navigateur, 'ali@x.tn');
-      let pc = await ouvrir(ctx, '/projets/30');
+      let pc = await ouvrir(ctx, '/projets/30?fil=echanges');  // lot 24 : onglet retenu par personne
       await pc.click(`#post-${info} .post-menu > summary`);
       await pc.click(`#post-${info} .post-menu-item:has-text("Épingler en tête du projet")`);
       const zone = await attendre(() => pc.evaluate(() => {
@@ -554,7 +554,7 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
       await attendre(() => pc.evaluate(() => !!document.querySelector('#fil-epingle .fil-epingle')));
       await ctx.close();
       ctx = await contexte(navigateur, 'rim@x.tn', { largeur: 375, hauteur: 800, theme: 'dark' });
-      pc = await ouvrir(ctx, '/projets/30');
+      pc = await ouvrir(ctx, '/projets/30?fil=echanges');  // lot 24 : onglet retenu par personne
       etape('375 px sombre : encadré visible, sans débordement', await pc.evaluate(() => {
         const z = document.querySelector('#fil-epingle .fil-epingle'); return !!z && z.scrollWidth <= z.clientWidth + 1
           && document.documentElement.scrollWidth <= window.innerWidth + 1; }));
@@ -671,6 +671,9 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
       etape('Notification : post signalé une fois à l’arrivée', !!signale);
       etape('Post signalé : le halo s’efface', !!await attendre(() => pc.evaluate((id) =>
         !document.getElementById('post-' + id).classList.contains('post-signale'), tague), 4000));
+      // Lot 24 (test Chrome Q4) : l'adresse perd jusqua et l'ancre — F5 ne rejoue pas le halo.
+      etape('Post signalé : adresse nettoyée (ni jusqua ni ancre)', await pc.evaluate(() =>
+        !/jusqua=/.test(location.search) && !location.hash && /fil=tout/.test(location.search)));
       const suite = pc.locator('#fil-epingle .fil-epingle-suite');
       etape('Épinglé long : replié avec « Lire la suite »', await suite.count() === 1
         && await pc.evaluate(() => document.querySelector('#fil-epingle .post-texte').getBoundingClientRect().height < 260));
@@ -678,6 +681,43 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
       etape('« Lire la suite » déplie tout (aria-expanded), « Réduire » replie', await suite.getAttribute('aria-expanded') === 'true'
         && await pc.evaluate(() => document.querySelector('#fil-epingle .post-texte').getBoundingClientRect().height > 300)
         && /Réduire/.test(await suite.textContent()));
+      await ctx.close();
+    }
+
+    {
+      // Lot 24 : « × » vide un champ facultatif (B1) ; re-clic : nom
+      // sélectionné (FR1) ; dates de la tâche ; appli installable.
+      const ctx = await contexte(navigateur, 'ali@x.tn');
+      const pc = await ouvrir(ctx, '/projets/nouveau');
+      const lie = '#phase_liee_id + .search-combobox-wrap .search-combobox-input';
+      await pc.click(lie);
+      await pc.keyboard.type('21114');
+      await attendre(() => pc.evaluate(() => !!document.querySelector('#phase_liee_id + .search-combobox-wrap [role=option]')), 3000);
+      await pc.keyboard.press('Enter');
+      await attendre(() => pc.evaluate(() => document.getElementById('phase_liee_id').value !== ''), 2000);
+      await pc.click(lie);
+      etape('re-clic après un choix : tout le nom sélectionné (la frappe le remplace)', await pc.evaluate(() => {
+        const i = document.activeElement; return !!i.value && i.selectionStart === 0 && i.selectionEnd === i.value.length; }));
+      await pc.click('#phase_liee_id + .search-combobox-wrap .search-combobox-effacer');
+      etape('« × » sur un champ facultatif : le choix est vidé', await pc.evaluate(() =>
+        document.getElementById('phase_liee_id').value === '' && document.querySelector('#phase_liee_id + .search-combobox-wrap .search-combobox-input').value === ''));
+      const chef = '#chef_projet_id + .search-combobox-wrap';
+      const avant = await pc.evaluate(() => document.getElementById('chef_projet_id').value);
+      await pc.click(chef + ' .search-combobox-input');
+      await pc.click(chef + ' .search-combobox-effacer');
+      await pc.keyboard.press('Escape');
+      etape('« × » sur un champ obligatoire : recherche, l’ancien choix revient', await pc.evaluate((v) =>
+        document.getElementById('chef_projet_id').value === v && document.querySelector('#chef_projet_id + .search-combobox-wrap .search-combobox-input').value !== '', avant));
+      const manifeste = await pc.evaluate(async () => {
+        const l = document.querySelector('link[rel=manifest]'); if (!l) return null;
+        return (await (await fetch(l.href)).json()).name; });
+      etape('manifeste de l’appli installable', manifeste === 'Kairos', manifeste);
+      const sw = await attendre(() => pc.evaluate(async () => !!(await navigator.serviceWorker.getRegistration('/'))), 5000);
+      etape('service worker enregistré (portée /)', !!sw);
+      const panneau = await ouvrir(ctx, '/projets/1?tache=1');
+      const dates = await attendre(() => panneau.evaluate(() => {
+        const d = document.getElementById('tache-1-dates'); return d && d.textContent.replace(/\s+/g, ' ').trim(); }), 5000);
+      etape('panneau de la tâche : date de début', /^Début\s*: \d{1,2}(er)? /.test(dates || ''), dates);
       await ctx.close();
     }
 

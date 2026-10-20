@@ -23,15 +23,21 @@
   var champLots = document.getElementById('lots');
   var lotsModifies = !!(champLots && champLots.selectedOptions && champLots.selectedOptions.length);
   if (champLots) champLots.addEventListener('change', function () { if (!champLots._repris) lotsModifies = true; });
+  // Lot 24 (contre-expertise FR2) : une reprise du client et des lots
+  // demandée (phase liée choisie) reste due tant qu'une réponse ne l'a pas
+  // appliquée — même si la phase change avant la réponse.
+  var repriseDue = false;
   function recalculer(e) {
-    var reprendreClient = !!(e && e.target === champLie && champClient && !clientModifie && champLie.value);
-    if ((modifieManuellement && !reprendreClient) || !urlCodePropose) return;
+    if (e && e.target === champLie) repriseDue = !!(champClient && !clientModifie && champLie.value);
+    var reprendreClient = repriseDue && !!(champLie && champLie.value);
+    if ((modifieManuellement && !reprendreClient) || !urlCodePropose || !window.fetch) return;
     var numero = ++derniereDemande;
     fetch(urlCodePropose + '?phase=' + encodeURIComponent(champPhase.value)
           + (champLie && champLie.value ? '&phase_liee_id=' + encodeURIComponent(champLie.value) : ''))
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (numero !== derniereDemande) return;
+        if (reprendreClient) repriseDue = false;
         if (reprendreClient && data.client && !clientModifie) champClient.value = data.client;
         if (reprendreClient && champLots && !lotsModifies && data.lots && data.lots.length) {
           Array.prototype.forEach.call(champLots.options, function (o) { o.selected = data.lots.indexOf(o.value) !== -1; });

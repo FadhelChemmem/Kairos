@@ -14,6 +14,7 @@ def creer(
     tache_id: int | None = None,
     projet_id: int | None = None,
     commentaire_id: int | None = None,
+    pousser: bool = True,
 ) -> int:
     """Crée une notification pour un utilisateur. Appelée depuis les routes
     (posts, projets, auth), après que l'action déclenchante a réussi —
@@ -29,7 +30,21 @@ def creer(
         """,
         (utilisateur_id, categorie, post_id, tache_id, projet_id, message, commentaire_id),
     )
+    if pousser:
+        _pousser([row["id"]])
     return row["id"]
+
+
+def _pousser(ids: list[int]) -> None:
+    """Lot 24 : notification Windows (app/push.py), jamais bloquante."""
+    try:
+        from .. import push
+
+        push.planifier(ids)
+    except Exception:
+        from flask import current_app
+
+        current_app.logger.exception("Notification push non planifiée")
 
 
 def creer_pour_plusieurs(utilisateur_ids: list[int], categorie: str, message: str,
@@ -46,7 +61,8 @@ def creer_pour_plusieurs(utilisateur_ids: list[int], categorie: str, message: st
         if uid == exclure_id:
             continue
         ids.append(creer(uid, categorie, message, post_id=post_id, tache_id=tache_id, projet_id=projet_id,
-                         commentaire_id=commentaire_id))
+                         commentaire_id=commentaire_id, pousser=False))
+    _pousser(ids)
     return ids
 
 
@@ -65,12 +81,11 @@ def retirer(ids: list[int], tache_id: int) -> int:
         return cur.rowcount
 
 
-def list_notifications(user_id: int, limit: int = 50, avec_simulees: bool = False) -> list[dict]:
-    """`avec_simulees` (contre-expertise temps N1) : les rappels
-    « [Simulation] » ne se voient que pendant le test de l'Admin
-    (modes_admin.voit_rappels_simules), jamais par la vraie personne."""
-    sql = """
-        SELECT n.id, n.categorie,
+# Lot 24 : colonnes et jointures communes à la liste (cloche, page) et aux
+# notifications Windows (app/push.py) — le push montre exactement ce que
+# montre la cloche.
+_SELECT_AFFICHE = """
+        SELECT n.id, n.utilisateur_id, n.categorie,
                -- Lot 16 (revue sécurité) : l'extrait d'un post supprimé ne
                -- reste pas lisible dans les notifications.
                -- Lot 18 (audit droits) : plus d'extrait si le projet n'est plus
@@ -86,15 +101,22 @@ def list_notifications(user_id: int, limit: int = 50, avec_simulees: bool = Fals
                     -- modifié, ou d'un post modifié depuis, ne reste pas lisible.
                     WHEN c.supprime_le IS NOT NULL
                     THEN regexp_replace(n.message, '[[:space:] ]*:[[:space:] ]*«.*$', '') || ' (commentaire supprimé).'
-                    WHEN strpos(n.message, '«') > 0 AND (c.modifie_le > n.created_at
-                                              OR (n.commentaire_id IS NULL AND p.modifie_le > n.created_at))
+                    -- Lot 24 (SB-04) : une modification sous une date simulée
+                    -- passée est datée de la création (GREATEST) : comptée aussi.
+                    WHEN strpos(n.message, '«') > 0 AND (c.modifie_le > n.created_at OR c.modifie_le = c.created_at
+                                              OR (n.commentaire_id IS NULL AND (p.modifie_le > n.created_at
+                                                                                OR p.modifie_le = p.created_at)))
                     THEN regexp_replace(n.message, '[[:space:] ]*:[[:space:] ]*«.*$', '') || ' (modifié depuis).'
                     ELSE n.message END AS message,
                n.lu, n.created_at,
                n.post_id, n.tache_id, n.projet_id, n.simulee,
                p.projet_id AS post_projet_id,
                t.projet_id AS tache_projet_id, t.titre AS tache_titre,
-               pr.code AS projet_code
+               -- Lot 24 (MX-03) : ni le code d'un projet que la personne ne
+               -- voit plus.
+               CASE WHEN EXISTS (SELECT 1 FROM v_projet_visibilite vv
+                                 WHERE vv.projet_id = pr.id AND vv.utilisateur_id = n.utilisateur_id)
+                    THEN pr.code END AS projet_code
         FROM notification n
         LEFT JOIN post p ON p.id = n.post_id
         LEFT JOIN tache t ON t.id = n.tache_id
@@ -102,6 +124,14 @@ def list_notifications(user_id: int, limit: int = 50, avec_simulees: bool = Fals
         -- Revue visuelle P2-31 : le code du projet remplace la pastille
         -- « Projet » répétée sur chaque ligne.
         LEFT JOIN projet pr ON pr.id = COALESCE(n.projet_id, p.projet_id, t.projet_id)
+"""
+
+
+def list_notifications(user_id: int, limit: int = 50, avec_simulees: bool = False) -> list[dict]:
+    """`avec_simulees` (contre-expertise temps N1) : les rappels
+    « [Simulation] » ne se voient que pendant le test de l'Admin
+    (modes_admin.voit_rappels_simules), jamais par la vraie personne."""
+    sql = _SELECT_AFFICHE + """
         WHERE n.utilisateur_id = %s AND (%s OR NOT n.simulee)
         ORDER BY n.created_at DESC
         LIMIT %s
@@ -197,10 +227,14 @@ def creer_rappel_dailylog(user_id: int, jours: list, texte, simulee: bool = Fals
                 """
                 INSERT INTO notification (utilisateur_id, categorie, message, rappel_jours, simulee)
                 VALUES (%s, 'rh_info', %s, %s::date[], %s)
+                RETURNING id
                 """,
                 (user_id, ("[Simulation] " if simulee else "") + texte(nouveaux), nouveaux, simulee),
             )
-        return nouveaux
+            cree = cur.fetchone()["id"]
+    if nouveaux and not simulee:
+        _pousser([cree])
+    return nouveaux
 
 
 # Rappels Daily log (rappel_jours, ancien et nouveau format) dont TOUS les
@@ -260,3 +294,19 @@ def a_deja_la_notification(user_id: int, message: str) -> bool:
         (user_id, message),
     )
     return row is not None
+
+
+def pour_push(notification_ids: list[int]) -> list[dict]:
+    """Lot 24 : notifications à pousser vers Windows — encore présentes
+    (« Annuler » ne les a pas retirées), non lues, non simulées, d'une
+    catégorie que la personne (active) a gardée pour le push."""
+    ids = [int(i) for i in notification_ids or []]
+    if not ids:
+        return []
+    return db.query_all(_SELECT_AFFICHE + """
+        JOIN utilisateur u ON u.id = n.utilisateur_id AND u.actif
+        LEFT JOIN utilisateur_preference up ON up.utilisateur_id = n.utilisateur_id
+        WHERE n.id = ANY(%s) AND NOT n.lu AND NOT n.simulee
+          AND (up.push_categories IS NULL OR n.categorie = ANY(up.push_categories))
+        ORDER BY n.id
+    """, (ids,))

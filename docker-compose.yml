@@ -115,6 +115,11 @@ services:
       SESSION_DUREE_ABSOLUE_JOURS: ${SESSION_DUREE_ABSOLUE_JOURS:-30}
       # Compression gzip par l'appli ; false si le proxy compresse déjà.
       COMPRESSION_GZIP: ${COMPRESSION_GZIP:-true}
+      # Lot 24 : notifications Windows (Web Push) — clés VAPID produites par
+      # `docker compose exec web flask cles-push`. Vides : aucun push.
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_SUJET: ${VAPID_SUJET:-}
       # Fuseau horaire (PROMPT_CORRECTIONS.md P2 #16) : sans ça, le
       # conteneur (Debian slim) tourne en UTC — `datetime.date.today()`
       # (utilisé partout : DailyLog, deadlines, verrouillage du jour...)

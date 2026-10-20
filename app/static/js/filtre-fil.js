@@ -73,24 +73,9 @@
 
   // --- Catégorie du fil (lot 14) --------------------------------------------
   var CATEGORIES = ['tout', 'echanges', 'activite'];
-  var CLE = 'kairos-fil-';
-  function lire(page) { try { return window.localStorage.getItem(CLE + page); } catch (e) { return null; } }
-  // Lot 20 : le choix est aussi écrit en cookie, lu par le serveur — la
-  // page complète s'ouvre directement sur la catégorie mémorisée (plus de
-  // bascule à l'ouverture qui marquait « vu » l'onglet par défaut).
-  function cookie(page, valeur) {
-    if (!/^[a-z]+$/.test(page || '') || CATEGORIES.indexOf(valeur) === -1) return;
-    // Lot 21 (revue R31) : un document où l'accès aux cookies lève
-    // (iframe isolée) garde des onglets fonctionnels, choix non mémorisé.
-    try {
-      document.cookie = 'kairos_fil_' + page + '=' + valeur + '; path=/; max-age=31536000; SameSite=Lax' +
-        (window.location.protocol === 'https:' ? '; Secure' : '');
-    } catch (e) { /* choix non mémorisé */ }
-  }
-  function ecrire(page, valeur) {
-    cookie(page, valeur);
-    try { window.localStorage.setItem(CLE + page, valeur); } catch (e) { /* choix non mémorisé */ }
-  }
+  // Lot 24 (décision du gérant, Q3) : l'onglet est retenu PAR PERSONNE,
+  // côté serveur (requête partielle d'un changement d'onglet) — plus de
+  // cookie ni de localStorage propres au navigateur.
   function parametre(nom) { try { return new URL(window.location.href).searchParams.get(nom); } catch (e) { return null; } }
   function adresse(fil, avecAncre, jusqua) {
     var u = new URL(window.location.href);
@@ -127,9 +112,11 @@
       } catch (e) { /* adresse laissée telle quelle */ }
     }
     marquer(nav, fil);
-    if (!K || !K.requete || !document.querySelector(cible)) { window.location.href = adresse(fil, avecAncre, jusqua); return; }
+    if (!K || !K.requete || (K.sansFetch && K.sansFetch()) || !document.querySelector(cible)) { window.location.href = adresse(fil, avecAncre, jusqua); return; }
+    // Lot 24 : un passage automatique (post demandé par son ancre) n'est
+    // pas un choix d'onglet de la personne — rien n'est retenu.
     K.requete({ url: adresse(fil, avecAncre, jusqua), methode: 'GET', cible: cible, mode: 'outer', historique: historique,
-      declencheur: declencheur || null, synchroniser: true });
+      declencheur: declencheur || null, synchroniser: true, historiqueRejoue: !!jusqua });
   }
   // Capture : avant le lien partiel générique du socle (qui voit alors
   // defaultPrevented) — l'adresse est construite depuis la page affichée
@@ -141,7 +128,6 @@
     var fil = a.getAttribute('data-fil');
     if (!nav || CATEGORIES.indexOf(fil) === -1) return;
     e.preventDefault();
-    ecrire(nav.getAttribute('data-fil-filtres'), fil);
     if (courante(nav) === fil && nav.contains(a)) return;
     choisir(nav, fil, 'push', nav.contains(a) ? a : null);
     if (!nav.contains(a)) { var seg = nav.querySelector('a[data-fil="' + fil + '"]'); if (seg) seg.focus(); }
@@ -162,7 +148,12 @@
       if (ancien) ancien.remove();
       if (!texte) return;
       sec.classList.add('fil-epingle-replie');
-      if (texte.scrollHeight <= texte.clientHeight + 2) { sec.classList.remove('fil-epingle-replie'); return; }
+      // Lot 24 (contre-expertise FR3, décision Q9) : replié seulement s'il
+      // dépasse nettement — au moins deux lignes de plus que la hauteur
+      // repliée ; sinon montré en entier.
+      var ligne = parseFloat(window.getComputedStyle(texte).lineHeight) || 21;
+      if (texte.scrollHeight <= texte.clientHeight + 2 * ligne) { sec.classList.remove('fil-epingle-replie'); return; }
+      var ouvertAvant = sec.getAttribute('data-epingle-ouvert') === '1';
       if (!texte.id) texte.id = 'fil-epingle-texte-' + Math.random().toString(36).slice(2, 8);
       var b = document.createElement('button');
       b.type = 'button';
@@ -170,16 +161,28 @@
       b.setAttribute('aria-expanded', 'false');
       b.setAttribute('aria-controls', texte.id);
       b.textContent = 'Lire la suite';
-      b.addEventListener('click', function () {
-        var ouvert = sec.classList.toggle('fil-epingle-replie') === false;
+      function etat(ouvert) {
+        sec.classList.toggle('fil-epingle-replie', !ouvert);
+        sec.setAttribute('data-epingle-ouvert', ouvert ? '1' : '0');
         b.setAttribute('aria-expanded', ouvert ? 'true' : 'false');
         b.textContent = ouvert ? 'Réduire' : 'Lire la suite';
-      });
+      }
+      b.addEventListener('click', function () { etat(sec.classList.contains('fil-epingle-replie')); });
       texte.insertAdjacentElement('afterend', b);
+      if (ouvertAvant) etat(true);
     });
   }
   replierEpingle(document);
   document.addEventListener('kairos:fragment', function (e) { replierEpingle(e.detail && e.detail.racine); });
+  // Lot 24 (FR4) : recalculé quand la largeur change (rotation du
+  // téléphone, fenêtre redimensionnée) ; un texte déplié le reste.
+  var largeur = window.innerWidth, minuteurLargeur = null;
+  window.addEventListener('resize', function () {
+    if (window.innerWidth === largeur) return;
+    largeur = window.innerWidth;
+    clearTimeout(minuteurLargeur);
+    minuteurLargeur = setTimeout(function () { replierEpingle(document); }, 150);
+  });
 
   // --- Bascule « Me concernant » (lot 21, fiche projet) ---------------------
   // a[data-fil-moi][role=switch] : mes posts, mes mentions et les suites
@@ -209,7 +212,7 @@
     if (categorie) u.searchParams.set('fil', categorie);
     var url = u.pathname + u.search;
     majMoi(actif);
-    if (!K || !K.requete || !document.querySelector(cible)) { window.location.href = url; return; }
+    if (!K || !K.requete || (K.sansFetch && K.sansFetch()) || !document.querySelector(cible)) { window.location.href = url; return; }
     K.requete({ url: url, methode: 'GET', cible: cible, mode: 'outer', historique: 'push',
       declencheur: interrupteur || lien, synchroniser: true });
   }
@@ -219,8 +222,11 @@
     e.preventDefault();
     var actif = a.hasAttribute('data-fil-moi') ? a.getAttribute('aria-checked') !== 'true' : false;
     basculerMoi(a, actif);
-    if (!a.hasAttribute('data-fil-moi')) { var sw = document.querySelector('[role="switch"][data-fil-moi]'); if (sw) sw.focus(); }
+    // Lot 24 (FR5) : « Voir tout le fil » — le focus va à l'interrupteur
+    // une fois la liste remplacée (le socle le remettait dans la liste).
+    if (!a.hasAttribute('data-fil-moi')) focusInterrupteur = true;
   }, true);
+  var focusInterrupteur = false;
   // Un interrupteur se bascule aussi à la barre d'espace.
   document.addEventListener('keydown', function (e) {
     var a = e.target;
@@ -260,9 +266,21 @@
   // Lot 23 (décision du gérant) : le post ouvert depuis une notification est
   // signalé une fois, sobrement (halo qui s'efface) ; rien de plus ensuite.
   var dejaSurligne = {};
+  // Lot 24 (test Chrome Q4) : une fois le post signalé, l'adresse perd
+  // `jusqua` et l'ancre — F5 ou Retour ne rejouent pas le halo.
+  function nettoyerAdresse() {
+    try {
+      var u = new URL(window.location.href);
+      if (!u.searchParams.has('jusqua') && !/^#post-\d+$/.test(u.hash)) return;
+      u.searchParams.delete('jusqua');
+      u.hash = '';
+      window.history.replaceState(window.history.state, '', u.pathname + u.search);
+    } catch (e) { /* adresse gardée */ }
+  }
   function surligner(el) {
     if (!el || dejaSurligne[el.id]) return;
     dejaSurligne[el.id] = true;
+    nettoyerAdresse();
     el.classList.remove('post-signale');
     void el.offsetWidth;
     el.classList.add('post-signale');
@@ -274,7 +292,14 @@
     if (!r || !r.id) return;
     var nav = navDe('#' + r.id);
     if (nav && r.hasAttribute('data-fil-categorie')) marquer(nav, r.getAttribute('data-fil-categorie'));
-    if (r.hasAttribute('data-fil-moi')) majMoi(r.getAttribute('data-fil-moi') === '1');
+    if (r.hasAttribute('data-fil-moi')) {
+      majMoi(r.getAttribute('data-fil-moi') === '1');
+      if (focusInterrupteur) {
+        focusInterrupteur = false;
+        var sw = document.querySelector('[role="switch"][data-fil-moi]');
+        if (sw) setTimeout(function () { sw.focus(); }, 0);
+      }
+    }
     if (plus && plus.liste.contains(r) && plus.liste !== r) {
       var n = plus.liste.querySelectorAll('.fil-item').length - plus.n;
       plus = null;
@@ -292,11 +317,9 @@
     }
   });
 
-  // Ouverture de la page : ancre d'un post (notification) d'abord, sinon
-  // catégorie mémorisée pour cette page quand l'adresse n'en donne pas.
+  // Ouverture de la page : ancre d'un post (notification). La catégorie
+  // retenue est déjà appliquée par le serveur (lot 24).
   Array.prototype.forEach.call(document.querySelectorAll('[data-fil-filtres]'), function (nav) {
-    var actuelle = courante(nav);
-    var dansAdresse = parametre('fil');
     var ancre = /^#post-\d+$/.test(window.location.hash || '');
     if (ancre) {
       // Post absent de la page affichée (autre catégorie, ou plus ancien
@@ -307,13 +330,6 @@
         choisir(nav, 'tout', 'replace', null, true, window.location.hash.slice('#post-'.length));
       }
       return;
-    }
-    var memorisee = lire(nav.getAttribute('data-fil-filtres'));
-    // Choix mémorisé avant le lot 20 (localStorage seul) : recopié en
-    // cookie pour les ouvertures suivantes.
-    if (memorisee) cookie(nav.getAttribute('data-fil-filtres'), memorisee);
-    if (!dansAdresse && memorisee && CATEGORIES.indexOf(memorisee) !== -1 && memorisee !== actuelle) {
-      choisir(nav, memorisee, 'replace');
     }
   });
 })();

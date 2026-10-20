@@ -191,6 +191,9 @@ class TestDateSimuleePartout(_Lot20):
 
     def test_blocage_en_date_passee_bloque_le_projet_et_date_les_posts(self):
         jour = self.auj - datetime.timedelta(days=3)
+        # Lot 24 (HD-06) : la tâche existait ce jour-là (un blocage n'est
+        # jamais daté avant la création de sa tâche).
+        self.sql("UPDATE tache SET created_at = now() - interval '30 days' WHERE id = %s", (self.t1,))
         self.login(self.admin)
         self.client.post("/admin/date-simulee", data={"date": jour.isoformat(), "heure": "07:00"})
         self.entrer(self.inter, mode="agir")

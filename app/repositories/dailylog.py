@@ -510,9 +510,12 @@ def lignes_proposees(user: dict, date) -> list[dict]:
     aujourd'hui : commencés (date de début, à défaut création — une tâche
     créée le lendemain reste proposée, le travail précède souvent sa
     saisie) et pas encore clos (tâche : date de fin ; projet : date de
-    clôture). Projets visibles et où elle peut agir (v_projet_action).
+    clôture). Tâches : projets visibles (v_projet_visibilite, lot 21 R9),
+    jamais un jour où elle était bloquée (lots 23-24) ; projets seuls :
+    projets où elle peut agir (v_projet_action).
     Jamais stockées : la route les joint à l'état du jour."""
-    params = {"uid": user["id"], "date": date}
+    fuseau = user.get("fuseau") if user.get("fuseau") in ("Africa/Tunis", "America/Cayenne") else "Africa/Tunis"
+    params = {"uid": user["id"], "date": date, "fuseau": fuseau}
     en_cours_a_la_date = """
         COALESCE(p.date_debut, (p.created_at AT TIME ZONE 'Africa/Tunis')::date) <= %(date)s
         AND (p.etat IN ('en_cours', 'bloque') OR (p.date_cloture IS NOT NULL AND p.date_cloture >= %(date)s))"""
@@ -534,8 +537,18 @@ def lignes_proposees(user: dict, date) -> list[dict]:
                OR COALESCE(t.date_fin, (t.updated_at AT TIME ZONE 'Africa/Tunis')::date) >= %(date)s)
           -- Lot 23 (retour du gérant) : pas une tâche bloquée ce jour-là
           -- (en attente : on n'y travaille pas) ; bloquée APRÈS ce jour, elle
-          -- était encore en cours et reste proposée.
-          AND NOT (t.etat = 'bloque' AND COALESCE((t.bloque_le AT TIME ZONE 'Africa/Tunis')::date, %(date)s) <= %(date)s)
+          -- était encore en cours et reste proposée. Lot 24 (B2, HD-07,
+          -- HD-08) : l'historique compte — le dernier évènement de blocage
+          -- jusqu'à ce jour inclus (blocage, levée, clôture), au fuseau de
+          -- la personne ; débloquée dans la journée, elle est proposée. Sans
+          -- historique (reprise Chronos) : l'état et la date de blocage
+          -- actuels. Toujours sélectionnable à la main (« + Ajouter »).
+          AND NOT COALESCE(
+                (SELECT e.evenement = 'blocage_tache' FROM post e
+                 WHERE e.tache_id = t.id AND e.evenement IN ('blocage_tache', 'deblocage_tache', 'cloture_tache')
+                   AND (e.created_at AT TIME ZONE %(fuseau)s)::date <= %(date)s
+                 ORDER BY e.created_at DESC, e.id DESC LIMIT 1),
+                t.etat = 'bloque' AND COALESCE((t.bloque_le AT TIME ZONE %(fuseau)s)::date, %(date)s) <= %(date)s)
         ORDER BY t.date_echeance NULLS LAST, p.code, t.titre, t.id
         LIMIT %(limit)s
         """,

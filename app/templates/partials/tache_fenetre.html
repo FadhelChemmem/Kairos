@@ -157,6 +157,24 @@
       </dd>
     </div>
 
+    {# Lot 24 (demande du gérant) : début = création de la tâche (aucune
+       saisie) ; fin quand elle est close ; date du blocage en cours. Même
+       affichage en consultation et en modification. #}
+    {% set debut_tache = t.created_at|jour_local if t.created_at is defined else none %}
+    {% if debut_tache %}
+    <div class="tache-prop">
+      <dt>Dates</dt>
+      <dd id="tache-{{ t.id }}-dates">
+        <span class="tache-prop-texte tache-dates">
+          <span>Début&nbsp;: {{ debut_tache|date_courte }}</span>
+          {%- if t.etat == 'bloque' and t.bloque_le %}<span> · Bloquée depuis le {{ t.bloque_le|jour_local|date_courte }}</span>
+          {%- elif t.etat in ('termine', 'verifie', 'abandonne', 'arret') and t.date_fin %}<span> · Fin&nbsp;: {{ t.date_fin|date_courte }} ({{ {'termine': 'terminée', 'verifie': 'vérifiée', 'abandonne': 'abandonnée', 'arret': 'arrêtée'}[t.etat] }})</span>
+          {%- endif %}
+        </span>
+      </dd>
+    </div>
+    {% endif %}
+
     <div class="tache-prop">
       <dt>Intervenants</dt>
       <dd id="tache-{{ t.id }}-intervenants">

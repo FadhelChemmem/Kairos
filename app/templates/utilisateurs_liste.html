@@ -39,6 +39,8 @@
      de contexte (WCAG 3.2.2). Sans JavaScript : bouton « Filtrer ». #}
   <form method="get" action="{{ url_for('utilisateurs.liste') }}" class="filtres-utilisateurs" role="search" aria-label="Filtrer les utilisateurs"
         data-partiel="#utilisateurs-resultats" data-partiel-auto="input:250 change">
+    {# Lot 24 (FI-01) : « formulaire envoyé » — toutes les listes sur « Tous » est un choix. #}
+    <input type="hidden" name="filtres_actifs" value="1">
     <div class="search-mini filtres-recherche">
       <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input type="search" id="filtre-utilisateurs-q" name="q" value="{{ q }}" autocomplete="off" placeholder="Filtrer par nom, e-mail, poste…" aria-label="Filtrer les utilisateurs" class="search-mini-champ">

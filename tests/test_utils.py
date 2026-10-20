@@ -73,7 +73,10 @@ class TestIlYA(unittest.TestCase):
 
 class TestDateCourte(unittest.TestCase):
     def test_jour_sans_zero_initial_et_premier(self):
-        self.assertEqual(date_courte(datetime.date(2026, 10, 5)), "5 oct.")
+        # Lot 24 (SR-02) : année en cours, pour ne pas dépendre de la date.
+        annee = datetime.date.today().year
+        self.assertEqual(date_courte(datetime.date(annee, 10, 5)), "5 oct.")
+        self.assertEqual(date_courte(datetime.date(2026, 10, 5), False), "5 oct.")
         self.assertEqual(date_courte(datetime.date(2026, 6, 1), True), "1er juin 2026")
         self.assertEqual(date_courte(datetime.date(2026, 9, 23)), "23 sept.")
         self.assertEqual(date_courte(None), "")

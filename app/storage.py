@@ -8,6 +8,7 @@ tout en gardant le nom d'origine affiché dans l'interface.
 """
 import logging
 import os
+import re
 import time
 import uuid
 
@@ -57,14 +58,22 @@ def est_vraie_image(file_storage) -> bool:
         return False
     if donnees.startswith(b"\x89PNG\r\n\x1a\n"):
         return donnees[12:16] == b"IHDR" and donnees.rstrip(b"\x00")[-8:-4] == b"IEND"
+    # Lot 24 (contre-expertise SR-01) : des images valides étaient refusées
+    # — JPEG suivi de données après sa fin (certains appareils), GIF dont la
+    # largeur ou la palette contient l'octet « < ». On cherche désormais de
+    # vraies balises HTML en tête de fichier.
+    if _BALISE_HTML.search(donnees[:1024]):
+        return False
     if donnees.startswith(b"\xff\xd8\xff"):
-        return donnees.rstrip(b"\x00")[-2:] == b"\xff\xd9"
+        return b"\xff\xd9" in donnees[3:]
     if donnees[:6] in (b"GIF87a", b"GIF89a"):
-        return len(donnees) > 13 and donnees.rstrip(b"\x00")[-1:] == b"\x3b" and b"<" not in donnees[:64]
+        return len(donnees) > 13 and donnees.rstrip(b"\x00")[-1:] == b"\x3b"
     if donnees[:4] == b"RIFF" and donnees[8:12] == b"WEBP":
         return int.from_bytes(donnees[4:8], "little") + 8 == len(donnees)
     return False
 
+
+_BALISE_HTML = re.compile(rb"<\s*/?\s*(script|html|body|svg|iframe|object|embed|meta|head)\b", re.IGNORECASE)
 
 # Photo de profil : 10 Mo au plus (au-delà, refusée).
 MAX_OCTETS_AVATAR = 10 * 1024 * 1024

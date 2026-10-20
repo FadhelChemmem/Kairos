@@ -78,9 +78,13 @@
              <select> ne porte pas de name : il ne se soumet pas, les champs
              cachés le remplacent. "CM"/"GO" seulement, libellé complet au
              survol. #}
-          <select data-chip-tristate data-name-contient="lot_contient" data-name-egal="lot_egal" aria-label="Lots" data-chip-labelledby="filtre-titre-lots">
-            <option value="CM" title="Charpente métallique" data-mode="{{ 'egal' if 'CM' in lots_egal else ('contient' if 'CM' in lots_contient else '') }}">CM</option>
-            <option value="GO" title="Gros œuvre" data-mode="{{ 'egal' if 'GO' in lots_egal else ('contient' if 'GO' in lots_contient else '') }}">GO</option>
+          {# Lot 24 (FI-03) : sans JavaScript, liste native « contient »
+             (name lot_contient) ; chip-select.js retire ce name et le
+             remplace par ses champs cachés. #}
+          <select multiple name="lot_contient" data-chip-tristate data-name-contient="lot_contient" data-name-egal="lot_egal" aria-label="Lots" data-chip-labelledby="filtre-titre-lots">
+            {% for code, titre in (('CM', 'Charpente métallique'), ('GO', 'Gros œuvre')) %}
+            <option value="{{ code }}" title="{{ titre }}" data-mode="{{ 'egal' if code in lots_egal else ('contient' if code in lots_contient else '') }}"{{ ' selected' if code in lots_egal or code in lots_contient }}>{{ code }}</option>
+            {% endfor %}
           </select>
         </div>
         <div class="filtre-groupe">

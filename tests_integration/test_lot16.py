@@ -174,6 +174,9 @@ class TestModeTestLot16(_BaseModes):
 
     def test_blocage_date_simulee(self):
         jour = self.auj - datetime.timedelta(days=20)
+        # Lot 24 (HD-06) : la tâche existait ce jour-là (un blocage n'est
+        # jamais daté avant la création de sa tâche).
+        self.sql("UPDATE tache SET created_at = now() - interval '30 days' WHERE id = %s", (self.t1,))
         self.entrer(self.inter, mode="agir")
         self.client.post("/admin/date-simulee", data={"date": jour.isoformat(), "heure": "10:00"})
         self.client.post(f"/projets/{self.p1}/taches/{self.t1}/etat", data={"etat": "bloque", "motif": "Attente"})

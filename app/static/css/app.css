@@ -924,8 +924,12 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
    le groupe des chefs garde au moins 260 px, les avatars ne rétrécissent
    pas. Hauteur des <select multiple> réservée avant chip-select.js (CLS). */
 .filtres-une-ligne { flex-wrap: wrap; }
-.filtre-groupe select[multiple][data-chip-select]:not([data-chip-init]) { height: 30px; overflow: hidden; visibility: hidden; }
-.filtre-groupe select[data-chip-tristate]:not([data-chip-init]) { height: 30px; overflow: hidden; visibility: hidden; }
+/* Lot 24 (FI-02) : réservé au cas avec JavaScript — sans lui, les listes
+   natives restent visibles et « Filtrer » marche. */
+/* :where() : même spécificité qu'avant, les réserves de place NF4 (plus
+   bas) gardent la main. */
+:where(html.k-js) .filtre-groupe select[multiple][data-chip-select]:not([data-chip-init]) { height: 30px; overflow: hidden; visibility: hidden; }
+:where(html.k-js) .filtre-groupe select[data-chip-tristate]:not([data-chip-init]) { height: 30px; overflow: hidden; visibility: hidden; }
 /* Recette finale NF4 (CLS sur téléphone) : avant chip-select.js, chaque
    liste réserve la place de ses puces — largeur (listes fixes : 4 états,
    5 phases, 2 lots) et, quand elles passent sur deux lignes faute de

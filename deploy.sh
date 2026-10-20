@@ -35,8 +35,12 @@
 # Lot 21 (revue R5) : `.deploiement_en_cours` garde les repères d'une
 # tentative qui a échoué (version, image et sauvegarde d'AVANT) : une
 # relance ne les remplace pas par ceux de la nouvelle version.
+# Lot 24 (contre-expertise MD-4 à MD-6) : chemin absolu du script gardé
+# avant le `cd` (relance possible quel que soit le dossier de départ) ; un
+# échec imprime le retour arrière ; les repères gardés disent leur date.
 set -euo pipefail
-cd "$(dirname "$0")"
+SCRIPT="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+cd "$(dirname "$SCRIPT")"
 
 REPERES=".deploiement_en_cours"
 
@@ -45,7 +49,19 @@ main() {
 rouge() { printf '\033[31m%s\033[0m\n' "$*"; }
 vert()  { printf '\033[32m%s\033[0m\n' "$*"; }
 etape() { printf '\n\033[1m== %s ==\033[0m\n' "$*"; }
-stop()  { rouge "PROBLÈME : $*"; rouge "Rien d'autre n'a été fait après cette étape. Envoie ce message."; exit 1; }
+stop()  {
+  rouge "PROBLÈME : $*"
+  rouge "Rien d'autre n'a été fait après cette étape. Envoie ce message."
+  if [ -f "$REPERES" ]; then
+    echo "Pour revenir à la version d'avant (seulement si on te le demande), dans cet ordre :"
+    echo "  git switch --detach avant-deploiement"
+    echo "  git tag -f deploye HEAD"
+    echo "  sudo docker tag ${image:-kairos-web}:avant-deploiement ${image:-kairos-web}:latest"
+    echo "  sudo bash scripts/restore_db.sh $(sed -n 's/^sauvegarde=//p' "$REPERES")"
+    echo "  rm -f $REPERES"
+  fi
+  exit 1
+}
 
 etape "1/6 Contrôle du dépôt"
 branche="$(git rev-parse --abbrev-ref HEAD)"
@@ -67,7 +83,7 @@ if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)" ]; then
   fi
   # Patch appliqué ici (git am) puis poussé : à déployer. Version en
   # service : le dernier déploiement, sinon l'état d'avant git am.
-  echo "Dépôt déjà à jour (patch appliqué sur ce serveur) : déploiement de $(git log -1 --format='%h %s')."
+  echo "Code déjà à jour sur ce serveur (patch appliqué ou relance) : déploiement de $(git log -1 --format='%h %s')."
   orig="$(git rev-parse -q --verify 'ORIG_HEAD^{commit}' 2>/dev/null || true)"
   if [ -n "$deploye" ]; then
     avant="$(git rev-parse --short "$deploye")"
@@ -83,7 +99,7 @@ else
   git merge --ff-only origin/master || stop "master local a divergé de GitHub (ne pas forcer : m'envoyer « git log --oneline -5 »)."
   if [ -z "${KAIROS_DEPLOY_RELANCE:-}" ] && ! git diff --quiet "$ancien" HEAD -- deploy.sh; then
     echo "deploy.sh a changé avec cette version : relance dans sa nouvelle version."
-    KAIROS_DEPLOY_RELANCE=1 exec bash "$0" "$@"
+    KAIROS_DEPLOY_RELANCE=1 exec bash "$SCRIPT" "$@"
   fi
 fi
 apres="$(git rev-parse --short HEAD)"
@@ -101,14 +117,16 @@ if [ -f "$REPERES" ]; then
   # restent (l'image en place peut déjà être la nouvelle, la base déjà migrée).
   avant="$(sed -n 's/^avant=//p' "$REPERES")"
   sauvegarde="$(sed -n 's/^sauvegarde=//p' "$REPERES")"
-  rouge "Tentative précédente inachevée : repères de retour arrière gardés ($avant, ${sauvegarde:-sauvegarde inconnue})."
+  quand="$(sed -n 's/^date=//p' "$REPERES")"
+  rouge "Tentative précédente inachevée${quand:+ du $quand} : repères de retour arrière gardés ($avant, ${sauvegarde:-sauvegarde inconnue})."
+  rouge "Si un retour arrière a été fait depuis, supprime $REPERES puis relance."
 else
   git tag -f avant-deploiement "$avant" >/dev/null
   if docker image inspect "$image:latest" >/dev/null 2>&1; then
     docker tag "$image:latest" "$image:avant-deploiement"
     echo "Image précédente gardée : $image:avant-deploiement"
   fi
-  printf 'avant=%s\nsauvegarde=%s\n' "$avant" "$sauvegarde" > "$REPERES"
+  printf 'avant=%s\nsauvegarde=%s\ndate=%s\n' "$avant" "$sauvegarde" "$(date '+%d/%m/%Y %H:%M')" > "$REPERES"
 fi
 
 etape "5/6 Reconstruction et redémarrage"

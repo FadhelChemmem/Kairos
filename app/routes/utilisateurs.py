@@ -23,8 +23,10 @@ from ..repositories import dailylog as dailylog_repo
 from ..repositories import posts as posts_repo
 from ..repositories import projets as projets_repo
 from ..repositories import taches as taches_repo
+from .. import push
+from ..repositories import push as push_repo
 from ..repositories import utilisateurs as utilisateurs_repo
-from ..storage import delete_upload, est_vraie_image, is_image_filename, save_upload
+from ..storage import MAX_OCTETS_AVATAR, delete_upload, est_vraie_image, is_image_filename, save_upload
 from .. import validation as v
 from ..utils import EQUIPE_CHOICES
 
@@ -146,7 +148,16 @@ def _enregistrer_avatar_si_fourni(user_id: int, current_user_id: int) -> None:
     if not fichier or not fichier.filename:
         return
     if not is_image_filename(fichier.filename) or not est_vraie_image(fichier):
-        flash("Photo de profil ignorée\u00a0: formats acceptés — jpg, png, gif, webp.", "error")
+        # Lot 24 (SR-R16) : la vraie raison du refus.
+        trop_grande = False
+        try:
+            fichier.stream.seek(0, 2)
+            trop_grande = fichier.stream.tell() > MAX_OCTETS_AVATAR
+            fichier.stream.seek(0)
+        except (OSError, ValueError, AttributeError):
+            pass
+        flash("Photo de profil ignorée\u00a0: 10\u00a0Mo au plus." if trop_grande else
+              "Photo de profil ignorée\u00a0: fichier illisible ou format non accepté (jpg, png, gif, webp).", "error")
         return
     _, chemin = save_upload(fichier, f"avatars/{user_id}")
     # Fichier orphelin sur disque si l'UPDATE échoue juste après (audit
@@ -446,6 +457,9 @@ def liste():
         return retour
     source = filtres_memoire.source("equipe") or {}
     equipe_code = source.get("equipe_code") or None
+    # Lot 24 (FI-06) : équipe hors liste ignorée, comme le rôle et l'état.
+    if equipe_code not in {code for code, _ in EQUIPE_CHOICES}:
+        equipe_code = None
     role = source.get("role") or None
     # Valeur hors role_enum (URL forgée) : erreur 500 « invalid input value
     # for enum » auparavant (audit sécurité I14) -> filtre ignoré.
@@ -454,7 +468,8 @@ def liste():
     actif_param = source.get("actif") or None
     if actif_param not in (None, "actifs", "inactifs", "tous"):
         actif_param = None
-    filtres_memoire.memoriser("equipe", {"equipe_code": equipe_code, "role": role, "actif": actif_param})
+    filtres_memoire.memoriser("equipe", {"filtres_actifs": "1", "equipe_code": equipe_code, "role": role,
+                                         "actif": actif_param})
     actif = {"actifs": True, "inactifs": False}.get(actif_param)
 
     tous = utilisateurs_repo.list_tous(q=q, equipe_code=equipe_code, role=role, actif=actif)
@@ -614,6 +629,8 @@ def _rendre_mon_profil(erreurs_infos=None, erreurs_mdp=None, statut=200):
         "utilisateur_profil.html", utilisateur=utilisateur, semaine_derniere=_semaine_derniere(utilisateur),
         preferences=utilisateurs_repo.get_preferences(g.user["id"]),
         erreurs_infos=erreurs_infos or {}, erreurs_mdp=erreurs_mdp or {},
+        # Lot 24 : notifications Windows (app/push.py).
+        push_categories=push_repo.get_categories(g.user["id"]), push_libelles=push.CATEGORIES,
     ), statut
 
 

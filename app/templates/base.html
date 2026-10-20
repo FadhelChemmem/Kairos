@@ -22,6 +22,9 @@
   <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}" sizes="32x32">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
+  {# Lot 24 : application installable (Chrome / Edge « Installer Kairos »). #}
+  <link rel="manifest" href="{{ url_for('push.manifeste') }}">
+  <meta name="theme-color" content="#ffffff">
   {# Lot 13 : Plus Jakarta Sans auto-hébergée (licence OFL, static/fonts/
      OFL.txt), plus de Google Fonts. Trois graisses (400, 600, 700 : le
      navigateur prend la plus proche pour 500 et 800), sous-ensemble latin

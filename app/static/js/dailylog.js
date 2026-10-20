@@ -510,6 +510,8 @@
         // « Copier » reste à sa place, désactivé (revue d'interaction P0-4) :
         // « Annuler l'absence » ne glisse plus vers la gauche.
         ajoutWrap.hidden = true; copierBtn.hidden = !d.copie; copierBtn.disabled = true; aideEl.hidden = true;
+        // Lot 24 (test Chrome A2) : jour absent, plus de « + Afficher 5 de plus ».
+        if (plusBtn) plusBtn.hidden = true;
         renderTotal(); return;
       }
       if (listeEl.querySelector('.dl-absentcard')) listeEl.textContent = '';
@@ -1321,7 +1323,20 @@
       if (egales(local, lignesServeur(jour))) { try { sessionStorage.removeItem(cleBrouillon + k); } catch (e) { /* rien */ } return; }
       toast(tr(T.brouillon_trouve, dateCourte(k)), { warn: true, duree: 0, actions: [{ texte: T.restaurer, fn: function () {
         if (sel !== k) return;
-        rows = b.rows; touched(); render();
+        // Lot 24 (contre-expertise HD-02) : les droits viennent du serveur,
+        // pas du brouillon — une ligne devenue figée le reste (valeur du
+        // serveur), et une ligne figée absente du brouillon est gardée.
+        var serveur = {};
+        rows.forEach(function (r) { if (!r.masquee && !r.propose) serveur[r.cle] = r; });
+        var vus = {};
+        var restaures = b.rows.map(function (r) {
+          var s = serveur[r.cle];
+          vus[r.cle] = true;
+          if (!s) return r;
+          return s.modifiable ? Object.assign({}, r, { modifiable: true }) : s;
+        });
+        Object.keys(serveur).forEach(function (c) { if (!vus[c] && !serveur[c].modifiable) restaures.push(serveur[c]); });
+        rows = restaures; touched(); render();
       } }] });
     }
     function appliquerJour(j, opts) {
