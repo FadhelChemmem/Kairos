@@ -2,9 +2,9 @@
 gérant du 20/10) : manifeste, service worker à la racine, abonnements Web
 Push par appareil, notification d'essai, catégories poussées. Voir
 app/push.py."""
+import functools
 import json
 import os
-import threading
 
 from flask import Blueprint, Response, current_app, flash, g, jsonify, redirect, request, url_for
 
@@ -30,6 +30,10 @@ def manifeste():
         "id": "/accueil",
         "start_url": "/accueil",
         "scope": "/",
+        # Lot 25 (décision du gérant, option 2) : dans l'appli installée, la
+        # barre du haut de Kairos prend la place de la barre de titre
+        # (Window Controls Overlay) ; ailleurs, fenêtre classique.
+        "display_override": ["window-controls-overlay", "standalone"],
         "display": "standalone",
         "lang": "fr",
         "background_color": COULEUR_FOND,
@@ -73,8 +77,28 @@ def _refus_mode():
     return None
 
 
+def _json_connecte(vue):
+    """Routes JSON de la carte « Notifications Windows » (lot 25, PU-09) :
+    sans session, une réponse JSON 401 — jamais une redirection que fetch
+    suivrait et prendrait pour un succès."""
+    @functools.wraps(vue)
+    def enveloppe(*args, **kwargs):
+        if g.user is None or not g.user.get("actif", True):
+            return jsonify({"erreur": "non_connecte", "message": "Session expirée\u00a0: rechargez la page."}), 401
+        return vue(*args, **kwargs)
+
+    return enveloppe
+
+
+def _corps() -> dict:
+    """Corps JSON : toujours un objet (PU-07 : une chaîne, un nombre ou une
+    liste donnaient une erreur 500)."""
+    corps = request.get_json(silent=True)
+    return corps if isinstance(corps, dict) else {}
+
+
 @bp.route("/push/cle")
-@login_required
+@_json_connecte
 def cle():
     reponse = jsonify({"cle": push.cle_publique(), "abonnements": push_repo.compter(g.user["id"])})
     reponse.headers["Cache-Control"] = "no-store"
@@ -82,80 +106,77 @@ def cle():
 
 
 @bp.route("/push/etat", methods=["POST"])
-@login_required
+@_json_connecte
 def etat():
-    """Cet appareil est-il abonné pour CE compte ? (l'adresse d'abonnement
-    n'est envoyée qu'en POST, jamais dans une URL)."""
-    corps = request.get_json(silent=True) or {}
-    endpoint = corps.get("endpoint")
-    return jsonify({"abonne": bool(push.endpoint_valide(endpoint) and push_repo.est_abonne(g.user["id"], endpoint))})
+    """Cet appareil est-il abonné pour CE compte, avec la clé actuelle ?
+    (l'adresse d'abonnement n'est envoyée qu'en POST, jamais dans une URL)."""
+    endpoint = _corps().get("endpoint")
+    return jsonify({"abonne": bool(push.endpoint_valide(endpoint)
+                                   and push_repo.est_abonne(g.user["id"], endpoint, push.cle_publique()))})
 
 
 @bp.route("/push/abonnement", methods=["POST"])
-@login_required
+@_json_connecte
 def abonner():
     refus = _refus_mode()
     if refus:
         return refus
     if not push.actif():
         return jsonify({"erreur": "inactif", "message": "Notifications Windows non configurées sur le serveur."}), 409
-    corps = request.get_json(silent=True) or {}
+    corps = _corps()
     endpoint = corps.get("endpoint")
     cles = corps.get("keys") if isinstance(corps.get("keys"), dict) else {}
-    p256dh, auth = cles.get("p256dh"), cles.get("auth")
-    valide = push.endpoint_valide(endpoint) and isinstance(p256dh, str) and isinstance(auth, str)
-    if valide:
-        try:
-            valide = len(push.de_b64url(p256dh)) == 65 and 16 <= len(push.de_b64url(auth)) <= 32
-        except (ValueError, TypeError):
-            valide = False
-    if not valide:
+    if not push.endpoint_valide(endpoint):
+        return jsonify({"erreur": "invalide",
+                        "message": "Service de notification inconnu\u00a0: utilisez Chrome ou Edge."}), 400
+    if not push.cles_valides(cles.get("p256dh"), cles.get("auth")):
         return jsonify({"erreur": "invalide", "message": "Abonnement invalide."}), 400
     navigateur = (request.headers.get("User-Agent") or "")[:200]
-    push_repo.enregistrer(g.user["id"], endpoint, p256dh, auth, navigateur)
+    if not push_repo.enregistrer(g.user["id"], endpoint, cles["p256dh"], cles["auth"], navigateur,
+                                 cle_serveur=push.cle_publique(), maximum=push.MAX_ABONNEMENTS):
+        return jsonify({"erreur": "invalide", "message": "Abonnement invalide."}), 400
     return jsonify({"ok": True, "message": "Notifications activées sur ce PC."})
 
 
 @bp.route("/push/desabonnement", methods=["POST"])
-@login_required
+@_json_connecte
 def desabonner():
     refus = _refus_mode()
     if refus:
         return refus
-    corps = request.get_json(silent=True) or {}
-    endpoint = corps.get("endpoint")
+    endpoint = _corps().get("endpoint")
     if push.endpoint_valide(endpoint):
         push_repo.supprimer(g.user["id"], endpoint)
     return jsonify({"ok": True, "message": "Notifications désactivées sur ce PC."})
 
 
 @bp.route("/push/essai", methods=["POST"])
-@login_required
+@_json_connecte
 def essai():
     """« Envoyer une notification d'essai » à tous les appareils activés de
-    la personne (en arrière-plan)."""
+    la personne, par la file d'envoi (lot 25, PU-14 : plus un fil par clic,
+    une toutes les 15 s au plus)."""
     refus = _refus_mode()
     if refus:
         return refus
-    abonnements = push_repo.abonnements(g.user["id"]) if push.actif() else []
-    if not abonnements:
+    if not push.actif() or not push_repo.compter(g.user["id"]):
         return jsonify({"erreur": "aucun", "message": "Aucun PC n’est activé pour vos notifications."}), 409
-    message = {"titre": "Kairos", "texte": "Notification d’essai\u00a0: les notifications Windows fonctionnent.",
-               "url": "/notifications", "id": 0}
-    app = current_app._get_current_object()
-
-    def _envoyer():
-        with app.app_context():
-            for abonnement in abonnements:
-                code = push.envoyer(abonnement, message)
-                if code in (404, 410):
-                    push_repo.supprimer_endpoint(abonnement["endpoint"])
-
-    if app.testing:
-        _envoyer()
-    else:
-        threading.Thread(target=_envoyer, daemon=True).start()
+    if not push.planifier_essai(g.user["id"]):
+        return jsonify({"erreur": "trop_tot",
+                        "message": "Notification d’essai déjà envoyée\u00a0: patientez quelques secondes."}), 429
     return jsonify({"ok": True, "message": "Notification d’essai envoyée."})
+
+
+@bp.route("/push/appareils/<int:abonnement_id>/retirer", methods=["POST"])
+@login_required
+def retirer_appareil(abonnement_id):
+    """Retirer un appareil de la liste (lot 25, U4 : PC perdu, ancien PC,
+    PC partagé)."""
+    if g.get("admin_reel") or g.get("lecture_seule"):
+        flash("Indisponible en «\u00a0Voir comme\u00a0» ou «\u00a0Agir comme\u00a0».", "error")
+    elif push_repo.supprimer_par_id(g.user["id"], abonnement_id):
+        flash("Appareil retiré\u00a0: il ne reçoit plus vos notifications Windows.", "success")
+    return redirect(url_for("utilisateurs.mon_profil") + "#notifications-windows")
 
 
 @bp.route("/push/categories", methods=["POST"])
@@ -164,7 +185,11 @@ def categories():
     """Catégories envoyées en notification Windows (toutes par défaut).
     Formulaire classique (sans JavaScript) ou partiel."""
     if g.get("admin_reel") or g.get("lecture_seule"):
-        flash("Indisponible en «\u00a0Voir comme\u00a0» ou «\u00a0Agir comme\u00a0».", "error")
+        message = "Indisponible en «\u00a0Voir comme\u00a0» ou «\u00a0Agir comme\u00a0»."
+        # Lot 25 (matrice U2) : en partiel, un refus 403 comme les autres routes.
+        if partiel.est_partiel():
+            return partiel.refuser(message, 403, erreur="mode_admin")
+        flash(message, "error")
         return redirect(url_for("utilisateurs.mon_profil"))
     choisies = [c for c in request.form.getlist("categories") if c in push.CATEGORIES]
     push_repo.set_categories(g.user["id"], None if len(choisies) == len(push.CATEGORIES) else choisies)

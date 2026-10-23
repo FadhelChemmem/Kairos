@@ -328,6 +328,28 @@ n'existent alors plus (404), un Admin encore en « Agir comme » revient à
 son compte au prochain clic et la vraie date reprend. **À couper avant la
 mise en service réelle.** « Voir comme » (lecture seule) reste disponible.
 
+### Notifications Windows (appli installée)
+
+Kairos s'installe comme une application (Chrome ou Edge : icône
+« Installer » dans la barre d'adresse) et affiche ses notifications dans
+Windows (lots 24 et 25).
+
+1. **HTTPS obligatoire** : `APP_BASE_URL` en `https://` (voir « Reverse
+   proxy »). En http, le navigateur refuse les notifications et
+   l'installation ; la carte « Notifications Windows » le dit.
+2. Clés, une seule fois sur le serveur :
+   `sudo docker compose exec web flask cles-push`, copier les deux lignes
+   affichées dans `.env` (`VAPID_PRIVATE_KEY`, `VAPID_PUBLIC_KEY`), puis
+   `sudo docker compose up -d`. Sans clés, rien ne change.
+3. Chaque personne, dans « Mes informations » : « Activer sur ce PC »,
+   choix des catégories, « Envoyer une notification d'essai ». La liste
+   « Appareils activés » permet de retirer un PC perdu ou partagé. La
+   déconnexion et le changement de mot de passe retirent tous les PC du
+   compte.
+4. Seuls les services push publics (Google, Mozilla, Microsoft, Apple) sont
+   contactés, 10 appareils au plus par compte.
+5. Changer de clés : voir `.env.example` (les PC réactivent).
+
 ## Mettre à jour (après un `git pull`)
 
 Sur le serveur, en une commande (contrôle du dépôt, récupération de

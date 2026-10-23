@@ -12,7 +12,7 @@
     <a href="{{ url_for('projets.detail', projet_id=t.projet_id, tache=t.id) }}" class="acc-tache">
       <span class="acc-tache-texte">
         <span class="acc-tache-titre">{{ t.titre }}</span>
-        <span class="acc-sous">{% if t.mienne|default(false) and tdp.mode == 'toutes' %}<span class="tdp-a-vous">À vous</span> · {% endif %}{{ t.projet_nom }}{% if t.date_echeance %} · éch. {{ t.date_echeance|date_courte }}{% endif %}</span>
+        <span class="acc-sous">{% if t.mienne|default(false) and tdp.mode == 'toutes' %}<span class="tdp-a-vous">À vous</span> · {% endif %}{% if t.projet_code %}{{ t.projet_code }}_{% endif %}{{ t.projet_nom }}{% if t.date_echeance %} · éch. {{ t.date_echeance|date_courte }}{% endif %}</span>
       </span>
       {% if retard_j %}<span class="pill pill-sm pill-rouge acc-retard" title="{{ en_retard_de(t.date_echeance, aujourdhui) }}">{{ retard_j }}&nbsp;j de retard<span class="sr-only">, {{ en_retard_de(t.date_echeance, aujourdhui) }}</span></span>{% endif %}
     </a>

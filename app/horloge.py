@@ -101,30 +101,63 @@ def instant_simule() -> datetime.datetime | None:
         pose = None
     if heure is None:
         depart = datetime.datetime.fromtimestamp(pose, tunis) if pose is not None else reel.astimezone(tunis)
-        heure = depart.time()
+        # Lot 25 (SB-04) : posée dans la dernière minute réelle avant
+        # minuit, la date part au plus tard de 23:59:00 (elle se figeait).
+        heure = min(depart.time(), SEUIL_RALENTI)
     instant = datetime.datetime.combine(jour, heure, tzinfo=tunis)
     if pose is None:
         return instant
-    return avancer(instant, max(0.0, reel.timestamp() - pose))
+    return _jamais_en_arriere(avancer(instant, max(0.0, reel.timestamp() - pose)))
 
 
 SEUIL_RALENTI = datetime.time(23, 59)
 FACTEUR_RALENTI = 1000
+_FENETRE = 59.999        # secondes de 23:59:00 à 23:59:59.999 (la dernière ms reste au garde-fou)
 
 
 def avancer(instant: datetime.datetime, ecoule: float) -> datetime.datetime:
     """Instant simulé posé à `instant`, `ecoule` secondes réelles plus tard :
-    il avance au rythme réel jusqu'à 23:59:00 du jour simulé, puis mille fois
-    plus lentement, sans jamais passer au lendemain (lot 24)."""
+    il avance au rythme réel jusqu'à 23:59:00 du jour simulé, puis de plus
+    en plus lentement (d'abord mille fois plus lent), sans jamais passer au
+    lendemain. Lot 25 (SA-L25-02) : la dernière minute est approchée sans
+    être atteinte (plus de blocage à 23:59:59.999999 après 16 h 40)."""
     jour, tz = instant.date(), instant.tzinfo
     seuil = datetime.datetime.combine(jour, SEUIL_RALENTI, tzinfo=tz)
-    fin = datetime.datetime.combine(jour, datetime.time.max, tzinfo=tz)
     if instant < seuil:
         avant_seuil = (seuil - instant).total_seconds()
         if ecoule <= avant_seuil:
             return instant + datetime.timedelta(seconds=ecoule)
         instant, ecoule = seuil, ecoule - avant_seuil
-    return min(instant + datetime.timedelta(seconds=ecoule / FACTEUR_RALENTI), fin)
+    deja = (instant - seuil).total_seconds()
+    tau = _FENETRE * FACTEUR_RALENTI
+    # Temps « équivalent » déjà écoulé dans la fenêtre, puis approche
+    # asymptotique : pente initiale 1/1000, jamais la fin de la fenêtre.
+    if deja >= _FENETRE:
+        return datetime.datetime.combine(jour, datetime.time(23, 59, 59, 999000), tzinfo=tz)
+    e0 = tau * deja / (_FENETRE - deja)
+    e = e0 + ecoule
+    return seuil + datetime.timedelta(seconds=_FENETRE * e / (e + tau))
+
+
+def _jamais_en_arriere(instant: datetime.datetime) -> datetime.datetime:
+    """Lot 25 (SA-L25-02, SB-04) : deux instants simulés successifs d'une
+    même session ne sont jamais égaux ni décroissants (au moins une
+    microseconde d'écart), toujours dans le jour simulé — un blocage puis
+    une création de tâche restent dans l'ordre même après des jours."""
+    try:
+        from flask import session
+        cle = "instant_simule_dernier"
+        dernier = session.get(cle)
+        jour = instant.date().isoformat()
+        fin = datetime.datetime.combine(instant.date(), datetime.time.max, tzinfo=instant.tzinfo)
+        if isinstance(dernier, dict) and dernier.get("jour") == jour and isinstance(dernier.get("t"), (int, float)):
+            precedent = datetime.datetime.fromtimestamp(dernier["t"], instant.tzinfo)
+            if instant <= precedent:
+                instant = min(precedent + datetime.timedelta(microseconds=1), fin)
+        session[cle] = {"jour": jour, "t": instant.timestamp()}
+    except Exception:
+        pass
+    return instant
 
 
 def maintenant_reel(fuseau: str | ZoneInfo | None = None) -> datetime.datetime:

@@ -19,6 +19,10 @@
     </div>
   </div>
   {% endfor %}
+  {# Lot 25 (FL-04) : au-delà de 50, les plus anciennes restent atteignables. #}
+  {% if plus_url|default(none) %}
+  <a href="{{ plus_url }}" id="notifs-plus" class="btn btn-pleine-largeur" data-partiel="#notifications-liste" data-partiel-historique="aucun">Afficher plus</a>
+  {% endif %}
 </div>
 {% if oob_nb %}{% include "partials/notifs_nb.html" %}{% endif %}
 {% if oob_compte %}{% include "partials/notifications_compte.html" %}{% endif %}

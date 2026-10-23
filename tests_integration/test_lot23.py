@@ -158,7 +158,8 @@ class TestPanneauEtFil(_Lot20):
         self.login(self.inter)
         self.client.set_cookie("kairos_fil_projet", "activite")
         r = self.client.post(f"/notifications/{n}/ouvrir")
-        self.assertEqual(r.headers["Location"], f"/projets/{self.p1}?fil=tout&jusqua={post}#post-{post}")
+        c = self.sql("SELECT max(id) AS id FROM post_commentaire WHERE post_id = %s", (post,))[0]["id"]
+        self.assertEqual(r.headers["Location"], f"/projets/{self.p1}?fil=tout&jusqua={post}&commentaire={c}#post-{post}")
         page = self.texte(self.client.get(r.headers["Location"]))
         self.assertIn(f'id="post-{post}"', page)
         self.assertIn('data-fil-categorie="tout"', page)

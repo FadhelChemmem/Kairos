@@ -343,7 +343,7 @@ class TestBaseEtLectureSeule(_Base):
         self.assertIn('data-recherche-ouvrir aria-expanded="false" aria-controls="recherche-globale"', html)
         self.assertIn('data-url="/recherche/api"', html)
         # Zone en popover + régions live persistantes, vides au chargement (audit a11y R2).
-        self.assertIn('<div id="k-toasts" class="k-toasts" popover="manual"><div id="k-annonce" class="sr-only" role="status" aria-atomic="true"></div><div id="k-alerte" class="sr-only" role="alert" aria-atomic="true"></div></div>', html)
+        self.assertIn('<div id="k-toasts" class="k-toasts" popover="manual" role="region" aria-label="Messages"><div id="k-annonce" class="sr-only" role="status" aria-atomic="true"></div><div id="k-alerte" class="sr-only" role="alert" aria-atomic="true"></div></div>', html)
         # Scripts communs en un seul fichier (audit a11y-perf N9).
         self.assertRegex(html, r'<script src="/static/paquets/commun\.js\?v=[0-9a-f]{12}" defer></script>')
         self.assertNotIn("js/kairos-partiel.js", html)

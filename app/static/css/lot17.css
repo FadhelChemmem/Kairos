@@ -6,21 +6,21 @@
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px;
   padding: 4px; border-radius: var(--rayon-m); background: var(--hover-bg);
 }
-.tache-etats-3 > .tache-etat-choix {
+.tache-etats-3 .tache-etat-choix {
   min-height: 40px; border-radius: calc(var(--rayon-m) - 2px); border: 1px solid transparent; background: none;
   padding: 0 10px 0 22px; justify-content: center; font-weight: var(--graisse-forte); color: var(--text-secondary);
   display: inline-flex; align-items: center;
 }
-.tache-etats-3 > .tache-etat-choix:hover:not([disabled]):not([aria-pressed="true"]) { background: var(--surface); color: var(--text-strong); }
-.tache-etats-3 > .tache-etat-choix[aria-pressed="true"] { padding: 0 10px 0 22px; box-shadow: 0 1px 3px rgb(20 30 25 / .14); }
-.tache-etats-3 > .tache-etat-choix.tache-etat-en_cours[aria-pressed="true"] { border-color: var(--etat-cours-texte); }
-.tache-etats-3 > .tache-etat-choix.tache-etat-bloque[aria-pressed="true"] { border-color: var(--etat-bloque-texte); }
-.tache-etats-3 > .tache-etat-choix.tache-etat-termine[aria-pressed="true"] { border-color: var(--etat-termine-texte); }
-.tache-etats-3 > .tache-etat-choix[disabled] { opacity: .45; cursor: not-allowed; }
+.tache-etats-3 .tache-etat-choix:hover:not([disabled]):not([aria-pressed="true"]) { background: var(--surface); color: var(--text-strong); }
+.tache-etats-3 .tache-etat-choix[aria-pressed="true"] { padding: 0 10px 0 22px; box-shadow: 0 1px 3px rgb(20 30 25 / .14); }
+.tache-etats-3 .tache-etat-choix.tache-etat-en_cours[aria-pressed="true"] { border-color: var(--etat-cours-texte); }
+.tache-etats-3 .tache-etat-choix.tache-etat-bloque[aria-pressed="true"] { border-color: var(--etat-bloque-texte); }
+.tache-etats-3 .tache-etat-choix.tache-etat-termine[aria-pressed="true"] { border-color: var(--etat-termine-texte); }
+.tache-etats-3 .tache-etat-choix[disabled] { opacity: .45; cursor: not-allowed; }
 /* Bouton « armé » : sa petite fenêtre est ouverte, l'état n'a pas changé. */
-.tache-etats-3 > .tache-etat-choix[aria-expanded="true"] { border: 1.5px dashed currentColor; background: var(--surface); }
-.tache-etats-3 > .tache-etat-bloque[aria-expanded="true"] { color: var(--etat-bloque-texte); }
-.tache-etats-3 > .tache-etat-termine[aria-expanded="true"] { color: var(--etat-termine-texte); }
+.tache-etats-3 .tache-etat-choix[aria-expanded="true"] { border: 1.5px dashed currentColor; background: var(--surface); }
+.tache-etats-3 .tache-etat-bloque[aria-expanded="true"] { color: var(--etat-bloque-texte); }
+.tache-etats-3 .tache-etat-termine[aria-expanded="true"] { color: var(--etat-termine-texte); }
 .tache-etats-autres { margin: 6px 0 0 4px; font-size: var(--texte-xs); color: var(--text-muted); }
 .tache-etat-lien { border: 0; background: none; padding: 0; font: inherit; color: var(--text-secondary);
   text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }

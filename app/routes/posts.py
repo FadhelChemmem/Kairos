@@ -115,6 +115,18 @@ def _next_sans_ancre() -> str:
     return suivant if is_safe_next(suivant) else url_for("main.accueil")
 
 
+def _depuis_la_fiche(projet_id: int) -> bool:
+    """La requête vient-elle de la fiche de CE projet (page d'origine, à
+    défaut le champ `next`) ? Lot 25 (SB-01) : « Annuler » la suppression
+    d'un épinglé depuis l'accueil ne doit pas y injecter le fil de la fiche."""
+    import urllib.parse
+
+    for source in (request.referrer, request.form.get("next")):
+        if source:
+            return urllib.parse.urlsplit(source).path.rstrip("/") == f"/projets/{int(projet_id)}"
+    return False
+
+
 def _reponse_commentaires(post_id: int, **extra):
     """Bloc des commentaires d'un post re-rendu (lot 13, audit UX I6) : la
     cible #post-<id>-commentaires, et hors cible le compteur du post."""
@@ -248,6 +260,13 @@ def creer():
                 else:
                     return _refus("Choisissez un projet ou au moins une équipe destinataire.", 422, "equipes")
 
+    # Lot 25 (FL-02) : même règle qu'en modification et dans les
+    # commentaires — « @Prénom Nom » écrit dans le texte tague aussi, en plus
+    # des puces. Jamais soi-même (U7).
+    candidats = [u for u in utilisateurs_repo.list_actifs() if u["id"] != g.user["id"]]
+    mentionne_ids = [uid for uid in dict.fromkeys(mentionne_ids + posts_repo.personnes_taguees(contenu, candidats))
+                     if uid != g.user["id"]]
+
     # Idem pour les mentions : on ne peut taguer que des personnes qui
     # voient déjà ce projet (pas de fuite d'existence d'un utilisateur vers
     # un projet auquel il n'a pas accès). Sans projet : toute personne
@@ -341,6 +360,8 @@ def creer():
 
 
 MAX_FICHIERS_POST = 10
+# Lot 25 (FL-05) : un commentaire, comme un post.
+MAX_FICHIERS_COMMENTAIRE = 10
 
 
 @bp.record_once
@@ -459,7 +480,8 @@ def commenter(post_id: int):
     if mentionne_user_id and not posts_repo.peut_voir(post["id"], post["projet_id"], mentionne_user_id):
         mentionne_user_id = None
     # Tags "@Prénom Nom" écrits dans le texte (retour Fadhel, 2026-09-29).
-    mention_ids = _tags_du_texte(post, contenu)
+    ecartes: list[str] = []
+    mention_ids = _tags_du_texte(post, contenu, ecartes)
 
     # Réponse en ligne (IDOR, PROMPT_CORRECTIONS.md P0 #1) : le commentaire
     # visé DOIT appartenir à CE post (pas un id deviné d'un autre post/
@@ -516,7 +538,8 @@ def commenter(post_id: int):
         # Lot 14 : le champ principal reste ouvert après l'envoi (le focus y
         # revient) ; après une réponse, son état est gardé par la page.
         return _reponse_commentaires(post_id, nouveau_commentaire_id=commentaire_id,
-                                     composer_ouvert=parent_commentaire_id is None)
+                                     composer_ouvert=parent_commentaire_id is None,
+                                     toasts=_toast_ecartes(ecartes))
     return _safe_redirect()
 
 
@@ -540,15 +563,32 @@ def _notifier_auteur(post: dict, parent_commentaire: dict | None, deja: set) -> 
         current_app.logger.exception("Notification de l'auteur impossible (post %s)", post["id"])
 
 
-def _tags_du_texte(post: dict, contenu: str) -> list[int]:
+def _tags_du_texte(post: dict, contenu: str, ecartes: list[str] | None = None) -> list[int]:
     """Personnes taguées "@Prénom Nom" dans `contenu`, parmi celles qui
     voient le post (on ne tague pas quelqu'un qui ne pourrait pas le lire),
-    sans soi-même."""
+    sans soi-même. Lot 25 (U5) : `ecartes` reçoit le nom des personnes
+    écrites mais écartées (elles ne voient pas le post)."""
     candidats = [u for u in utilisateurs_repo.list_actifs() if u["id"] != g.user["id"]]
-    return [
-        uid for uid in posts_repo.personnes_taguees(contenu, candidats)
-        if posts_repo.peut_voir(post["id"], post["projet_id"], uid)
-    ]
+    noms = {u["id"]: f"{u['prenom']} {u['nom']}" for u in candidats}
+    gardes = []
+    for uid in posts_repo.personnes_taguees(contenu, candidats):
+        if posts_repo.peut_voir(post["id"], post["projet_id"], uid):
+            gardes.append(uid)
+        elif ecartes is not None:
+            ecartes.append(noms[uid])
+    return gardes
+
+
+def _toast_ecartes(ecartes: list[str]) -> list[dict]:
+    """Lot 25 (U5) : une mention écartée est signalée (elle disparaissait
+    sans message)."""
+    if not ecartes:
+        return []
+    if len(ecartes) == 1:
+        texte = f"{ecartes[0]} ne voit pas ce post\u00a0: pas de mention."
+    else:
+        texte = f"{', '.join(ecartes[:-1])} et {ecartes[-1]} ne voient pas ce post\u00a0: pas de mention."
+    return [partiel.toast(texte, "info")]
 
 
 def _extrait(texte: str | None, longueur: int = 80) -> str:
@@ -597,8 +637,16 @@ def modifier_commentaire(commentaire_id: int):
     nouveau_fichier = request.files.get("fichier")
     if nouveau_fichier and nouveau_fichier.filename and (refus := refus_fichier(nouveau_fichier)):
         return _refus(refus, 422, "fichier")
+    # Lot 25 (FL-05) : chaque « Modifier » ajoutait une pièce, sans limite.
+    if nouveau_fichier and nouveau_fichier.filename:
+        retirer = set(v.ids_entiers(request.form.getlist("retirer_pj")))
+        gardees = [pj for pj in posts_repo.pieces_du_commentaire(commentaire_id) if pj["id"] not in retirer]
+        if len(gardees) + 1 > MAX_FICHIERS_COMMENTAIRE:
+            return _refus(f"Au plus {MAX_FICHIERS_COMMENTAIRE} fichiers par commentaire.", 422, "fichier")
     post = {"id": commentaire["post_id"], "projet_id": commentaire["projet_id"]}
-    nouveaux = posts_repo.modifier_commentaire(commentaire_id, g.user["id"], contenu, _tags_du_texte(post, contenu))
+    ecartes: list[str] = []
+    nouveaux = posts_repo.modifier_commentaire(commentaire_id, g.user["id"], contenu,
+                                               _tags_du_texte(post, contenu, ecartes))
     if nouveaux is None:
         abort(404)
     # Lot 15 : retirer ou ajouter une pièce jointe en modifiant le commentaire.
@@ -623,7 +671,7 @@ def modifier_commentaire(commentaire_id: int):
                                      url_for("posts.restaurer_pieces_commentaire", commentaire_id=commentaire_id),
                                      {"pj": retirees}, f"#post-{commentaire['post_id']}-commentaires")
         return _reponse_commentaires(commentaire["post_id"], commentaire_modifie_id=commentaire_id,
-                                     toasts=[partiel.toast(texte, action=action)])
+                                     toasts=[partiel.toast(texte, action=action)] + _toast_ecartes(ecartes))
     return _safe_redirect()
 
 
@@ -637,6 +685,8 @@ def restaurer_pieces_commentaire(commentaire_id: int):
     refus = _refus_restauration(commentaire)
     if refus:
         return refus
+    if len(posts_repo.pieces_du_commentaire(commentaire_id)) + len(jeton["pj"]) > MAX_FICHIERS_COMMENTAIRE:
+        return _refus(f"Au plus {MAX_FICHIERS_COMMENTAIRE} fichiers par commentaire\u00a0: retirez-en un d’abord.", 409)
     posts_repo.restaurer_pieces(jeton["pj"], g.user["id"], commentaire_id=commentaire_id)
     if partiel.est_partiel():
         return _reponse_commentaires(commentaire["post_id"], toasts=[partiel.toast("Fichier rétabli.")])
@@ -824,7 +874,8 @@ def modifier(post_id: int):
         # retirée qui reprend son ancien post) ; seules les nouvelles sont
         # prévenues.
         deja = set(posts_repo.mentions_du_post(post_id))
-        tags = _tags_du_texte(post, contenu)
+        ecartes: list[str] = []
+        tags = _tags_du_texte(post, contenu, ecartes)
         # Lot 24 (« Me concernant », Q10) : un « @Prénom Nom » effacé du
         # texte retire la mention (sans notification) ; les personnes
         # taguées par les puces à la création, hors du texte, restent.
@@ -852,7 +903,7 @@ def modifier(post_id: int):
     if partiel.est_partiel():
         action = (_action_annuler("post", post_id, "pj", url_for("posts.restaurer_pieces", post_id=post_id),
                                   {"pj": retirees}, f"#post-{post_id}") if retirees else None)
-        return _reponse_post(post_id, [partiel.toast(texte, action=action)])
+        return _reponse_post(post_id, [partiel.toast(texte, action=action)] + _toast_ecartes(ecartes))
     flash(texte, "success")
     return _safe_redirect()
 
@@ -867,6 +918,9 @@ def restaurer_pieces(post_id: int):
     refus = _refus_restauration(post)
     if refus:
         return refus
+    # Lot 25 (FL-05) : « Annuler » ne dépasse pas non plus la limite.
+    if len(posts_repo.pieces_du_post(post_id)) + len(jeton["pj"]) > MAX_FICHIERS_POST:
+        return _refus(f"Au plus {MAX_FICHIERS_POST} fichiers par post\u00a0: retirez-en un d’abord.", 409)
     posts_repo.restaurer_pieces(jeton["pj"], g.user["id"], post_id=post_id)
     if partiel.est_partiel():
         return _reponse_post(post["id"], [partiel.toast("Fichier rétabli.")])
@@ -912,7 +966,7 @@ def restaurer(post_id: int):
     if not posts_repo.restaurer_post(post_id, g.user["id"], jeton["t"]):
         return _refus(MESSAGE_ANNULER_PERIME, 409)
     if partiel.est_partiel():
-        if jeton.get("ep") and post.get("projet_id"):
+        if jeton.get("ep") and post.get("projet_id") and _depuis_la_fiche(post["projet_id"]):
             # Lot 24 (contre-expertise EC-01) : le post était épinglé — il
             # revient sans épingle (règle du lot 21) : sur la fiche,
             # l'encadré « Épinglé » se vide et la carte rejoint le fil ;

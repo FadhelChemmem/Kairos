@@ -110,6 +110,10 @@ def avatar(user_id: int):
     utilisateur = utilisateurs_repo.get_utilisateur(user_id)
     if utilisateur is None or not utilisateur["avatar_chemin"]:
         abort(404)
+    # Lot 25 (UT-05) : pour un Client, un compte désactivé n'existe pas
+    # (comme son profil, lot 20 N6) — sa photo non plus.
+    if g.user["role"] == "client" and not utilisateur.get("actif", True) and utilisateur["id"] != g.user["id"]:
+        abort(404)
     # Lot 11 (intégration) : toute réponse authentifiée est en no-store
     # (app/__init__.py), sauf l'avatar demandé avec l'empreinte de la photo
     # COURANTE (?v=, voir utils.avatar_url) — cache privé d'une heure :

@@ -105,7 +105,9 @@
       var lab = onglet(intent);
       if (lab) lab.style.display = ok ? '' : 'none';
       var r = radio(intent);
-      if (r) r.disabled = !ok;
+      // Lot 25 (UX-A3) : un type indisponible sort aussi de l'arbre
+      // d'accessibilité (son étiquette est cachée).
+      if (r) { r.disabled = !ok; r.hidden = !ok; }
     });
     var courant = radio(intentCourant());
     if (!courant || courant.disabled) {
@@ -116,6 +118,19 @@
     // que le post d'origine (imposé par le serveur) — pas de choix ici.
     if (equipesRow) equipesRow.style.display = (sansProjet && !projetImpose && intentCourant() === 'information') ? '' : 'none';
     if (projetOptionnel) projetOptionnel.style.display = intentCourant() === 'information' ? '' : 'none';
+    majCible();
+  }
+
+  // Lot 25 (UX U4) : « Sur 26101X_… » près du bouton — le projet présélectionné
+  // (dernier utilisé) se voit au moment de publier.
+  function majCible() {
+    var pid = projetCourant();
+    var o = pid && pid !== AUCUN ? optionProjet(pid) : null;
+    var texte = o ? 'Sur\u00a0' + o.textContent.trim() : '';
+    dialog.querySelectorAll('[data-post-dialog-cible]').forEach(function (el) {
+      el.textContent = texte;
+      el.title = texte;
+    });
   }
 
   // Lot 13 (contre-expertise rôles I7) : l'onglet Tâche ne propose que les

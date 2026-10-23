@@ -142,6 +142,7 @@
     clearTimeout(attente);
     var n = ++seq;
     if (q.length < 2) { montrer(false); if (statut) statut.textContent = ''; return; }
+    if (!window.fetch) return;   // lot 25 (R-18) : le formulaire classique reste
     timer = setTimeout(function () {
       attente = setTimeout(function () { if (n === seq) squelettes(); }, 150);
       fetch(url + '?q=' + encodeURIComponent(q), { credentials: 'same-origin' })

@@ -544,11 +544,25 @@ def lignes_proposees(user: dict, date) -> list[dict]:
           -- historique (reprise Chronos) : l'état et la date de blocage
           -- actuels. Toujours sélectionnable à la main (« + Ajouter »).
           AND NOT COALESCE(
+                -- Lot 25 (DL-01) : une réouverture (« etat_tache », après la
+                -- clôture du projet qui ferme ses tâches sans post) lève aussi
+                -- un blocage antérieur.
                 (SELECT e.evenement = 'blocage_tache' FROM post e
-                 WHERE e.tache_id = t.id AND e.evenement IN ('blocage_tache', 'deblocage_tache', 'cloture_tache')
+                 WHERE e.tache_id = t.id
+                   AND e.evenement IN ('blocage_tache', 'deblocage_tache', 'cloture_tache', 'etat_tache')
                    AND (e.created_at AT TIME ZONE %(fuseau)s)::date <= %(date)s
                  ORDER BY e.created_at DESC, e.id DESC LIMIT 1),
-                t.etat = 'bloque' AND COALESCE((t.bloque_le AT TIME ZONE %(fuseau)s)::date, %(date)s) <= %(date)s)
+                -- Lot 25 (SB-05) : aucun évènement jusqu'à ce jour mais le
+                -- premier qui suit est une levée (blocage repris de Chronos,
+                -- sans post) : bloquée depuis sa date de blocage.
+                CASE WHEN (SELECT e.evenement FROM post e
+                           WHERE e.tache_id = t.id
+                             AND e.evenement IN ('blocage_tache', 'deblocage_tache', 'cloture_tache')
+                             AND (e.created_at AT TIME ZONE %(fuseau)s)::date > %(date)s
+                           ORDER BY e.created_at, e.id LIMIT 1) = 'deblocage_tache'
+                     THEN COALESCE((t.bloque_le AT TIME ZONE %(fuseau)s)::date <= %(date)s, false)
+                     ELSE t.etat = 'bloque' AND COALESCE((t.bloque_le AT TIME ZONE %(fuseau)s)::date, %(date)s) <= %(date)s
+                END)
         ORDER BY t.date_echeance NULLS LAST, p.code, t.titre, t.id
         LIMIT %(limit)s
         """,
@@ -566,7 +580,9 @@ def lignes_proposees(user: dict, date) -> list[dict]:
                OR EXISTS (SELECT 1 FROM projet_intervenant pi WHERE pi.projet_id = p.id AND pi.utilisateur_id = %(uid)s)
                OR EXISTS (SELECT 1 FROM tache t JOIN tache_intervenant ti ON ti.tache_id = t.id
                           WHERE t.projet_id = p.id AND ti.utilisateur_id = %(uid)s)
-               OR EXISTS (SELECT 1 FROM dailylog_entree d WHERE d.utilisateur_id = %(uid)s AND d.projet_id = p.id))
+               -- Lot 25 (DL-08) : des heures saisies jusqu'à ce jour, pas après.
+               OR EXISTS (SELECT 1 FROM dailylog_entree d WHERE d.utilisateur_id = %(uid)s AND d.projet_id = p.id
+                            AND d.date <= %(date)s))
         ORDER BY derniere DESC NULLS LAST, p.code
         LIMIT %(limit)s
         """,

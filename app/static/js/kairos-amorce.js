@@ -19,10 +19,19 @@
   try { enregistre = localStorage.getItem('kairos-theme'); } catch (e) { /* stockage indisponible */ }
   var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
   racine.dataset.theme = enregistre || (mq && mq.matches ? 'dark' : 'light');
+  // Lot 25 : barre de titre (appli installée, onglet mobile) à la couleur
+  // de la barre du haut, dans les deux thèmes.
+  window.kairosCouleurTheme = function () {
+    var m = document.getElementById('k-theme-color');
+    if (m) m.setAttribute('content', racine.dataset.theme === 'dark' ? '#191e1b' : '#ffffff');
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', window.kairosCouleurTheme);
+  else window.kairosCouleurTheme();
   if (mq && !enregistre && mq.addEventListener) {
     mq.addEventListener('change', function (e) {
       if (window.kairosThemeChoisi) return;
       racine.dataset.theme = e.matches ? 'dark' : 'light';
+      window.kairosCouleurTheme();
       var b = document.getElementById('theme-toggle');
       if (b) b.setAttribute('aria-pressed', e.matches ? 'true' : 'false');
     });

@@ -83,13 +83,17 @@
              remplace par ses champs cachés. #}
           <select multiple name="lot_contient" data-chip-tristate data-name-contient="lot_contient" data-name-egal="lot_egal" aria-label="Lots" data-chip-labelledby="filtre-titre-lots">
             {% for code, titre in (('CM', 'Charpente métallique'), ('GO', 'Gros œuvre')) %}
-            <option value="{{ code }}" title="{{ titre }}" data-mode="{{ 'egal' if code in lots_egal else ('contient' if code in lots_contient else '') }}"{{ ' selected' if code in lots_egal or code in lots_contient }}>{{ code }}</option>
+            <option value="{{ code }}" title="{{ titre }}" data-mode="{{ 'egal' if code in lots_egal else ('contient' if code in lots_contient else '') }}"{{ ' selected' if code in lots_contient and code not in lots_egal }}>{{ code }}</option>
             {% endfor %}
           </select>
+          {# Lot 25 (SB-06) : sans JavaScript, un choix « = CM » reste « = »
+             (champ caché) au lieu de devenir « contient » au premier
+             « Filtrer » ; chip-select.js ne lit que data-mode. #}
+          <noscript>{% for code in lots_egal %}<input type="hidden" name="lot_egal" value="{{ code }}">{% endfor %}<p class="aide-champ">{% if lots_egal %}Projets n’ayant que le lot {{ lots_egal|join(', ') }} (choix gardé).{% endif %}</p></noscript>
         </div>
         <div class="filtre-groupe">
           <div id="filtre-titre-chef" class="filtre-titre">Chef de projet</div>
-          <select name="chef_id" multiple data-chip-select data-chip-avatar="1" data-chip-labelledby="filtre-titre-chef">
+          <select name="chef_id" multiple size="8" data-chip-select data-chip-avatar="1" data-chip-labelledby="filtre-titre-chef">
             {% for u in utilisateurs_actifs %}
               <option value="{{ u.id }}" {{ 'selected' if u.id in chef_ids }}
                 data-prenom="{{ u.prenom }}" data-nom="{{ u.nom }}"

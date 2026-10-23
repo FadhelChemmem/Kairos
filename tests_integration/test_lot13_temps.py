@@ -161,10 +161,10 @@ class TestInstantSimule(_Temps):
                              follow_redirects=True)
         self.assertIn("Heure simulée invalide", self.visible(r))
         self.client.post("/posts", data={"projet_id": str(self.p1), "type_code": "information", "contenu": "Horodaté"})
-        self.assertIn("à l'instant", self.texte(self.client.get(f"/projets/{self.p1}")))
+        self.assertIn("à l’instant", self.texte(self.client.get(f"/projets/{self.p1}")))
         self.simuler(self.auj + datetime.timedelta(days=9))
         page = self.texte(self.client.get(f"/projets/{self.p1}"))
-        self.assertNotIn("à l'instant", page)
+        self.assertNotIn("à l’instant", page)
         # Lot 20 (décision du gérant) : « il y a » se lit par rapport à
         # l’instant simulé. Lot 21 : un post créé sous une date simulée future
         # garde la date réelle (aucune écriture dans le futur réel).

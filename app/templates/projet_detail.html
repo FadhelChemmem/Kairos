@@ -74,6 +74,9 @@
    la tâche demandée par ?tache=<id>. Lot 13 : panneau latéral à partir de
    1 024 px (non modal, ?tache=<id> dans l'adresse, ↑ / ↓, Retour et Échap
    ferment), feuille en bas sur téléphone. #}
+{% if tache_sans_js %}
+<noscript><section class="card tache-sans-js" id="tache-sans-js" aria-label="Tâche">{{ tache_sans_js }}<p class="aide-champ"><a href="{{ url_for('projets.detail', projet_id=projet.id) }}">Fermer la tâche</a></p></section></noscript>
+{% endif %}
 <dialog class="post-dialog tache-dialog" id="dialog-tache" aria-label="Tâche" data-url="{{ url_for('taches_fenetre.fenetre', projet_id=projet.id, tache_id=0) }}"{% if tache_a_ouvrir %} data-ouvrir-au-chargement="{{ tache_a_ouvrir }}"{% endif %}>
   <button type="button" data-close-tache aria-label="Fermer le panneau de la tâche" class="dialog-fermer tache-dialog-fermer">
     <svg aria-hidden="true" focusable="false" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>

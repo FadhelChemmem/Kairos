@@ -1625,7 +1625,7 @@ class SmokeTestCase(SmokeBase):
         body = resp.data.decode()
         self.assertIn("Adresse e-mail ou mot de passe incorrect", body)
         # Lot 13 : zone des toasts (position fixe), message injecté au chargement.
-        self.assertIn('<div id="k-toasts" class="k-toasts" popover="manual">', body)
+        self.assertIn('<div id="k-toasts" class="k-toasts" popover="manual" role="region" aria-label="Messages">', body)
         self.assertIn('<template id="k-toasts-initiaux"><p data-type="erreur">Adresse e-mail ou mot de passe incorrect', body)
         # Page publique : le socle (toasts) n'est chargé que pour afficher un message.
         self.assertIn("js/kairos-partiel.js", body)
@@ -2002,7 +2002,7 @@ class SmokeTestCase(SmokeBase):
         # Champ de commentaire présent (placeholder raccourci au lot 10 pour
         # tenir sur téléphone, nom accessible explicite).
         self.assertIn('placeholder="Commenter…"'.encode(), resp.data)
-        self.assertIn('aria-label="Commenter le post de'.encode(), resp.data)
+        self.assertIn('aria-label="Commenter ce post ('.encode(), resp.data)
 
     def test_post_card_reposter_ouvre_la_fenetre_a_trois_options(self):
         """"Reposter" (retour Fadhel, 2026-09-29, P2) remplace le trombone
@@ -5049,7 +5049,7 @@ class TestProjetClientHonoraires(SmokeBase):
         self.assertIn("12\u202f500,50", body)
         self.assertIn('card carte-cliquable" data-open-informations-dialog', body)
         self.assertIn('name="client" value="SOGEA"', body)
-        self.assertIn('name="honoraires" inputmode="decimal" placeholder="12 500,00" value="12\u202f500,50"', body)
+        self.assertIn('name="honoraires" inputmode="decimal" placeholder="ex. 12 500,00" value="12\u202f500,50"', body)
         body = self._get("/projets/1", **{"app.repositories.projets.get_projet": projet,
                                           "app.repositories.projets.user_can_manage": False}).data.decode()
         self.assertIn("SOGEA", body)  # visible de tous ceux qui voient le projet
@@ -5210,7 +5210,8 @@ class TestRelectureLot6(SmokeBase):
                 p.stop()
         kwargs = mock_create.call_args.kwargs
         self.assertEqual(kwargs["equipe_codes"], ["SS"])  # pas l'équipe Q choisie
-        self.assertEqual(kwargs["mentionne_ids"], [3, 1])
+        # Lot 25 (U7) : on ne se mentionne pas soi-même (1 = la personne connectée).
+        self.assertEqual(kwargs["mentionne_ids"], [3])
 
     def test_projet_termine_publication_bloquee_meme_pour_les_chefs(self):
         """Décision Fadhel (lot 7) : plus aucune publication sur un projet

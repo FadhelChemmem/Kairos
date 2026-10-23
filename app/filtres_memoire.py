@@ -122,8 +122,31 @@ def memoriser(page: str, valeurs: dict) -> None:
         _ecrire(page, texte)
 
 
+def apres_geste_sans_js():
+    """Lot 25 (SB-07) : « Filtrer » sans JavaScript (`choix=1`) — une fois
+    le choix mémorisé, redirection (303) vers la même adresse sans `choix` :
+    un F5 ne refait plus le geste (il écrasait un choix fait ailleurs).
+    Lot 25 (UT-04) : de même pour `defaut=1` (« Effacer les filtres »,
+    « Réinitialiser ») — un F5 n'oublie plus un choix fait entre-temps.
+    None sinon (avec JavaScript, kairos-partiel.js retire `choix` et
+    `defaut` de l'adresse)."""
+    from flask import redirect
+
+    if (request.method != "GET" or partiel.est_partiel()
+            or not (request.args.get("choix") or request.args.get("defaut"))):
+        return None
+    params = [(k, v) for k, v in request.args.items(multi=True) if k not in ("choix", "defaut")]
+    return redirect(request.path + ("?" + urlencode(params) if params else ""), code=303)
+
+
 def oublier(page: str) -> None:
     _ecrire(page, None)
+
+
+def lire(page: str) -> str | None:
+    """Choix mémorisé brut d'une page (lot 25, revue RS C.2-8 : lecture
+    publique pour fil.py)."""
+    return _lire(page)
 
 
 def _lire(page: str) -> str | None:

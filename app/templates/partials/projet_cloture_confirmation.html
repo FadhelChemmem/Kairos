@@ -17,7 +17,7 @@
   <p role="alert" class="aide-champ champ-erreur">La liste des tâches ouvertes a changé depuis votre demande&nbsp;: vérifiez-la avant de confirmer.</p>
   {% endif %}
   <p class="cloture-texte">
-    Ce projet a encore {{ n }} tâche{{ 's' if n > 1 }} ouverte{{ 's' if n > 1 }}. En confirmant, {{ 'elles passent' if n > 1 else 'elle passe' }}
+    Ce projet a encore {{ n }} tâche{{ 's' if n > 1 }} ouverte{{ 's' if n > 1 }}. En confirmant, {{ 'elles seront' if n > 1 else 'elle sera' }}
     <strong>{{ clos_en|lower if n > 1 else clos_en[:-1]|lower }}</strong> avec le projet (même enregistrement, post automatique dans le fil).
   </p>
   <ul class="projet-cloture-taches">
@@ -38,6 +38,6 @@
     {% else %}
     <a href="{{ url_for('projets.detail', projet_id=projet.id) }}" class="btn">Annuler</a>
     {% endif %}
-    <button type="submit" id="cloture-confirmer" class="btn-primaire{{ ' k-bouton-danger' if etat_demande == 'abandonne' }}">Clore le projet et ses {{ n }} tâche{{ 's' if n > 1 }}</button>
+    <button type="submit" id="cloture-confirmer" class="btn-primaire{{ ' k-bouton-danger' if etat_demande == 'abandonne' }}">{{ 'Clore' if etat_demande == 'termine' else 'Abandonner' }} le projet et {{ 'sa tâche ouverte' if n == 1 else 'ses ' ~ n ~ ' tâches ouvertes' }}</button>
   </form>
 </section>

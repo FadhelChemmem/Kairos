@@ -64,6 +64,11 @@ def est_vraie_image(file_storage) -> bool:
     # vraies balises HTML en tête de fichier.
     if _BALISE_HTML.search(donnees[:1024]):
         return False
+    # Lot 25 (RS-08) : un script plus loin dans le fichier (après 1 Ko) est
+    # refusé aussi — seules les balises longues sont cherchées partout (une
+    # suite de 7 octets ou plus ne se trouve pas par hasard dans une image).
+    if _SCRIPT_PARTOUT.search(donnees):
+        return False
     if donnees.startswith(b"\xff\xd8\xff"):
         return b"\xff\xd9" in donnees[3:]
     if donnees[:6] in (b"GIF87a", b"GIF89a"):
@@ -73,7 +78,11 @@ def est_vraie_image(file_storage) -> bool:
     return False
 
 
-_BALISE_HTML = re.compile(rb"<\s*/?\s*(script|html|body|svg|iframe|object|embed|meta|head)\b", re.IGNORECASE)
+# Lot 25 (UT-06) : seulement les balises actives — « <meta », « <html »,
+# « <head » se trouvent dans des métadonnées JPEG légitimes ; la photo est
+# de toute façon servie avec son type d'image et « nosniff ».
+_BALISE_HTML = re.compile(rb"<\s*/?\s*(script|svg|iframe|object|embed)\b", re.IGNORECASE)
+_SCRIPT_PARTOUT = re.compile(rb"<\s*(script|iframe|object|embed)[\s>/]", re.IGNORECASE)
 
 # Photo de profil : 10 Mo au plus (au-delà, refusée).
 MAX_OCTETS_AVATAR = 10 * 1024 * 1024

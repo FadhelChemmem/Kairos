@@ -136,8 +136,18 @@ def revenir():
 @admin_reel_requis
 def date_simulee():
     admin = _admin_reel()
-    date = modes.lire_date((request.form.get("date") or "").strip())
+    brute = (request.form.get("date") or "").strip()
+    date = modes.lire_date(brute)
     if date is None:
+        # Lot 25 (U11) : une date impossible (30/02) le dit.
+        import datetime as _dt
+
+        try:
+            _dt.date.fromisoformat(brute)
+        except ValueError:
+            if brute:
+                flash("Date simulée invalide\u00a0: cette date n’existe pas.", "error")
+                return _retour()
         flash(f"Date simulée invalide\u00a0: choisissez une date entre le {modes.DATE_SIMULEE_MIN.strftime('%d/%m/%Y')} "
               f"et le {modes.DATE_SIMULEE_MAX.strftime('%d/%m/%Y')}.", "error")
         return _retour()

@@ -41,3 +41,15 @@ def post_fork(server, worker):
     access = logging.getLogger("gunicorn.access")
     if not any(isinstance(f, MasqueJetonReset) for f in access.filters):
         access.addFilter(MasqueJetonReset())
+
+
+def post_worker_init(worker):
+    # Lot 25 (PU-10) : notifications Windows restées en attente quand un
+    # worker s'est arrêté (redémarrage, déploiement) reprises par le
+    # nouveau worker. Jamais bloquant.
+    try:
+        from app import push
+
+        push.demarrer(worker.wsgi)
+    except Exception:
+        logging.getLogger("gunicorn.error").exception("Reprise des notifications Windows impossible")

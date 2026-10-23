@@ -97,13 +97,23 @@ set +e
 # Lot 20 (shellcheck SC2024) : le fichier est écrit par ce shell, pas par
 # sudo — passage par un tube, comme pour la base (pipefail : le statut
 # reste celui de tar).
-sudo docker compose exec -T web tar czf - -C /app/uploads . | cat > "$TMP_UPLOADS"
+# Lot 25 (BD-02) : tar renvoie 1 quand un fichier change pendant la
+# lecture ; il est traduit en 99 DANS le conteneur, pour ne pas confondre
+# avec un échec de docker (« service web is not running » : statut 1 aussi).
+# Web arrêté ou en redémarrage (migration en échec) : conteneur ponctuel
+# qui monte le même volume, comme restore_db.sh — la relance reste possible.
+TAR_UPLOADS='tar czf - -C /app/uploads .; s=$?; if [ "$s" -eq 1 ]; then exit 99; fi; exit "$s"'
+if sudo docker compose ps --status running --services 2>/dev/null | grep -qx web; then
+  sudo docker compose exec -T web sh -c "$TAR_UPLOADS" | cat > "$TMP_UPLOADS"
+else
+  sudo docker compose run --rm --no-deps -T web sh -c "$TAR_UPLOADS" | cat > "$TMP_UPLOADS"
+fi
 statut_uploads=$?
 set -e
 # tar renvoie 1 quand un fichier change pendant la lecture (un envoi de
 # pièce jointe en cours) : l'archive reste valide, ce n'est qu'un
 # avertissement — auparavant ça faisait échouer toute la sauvegarde.
-if [ "$statut_uploads" -eq 1 ]; then
+if [ "$statut_uploads" -eq 99 ]; then
   echo "Avertissement : un fichier a changé pendant la sauvegarde des pièces jointes (archive conservée)." >&2
   statut_uploads=0
 fi
@@ -121,5 +131,14 @@ echo "Sauvegarde pièces jointes écrite : $FICHIER_UPLOADS"
 # workflowbook → Kairos) : les anciens fichiers "workflowbook_*.sql.gz"
 # ne sont plus reconnus par ce nettoyage automatique et doivent être
 # supprimés à la main si besoin (voir README, section Dépannage).
-ls -1t "$DEST"/kairos_*.sql.gz 2>/dev/null | tail -n +31 | xargs -r rm --
-ls -1t "$DEST"/kairos_uploads_*.tar.gz 2>/dev/null | tail -n +31 | xargs -r rm --
+# Lot 25 (SA-L25-01) : la sauvegarde notée dans `.deploiement_en_cours`
+# (celle d'avant un déploiement inachevé, et ses pièces jointes) n'est
+# jamais effacée par la rotation : deploy.sh imprime sa restauration.
+GARDEE=""
+if [ -f .deploiement_en_cours ]; then
+  GARDEE="$(sed -n 's/^sauvegarde=//p' .deploiement_en_cours | head -n1)"
+fi
+GARDEE_UPLOADS=""
+[ -n "$GARDEE" ] && GARDEE_UPLOADS="$(dirname "$GARDEE")/$(basename "$GARDEE" .sql.gz | sed 's/^kairos_/kairos_uploads_/').tar.gz"
+ls -1t "$DEST"/kairos_[0-9]*.sql.gz 2>/dev/null | tail -n +31 | { grep -vxF -e "${GARDEE:-/aucune}" || true; } | xargs -r rm --
+ls -1t "$DEST"/kairos_uploads_*.tar.gz 2>/dev/null | tail -n +31 | { grep -vxF -e "${GARDEE_UPLOADS:-/aucune}" || true; } | xargs -r rm --

@@ -3,8 +3,8 @@
  * Servi à la racine (/sw.js, portée « / ») par app/routes/push.py.
  * - push : affiche la notification reçue (titre, texte, icône Kairos) et
  *   met à jour la pastille de l'icône de l'appli (nombre de non-lues) ;
- * - clic : ouvre la notification dans une fenêtre Kairos déjà ouverte
- *   (mise au premier plan), sinon dans une nouvelle fenêtre.
+ * - clic : ouvre la notification dans un nouvel onglet ou une nouvelle
+ *   fenêtre (lot 25) : la page déjà ouverte n'est jamais remplacée.
  * Aucun cache hors ligne : les pages de Kairos sont des données vivantes.
  */
 'use strict';
@@ -42,16 +42,11 @@ self.addEventListener('push', function (e) {
 });
 
 self.addEventListener('notificationclick', function (e) {
+  // Lot 25 (décision du gérant du 23/10, U3) : toujours un NOUVEL onglet
+  // (ou une nouvelle fenêtre de l'appli installée) — la page Kairos déjà
+  // ouverte (saisie du Daily log, post en cours d'écriture) n'est jamais
+  // remplacée.
   e.notification.close();
   var url = (e.notification.data && e.notification.data.url) || '/notifications';
-  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (fenetres) {
-    var memeSite = fenetres.filter(function (c) {
-      try { return new URL(c.url).origin === self.location.origin; } catch (err) { return false; }
-    });
-    if (memeSite.length) {
-      var f = memeSite[0];
-      return f.focus().then(function (c) { return (c || f).navigate ? (c || f).navigate(url) : null; });
-    }
-    return self.clients.openWindow(url);
-  }));
+  e.waitUntil(self.clients.openWindow(url));
 });

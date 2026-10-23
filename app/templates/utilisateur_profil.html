@@ -41,7 +41,24 @@
         </div>
       </div>
       <p class="aide-champ k-sans-js">JavaScript est nécessaire pour activer les notifications sur ce PC.</p>
-      {% include "partials/push_categories.html" %}
+      {% if push_appareils %}
+      {# Lot 25 (U4) : appareils activés, chacun retirable (PC perdu, ancien PC). #}
+      <div class="push-appareils">
+        <p class="aide-champ">Appareils qui reçoivent vos notifications&#8239;:</p>
+        <ul class="push-appareils-liste">
+          {% for a in push_appareils %}
+          <li class="push-appareil">
+            <span>{{ a.libelle }} <span class="k-muet">· activé le {{ a.created_at|jour_local|date_courte }}</span></span>
+            <form method="post" action="{{ url_for('push.retirer_appareil', abonnement_id=a.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-fantome btn-petit" aria-label="Retirer {{ a.libelle }}, activé le {{ a.created_at|jour_local|date_courte }}"{% if g.get('admin_reel') %} disabled{% endif %}>Retirer</button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% if push_actif %}{% include "partials/push_categories.html" %}{% endif %}
     </div>
   </div>
 

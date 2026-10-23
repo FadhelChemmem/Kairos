@@ -141,7 +141,7 @@ class TestChangementDeChef(_BaseChef):
         self.assertIn("Projet clos\u00a0: rouvrez-le d’abord pour changer de chef.", page)
         # Requête forgée, même en rouvrant dans le même envoi : refusée, rien n'est enregistré.
         r = self.infos(self.autre, etat="en_cours")
-        self.assertIn("Ce projet est clos : rouvrez-le d'abord", _texte(r))
+        self.assertIn("Ce projet est clos\u00a0: rouvrez-le d’abord", _texte(r))
         self.assertEqual((self.chef_de(), self.sql("SELECT etat FROM projet WHERE id = %s", (self.p,))[0]["etat"]),
                          (self.chef, "termine"))
         # Rouvert d'abord, puis changé : accepté.

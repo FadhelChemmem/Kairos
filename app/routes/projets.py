@@ -224,7 +224,12 @@ def _filtres_liste(oubli_permis: bool = True) -> dict:
     connus = {c["id"] for c in chefs_de_projet}
     manquants = [i for i in (chef_ids or []) if i not in connus]
     if manquants:
-        chefs_de_projet = chefs_de_projet + projets.chefs_par_ids(manquants)
+        trouves = projets.chefs_par_ids(manquants)
+        chefs_de_projet = chefs_de_projet + trouves
+        # Lot 25 (SB-09) : un chef inconnu (valeur forgée, compte qui n'est
+        # chef d'aucun projet) est ignoré — plus de filtre actif sans puce.
+        connus |= {c["id"] for c in trouves}
+        chef_ids = [i for i in chef_ids if i in connus] or None
     return dict(etats=etats, phases=phases, chef_ids=chef_ids, lots_contient=lots_contient,
                 lots_egal=lots_egal, q=q, chefs_de_projet=chefs_de_projet, chef_ignore=chef_ignore)
 
@@ -315,6 +320,9 @@ def liste():
         contexte["projets_phase_liee"] = []
 
     filtres_memoire.memoriser("projets", filtres_url)
+    sans_choix = filtres_memoire.apres_geste_sans_js()
+    if sans_choix is not None:
+        return sans_choix
     reponse = make_response(render_template("projets_liste.html", **contexte))
     # Lot 24 (SR-R19) : le cookie du lot 22, plus lu nulle part, est effacé.
     if COOKIE_FILTRES_LOT22 in request.cookies:
@@ -402,11 +410,17 @@ def creer():
         nom = request.form.get("nom", "").strip()
         phase = request.form.get("phase", "EXE")
         code = request.form.get("code", "").strip()
-        chef_projet_id = request.form.get("chef_projet_id", type=int) or g.user["id"]
+        # Lot 25 (PR-06) : une valeur non numérique est refusée (elle faisait
+        # de l'auteur le chef, sans message) ; vide = l'auteur.
+        chef_brut = (request.form.get("chef_projet_id") or "").strip()
+        chef_projet_id = (int(chef_brut) if re.fullmatch(r"[0-9]{1,18}", chef_brut) else -1) if chef_brut \
+            else g.user["id"]
         date_debut = request.form.get("date_debut") or None
-        lots = request.form.getlist("lots")
+        # Lot 25 (PR-03) : un lot répété ne compte qu'une fois.
+        lots = list(dict.fromkeys(request.form.getlist("lots")))
         client, honoraires = _client_et_honoraires()
-        phase_liee_id = request.form.get("phase_liee_id", type=int) or None
+        lie_brut = (request.form.get("phase_liee_id") or "").strip()
+        phase_liee_id = (int(lie_brut) if re.fullmatch(r"[0-9]{1,18}", lie_brut) else -1) if lie_brut else None
         # Saisie renvoyée au formulaire en cas d'erreur (audit n°2 : tout
         # était perdu, phase revenue à EXE et code reproposé pour EXE).
         saisie = {
@@ -663,6 +677,9 @@ def _contexte_fiche(projet: dict, *, fil_limite: int = film.TAILLE_PAGE) -> dict
         # Lot 20 (revue 9b) : la phase liée n'est montrée qu'à qui la voit.
         phase_liee_visible=bool(projet.get("phase_liee_id"))
         and projets.user_can_view(projet["phase_liee_id"], g.user["id"]),
+        # Lot 25 (annexe C, U7) : lien retour vers les phases qui suivent.
+        phases_suivantes=[s_ for s_ in (projet.get("phases_suivantes") or [])[:10]
+                          if projets.user_can_view(s_["id"], g.user["id"])],
         # Intervenants proposés pour une nouvelle tâche et personnes
         # mentionnables : ceux qui voient le projet (lot 13 ; lot 16 pour les
         # mentions, proposées à tous).
@@ -753,6 +770,17 @@ def detail(projet_id: int):
     t_ouvrir = next((t for t in liste_taches if t["id"] == tache_demandee), None) if tache_demandee else None
     contexte["tache_a_ouvrir"] = t_ouvrir["id"] if t_ouvrir else None
     contexte["deplier_taches_closes"] = bool(t_ouvrir) and t_ouvrir["etat"] in taches.ETATS_CLOS
+    # Lot 25 (TA-08) : sans JavaScript, la tâche demandée est rendue dans la
+    # page (<noscript>), ses formulaires marchent en navigation classique.
+    if t_ouvrir:
+        from markupsafe import Markup
+
+        from .taches_fenetre import contexte_fenetre
+        fenetre = contexte_fenetre(projet, t_ouvrir["id"], contexte["peut_gerer"])
+        if fenetre is not None:
+            contexte["tache_sans_js"] = Markup(render_template(
+                "partials/tache_fenetre.html", projet=projet, sans_js=True,
+                next_url=url_for("projets.detail", projet_id=projet_id, tache=t_ouvrir["id"]), **fenetre))
 
     return render_template("projet_detail.html", **contexte)
 
@@ -804,7 +832,7 @@ def _maj_fiche(projet_id: int, racine: str | None, parties, *, tache_id: int | N
 
 
 def _reponse_tache(projet_id: int, tache_id: int, toasts: list | None = None, *, deplacee: bool = False,
-                   **extra):
+                   fil_complet: bool = False, **extra):
     """Réponse partielle d'une action sur une tâche (lot 13) : le panneau
     (ou la ligne, selon la cible), puis hors cible la ligne — ou toute la
     carte si la tâche passe d'ouverte à close (`deplacee`) —, le compteur,
@@ -812,7 +840,11 @@ def _reponse_tache(projet_id: int, tache_id: int, toasts: list | None = None, *,
     les nouveaux posts du fil."""
     cible = partiel.est_partiel() or ""
     racine = "ligne" if cible.startswith("#tache-ligne-") else "fenetre"
-    parties = ["fenetre", "ligne"] + (["taches"] if deplacee else ["compteur"]) + ["projet", "intervenants", "fil"]
+    # Lot 25 (TA-02) : après « Annuler », le post de l'aller a pu être
+    # retiré : le fil est rendu en entier (sa carte disparaît), pas seulement
+    # les nouveaux posts.
+    parties = (["fenetre", "ligne"] + (["taches"] if deplacee else ["compteur"])
+               + ["projet", "intervenants", "fil_liste" if fil_complet else "fil"])
     if deplacee:
         # La carte contient la ligne : elle la remplace aussi.
         parties.remove("ligne")
@@ -866,13 +898,37 @@ def editer_informations(projet_id: int):
     else:
         nouveau_chef_id = None
 
-    nom = request.form.get("nom", "").strip()
-    etat = request.form.get("etat", "")
-    lots = request.form.getlist("lots")
-    date_debut = request.form.get("date_debut") or None
-    date_fin = request.form.get("date_fin") or None
-    phase_liee_id = request.form.get("phase_liee_id", type=int) or None
+    formulaire = request.form
+    nom = formulaire.get("nom", "").strip()
+    etat = formulaire.get("etat", "")
+    # Lot 25 (PR-08) : un lot répété ne compte qu'une fois.
+    lots = list(dict.fromkeys(formulaire.getlist("lots")))
+    # Lot 25 (PR-07) : un champ ABSENT de la requête (script, ancien
+    # formulaire, requête forgée) ne change rien — seul un champ envoyé,
+    # même vide, est une modification.
+    if not lots and "lots_envoyes" not in formulaire:
+        lots = [l["code"] for l in projets.list_lots(projet_id)]
+    date_debut = formulaire.get("date_debut") or None
+    date_fin = formulaire.get("date_fin") or None
+    phase_liee_brut = (formulaire.get("phase_liee_id") or "").strip()
+    if phase_liee_brut and not re.fullmatch(r"[0-9]{1,18}", phase_liee_brut):
+        return erreur("Projet lié invalide.", "phase_liee_id")
+    phase_liee_id = int(phase_liee_brut) if phase_liee_brut else None
+    lie_actuel = actuel.get("phase_liee_id")
+    # Lot 25 (PR-01) : une phase liée que l'éditeur ne voit pas (autre
+    # équipe) n'est pas affichée dans la fenêtre — l'enregistrer vide ne
+    # l'efface plus ; absente de la requête non plus.
+    if "phase_liee_id" not in formulaire or (
+            phase_liee_id is None and lie_actuel and not projets.user_can_view(lie_actuel, g.user["id"])):
+        phase_liee_id = lie_actuel
+        phase_liee_inchangee = True
+    else:
+        phase_liee_inchangee = phase_liee_id == lie_actuel
     client, honoraires = _client_et_honoraires()
+    if "client" not in formulaire:
+        client = actuel.get("client") or "IPCO"
+    if "honoraires" not in formulaire:
+        honoraires = actuel.get("honoraires")
 
     if honoraires is False:
         return erreur("Honoraires invalides (un montant positif, ex. 12 500,00).", "honoraires")
@@ -893,11 +949,12 @@ def editer_informations(projet_id: int):
         return erreur("Gardez au moins un lot (CM ou GO).", "lots")
 
     try:
-        date_debut_valide = _parser_date_tache(date_debut)
+        date_debut_valide = (_parser_date_tache(date_debut) if "date_debut" in formulaire
+                             else actuel.get("date_debut"))
     except ValueError:
         return erreur("Date de début invalide.", "date_debut")
     try:
-        date_fin_valide = _parser_date_tache(date_fin)
+        date_fin_valide = _parser_date_tache(date_fin) if "date_fin" in formulaire else actuel.get("date_fin")
     except ValueError:
         return erreur("Date de fin invalide.", "date_fin")
     # Dates cohérentes (retour Fadhel, lot 8) : années plausibles, fin
@@ -927,7 +984,9 @@ def editer_informations(projet_id: int):
     # "Phase liée" doit rester un projet réellement visible par
     # l'utilisateur (même contrôle IDOR que pour le projet lui-même) —
     # sinon on pourrait relier un projet à un id deviné/invisible.
-    if phase_liee_id is not None and not projets.user_can_view(phase_liee_id, g.user["id"]):
+    if phase_liee_id is not None and not phase_liee_inchangee and (
+            phase_liee_id == projet_id or not projets.user_can_view(phase_liee_id, g.user["id"])):
+        # Lot 25 (PR-09) : le projet lui-même aussi (erreur 500 avant).
         return erreur("Projet lié invalide.", "phase_liee_id")
 
     # Clôture confirmée (lot 13, décision 2) : la liste des tâches ouvertes
@@ -1020,7 +1079,8 @@ def _confirmer_cloture(projet_id: int, etat: str, attente):
     """Étape de confirmation (lot 13, décision 2, audit rôles I3) : clore un
     projet qui a des tâches ouvertes. Page complète (fonctionne sans
     JavaScript) qui renvoie le même formulaire avec la liste des tâches
-    confirmées ; fragment seul pour une requête AJAX (X-Requested-With)."""
+    confirmées ; fragment seul en partiel (lot 25, revue R-11 : plus de
+    branche X-Requested-With, que kairos-partiel envoie toujours)."""
     projet = projets.get_projet(projet_id)
     champs = [(nom, valeur) for nom in CHAMPS_INFORMATIONS for valeur in request.form.getlist(nom)]
     contexte = dict(
@@ -1031,8 +1091,6 @@ def _confirmer_cloture(projet_id: int, etat: str, attente):
         # Lot 13 : la confirmation remplace le formulaire dans la fenêtre
         # Informations (même id, #informations-form).
         return partiel.repondre("partials/projet_cloture_confirmation.html", dans_fenetre=True, **contexte)
-    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return render_template("partials/projet_cloture_confirmation.html", **contexte)
     return render_template("projet_cloture_confirmer.html", **contexte)
 
 
@@ -1122,7 +1180,7 @@ def creer_tache(projet_id: int):
     if refus:
         return refus
 
-    titre = request.form.get("titre", "").strip()
+    titre = taches.normaliser_titre(request.form.get("titre"))
     if not titre:
         return _refus("Le titre de la tâche est obligatoire.", 422, projet_id,
                       champs={"titre": "Le titre de la tâche est obligatoire."})
@@ -1284,7 +1342,7 @@ def _signeur_annuler():
 
 
 def _jeton_annuler(projet_id: int, tache_id: int, etat: str, motif: str | None, notifications: list[int],
-                   *, version: str | None = None, restaurer: dict | None = None) -> str:
+                   *, version: str | None = None, restaurer: dict | None = None, co_chefs=None) -> str:
     """Jeton signé de l'action « Annuler ». Lot 20 : `version` est celle
     produite par le geste, lue dans SA transaction (revue 12b : relue après
     coup, elle pouvait déjà inclure le geste d'une autre personne) ;
@@ -1297,6 +1355,7 @@ def _jeton_annuler(projet_id: int, tache_id: int, etat: str, motif: str | None, 
         "v": version if version is not None else taches.version(tache_id),
         "n": [int(i) for i in notifications],
         "r": {k: texte(v) for k, v in (restaurer or {}).items()},
+        **({"cc": [int(i) for i in co_chefs]} if co_chefs else {}),
     })
 
 
@@ -1314,6 +1373,9 @@ def _lire_jeton_annuler(projet_id: int, tache_id: int) -> dict | None:
         return None
     if not isinstance(jeton, dict) or (jeton.get("p"), jeton.get("t"), jeton.get("u")) != (projet_id, tache_id,
                                                                                              g.user["id"]):
+        return None
+    if jeton.get("o"):
+        # Lot 25 : jeton d'un autre geste (retrait d'intervenant).
         return None
     return jeton
 
@@ -1387,6 +1449,7 @@ def changer_etat_tache(projet_id: int, tache_id: int):
 
     avant = taches.get_tache(tache_id)
     remplace: dict = {}
+    co_chefs_avant = projets.ids_co_chefs(projet_id)
     try:
         trouvee = taches.set_etat(tache_id, projet_id, etat, g.user["id"], peut_gerer=peut_gerer,
                                   annulation=annulation, remplace=remplace, **({"motif": motif} if etat == "bloque" else {}),
@@ -1413,10 +1476,29 @@ def changer_etat_tache(projet_id: int, tache_id: int):
     if not trouvee:
         return _refus("Tâche introuvable sur ce projet.", 404, projet_id)
 
+    if remplace.get("sans_effet"):
+        # Lot 25 (TA-05, U7) : déjà dans cet état (geste fait ailleurs
+        # entre-temps) — rien n'a changé, on le dit.
+        libelle = tache_etat_style(etat)["libelle"]
+        message = f"La tâche est déjà «\u00a0{libelle}\u00a0»\u00a0: rien n’a changé."
+        if partiel.est_partiel():
+            return _reponse_tache(projet_id, tache_id, [partiel.toast(message, "info")])
+        flash(message, "success")
+        return redirect(url_for("projets.detail", projet_id=projet_id))
     avant = avant if isinstance(avant, dict) else {}
     # Lot 18 : l'état remplacé est celui lu sous verrou par set_etat.
     avant = {**avant, **remplace}
     etat_avant = avant.get("etat")
+    # Lot 25 (TA-03, TA-06) : une réouverture qui fait d'un chef de projet
+    # intervenant un co-chef (trigger 0027) le dit et prévient ; « Annuler »
+    # retire ce co-chef (restitution exacte).
+    nouveaux_co_chefs = []
+    if annulation and jeton.get("cc"):
+        projets.retirer_co_chefs(projet_id, [int(i) for i in jeton["cc"]], g.user["id"])
+    elif not annulation:
+        nouveaux_co_chefs = sorted(set(projets.ids_co_chefs(projet_id)) - set(co_chefs_avant))
+        if nouveaux_co_chefs:
+            _signaler_co_chefs(projet_id, None, nouveaux_co_chefs, co_chefs_avant)
     texte = None
     notifications_creees: list[int] = []
     if etat == "bloque" and etat_avant != "bloque" and not annulation:
@@ -1468,14 +1550,15 @@ def changer_etat_tache(projet_id: int, tache_id: int):
                                           avant.get("bloque_motif") if etat_avant == "bloque" else None,
                                           notifications_creees, version=remplace.get("version_apres"),
                                           restaurer={k: avant.get(k) for k in ("bloque_motif", "bloque_le",
-                                                                                 "bloque_par", "date_fin")})
+                                                                                 "bloque_par", "date_fin")},
+                                          co_chefs=nouveaux_co_chefs)
             donnees = {"etat": etat_avant, "jeton": jeton_retour}
             action = _action_annuler(url_for("projets.changer_etat_tache", projet_id=projet_id, tache_id=tache_id),
                                      donnees, tache_id)
         deplacee = (etat_avant in taches.ETATS_CLOS) != (etat in taches.ETATS_CLOS)
         return _reponse_tache(projet_id, tache_id,
                               [partiel.toast(texte or f"État de la tâche\u00a0: {libelle}.", action=action)],
-                              deplacee=deplacee)
+                              deplacee=deplacee, fil_complet=annulation)
     flash(texte or "État de la tâche mis à jour.", "success")
     return redirect(url_for("projets.detail", projet_id=projet_id))
 
@@ -1499,7 +1582,7 @@ def modifier_titre_tache(projet_id: int, tache_id: int):
     refus = _refus_si_clos(projet_id)
     if refus:
         return refus
-    titre = request.form.get("titre", "").strip()
+    titre = taches.normaliser_titre(request.form.get("titre"))
     if not titre or len(titre) > 255:
         message = "Le titre de la tâche est obligatoire." if not titre else "Titre trop long (255 caractères au plus)."
         return _refus(message, 422, projet_id, champs={"titre": message})
@@ -1699,6 +1782,8 @@ def ajouter_intervenants_tache(projet_id: int, tache_id: int):
     refus = _garde_gestion(projet_id, "affecter quelqu’un à une tâche")
     if refus:
         return refus
+    if request.form.get("annulation"):
+        return _annuler_retrait_intervenant(projet_id, tache_id)
     retenus, ecartes = _intervenants_possibles(projet_id, request.form.getlist("utilisateur_id"))
     if not retenus:
         return _refus(("Personne à affecter." if not ecartes else _message_ecartes(ecartes).strip()), 422,
@@ -1735,6 +1820,30 @@ def ajouter_intervenants_tache(projet_id: int, tache_id: int):
     return _vers_tache(projet_id, tache_id)
 
 
+def _annuler_retrait_intervenant(projet_id: int, tache_id: int):
+    """« Annuler » du toast d'un retrait d'intervenant (lot 25, TA-01)."""
+    from itsdangerous import BadData
+
+    try:
+        jeton = _signeur_annuler().loads(request.form.get("jeton") or "", max_age=DUREE_JETON_ANNULER)
+    except BadData:
+        jeton = None
+    if (not isinstance(jeton, dict) or jeton.get("o") != "retrait" or jeton.get("p") != projet_id
+            or jeton.get("t") != tache_id or jeton.get("u") != g.user["id"]
+            or str(jeton.get("x")) != (request.form.get("utilisateur_id") or "")):
+        return _refus("«\u00a0Annuler\u00a0» n’est plus possible (délai dépassé ou autre compte).", 409, projet_id,
+                      tache_id, vers_tache=True)
+    try:
+        resultat = taches.reaffecter_apres_retrait(tache_id, projet_id, jeton["x"], g.user["id"],
+                                                   jeton.get("post"), jeton.get("n"))
+    except taches.TacheClose:
+        resultat = None
+    if resultat is None:
+        return _refus("Cette tâche est close\u00a0: rouvrez-la pour changer ses intervenants.", 409, projet_id, tache_id,
+                      vers_tache=True)
+    return _reponse_tache(projet_id, tache_id, [partiel.toast("Retrait annulé.")], fil_complet=True)
+
+
 @bp.route("/<int:projet_id>/taches/<int:tache_id>/intervenants/<int:utilisateur_id>/retirer", methods=["POST"])
 @login_required
 def retirer_intervenant_tache(projet_id: int, tache_id: int, utilisateur_id: int):
@@ -1753,9 +1862,10 @@ def retirer_intervenant_tache(projet_id: int, tache_id: int, utilisateur_id: int
         return _refus("Tâche introuvable sur ce projet.", 404, projet_id)
     if not resultat:
         return _refus("Cette personne n’est pas affectée à cette tâche.", 409, projet_id, tache_id, vers_tache=True)
+    notification_id = None
     if utilisateur_id != g.user["id"]:
         try:
-            notifications_repo.creer(
+            notification_id = notifications_repo.creer(
                 utilisateur_id, "projet",
                 f"{g.user['prenom']} {g.user['nom']} vous a retiré de la tâche «\u00a0{resultat['titre']}\u00a0» du projet "
                 f"«\u00a0{_code_nom(projets.get_projet(projet_id))}\u00a0».",
@@ -1764,10 +1874,16 @@ def retirer_intervenant_tache(projet_id: int, tache_id: int, utilisateur_id: int
         except Exception:
             current_app.logger.exception("Notification de retrait impossible (tâche %s)", tache_id)
     personne = resultat.get("personne") or {}
-    message = f"{personne.get('prenom', '')} {personne.get('nom', '')} retiré de la tâche.".strip()
+    message = f"{personne.get('prenom', '')} {personne.get('nom', '')} retiré(e) de la tâche.".strip()
     if partiel.est_partiel():
+        # Lot 25 (TA-01) : « Annuler » défait le retrait (jeton signé : post
+        # et notification du retrait retirés), au lieu d'un nouvel ajout.
+        jeton = _signeur_annuler().dumps({"p": projet_id, "t": tache_id, "u": g.user["id"], "x": int(utilisateur_id),
+                                          "post": resultat.get("post_id"),
+                                          "n": notification_id if isinstance(notification_id, int) else None,
+                                          "o": "retrait"})
         action = _action_annuler(url_for("projets.ajouter_intervenants_tache", projet_id=projet_id, tache_id=tache_id),
-                                 {"utilisateur_id": str(utilisateur_id)}, tache_id)
+                                 {"utilisateur_id": str(utilisateur_id), "jeton": jeton}, tache_id)
         return _reponse_tache(projet_id, tache_id, [partiel.toast(message, action=action)])
     flash(message, "success")
     return _vers_tache(projet_id, tache_id)
@@ -1856,7 +1972,7 @@ def retirer_intervenant_projet(projet_id: int, utilisateur_id: int):
         except Exception:
             current_app.logger.exception("Notification de retrait du projet impossible (projet %s)", projet_id)
     n = len(resultat["taches"])
-    flash(f"{personne['prenom']} {personne['nom']} retiré du projet"
+    flash(f"{personne['prenom']} {personne['nom']} retiré(e) du projet"
           + (f" et de {n} tâche{'s' if n > 1 else ''} en cours." if n else "."), "success")
     if partiel.est_partiel():
         if utilisateur_id == g.user["id"]:
@@ -1886,7 +2002,7 @@ def rejoindre(projet_id: int):
     if refus:
         return refus
     if projets.user_est_rattache(projet_id, g.user["id"]):
-        flash("Vous êtes déjà rattaché à ce projet.", "success")
+        flash("Vous êtes déjà rattaché(e) à ce projet.", "success")
         if partiel.est_partiel():
             return _maj_fiche(projet_id, "intervenants", [])
         return redirect(url_for("projets.detail", projet_id=projet_id))
@@ -1930,12 +2046,18 @@ def rejoindre_tache(projet_id: int, tache_id: int):
     refus = _refus_si_clos(projet_id)
     if refus:
         return refus
+    # Lot 25 (TA-11) : une tâche d'un autre projet que l'adresse → 404,
+    # comme les autres routes d'une tâche.
+    tache = taches.get_tache(tache_id)
+    if tache is None or tache["projet_id"] != projet_id:
+        return _refus("Tâche introuvable sur ce projet.", 404, projet_id)
     if taches.user_est_intervenant(tache_id, g.user["id"]):
-        flash("Vous êtes déjà intervenant sur cette tâche.", "success")
+        flash("Vous êtes déjà intervenant(e) sur cette tâche.", "success")
         if partiel.est_partiel():
             return _reponse_tache(projet_id, tache_id)
         return redirect(url_for("projets.detail", projet_id=projet_id))
 
+    co_chefs_avant = projets.ids_co_chefs(projet_id)
     try:
         ok = taches.add_intervenant(tache_id, projet_id, g.user["id"], g.user["id"])
     except taches.TacheClose:
@@ -1945,7 +2067,12 @@ def rejoindre_tache(projet_id: int, tache_id: int):
 
     if not ok:
         return _refus("Tâche introuvable sur ce projet.", 404, projet_id)
-    flash("Vous avez rejoint la tâche.", "success")
+    # Lot 25 (TA-03) : un chef de projet qui rejoint une tâche devient
+    # co-chef (trigger 0013) — dit, et le chef titulaire est prévenu ; la
+    # carte des tâches suit (« + Nouvelle tâche »).
+    devient_co_chef = bool(_signaler_co_chefs(projet_id, None, [g.user["id"]], co_chefs_avant))
+    flash("Vous avez rejoint la tâche." + (" Vous êtes maintenant co-chef du projet." if devient_co_chef else ""),
+          "success")
     if partiel.est_partiel():
-        return _reponse_tache(projet_id, tache_id)
+        return _reponse_tache(projet_id, tache_id, deplacee=devient_co_chef)
     return redirect(url_for("projets.detail", projet_id=projet_id))

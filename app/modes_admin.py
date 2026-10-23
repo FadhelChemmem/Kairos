@@ -156,6 +156,32 @@ def _quitter_mode(admin: dict, mode: dict, cible: dict | None, raison: str, mess
         flash(message, "error")
 
 
+def abandonner(admin_id: int, raison: str) -> None:
+    """Lot 25 (UT-03) : modes posés par `admin_id` qui tombent sans sortie
+    de sa part (rôle retiré, compte désactivé, session révoquée ou expirée)
+    — la SORTIE est écrite au journal et les rappels simulés purgés, comme
+    pour une sortie normale. Ne touche pas à la session (l'appelant la vide)."""
+    mode = session.get(CLE_MODE)
+    date = session.get(CLE_DATE)
+    cible_id = None
+    if isinstance(mode, dict) and mode.get("admin") == admin_id and mode.get("mode") in MODES:
+        cible_id = mode.get("cible") if isinstance(mode.get("cible"), int) else None
+        cible = {"id": cible_id}
+        if cible_id is not None:
+            from .auth import get_user_by_id
+
+            try:
+                cible = get_user_by_id(cible_id) or cible
+            except Exception:
+                logger.exception("Compte vu introuvable pour le journal (id=%s)", cible_id)
+        journaliser(TABLES_JOURNAL[mode["mode"]], "SORTIE", admin_id, cible, raison=raison)
+    date_valide = isinstance(date, dict) and date.get("admin") == admin_id and lire_date(date.get("date"))
+    if date_valide:
+        journaliser(TABLE_DATE, "SORTIE", admin_id, date=date.get("date"), raison=raison)
+    if cible_id is not None or date_valide:
+        purger_rappels_simules(*[i for i in (admin_id, cible_id) if i is not None])
+
+
 def appliquer() -> None:
     """Appelé par auth.load_logged_in_user, une fois la session RÉELLE
     validée (g.user = compte de la session). Pose sur `g` :
@@ -176,6 +202,8 @@ def appliquer() -> None:
     if admin is None or not admin.get("actif") or admin.get("role") != "admin":
         # Plus d'Admin actif derrière la session (déconnecté, désactivé,
         # rôle retiré, clé posée hors d'une session Admin) : rien ne vaut.
+        if admin is not None:
+            abandonner(admin["id"], "admin_retire")
         session.pop(CLE_MODE, None)
         session.pop(CLE_DATE, None)
         return

@@ -162,7 +162,7 @@ def list_mes_taches(user_id: int, limit: int = 10) -> list[dict]:
     """Tâches en cours dont l'utilisateur est l'intervenant ou le créateur
     (carte "Mes tâches" de l'accueil)."""
     sql = """
-        SELECT t.id, t.titre, t.etat, t.date_echeance, p.id AS projet_id, p.nom AS projet_nom
+        SELECT t.id, t.titre, t.etat, t.date_echeance, p.id AS projet_id, p.nom AS projet_nom, p.code AS projet_code
         FROM tache t
         JOIN projet p ON p.id = t.projet_id
         WHERE t.etat = 'en_cours'  -- décision 5 (lot 10) : ni Vérifiée, ni Arrêt, ni Bloquée, Terminée, Abandonnée
@@ -333,6 +333,11 @@ def list_deadlines_tous(chef_id: int | None = None, equipe_code: str | None = No
         return [dict(r) for r in cur.fetchall()]
 
 
+class ListeBornee(list):
+    """Liste coupée à son plafond ; `plus` : il en reste au-delà."""
+    plus = False
+
+
 def list_bloquees(user_id: int | None = None, *, tous: bool = False, chef_id: int | None = None,
                   equipe_code: str | None = None, limit: int = 50) -> list[dict]:
     """Tâches bloquées des projets ouverts (lot 14, revue produit P0-1 :
@@ -342,7 +347,7 @@ def list_bloquees(user_id: int | None = None, *, tous: bool = False, chef_id: in
     la tâche, ou qu'il a créées (portée de list_deadlines et de Mes tâches) ;
     avec `tous` (Admin) : tout le bureau, filtres facultatifs chef de projet
     titulaire et équipe du projet (vue « Tous les projets » des Deadlines)."""
-    return db.query_all(
+    lignes = db.query_all(
         """
         SELECT t.id, t.titre, t.date_echeance, t.type_deadline, t.bloque_motif, t.bloque_le,
                ub.prenom AS bloque_par_prenom, ub.nom AS bloque_par_nom,
@@ -364,8 +369,12 @@ def list_bloquees(user_id: int | None = None, *, tous: bool = False, chef_id: in
         ORDER BY t.bloque_le NULLS FIRST, p.code, t.id
         LIMIT %(limit)s
         """,
-        {"uid": user_id, "tous": tous, "chef": chef_id, "equipe": equipe_code, "limit": limit},
+        {"uid": user_id, "tous": tous, "chef": chef_id, "equipe": equipe_code, "limit": limit + 1},
     )
+    # Lot 25 (TA-10) : « (50+) » seulement s'il y en a vraiment plus.
+    liste = ListeBornee(lignes[:limit])
+    liste.plus = len(lignes) > limit
+    return liste
 
 
 def search(user_id: int, q: str, limit: int = 6) -> list[dict]:
@@ -388,7 +397,7 @@ def search(user_id: int, q: str, limit: int = 6) -> list[dict]:
     )
 
 
-def _verrouiller_projet(cur, projet_id: int) -> None:
+def verrouiller_projet_ouvert(cur, projet_id: int) -> None:
     """À appeler EN PREMIER dans toute transaction qui peut changer l'état
     d'une tâche (audit données lot 10, I2). Sans ce verrou, deux tâches
     bloquées clôturées en même temps voient chacune l'autre encore bloquée
@@ -405,8 +414,6 @@ def _verrouiller_projet(cur, projet_id: int) -> None:
     if projet is not None and projet["etat"] in ("termine", "abandonne"):
         raise ProjetClos()
 
-
-verrouiller_projet_ouvert = _verrouiller_projet
 
 
 # « Annuler » d'un toast (lot 13, contre-expertise UX N9) : rejoué dans ce
@@ -460,7 +467,7 @@ def recalculer_etat_projet(cur, projet_id: int, current_user_id: int | None,
     sinon ; un projet Terminé ou Abandonné ne bouge
     pas. Fonction unique, appelée dans la transaction de TOUTE écriture de
     tâche ou de projet (création, changement d'état, clôture, informations
-    du projet), sous le verrou du projet (_verrouiller_projet ou FOR
+    du projet), sous le verrou du projet (verrouiller_projet_ouvert ou FOR
     UPDATE) — même règle que fn_etat_projet_recalcule (migrations 0019 et 0023), qui
     sert ici. Un changement donne le post automatique habituel « En cours →
     Bloqué » au nom de l'acteur. Renvoie (avant, après), None sans
@@ -516,7 +523,7 @@ def create_tache(
     quand la tâche est créée via un "rebond" (voir routes/projets.py:
     creer_tache, qui vérifie que ce post appartient au même projet)."""
     with db.get_cursor(user_id=current_user_id) as cur:
-        _verrouiller_projet(cur, projet_id)
+        verrouiller_projet_ouvert(cur, projet_id)
         cur.execute(
             """
             INSERT INTO tache (projet_id, titre, type_deadline, date_debut, date_echeance, created_by)
@@ -601,7 +608,7 @@ def add_intervenant(tache_id: int, projet_id: int, utilisateur_id: int, current_
     n'interbloque plus avec la clôture du projet ; projet clos entre-temps :
     ProjetClos."""
     with db.get_cursor(user_id=current_user_id) as cur:
-        _verrouiller_projet(cur, projet_id)
+        verrouiller_projet_ouvert(cur, projet_id)
         cur.execute("SELECT etat FROM tache WHERE id = %s AND projet_id = %s FOR SHARE", (tache_id, projet_id))
         ligne = cur.fetchone()
         if ligne is None:
@@ -640,6 +647,14 @@ class TacheModifiee(Exception):
     """« Annuler » périmé (recette du lot 14, n° 5) : la tâche n'est plus
     dans l'état que le geste annulé avait produit (quelqu'un l'a changée
     entre-temps) ; rien n'est défait."""
+
+
+def normaliser_titre(texte: str | None) -> str:
+    """Lot 25 (TA-04) : titre d'une tâche sur UNE ligne, sans caractère
+    invisible (largeur nulle…) ; chaîne vide s'il ne reste rien de visible
+    (refusé comme un titre vide)."""
+    propre = normaliser_motif(texte)
+    return " ".join(propre.split("\n")) if propre else ""
 
 
 def normaliser_motif(texte: str | None) -> str | None:
@@ -695,8 +710,9 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, 
     afficher une date de fin qui ne correspond plus à rien. Le passage à
     "Vérifié" (étape normale APRÈS la clôture) garde la date de clôture
     (audit n°2). Lot 21 (revue R21) : une tâche qui QUITTE En cours / Bloqué
-    pour Abandonné, Arrêt ou Vérifié reçoit la date du jour (date
-    d'écriture), sinon le Daily log la croyait ouverte.
+    pour Terminé, Abandonné, Arrêt ou Vérifié reçoit la date du jour (date
+    d'écriture), sinon le Daily log la croyait ouverte ; une tâche close
+    sans date de fin en reçoit une aussi (lot 24, trigger 0027).
 
     `peut_gerer` (décision du gérant, lot 10) : vrai pour le chef titulaire,
     un co-chef ou l'Admin (projets.user_can_manage). Sans lui, passer la
@@ -739,7 +755,7 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, 
 
     motif = normaliser_motif(motif)
     with db.get_cursor(user_id=current_user_id) as cur:
-        _verrouiller_projet(cur, projet_id)
+        verrouiller_projet_ouvert(cur, projet_id)
         cur.execute(
             """SELECT etat, titre, bloque_motif, bloque_par, bloque_le, date_fin,
                       extract(epoch FROM updated_at)::text AS version
@@ -755,6 +771,12 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, 
             raise TacheModifiee()
         if not peut_gerer and (etat in ETATS_RESERVES_GESTION or avant["etat"] in ETATS_RESERVES_GESTION):
             raise EtatReserve(MESSAGE_ETAT_RESERVE)
+        if etat == avant["etat"] and etat != "bloque" and not annulation:
+            # Lot 25 (TA-05) : vers le même état, rien n'est écrit (ni
+            # version, ni audit) — l'« Annuler » d'un autre reste possible.
+            if remplace is not None:
+                remplace["sans_effet"] = True
+            return True
         if etat == "bloque":
             if avant["etat"] == "bloque" and not annulation:
                 raise TacheDejaBloquee(avant.get("bloque_motif"))
@@ -778,8 +800,14 @@ def set_etat(tache_id: int, projet_id: int, etat: str, current_user_id: int, *, 
                                       AND bloque_le IS NOT NULL THEN bloque_le
                                  -- Lot 20 : instant simulé (mode test), comme les
                                  -- dates de création qu'on lui compare ; lot 24
-                                 -- (HD-06) : jamais avant la création de la tâche.
-                                 ELSE GREATEST(fn_maintenant(), created_at) END,
+                                 -- (HD-06) : jamais avant la création de la tâche ;
+                                 -- lot 25 (SB-03) : ni avant la création des autres
+                                 -- tâches du projet (l'ordre des gestes est gardé
+                                 -- pour la règle « créée après le blocage »).
+                                 -- Hors simulation, fn_maintenant() les dépasse déjà.
+                                 ELSE GREATEST(fn_maintenant(), created_at,
+                                               (SELECT max(t2.created_at) + interval '1 microsecond'
+                                                FROM tache t2 WHERE t2.projet_id = %(p)s)) END,
                 bloque_par = CASE WHEN %(etat)s <> 'bloque' THEN bloque_par
                                   WHEN (etat = 'bloque' OR %(annulation)s) AND bloque_motif IS NOT DISTINCT FROM %(motif)s
                                        AND bloque_par IS NOT NULL THEN bloque_par
@@ -841,7 +869,7 @@ def set_titre(tache_id: int, projet_id: int, titre: str, current_user_id: int) -
     with db.get_cursor(user_id=current_user_id) as cur:
         # Lot 20 (rapport de tests N1) : projet verrouillé d'abord, comme
         # set_etat — plus d'interblocage avec la clôture du projet.
-        _verrouiller_projet(cur, projet_id)
+        verrouiller_projet_ouvert(cur, projet_id)
         cur.execute(
             "SELECT titre FROM tache WHERE id = %s AND projet_id = %s FOR UPDATE",
             (tache_id, projet_id),
@@ -911,7 +939,7 @@ def close_tache(
     (décision du gérant, lot 10)."""
     reserves_hors_cloture = tuple(e for e in ETATS_RESERVES_GESTION if e not in ("termine", "verifie"))
     with db.get_cursor(user_id=current_user_id) as cur:
-        _verrouiller_projet(cur, projet_id)
+        verrouiller_projet_ouvert(cur, projet_id)
         # date_fin (lot 13, décision 5 et audit temps T-I2 / T-M3) : la date du
         # jour au fuseau de l'acteur, date simulée comprise mais jamais après
         # la vraie date (fn_date_ecriture, migration 0019).
@@ -980,7 +1008,7 @@ def _nom_complet(u: dict | None) -> str:
 def _tache_ouverte_sous_verrou(cur, tache_id: int, projet_id: int) -> dict | None:
     """Projet puis tâche verrouillés (même ordre que set_etat) ; None si la
     tâche n'est pas de ce projet ; TacheClose si elle est close."""
-    _verrouiller_projet(cur, projet_id)
+    verrouiller_projet_ouvert(cur, projet_id)
     cur.execute(
         "SELECT id, titre, etat, date_debut, date_echeance, type_deadline FROM tache "
         "WHERE id = %s AND projet_id = %s FOR UPDATE",
@@ -990,6 +1018,37 @@ def _tache_ouverte_sous_verrou(cur, tache_id: int, projet_id: int) -> dict | Non
     if tache is not None and tache["etat"] in ETATS_CLOS:
         raise TacheClose()
     return tache
+
+
+def reaffecter_apres_retrait(tache_id: int, projet_id: int, utilisateur_id: int, current_user_id: int,
+                             post_retrait: int | None, notification_retrait: int | None) -> dict | None:
+    """Lot 25 (TA-01) : « Annuler » un retrait d'intervenant. La personne
+    est réaffectée, le post « a retiré » (s'il est resté sans suite) et la
+    notification « vous a retiré » (non lue) sont retirés — aucun nouveau
+    post ni notification. Renvoie {titre, reaffecte}, None si la tâche n'est
+    pas (ou plus) ouverte dans ce projet."""
+    with db.get_cursor(user_id=current_user_id) as cur:
+        tache = _tache_ouverte_sous_verrou(cur, tache_id, projet_id)
+        if tache is None:
+            return None
+        cur.execute("INSERT INTO tache_intervenant (tache_id, utilisateur_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (tache_id, utilisateur_id))
+        reaffecte = cur.rowcount == 1
+        if post_retrait:
+            cur.execute(
+                """
+                DELETE FROM post p WHERE p.id = %(id)s AND p.tache_id = %(t)s AND p.evenement = 'intervenant_tache'
+                  AND p.auteur_id = %(a)s AND p.created_at > fn_maintenant() - make_interval(secs => %(d)s)
+                  AND NOT EXISTS (SELECT 1 FROM post_commentaire c WHERE c.post_id = p.id)
+                  AND NOT EXISTS (SELECT 1 FROM post_reaction r WHERE r.post_id = p.id)
+                  AND NOT EXISTS (SELECT 1 FROM post r WHERE r.parent_post_id = p.id)
+                """,
+                {"id": int(post_retrait), "t": tache_id, "a": current_user_id, "d": DELAI_ANNULATION_SECONDES},
+            )
+        if notification_retrait:
+            cur.execute("DELETE FROM notification WHERE id = %s AND utilisateur_id = %s AND NOT lu",
+                        (int(notification_retrait), utilisateur_id))
+        return {"titre": tache["titre"], "reaffecte": reaffecte}
 
 
 def ajouter_intervenants(tache_id: int, projet_id: int, utilisateur_ids: list[int], current_user_id: int) -> dict | None:
@@ -1089,7 +1148,7 @@ def set_echeance(tache_id: int, projet_id: int, date_echeance, type_deadline: st
             VALUES (%s, %s, %s, 'information', %s, 'echeance_tache')
             RETURNING id
             """,
-            (projet_id, tache_id, current_user_id, f"Échéance : {avant} → {apres}"),
+            (projet_id, tache_id, current_user_id, f"Échéance\u00a0: {avant} → {apres}"),
         )
         return {"post_id": cur.fetchone()["id"], "titre": tache["titre"], "avant": avant, "apres": apres,
                 "date_debut": tache["date_debut"]}

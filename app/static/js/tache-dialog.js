@@ -44,6 +44,10 @@
   var entreePoussee = false;   // ?tache= ajouté par nous (pushState)
   var fermetureEnCours = false;
   var minuteurFermeture = null;
+  // Lot 25 : fermeture en cours annulée par une réouverture (la fin de
+  // l'animation ne referme plus le panneau rouvert entre-temps).
+  var numeroFermeture = 0;
+  var transitionFermeture = null;
   var minuteur = null;          // préchargement au survol
   var urlsTaches = {};          // id -> adresse du panneau (hors fiche projet)
   var SELECTEUR_LIGNES = dialog.getAttribute('data-lignes') || '#carte-taches [data-open-tache]';
@@ -279,6 +283,10 @@
     if (fermetureEnCours) {
       // Réouverture pendant l'animation de sortie : le panneau reste.
       clearTimeout(minuteurFermeture);
+      numeroFermeture++;
+      if (transitionFermeture && transitionFermeture.skipTransition) {
+        try { transitionFermeture.skipTransition(); } catch (e) { /* déjà finie */ }
+      }
       fermetureEnCours = false;
       dialog.classList.remove('tache-panneau-sortie');
       if (String(id) === tacheCourante) tacheCourante = null;
@@ -337,7 +345,9 @@
   /** Ferme ; `depuisHistorique` : l'adresse a déjà changé (Retour). */
   function fermer(depuisHistorique) {
     if (!dialog.open || fermetureEnCours) return;
+    var jeton = ++numeroFermeture;
     var finir = function () {
+      if (jeton !== numeroFermeture) return;  // rouvert entre-temps
       fermetureEnCours = false;
       if (dialog.open) dialog.close();
     };
@@ -351,7 +361,21 @@
     } else {
       entreePoussee = false;
     }
-    if (enPanneau() && !mouvementReduit()) {
+    if (enPanneau() && !mouvementReduit() && typeof document.startViewTransition === 'function') {
+      // Lot 25 (demande du gérant, 23/10) : fermeture fluide — le panneau
+      // glisse et la page (tableau des tâches, fil, colonne de droite)
+      // reprend sa largeur en même temps, sans saut (View Transitions ;
+      // css/lot25.css). Ailleurs : l'animation d'avant.
+      fermetureEnCours = true;
+      document.documentElement.classList.add('k-vt-panneau');
+      var transition = document.startViewTransition(function () { finir(); });
+      transitionFermeture = transition;
+      var nettoyer = function () {
+        document.documentElement.classList.remove('k-vt-panneau');
+        if (transitionFermeture === transition) transitionFermeture = null;
+      };
+      transition.finished.then(nettoyer, nettoyer);
+    } else if (enPanneau() && !mouvementReduit()) {
       fermetureEnCours = true;
       dialog.classList.add('tache-panneau-sortie');
       minuteurFermeture = setTimeout(finir, 180);
@@ -365,6 +389,12 @@
   }
 
   function demanderFermeture() {
+    // Lot 25 (TA-07) : une échéance changée à l'instant (enregistrée seule,
+    // 900 ms après) part tout de suite — ce n'est pas une saisie perdue.
+    if (minuteurEcheance) {
+      var formEcheance = dialog.querySelector('.tache-echeance-form');
+      if (formEcheance) envoyerEcheance(formEcheance);
+    }
     if (FW && FW.aEteModifiee(dialog) && K && K.confirmer) {
       if (dialog.querySelector('.k-confirmation')) return;
       var ancre = dialog.contains(document.activeElement) ? document.activeElement : dialog;
@@ -493,6 +523,10 @@
   /* ---------------------------------------------------------------- */
   function lignesVisibles() {
     return Array.prototype.filter.call(document.querySelectorAll(SELECTEUR_LIGNES), function (l) {
+      // Lot 25 (TA-13) : une ligne d'un repli fermé (tâches closes) n'est
+      // pas visible, même si le navigateur lui donne une boîte.
+      var repli = l.closest && l.closest('details');
+      if (repli && !repli.open && !(l.closest('summary'))) return false;
       if (l.offsetParent !== null) return true;
       // Lot 21 (revue F3) : lignes du Gantt en « display: contents » (sans
       // boîte propre) — visibles si une de leurs cellules l'est.
@@ -516,6 +550,20 @@
     return !!el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable
       || !!(el.closest && el.closest('[role="listbox"], .search-combobox-wrap, .k-confirmation')));
   }
+  // Lot 25 (demande du gérant, 23/10) : panneau latéral, un clic hors du
+  // panneau = Échap (même confirmation si une saisie est en cours). Pas
+  // pour un clic sur une autre tâche (elle s'ouvre à la place), une
+  // confirmation, un toast, une autre fenêtre ou un élément retiré entre-
+  // temps de la page (mise à jour partielle).
+  document.addEventListener('click', function (e) {
+    if (!dialog.open || !enPanneau() || fermetureEnCours || e.defaultPrevented || e.button !== 0) return;
+    var cible = e.target;
+    if (!cible || !document.contains(cible) || dialog.contains(cible)) return;
+    if (cible.closest && cible.closest('[data-open-tache], .k-confirmation, .k-toast, .k-toasts, dialog[open], '
+        + '[role="listbox"], .search-combobox-wrap, .bandeau-admin')) return;
+    if (document.querySelector('dialog[open]:not(#dialog-tache)') || document.querySelector('.k-confirmation')) return;
+    demanderFermeture();
+  });
   document.addEventListener('keydown', function (e) {
     if (!dialog.open || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
     var actif = document.activeElement;

@@ -43,12 +43,29 @@ def grouper_par_jour(notifs: list[dict]) -> list[dict]:
     return groupes
 
 
+PAGE_NOTIFICATIONS = 50
+MAX_NOTIFICATIONS = 1000
+
+
 def _contexte_liste(apercu: bool = False) -> dict:
     simulees = modes_admin.voit_rappels_simules()
-    notifs = notifications_repo.list_notifications(g.user["id"], limit=NB_APERCU if apercu else 50,
-                                                   avec_simulees=simulees)
+    if apercu:
+        notifs = notifications_repo.list_notifications(g.user["id"], limit=NB_APERCU, avec_simulees=simulees)
+        plus_url = premiere_nouvelle_id = None
+    else:
+        # Lot 25 (FL-04) : « Afficher plus » au-delà de 50 (les plus
+        # anciennes n'étaient plus atteignables), par pages de 50.
+        n = request.args.get("n", type=int) or PAGE_NOTIFICATIONS
+        limite = min(max(PAGE_NOTIFICATIONS, n - n % PAGE_NOTIFICATIONS), MAX_NOTIFICATIONS)
+        notifs = notifications_repo.list_notifications(g.user["id"], limit=limite + 1, avec_simulees=simulees)
+        plus_url = (url_for("notifications.liste", n=limite + PAGE_NOTIFICATIONS)
+                    if len(notifs) > limite and limite < MAX_NOTIFICATIONS else None)
+        notifs = notifs[:limite]
+        premiere_nouvelle_id = (notifs[limite - PAGE_NOTIFICATIONS]["id"]
+                                if limite > PAGE_NOTIFICATIONS and len(notifs) > limite - PAGE_NOTIFICATIONS else None)
     nb_non_lues = notifications_repo.compter_non_lues(g.user["id"], avec_simulees=simulees)
-    return {"notifications": notifs, "groupes": grouper_par_jour(notifs), "nb_non_lues": nb_non_lues}
+    return {"notifications": notifs, "groupes": grouper_par_jour(notifs), "nb_non_lues": nb_non_lues,
+            "plus_url": plus_url, "premiere_nouvelle_id": premiere_nouvelle_id}
 
 
 def _fragment(cible: str | None, toasts=None):
@@ -138,9 +155,18 @@ def ouvrir(notification_id: int):
     # (lot 13, audit rôles M8).
     # Lot 23 (décision du gérant) : toujours sur « Tout », chargé jusqu'au
     # post (?jusqua=), qui est signalé une fois à l'arrivée (filtre-fil.js).
+    # Lot 25 (U2) : post supprimé — un message, et la fiche sans recherche
+    # du post (elle partait pour rien et restait dans l'adresse).
+    if notif.get("post_supprime"):
+        flash("Ce post a été supprimé.", "warning")
+        if notif["post_projet_id"]:
+            return redirect(url_for("projets.detail", projet_id=notif["post_projet_id"]))
+        return redirect(url_for("notifications.liste"))
+    # Lot 25 (U3) : le commentaire visé est déplié et signalé (filtre-fil.js).
+    vise = {"commentaire": notif["commentaire_id"]} if notif.get("commentaire_id") else {}
     if notif["post_projet_id"]:
         return redirect(url_for("projets.detail", projet_id=notif["post_projet_id"], fil="tout",
-                                jusqua=notif["post_id"]) + f"#post-{notif['post_id']}")
+                                jusqua=notif["post_id"], **vise) + f"#post-{notif['post_id']}")
     # « Ajouté au projet », « a rejoint votre projet » (notification.projet_id,
     # migration 0019, audit rôles I8).
     projet_id = notif["tache_projet_id"] or notif.get("projet_id")
@@ -149,7 +175,8 @@ def ouvrir(notification_id: int):
     # Information d'équipe sans projet (migration 0009) : le post est dans
     # le fil de l'accueil.
     if notif.get("post_id"):
-        return redirect(url_for("main.accueil", fil="tout", jusqua=notif["post_id"]) + f"#post-{notif['post_id']}")
+        return redirect(url_for("main.accueil", fil="tout", jusqua=notif["post_id"], **vise)
+                        + f"#post-{notif['post_id']}")
     return redirect(url_for("notifications.liste"))
 
 

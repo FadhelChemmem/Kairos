@@ -275,8 +275,13 @@ def chefs_par_ids(ids) -> list[dict]:
     ids = [int(i) for i in ids or []]
     if not ids:
         return []
-    return db.query_all("SELECT id, prenom, nom, avatar_chemin FROM utilisateur WHERE id = ANY(%s) "
-                        "ORDER BY prenom, nom", (ids,))
+    # Lot 25 (annexe C, P3) : seulement des personnes qui sont ou ont été
+    # chef d'un projet, ou qui peuvent l'être (chef de projet, Admin) — plus
+    # d'énumération de tous les comptes par l'adresse.
+    return db.query_all("SELECT u.id, u.prenom, u.nom, u.avatar_chemin FROM utilisateur u WHERE u.id = ANY(%s) "
+                        "AND (u.role IN ('chef_de_projet', 'admin') "
+                        "     OR EXISTS (SELECT 1 FROM projet p WHERE p.chef_projet_id = u.id)) "
+                        "ORDER BY u.prenom, u.nom", (ids,))
 
 
 def list_chefs_de_projet(user_id: int | None = None) -> list[dict]:
@@ -352,6 +357,11 @@ def get_projet(projet_id: int) -> dict | None:
                u.prenom AS chef_prenom, u.nom AS chef_nom,
                u.avatar_chemin AS chef_avatar_chemin,
                pl.code AS phase_liee_code, pl.nom AS phase_liee_nom,
+               -- Lot 25 (annexe C, U7) : projets qui désignent celui-ci comme
+               -- phase liée (filtrés à la visibilité par la route).
+               (SELECT COALESCE(json_agg(json_build_object('id', s.id, 'code', s.code, 'nom', s.nom)
+                                         ORDER BY s.code, s.id), '[]'::json)
+                FROM projet s WHERE s.phase_liee_id = p.id) AS phases_suivantes,
                h.heures_cumulees, h.heures_chef, h.heures_intervenant
         FROM projet p
         JOIN utilisateur u ON u.id = p.chef_projet_id
@@ -387,10 +397,10 @@ EQUIPE_PAR_DEFAUT = "MIDGARD"
 ROLES_CHEF_POSSIBLES = ("chef_de_projet", "admin")
 
 MESSAGE_CHEF_PROJET_CLOS = (
-    "Ce projet est clos : rouvrez-le d'abord (état En cours ou Bloqué), puis changez de chef de projet."
+    "Ce projet est clos\u00a0: rouvrez-le d’abord (état En cours ou Bloqué), puis changez de chef de projet."
 )
 MESSAGE_CHEF_INVALIDE = (
-    "Nouveau chef de projet invalide : il faut un compte actif, chef de projet ou administrateur."
+    "Nouveau chef de projet invalide\u00a0: il faut un compte actif, chef de projet ou administrateur."
 )
 
 
@@ -642,6 +652,18 @@ def update_projet(
                 (projet_id, lot_code),
             )
     return changement
+
+
+def retirer_co_chefs(projet_id: int, utilisateur_ids: list[int], current_user_id: int) -> None:
+    """Lot 25 (TA-06) : « Annuler » une réouverture retire les co-chefs
+    qu'elle avait créés (jamais le chef titulaire)."""
+    if not utilisateur_ids:
+        return
+    db.execute(
+        "DELETE FROM projet_co_chef cc USING projet p WHERE cc.projet_id = %s AND p.id = cc.projet_id "
+        "AND cc.utilisateur_id = ANY(%s) AND cc.utilisateur_id <> p.chef_projet_id",
+        (projet_id, utilisateur_ids), user_id=current_user_id,
+    )
 
 
 def list_lots(projet_id: int) -> list[dict]:
@@ -904,8 +926,26 @@ class RetraitRefuse(Exception):
 def ids_utilisateurs_voyant(projet_id: int) -> set[int]:
     """Comptes qui voient le projet (v_projet_visibilite) : les seuls qu'on
     peut affecter à une de ses tâches (lot 13, audit rôles I7)."""
+    # Lot 25 (BD-04) : même règle que v_projet_visibilite, mais les
+    # rattachements de CE projet sont lus d'abord, par index (la vue
+    # parcourait toutes les tables de rattachement à chaque fiche).
     return {r["utilisateur_id"] for r in db.query_all(
-        "SELECT utilisateur_id FROM v_projet_visibilite WHERE projet_id = %s", (projet_id,))}
+        """
+        WITH p AS (SELECT id, equipe_code, chef_projet_id FROM projet WHERE id = %(p)s),
+        rattaches AS (
+            SELECT chef_projet_id AS uid FROM p
+            UNION SELECT utilisateur_id FROM projet_co_chef WHERE projet_id = %(p)s
+            UNION SELECT utilisateur_id FROM projet_intervenant WHERE projet_id = %(p)s
+            UNION SELECT ti.utilisateur_id FROM tache t JOIN tache_intervenant ti ON ti.tache_id = t.id
+                  WHERE t.projet_id = %(p)s
+            UNION SELECT utilisateur_id FROM projet_ancien_membre WHERE projet_id = %(p)s
+        )
+        SELECT u.id AS utilisateur_id
+        FROM utilisateur u CROSS JOIN p
+        WHERE u.actif = true AND u.role <> 'rh'
+          AND (u.role = 'admin' OR u.equipe_code = p.equipe_code
+               OR (u.role <> 'client' AND u.id IN (SELECT uid FROM rattaches)))
+        """, {"p": projet_id})}
 
 
 def ids_co_chefs(projet_id: int) -> set[int]:
@@ -952,7 +992,7 @@ def retirer_intervenant(projet_id: int, utilisateur_id: int, current_user_id: in
         if projet["etat"] in ("termine", "abandonne"):
             raise taches.ProjetClos()  # lot 21 (revue R20) : clos entre-temps
         if projet["chef_projet_id"] == utilisateur_id:
-            raise RetraitRefuse("Le chef de projet titulaire ne se retire pas : confiez d'abord le projet à "
+            raise RetraitRefuse("Le chef de projet titulaire ne se retire pas\u00a0: confiez d’abord le projet à "
                                 "un autre chef (fenêtre Informations).")
         cur.execute("SELECT id, prenom, nom FROM utilisateur WHERE id = ANY(%s)",
                     ([utilisateur_id, current_user_id],))
@@ -963,9 +1003,10 @@ def retirer_intervenant(projet_id: int, utilisateur_id: int, current_user_id: in
         cur.execute("DELETE FROM projet_co_chef WHERE projet_id = %s AND utilisateur_id = %s",
                     (projet_id, utilisateur_id))
         co_chef = cur.rowcount > 0
-        cur.execute("DELETE FROM projet_intervenant WHERE projet_id = %s AND utilisateur_id = %s",
-                    (projet_id, utilisateur_id))
-        intervenant = cur.rowcount > 0
+        # Lot 25 (MX-05) : les tâches ouvertes d'abord — la lecture gardée
+        # (fn_a_participe, au retrait du projet) ne dépend plus de l'ordre
+        # des retraits : être affecté à une tâche encore ouverte, sans rien
+        # y faire, n'est pas avoir participé.
         cur.execute(
             """
             DELETE FROM tache_intervenant ti USING tache t
@@ -976,8 +1017,11 @@ def retirer_intervenant(projet_id: int, utilisateur_id: int, current_user_id: in
             (projet_id, utilisateur_id),
         )
         taches = [r["titre"] for r in cur.fetchall()]
+        cur.execute("DELETE FROM projet_intervenant WHERE projet_id = %s AND utilisateur_id = %s",
+                    (projet_id, utilisateur_id))
+        intervenant = cur.rowcount > 0
         if not (co_chef or intervenant or taches):
-            raise RetraitRefuse("Cette personne n'est pas rattachée au projet (ou seulement à des tâches closes).")
+            raise RetraitRefuse("Cette personne n’est pas rattachée au projet (ou seulement à des tâches closes).")
         acteur = gens.get(current_user_id) or {"prenom": "", "nom": ""}
         contenu = f"{_nom(acteur)} a retiré {_nom(personne)} du projet"
         if taches:

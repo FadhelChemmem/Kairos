@@ -85,7 +85,7 @@
   var urlCompte = cloche && cloche.getAttribute('data-url-compte');
   var dernier = 0;
   function rafraichir() {
-    if (!urlCompte || document.hidden || Date.now() - dernier < 20000) return;
+    if (!urlCompte || !window.fetch || document.hidden || Date.now() - dernier < 20000) return;
     dernier = Date.now();
     fetch(urlCompte, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
       .then(function (r) { return r.ok && /json/.test(r.headers.get('Content-Type') || '') ? r.json() : null; })

@@ -379,14 +379,38 @@ def lien_reset_recent(user_id: int, minutes: int, duree_validite: datetime.timed
     ) is not None
 
 
-def set_reset_token(user_id: int, token_hash: str, expires_at, current_user_id: int | None = None) -> None:
+def set_reset_token(user_id: int, token_hash: str, expires_at, current_user_id: int | None = None):
     """Enregistre le jeton "mot de passe oublié" (son empreinte SHA-256,
     jamais le jeton en clair — voir app/auth.py). `current_user_id` :
     l'Admin/RH qui a déclenché l'envoi depuis la fiche, pour que le
-    journal l'attribue à la bonne personne."""
+    journal l'attribue à la bonne personne. Lot 25 (UT-02) : rend le lien
+    précédent ({reset_token_hash, reset_token_expires_at}), à rétablir si
+    l'e-mail du nouveau ne part pas."""
+    with db.get_cursor(user_id=current_user_id) as cur:
+        cur.execute(
+            """
+            UPDATE utilisateur u SET reset_token_hash = %s, reset_token_expires_at = %s
+            FROM (SELECT id, reset_token_hash, reset_token_expires_at FROM utilisateur WHERE id = %s FOR UPDATE) a
+            WHERE u.id = a.id
+            RETURNING a.reset_token_hash, a.reset_token_expires_at
+            """,
+            (token_hash, expires_at, user_id),
+        )
+        ligne = cur.fetchone()
+    return dict(ligne) if ligne else None
+
+
+def restaurer_reset_token(user_id: int, jeton_hash: str, ancien: dict | None,
+                          current_user_id: int | None = None) -> None:
+    """Lot 25 (UT-02) : l'e-mail du nouveau lien n'est pas parti — le lien
+    précédent (déjà reçu) redevient le bon, et « Mot de passe oublié » n'est
+    plus bloqué 15 minutes par un lien jamais envoyé. Seulement si le jeton
+    en place est encore celui qu'on vient d'écrire."""
+    ancien = ancien or {}
     db.execute(
-        "UPDATE utilisateur SET reset_token_hash = %s, reset_token_expires_at = %s WHERE id = %s",
-        (token_hash, expires_at, user_id),
+        "UPDATE utilisateur SET reset_token_hash = %s, reset_token_expires_at = %s "
+        "WHERE id = %s AND reset_token_hash = %s",
+        (ancien.get("reset_token_hash"), ancien.get("reset_token_expires_at"), user_id, jeton_hash),
         user_id=current_user_id,
     )
 

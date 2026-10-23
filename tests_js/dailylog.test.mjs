@@ -23,7 +23,9 @@ test('fmt : heures et minutes à la française', () => {
 
 test('parse : 2,5 · 2.5h · 2h30 · 2h30min · 2:30 · 45min · 90 min · nombre nu = heures', () => {
   const cas = { '2,5': 150, '2.5': 150, '2.5h': 150, '2h30': 150, '2h30min': 150, '2 h 30': 150, '2:30': 150,
-                '45min': 45, '90 min': 90, '8': 480, ',5': 30, '0': 0, '': 0, '  3h ': 180, '2H05': 125 };
+                '45min': 45, '90 min': 90, '8': 480, ',5': 30, '0': 0, '': 0, '  3h ': 180, '2H05': 125,
+                // Lot 25 (U3) : « mn », « m », « minutes ».
+                '30mn': 30, '1h30mn': 90, '45 minutes': 45, '1h30m': 90, '1 minute': 1, '20 mins': 20 };
   for (const [entree, attendu] of Object.entries(cas)) assert.equal(dl.parse(entree), attendu, entree);
   for (const illisible of ['abc', '2h75', '1:60', '-1', '2,5,5', '²', '1e2', '½']) assert.ok(Number.isNaN(dl.parse(illisible)), illisible);
   assert.ok(dl.estNombreNu('12'));

@@ -35,17 +35,18 @@
 
   /** Saisie libre → minutes (NaN si illisible, 0 si vide).
    *  « 2,5 » « 2.5h » « 2h30 » « 2h30min » « 2:30 » « 45min » « 90 min » ;
-   *  un nombre nu se lit en heures. */
+   *  lot 25 (U3) : aussi « mn », « m », « minute(s) » (« 30mn », « 1h30mn »).
+   *  Un nombre nu se lit en heures. */
   function parse(texte) {
     var s = String(texte == null ? '' : texte).trim().toLowerCase().replace(',', '.');
     var m;
     if (!s) return 0;
-    if ((m = s.match(/^(\d+)\s*[h:]\s*(\d{1,2})\s*(?:min)?$/))) {
+    if ((m = s.match(/^(\d+)\s*[h:]\s*(\d{1,2})\s*(?:min(?:ute)?s?|mn|m)?$/))) {
       var mn = +m[2];
       return mn < 60 ? (+m[1]) * 60 + mn : NaN;
     }
     if ((m = s.match(/^(\d*\.?\d+)\s*h$/))) return (+m[1]) * 60;
-    if ((m = s.match(/^(\d+)\s*min$/))) return +m[1];
+    if ((m = s.match(/^(\d+)\s*(?:min(?:ute)?s?|mn|m)$/))) return +m[1];
     if ((m = s.match(/^(\d*\.?\d+)$/))) return (+m[1]) * 60;
     return NaN;
   }
@@ -302,7 +303,7 @@
       return { cle: N.cle(l.projet_id, l.tache_id), projet_id: l.projet_id, tache_id: l.tache_id || null,
                code: l.code, nom: l.nom, tache_titre: l.tache_titre, m: l.minutes,
                prev: l.minutes > 0 ? l.minutes : PAS, modifiable: !VOIR && !!l.modifiable, masquee: false,
-               couleur: N.couleur(l.code) };
+               figee: !!l.figee, couleur: N.couleur(l.code) };
     }
     function proposes(j) {
       // Journée vierge : lignes proposées à 0 h, jamais stockées (décision
@@ -467,7 +468,9 @@
       info.title = r.masquee ? '' : libelleLigne(r);
       if (row.dataset.fixe === '1') {
         row.querySelector('.dl-fixtexte').textContent = f(r.m);
+        // Lot 25 (DL-07) : projet quitté — la cause dite, pas « 14 jours ».
         var titre = r.masquee ? T.ligne_masquee : (droits().futur_reel ? T.ligne_futur_reel
+          : r.figee ? T.ligne_figee
           : (droits().lecture_seule || droits().mode === 'saisie' ? T.ligne_verrouillee_fenetre : T.ligne_verrouillee));
         row.title = titre;
         row.querySelector('.dl-fixval').setAttribute('aria-label', f(r.m) + ' — ' + titre);
@@ -1075,7 +1078,7 @@
       // garde les lignes à 0 h affichées ; met à jour droits et lignes gardées par le serveur
       var serveur = {};
       d.lignes.forEach(function (l, i) { var r = ligneVersRow(l, i); serveur[r.cle] = r; });
-      rows.forEach(function (r) { if (serveur[r.cle]) { r.modifiable = serveur[r.cle].modifiable; delete serveur[r.cle]; } });
+      rows.forEach(function (r) { if (serveur[r.cle]) { r.modifiable = serveur[r.cle].modifiable; r.figee = serveur[r.cle].figee; delete serveur[r.cle]; } });
       Object.keys(serveur).forEach(function (k) { rows.push(serveur[k]); });
       jour = d;
       recalcSaved();
@@ -1292,6 +1295,9 @@
         var nom = document.createElement('span'); nom.className = 'dl-jour-nom'; nom.textContent = T.jours_courts[i];
         var num = document.createElement('span'); num.className = 'dl-jour-num'; num.textContent = String(d.getUTCDate());
         var et = document.createElement('span'); et.className = 'dl-jour-etat'; et.textContent = etat || '\u00a0';
+        // Lot 25 (U2 du Daily log) : libellé court sur téléphone (« Manq… »).
+        var court = k === TODAY ? T.aujourdhui_court : futur ? '' : (T.etat_semaine_court || {})[st];
+        if (court) { et.setAttribute('data-court', court); et.classList.add('dl-jour-etat-court'); }
         b.appendChild(nom); b.appendChild(num); b.appendChild(et);
         frag.appendChild(b);
       }
@@ -1309,6 +1315,8 @@
         else if (d.mode === 'saisie' && d.lignes_de_ses_projets) textes.push(T.lecture_seule_chef);
       }
       if (jour && jour.modifie_par_autre && jour.modifie_par && d.mode === 'saisie') textes.push(tr(T.modifie_par, jour.modifie_par));
+      // Lot 25 (U1 du Daily log) : sur téléphone l'infobulle n'existe pas.
+      if (!VOIR && T.note_figee && rows.some(function (r) { return r.figee && !r.modifiable; })) textes.push(T.note_figee);
       lectureEl.textContent = textes.join(' ');
       lectureEl.hidden = !textes.length;
     }
@@ -1329,14 +1337,19 @@
         var serveur = {};
         rows.forEach(function (r) { if (!r.masquee && !r.propose) serveur[r.cle] = r; });
         var vus = {};
+        var ignorees = 0;
         var restaures = b.rows.map(function (r) {
           var s = serveur[r.cle];
           vus[r.cle] = true;
           if (!s) return r;
+          if (!s.modifiable && s.m !== r.m) ignorees++;
           return s.modifiable ? Object.assign({}, r, { modifiable: true }) : s;
         });
         Object.keys(serveur).forEach(function (c) { if (!vus[c] && !serveur[c].modifiable) restaures.push(serveur[c]); });
         rows = restaures; touched(); render();
+        // Lot 25 (annexes A et B, U2) : une ligne devenue figée garde la
+        // valeur du serveur — on le dit au lieu de l'ignorer en silence.
+        if (ignorees) toast(ignorees > 1 ? T.brouillon_figees : T.brouillon_figee, { warn: true });
       } }] });
     }
     function appliquerJour(j, opts) {

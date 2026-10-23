@@ -79,7 +79,8 @@ class TestRetireEnLectureSeule(_Lot20):
         for url, data in cas:
             with self.subTest(url=url):
                 r = self.client.post(url, data=data, headers=partiel("#x"))
-                self.assertIn(r.status_code, (403, 404, 409, 422), r.get_data(as_text=True)[:300])
+                # Lot 25 (revue R-07) : le code exact, plus « l'un de quatre ».
+                self.assertEqual(r.status_code, 403, r.get_data(as_text=True)[:300])
         self.assertEqual(self.compter_lignes(), avant)
         self.assertEqual(self.etat_tache(self.close), "termine")
         self.assertEqual(self.etat_tache(self.t1), "en_cours")
@@ -169,7 +170,7 @@ class TestProjetClos(_Lot20):
         self.sql("UPDATE projet SET etat = 'termine' WHERE id = %s", (self.p1,))
         with self.assertRaises(taches.ProjetClos):
             with self.db.get_cursor() as cur:
-                taches._verrouiller_projet(cur, self.p1)
+                taches.verrouiller_projet_ouvert(cur, self.p1)
 
     def test_route_repond_409_et_n_ecrit_rien(self):
         from unittest.mock import patch
@@ -180,7 +181,7 @@ class TestProjetClos(_Lot20):
         # Le contrôle d'avant (projet ouvert) est passé : clôture « pendant » la requête.
         with patch("app.routes.projets._refus_si_clos", return_value=None):
             r = self.client.post(f"/projets/{self.p1}/taches", data={"titre": "Tardive"}, headers=partiel("#x"))
-        self.assertIn(r.status_code, (403, 409), r.get_data(as_text=True)[:400])
+        self.assertEqual(r.status_code, 409, r.get_data(as_text=True)[:400])
         self.assertEqual(self.compter("SELECT count(*) AS n FROM tache"), avant)
 
 
@@ -194,6 +195,8 @@ class TestDateSimuleePartout(_Lot20):
         # Lot 24 (HD-06) : la tâche existait ce jour-là (un blocage n'est
         # jamais daté avant la création de sa tâche).
         self.sql("UPDATE tache SET created_at = now() - interval '30 days' WHERE id = %s", (self.t1,))
+        # Lot 25 (SB-03) : ni avant la création de son projet.
+        self.sql("UPDATE projet SET created_at = now() - interval '30 days' WHERE id = %s", (self.p1,))
         self.login(self.admin)
         self.client.post("/admin/date-simulee", data={"date": jour.isoformat(), "heure": "07:00"})
         self.entrer(self.inter, mode="agir")
@@ -239,10 +242,14 @@ class TestDailyLogLot20(_Lot20):
             cur.execute("INSERT INTO dailylog_entree (utilisateur_id, date, projet_id, heures) VALUES (%s, %s, %s, 3) "
                         "RETURNING id", (self.inter, vieux, self.p1))
             ligne = cur.fetchone()["id"]
-        with self.assertRaises(Exception):
+        import psycopg2
+        # Lot 25 (revue R-07) : le refus de la garde en base, pas n'importe
+        # quelle exception (une faute de frappe passait aussi).
+        with self.assertRaises(psycopg2.Error) as refus:
             with self.db.get_cursor(user_id=self.inter) as cur:
                 cur.execute("UPDATE dailylog_entree SET date = %s WHERE id = %s",
                             (self.auj - datetime.timedelta(days=1), ligne))
+        self.assertIn("Daily log", str(refus.exception))
         self.assertEqual(self.sql("SELECT date FROM dailylog_entree WHERE id = %s", (ligne,))[0]["date"], vieux)
 
 

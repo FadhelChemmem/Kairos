@@ -107,8 +107,10 @@ echo "   -> $FILET"
 echo "3/5 Restauration de la base (une seule transaction)…"
 # Fonctionne aussi pour les sauvegardes antérieures à --clean : le schéma
 # est vidé dans la même transaction que le rechargement.
-if ! { echo "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"; gunzip -c "$FICHIER_DB"; } \
-     | "${PSQL[@]}" --single-transaction; then
+# Lot 25 (observation base-déploiement) : sans les dizaines de lignes
+# « drop cascades to … » et de setval, les vraies erreurs se lisent.
+if ! { echo "SET client_min_messages = warning;"; echo "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"; gunzip -c "$FICHIER_DB"; } \
+     | "${PSQL[@]}" --single-transaction >/dev/null; then
   echo "ÉCHEC : la base n'a PAS été modifiée. Redémarrage de l'application…" >&2
   sudo docker compose up -d web
   exit 1
@@ -127,5 +129,15 @@ echo "5/5 Redémarrage (les migrations plus récentes que la sauvegarde sont app
 sudo docker compose up -d web
 comptage="$("${PSQL[@]}" -At -c "SELECT (SELECT count(*) FROM utilisateur) || ' utilisateurs, ' || (SELECT count(*) FROM projet) || ' projets'" 2>/dev/null || echo "comptage indisponible")"
 echo "Restauration terminée : $comptage."
+# Lot 25 (BD-03) : la sauvegarde notée par un déploiement inachevé vient
+# d'être rechargée — ce déploiement est défait, ses repères aussi (oubliés,
+# le déploiement suivant aurait gardé cette ancienne sauvegarde).
+if [ -f .deploiement_en_cours ]; then
+  notee="$(sed -n 's/^sauvegarde=//p' .deploiement_en_cours)"
+  if [ -n "$notee" ] && [ "$(absolu "$notee")" = "$FICHIER_DB" ]; then
+    rm -f .deploiement_en_cours
+    echo "Repères du déploiement inachevé retirés (.deploiement_en_cours) : retour arrière fait."
+  fi
+fi
 echo "Vérifier : sudo docker compose ps (web « healthy ») et sudo docker compose logs web --tail 40."
 echo "Copie de sécurité d'avant restauration : $FILET"

@@ -168,6 +168,9 @@ def journal():
         return retour
     filtres, criteres = _filtres()
     filtres_memoire.memoriser("journal", dict(filtres, filtres_actifs="1"))
+    sans_choix = filtres_memoire.apres_geste_sans_js()
+    if sans_choix is not None:
+        return sans_choix
     curseur = _lire_curseur(request.args.get("avant"))
     deja = request.args.get("n", 0, type=int) if curseur else 0
     deja = max(0, min(deja or 0, 1_000_000))
@@ -186,6 +189,9 @@ def journal():
         nb_affichees=deja + len(entrees), encore=encore, suite_url=suite_url,
         ancre_id=curseur[1] if curseur else None, suite_id=entrees[-1]["id"] if encore else None,
         filtres=filtres, filtre_actif=any(filtres.values()),
+        # Lot 25 (U5) : « Au » avant « Du » — dit, plutôt qu'une liste vide.
+        dates_inversees=bool(criteres["date_debut"] and criteres["date_fin"]
+                             and criteres["date_fin"] < criteres["date_debut"]),
     )
     if partiel.est_partiel():
         if curseur:
@@ -211,4 +217,6 @@ def journal_entree(entree_id: int):
         abort(404)
     if partiel.est_partiel():
         return partiel.repondre("partials/journal_diff.html", e=entree, diff=differences(entree))
+    # Lot 25 (U10) : l'heure, comme dans la liste.
+    grouper_par_jour([entree])
     return render_template("admin_journal_entree.html", e=entree, diff=differences(entree))

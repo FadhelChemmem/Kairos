@@ -24,7 +24,7 @@
     {% if b.mode %}
     <div class="bandeau-admin-ligne">
       <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
-      <span class="bandeau-admin-texte"><span class="bandeau-admin-intro">{{ 'Vous voyez Kairos comme' if b.mode == 'voir' else 'Vous agissez comme' }} </span><strong>{{ b.cible.prenom }} {{ b.cible.nom }}</strong><span class="bandeau-admin-intro"> ({{ b.role_cible }})</span></span>
+      <span class="bandeau-admin-texte">{# Lot 25 (U6) : sur téléphone, Voir et Agir se distinguent aussi par le texte. #}<span class="bandeau-admin-court" aria-hidden="true">{{ 'Voir :' if b.mode == 'voir' else 'Agir :' }} </span><span class="bandeau-admin-intro">{{ 'Vous voyez Kairos comme' if b.mode == 'voir' else 'Vous agissez comme' }} </span><strong>{{ b.cible.prenom }} {{ b.cible.nom }}</strong><span class="bandeau-admin-intro"> ({{ b.role_cible }})</span></span>
       <span class="bandeau-admin-sep" aria-hidden="true">—</span>
       <form method="post" action="{{ url_for('modes_admin.revenir') }}" class="bandeau-admin-form" data-permis-lecture>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

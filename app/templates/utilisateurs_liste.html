@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "partials/avatar.html" as avatarm %}
-{% block title %}Utilisateurs — Kairos{% endblock %}
+{% block title %}Équipe — Kairos{% endblock %}
 {# Pas de fil sur cette page (lot 11, audit front M8). #}
 {% block scripts_fil %}{% endblock %}
 {% block body %}
@@ -9,7 +9,7 @@
 
 <div class="subbar">
   <div class="subbar-inner">
-    <h1 class="page-titre">Utilisateurs</h1>
+    <h1 class="page-titre">Équipe</h1>
     {# Lot 11 (audit front M6) : avec un filtre, le nombre de résultats. #}
     {% include "partials/utilisateurs_compte.html" %}
     {% if g.user.role == 'admin' %}<a href="{{ url_for('modes_admin.page') }}" class="lien-carte subbar-lien">Voir Kairos comme…</a>{% endif %}

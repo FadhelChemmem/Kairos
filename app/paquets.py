@@ -39,9 +39,12 @@ PAQUETS: dict[str, tuple[str, ...]] = {
         "js/notifications.js",
         # Lot 24 : service worker, appli installable, notifications Windows.
         "js/push.js",
+        # Lot 25 : demandes du gérant du 23/10 (fiche projet).
+        "js/lot25.js",
     ),
     "app.css": ("css/app.css", "css/lot13-pages.css", "css/lot14-a2.css", "css/lot14-a3.css",
-                "css/lot13-visuel.css", "css/lot14-a1.css", "css/lot14-a4.css", "css/lot15.css", "css/lot17.css"),
+                "css/lot13-visuel.css", "css/lot14-a1.css", "css/lot14-a4.css", "css/lot15.css", "css/lot17.css",
+                "css/lot25.css"),
 }
 TYPES = {".js": "application/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
 CACHE_LONG = "public, max-age=31536000, immutable"

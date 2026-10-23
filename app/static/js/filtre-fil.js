@@ -172,8 +172,24 @@
       if (ouvertAvant) etat(true);
     });
   }
+  // Lot 25 (SB-02) : un post épinglé entre-temps (par quelqu'un d'autre)
+  // et déjà affiché dans la liste n'y reste pas en double quand l'encadré
+  // arrive avec la page suivante.
+  function dedoublonnerEpingle() {
+    var zone = document.getElementById('fil-epingle');
+    if (!zone) return;
+    Array.prototype.forEach.call(zone.querySelectorAll('[id^="fil-item-"]'), function (item) {
+      Array.prototype.forEach.call(document.querySelectorAll('[id="' + item.id + '"]'), function (autre) {
+        if (autre !== item && !zone.contains(autre) && autre.parentNode) autre.parentNode.removeChild(autre);
+      });
+    });
+  }
   replierEpingle(document);
-  document.addEventListener('kairos:fragment', function (e) { replierEpingle(e.detail && e.detail.racine); });
+  dedoublonnerEpingle();
+  document.addEventListener('kairos:fragment', function (e) {
+    dedoublonnerEpingle();
+    replierEpingle(e.detail && e.detail.racine);
+  });
   // Lot 24 (FR4) : recalculé quand la largeur change (rotation du
   // téléphone, fenêtre redimensionnée) ; un texte déplié le reste.
   var largeur = window.innerWidth, minuteurLargeur = null;
@@ -259,9 +275,34 @@
     var el = document.getElementById('post-' + m[1]);
     if (!el) return false;
     var det = el.closest('details.fil-groupe-details');
-    if (det && !det.open) { det.open = true; el.scrollIntoView({ block: 'start' }); }
+    if (det && !det.open) det.open = true;
+    // Lot 25 (FL-01, régression du lot 24) : le post est amené à l'écran
+    // AVANT que l'adresse perde son ancre (le défilement du navigateur
+    // n'avait plus lieu). Sous la barre collante : marge en CSS.
+    el.scrollIntoView({ block: 'start' });
     surligner(el);
+    revelerCommentaire(el);
     return true;
+  }
+  // Lot 25 (U3) : notification d'un commentaire — il est déplié (même
+  // replié dans « Voir les N commentaires précédents ») et signalé.
+  var commentaireVise = null;
+  try { commentaireVise = new URL(window.location.href).searchParams.get('commentaire'); } catch (e) { /* aucun */ }
+  function revelerCommentaire(post) {
+    if (!commentaireVise || !/^\d+$/.test(commentaireVise)) return;
+    var c = post.querySelector('#commentaire-' + commentaireVise);
+    commentaireVise = null;
+    if (!c) return;
+    var det = c.closest('details');
+    while (det && post.contains(det)) {
+      det.open = true;
+      det = det.parentElement && det.parentElement.closest('details');
+    }
+    c.scrollIntoView({ block: 'center' });
+    c.classList.remove('post-signale');
+    void c.offsetWidth;
+    c.classList.add('post-signale');
+    setTimeout(function () { c.classList.remove('post-signale'); }, 2600);
   }
   // Lot 23 (décision du gérant) : le post ouvert depuis une notification est
   // signalé une fois, sobrement (halo qui s'efface) ; rien de plus ensuite.
@@ -271,8 +312,9 @@
   function nettoyerAdresse() {
     try {
       var u = new URL(window.location.href);
-      if (!u.searchParams.has('jusqua') && !/^#post-\d+$/.test(u.hash)) return;
+      if (!u.searchParams.has('jusqua') && !u.searchParams.has('commentaire') && !/^#post-\d+$/.test(u.hash)) return;
       u.searchParams.delete('jusqua');
+      u.searchParams.delete('commentaire');
       u.hash = '';
       window.history.replaceState(window.history.state, '', u.pathname + u.search);
     } catch (e) { /* adresse gardée */ }

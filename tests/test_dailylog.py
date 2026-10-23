@@ -809,10 +809,19 @@ class TestAutresPages(_BaseDailyLog):
                                                  "app.repositories.dailylog.get_objectif": 480}).data.decode()
         self.assertIn("absence enregistrée aujourd’hui", html)
         html = self.appel("get", "/accueil", **{"app.repositories.dailylog.jour_renseigne": False}).data.decode()
-        self.assertIn("à remplir aujourd’hui", html)
-        # Lot 23 (demande du gérant) : en rouge un jour ouvré, sinon neutre.
+        # Lot 23 (demande du gérant) : en rouge un jour ouvré, sinon neutre ;
+        # lot 24 : « week-end » le samedi et le dimanche (lot 25, N-CI : la
+        # CI n'est plus rouge le week-end).
         ouvre = dl.aujourdhui_pour({"fuseau": "Africa/Tunis"}).weekday() < 5
+        self.assertIn("à remplir aujourd’hui" if ouvre else "week-end", html)
         self.assertIn('class="acc-dl acc-dl-a-remplir"' if ouvre else 'class="acc-dl"', html)
+        # Les deux cas, quel que soit le jour du test (lot 25).
+        for jour, texte in ((datetime.date(2026, 10, 23), "à remplir aujourd’hui"),
+                            (datetime.date(2026, 10, 24), "week-end")):
+            with self.subTest(jour=jour):
+                html = self.appel("get", "/accueil", **{"app.repositories.dailylog.jour_renseigne": False,
+                                                         "app.repositories.dailylog.aujourdhui_pour": jour}).data.decode()
+                self.assertIn(texte, html)
 
     def test_profil_absent_et_lien_corriger(self):
         jour = dl.aujourdhui_pour(EMPLOYE)
@@ -850,7 +859,7 @@ class TestAutresPages(_BaseDailyLog):
                     try:
                         with patch("app.repositories.utilisateurs.update_utilisateur_complet") as maj, \
                              patch("app.repositories.utilisateurs.create_utilisateur", return_value=9) as cree, \
-                             patch("app.routes.utilisateurs.generer_lien_reset", return_value="/x"), \
+                             patch("app.routes.utilisateurs.generer_lien_reset_annulable", return_value=("/x", lambda: None)), \
                              patch("app.mailer.envoyer", return_value=True):
                             self.client.post("/utilisateurs/2", data={**base, "fuseau": fuseau})
                             self.client.post("/utilisateurs/nouveau",

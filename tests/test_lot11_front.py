@@ -214,6 +214,8 @@ class TestTachesClosesEtRejoindre(_Base):
         # Une seule tabulation par ligne : le titre.
         ligne = html.split('data-open-tache="7"', 1)[1].split('role="row"', 1)[0]
         focalisables = re.findall(r"<(?:button|a|input|select)\b(?![^>]*tabindex=\"-1\")[^>]*>", ligne)
+        # Lot 25 (TA-08) : le lien sans JavaScript est masqué quand il est chargé.
+        focalisables = [f for f in focalisables if "k-sans-js" not in f]
         self.assertEqual(len(focalisables), 1, focalisables)
         # Au clavier, « Rejoindre » est dans la fenêtre de la tâche.
         fragment = self._requete("/projets/1/taches/7/fenetre", **{

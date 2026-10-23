@@ -37,7 +37,7 @@
     <input type="hidden" name="next" value="{{ next_url }}#post-{{ post.id }}">
     {% if parent_commentaire_id %}<input type="hidden" name="parent_commentaire_id" value="{{ parent_commentaire_id }}">{% endif %}
     <div class="comment-input">
-      <textarea name="contenu" maxlength="5000" rows="1" placeholder="{{ placeholder }}" aria-label="{{ etiquette or ('Commenter le post de ' ~ post.auteur_prenom ~ ' ' ~ post.auteur_nom) }}" required data-mention-input{% if not parent_commentaire_id %} id="commentaire-post-{{ post.id }}"{% endif %}{% if autofocus %} autofocus{% endif %}></textarea>
+      <textarea name="contenu" maxlength="5000" rows="1" placeholder="{{ placeholder }}" aria-label="{{ etiquette or ('Commenter ce post (' ~ post.auteur_prenom ~ ' ' ~ post.auteur_nom ~ ')') }}" required data-mention-input{% if not parent_commentaire_id %} id="commentaire-post-{{ post.id }}"{% endif %}{% if autofocus %} autofocus{% endif %}></textarea>
       <label class="comment-attach" title="Joindre un fichier (ou le glisser sur le champ)">
         <svg aria-hidden="true" focusable="false" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></svg>
         <input type="file" name="fichier" aria-label="Joindre un fichier" data-comment-file>

@@ -155,6 +155,9 @@ TEXTES_DAILYLOG = {
     "aujourdhui_maj": "Aujourd’hui",
     "a_venir": "À venir",
     "etat_semaine": {"rempli": "Rempli", "absent": "Absent", "vide": "Manquant", "verrouille": "Verrouillé"},
+    # Lot 25 (U2) : bande de la semaine sur téléphone.
+    "etat_semaine_court": {"vide": "Manq.", "verrouille": "Verr."},
+    "aujourdhui_court": "Auj.",
     "propositions_coupees": "Vos tâches en cours ne seront plus proposées (réglage dans «\u00a0Mes informations\u00a0»).",
     "banniere": "{x} sans saisie",
     "banniere_jour": "jour",
@@ -174,6 +177,8 @@ TEXTES_DAILYLOG = {
     "ligne_verrouillee": "Projet géré par un autre chef\u00a0: lecture seule",
     "ligne_verrouillee_fenetre": "Au-delà de 14 jours\u00a0: correction par le chef de projet ou l’Admin",
     "ligne_masquee": "Projet non visible pour vous",
+    "ligne_figee": "Projet quitté\u00a0: heures gardées en lecture seule",
+    "note_figee": "Le cadenas marque un projet que vous avez quitté\u00a0: ses heures restent, en lecture seule.",
     "lecture_seule": "Au-delà de 14 jours, seule une correction par votre chef de projet ou l’Admin est possible.",
     "futur_reel": "Date simulée\u00a0: ce jour est après la vraie date du jour — affichage seulement, aucune saisie (mode test).",
     "ligne_futur_reel": "Jour après la vraie date du jour\u00a0: lecture seule (mode test)",
@@ -187,6 +192,9 @@ TEXTES_DAILYLOG = {
     "session_expiree": "Session expirée\u00a0: reconnectez-vous\u202f; votre saisie est gardée sur cet appareil.",
     "se_reconnecter": "Se reconnecter",
     "brouillon_trouve": "Une saisie non enregistrée du {x} a été retrouvée sur cet appareil.",
+    # Lot 25 (U2) : lignes du brouillon devenues figées, non reprises.
+    "brouillon_figee": "Une ligne est désormais en lecture seule\u00a0: sa valeur du brouillon n’a pas été reprise.",
+    "brouillon_figees": "Des lignes sont désormais en lecture seule\u00a0: leurs valeurs du brouillon n’ont pas été reprises.",
     "restaurer": "Restaurer",
     "reseau": "Non enregistré\u00a0: connexion impossible. Nouvel essai au prochain enregistrement.",
     "erreur_serveur": "Non enregistré\u00a0: erreur du serveur.",
@@ -213,6 +221,7 @@ TEXTES_DAILYLOG = {
         "projet_lecture_seule": "Vous n’êtes plus rattaché(e) à ce projet\u00a0: plus d’heures nouvelles.",
         "ligne_non_modifiable": "Ligne non modifiable\u00a0: au-delà de 14 jours, seuls le chef du projet ou l’Admin corrigent.",
         "absence_non_autorisee": "Absence non modifiable pour ce jour.",
+        "absence_ligne_figee": "Jour non marqué absent\u00a0: il porte des heures sur un projet que vous avez quitté, gardées en lecture seule.",
         "date_future": "Pas de saisie pour un jour futur.",
         "futur_reel": "Pas de saisie après la vraie date du jour, même sous date simulée (mode test\u00a0: la date simulée sert à voir le futur, pas à y écrire).",
         "date_invalide": "Date invalide.",
@@ -422,8 +431,10 @@ def jour_json(proprio: dict, date, aujourdhui, contexte: bool = True) -> dict:
             lignes.append({"masquee": True, "minutes": ligne["minutes"], "modifiable": False,
                            "hors_grille": ligne["hors_grille"]})
             continue
-        lignes.append({**ligne, "modifiable": _modifiable(droits, projet) and not figee(ligne, projet),
-                       "masquee": False})
+        # Lot 25 (DL-07, U1) : `figee` dit pourquoi la ligne est verrouillée.
+        quittee = figee(ligne, projet)
+        lignes.append({**ligne, "modifiable": _modifiable(droits, projet) and not quittee,
+                       "figee": quittee, "masquee": False})
     statut = "absent" if jour["absent"] else ("rempli" if lignes else "vide")
     modifie_le = jour["modifie_le"]
     out = {
@@ -660,7 +671,10 @@ def _ecrire(proprio: dict, date, aujourdhui, corps: dict, absent: bool, lignes_b
             if cle in demandees or (_modifiable(droits, infos.get(cle[0])) and not figee(*cle)):
                 continue
             if absent:
-                errs.append({"code": "ligne_non_modifiable", "projet_id": cle[0]})
+                # Lot 25 (DL-06) : ligne figée d'un projet quitté — le
+                # message parlait des 14 jours.
+                code = "absence_ligne_figee" if figee(*cle) else "ligne_non_modifiable"
+                errs.append({"code": code, "projet_id": cle[0]})
             else:
                 # Ligne qu'un chef ne gère pas (ou masquée) : gardée telle
                 # quelle — elle ne peut être ni modifiée ni supprimée.

@@ -6,7 +6,7 @@
 <li class="notif-ligne{{ '' if n.lu else ' non-lu' }}" id="notif-{{ n.id }}">
   <form method="post" action="{{ url_for('notifications.ouvrir', notification_id=n.id) }}" class="notif-ouvrir">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="notif-item{{ '' if n.lu else ' non-lu' }}" id="notif-ouvrir-{{ n.id }}">
+    <button type="submit" class="notif-item{{ '' if n.lu else ' non-lu' }}" id="notif-ouvrir-{{ n.id }}"{% if n.id == premiere_nouvelle_id|default(none) %} data-partiel-titre{% endif %}>
       {# Lot 10 (audit front I8) : <span> en display:block — un <div>
          n'est pas permis dans un <button>. État « non lue » dit en texte. #}
       <span class="notif-dot{{ ' vide' if n.lu }}" aria-hidden="true"></span>

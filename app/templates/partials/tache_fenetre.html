@@ -57,7 +57,8 @@
       {% if projet_clos %}
         <span class="tache-prop-texte">{{ tst.libelle }} — {% if peut_gerer %}projet clos&nbsp;: rouvrez-le (panneau Informations) pour agir sur ses tâches.{% else %}projet clos&nbsp;: seul son chef de projet ou un co-chef peut le rouvrir.{% endif %}</span>
       {% elif not peut_agir_tache %}
-        <span class="tache-prop-texte">{{ tst.libelle }} — seuls le chef de projet, un co-chef ou un intervenant de la tâche peuvent changer son état.</span>
+        {# Lot 25 (U3) : un état réservé ne se change que par la gestion. #}
+        <span class="tache-prop-texte">{{ tst.libelle }} — {% if t.etat in etats_reserves|default(['verifie', 'arret', 'abandonne']) %}seuls le chef de projet, un co-chef ou un Admin peuvent changer son état.{% else %}seuls le chef de projet, un co-chef ou un intervenant de la tâche peuvent changer son état.{% endif %}</span>
         {% if t.etat == 'bloque' %}{% include "partials/tache_etat_detail.html" %}{% endif %}
       {% elif etat_reserve_verrouille %}
         <span class="tache-prop-texte">Tâche {{ tst.libelle|lower }}&nbsp;: seuls le chef de projet, un co-chef ou un Admin peuvent changer son état.</span>
@@ -71,14 +72,17 @@
            serveur mais ne sont plus proposés. #}
         {% set ouverte = t.etat in ('en_cours', 'bloque') %}
         <div class="tache-etat-zone">
-        <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" id="tache-{{ t.id }}-etats" class="tache-etats tache-etats-3" data-partiel="{{ cible }}" data-optimiste="etat-tache" role="group" aria-labelledby="tache-{{ t.id }}-etat-libelle">
+        <form method="post" action="{{ url_for('projets.changer_etat_tache', projet_id=projet.id, tache_id=t.id) }}" id="tache-{{ t.id }}-etats" class="tache-etats tache-etats-3" data-partiel="{{ cible }}" data-optimiste="etat-tache">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {# Lot 25 (UX-A1) : le groupe nommé est un <div> (rôle « group » non permis sur <form>). #}
+          <div class="tache-etats-groupe" role="group" aria-labelledby="tache-{{ t.id }}-etat-libelle">
           {% set st = tache_etat_style('en_cours') %}
           <button type="submit" name="etat" value="en_cours" id="tache-{{ t.id }}-etat-en_cours" class="tache-etat-choix tache-etat-en_cours" aria-pressed="{{ 'true' if t.etat == 'en_cours' else 'false' }}" data-classe="{{ st.classe }}" data-libelle="{{ st.libelle }}">En cours</button>
           {% set st = tache_etat_style('bloque') %}
           <button type="submit" name="etat" value="bloque" id="tache-{{ t.id }}-etat-bloque" class="tache-etat-choix tache-etat-bloque" aria-pressed="{{ 'true' if t.etat == 'bloque' else 'false' }}" data-classe="{{ st.classe }}" data-libelle="{{ st.libelle }}"{% if not ouverte %} disabled title="Rouvrez d’abord la tâche"{% elif t.etat != 'bloque' %} data-blocage-ouvrir="tache-{{ t.id }}-blocage" aria-haspopup="dialog" aria-expanded="false" aria-controls="tache-{{ t.id }}-blocage"{% endif %}>Bloquée</button>
           {% set st = tache_etat_style('termine') %}
           <button type="button" id="tache-{{ t.id }}-etat-termine" class="tache-etat-choix tache-etat-termine" aria-pressed="{{ 'true' if t.etat in ('termine', 'verifie') else 'false' }}" data-classe="{{ st.classe }}" data-libelle="{{ st.libelle }}"{% if ouverte %} data-blocage-ouvrir="tache-{{ t.id }}-cloture" aria-haspopup="dialog" aria-expanded="false" aria-controls="tache-{{ t.id }}-cloture"{% elif t.etat not in ('termine', 'verifie') %} disabled title="Rouvrez d’abord la tâche"{% endif %}>Terminée</button>
+          </div>
         </form>
         {% if peut_gerer and ouverte %}
         <p class="tache-etats-autres">Autres&nbsp;: <button type="submit" form="tache-{{ t.id }}-etats" name="etat" value="abandonne" id="tache-{{ t.id }}-etat-abandonne" class="tache-etat-lien" data-classe="{{ tache_etat_style('abandonne').classe }}" data-libelle="{{ tache_etat_style('abandonne').libelle }}">Abandonner</button></p>
@@ -88,7 +92,7 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="etat" value="bloque">
           <label for="tache-{{ t.id }}-motif" id="tache-{{ t.id }}-blocage-titre" class="tache-blocage-titre">Qu’est-ce qui bloque&#8239;?</label>
-          <textarea id="tache-{{ t.id }}-motif" name="motif" rows="2" maxlength="500" required autocomplete="off" placeholder="Ex. attente des plans archi indice B, visa BC, réponse client" aria-describedby="tache-{{ t.id }}-blocage-aide tache-{{ t.id }}-blocage-clavier"></textarea>
+          <textarea id="tache-{{ t.id }}-motif" name="motif" rows="3" maxlength="500" required autocomplete="off" placeholder="Ex. attente des plans archi indice B, visa BC, réponse client" aria-describedby="tache-{{ t.id }}-blocage-aide tache-{{ t.id }}-blocage-clavier"></textarea>
           <p id="tache-{{ t.id }}-blocage-aide" class="tache-blocage-aide">{{ aide_blocage }}</p>
           <p id="tache-{{ t.id }}-blocage-clavier" class="tache-blocage-aide">Entrée envoie, Maj+Entrée va à la ligne.</p>
           <div class="tache-blocage-actions">
@@ -130,7 +134,7 @@
       <dt>Échéance</dt>
       <dd id="tache-{{ t.id }}-echeance">
       {% if gestion_tache %}
-        <form method="post" action="{{ url_for('projets.modifier_echeance_tache', projet_id=projet.id, tache_id=t.id) }}" class="tache-echeance-form" id="tache-{{ t.id }}-echeance-form" data-partiel="{{ cible }}">
+        <form method="post" action="{{ url_for('projets.modifier_echeance_tache', projet_id=projet.id, tache_id=t.id) }}" class="tache-echeance-form" id="tache-{{ t.id }}-echeance-form" data-partiel="{{ cible }}" data-fw-ignore>
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="form-row">
             <label for="tache-{{ t.id }}-date-echeance" class="sr-only">Date d’échéance</label>
@@ -161,6 +165,11 @@
        saisie) ; fin quand elle est close ; date du blocage en cours. Même
        affichage en consultation et en modification. #}
     {% set debut_tache = t.created_at|jour_local if t.created_at is defined else none %}
+    {# Lot 25 (TA-12, U2 de B) : entre fuseaux (Tunis / Guyane), jamais une
+       fin ni un blocage affichés avant le début. #}
+    {% set bloque_jour = t.bloque_le|jour_local if t.bloque_le else none %}
+    {% if debut_tache and t.date_fin and t.etat in ('termine', 'verifie', 'abandonne', 'arret') and t.date_fin < debut_tache %}{% set debut_tache = t.date_fin %}{% endif %}
+    {% if debut_tache and bloque_jour and t.etat == 'bloque' and bloque_jour < debut_tache %}{% set debut_tache = bloque_jour %}{% endif %}
     {% if debut_tache %}
     <div class="tache-prop">
       <dt>Dates</dt>

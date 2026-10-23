@@ -44,9 +44,10 @@ class TestFeuilleVisuelle(unittest.TestCase):
         # Lot 14 : les feuilles des nouvelles fonctionnalités (lot14-*.css)
         # viennent après ; lot13-visuel.css reste après toutes les autres.
         # Lot 15 : lot15.css (sobriété) en tout dernier.
-        # Lot 17 : lot17.css juste après.
-        self.assertEqual(paquets.PAQUETS["app.css"][-2:], ("css/lot15.css", "css/lot17.css"))
-        feuilles = [f for f in paquets.PAQUETS["app.css"] if not f.startswith(("css/lot14-", "css/lot15", "css/lot17"))]
+        # Lot 17 : lot17.css juste après ; lot 25 : lot25.css en tout dernier.
+        self.assertEqual(paquets.PAQUETS["app.css"][-3:], ("css/lot15.css", "css/lot17.css", "css/lot25.css"))
+        feuilles = [f for f in paquets.PAQUETS["app.css"]
+                    if not f.startswith(("css/lot14-", "css/lot15", "css/lot17", "css/lot25"))]
         self.assertEqual(feuilles[-1], "css/lot13-visuel.css")
 
     def test_regle_k_page_valide(self):
@@ -115,7 +116,7 @@ class TestLibelles(_Base):
         self.assertIn(">Prochaine échéance</span>", html)
         self.assertIn(">Heures (interv. · chef)</span>", html)
         self.assertIn("ptable-rendu ptable-rendu-retard", html)
-        self.assertIn('<span class="ptable-retard-jours" aria-hidden="true">2&nbsp;j de retard</span>', html)
+        self.assertIn('<span class="ptable-retard-jours" aria-hidden="true"><span class="sep-point"> · </span>2&nbsp;j de retard</span>', html)
         self.assertIn("8 h · 5 h", html)
 
     def test_accueil_etats_vides_avec_action(self):

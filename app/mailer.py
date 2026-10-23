@@ -147,20 +147,33 @@ def envoyer(destinataire: str, sujet: str, corps: str) -> bool:
         return False
 
 
-def envoyer_en_arriere_plan(destinataire: str, sujet: str, corps: str) -> None:
+def envoyer_en_arriere_plan(destinataire: str, sujet: str, corps: str, si_echec=None) -> None:
     """Comme `envoyer`, mais sans faire attendre la requête HTTP : utilisé
     quand le temps de réponse ne doit rien révéler (mot de passe oublié —
     un envoi SMTP de plusieurs secondes trahissait qu'un compte existe).
-    En mode test, l'envoi reste synchrone pour rester vérifiable."""
+    En mode test, l'envoi reste synchrone pour rester vérifiable.
+    Lot 25 (UT-02) : `si_echec` (facultatif) est appelé, dans le contexte de
+    l'appli, quand rien n'est parti."""
+    def _echec():
+        if si_echec is None:
+            return
+        try:
+            si_echec()
+        except Exception:
+            logger.exception("Retour arrière après un e-mail non envoyé impossible")
+
     if _bloque_par_voir_comme(destinataire, sujet):
+        _echec()
         return
     app = current_app._get_current_object()
     if app.testing:
-        envoyer(destinataire, sujet, corps)
+        if not envoyer(destinataire, sujet, corps):
+            _echec()
         return
 
     def _envoyer():
         with app.app_context():
-            envoyer(destinataire, sujet, corps)
+            if not envoyer(destinataire, sujet, corps):
+                _echec()
 
     threading.Thread(target=_envoyer, daemon=True).start()

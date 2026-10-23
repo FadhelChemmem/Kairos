@@ -142,14 +142,20 @@ def load_logged_in_user() -> None:
         # CORRECTIONS.md P2 #17) — voir password_fingerprint() ci-dessus.
         hash_actuel = utilisateurs_repo.get_mot_de_passe_hash(user_id)
         if hash_actuel is None or session.get("pw_fingerprint") != password_fingerprint(hash_actuel):
+            modes_admin.abandonner(g.user["id"], "session")
             session.clear()
             g.user = None
             flash("Votre mot de passe a été changé, veuillez vous reconnecter.", "error")
 
     if g.user is not None and _session_revoquee_ou_expiree():
+        # Lot 25 (U3) : un compte désactivé le dit (pas « session expirée ») ;
+        # (UT-03) un mode de l'Admin en cours est clos au journal.
+        desactive = not g.user.get("actif", True)
+        modes_admin.abandonner(g.user["id"], "session")
         session.clear()
         g.user = None
-        flash("Votre session a expiré, veuillez vous reconnecter.", "error")
+        flash("Ce compte a été désactivé." if desactive else "Votre session a expiré, veuillez vous reconnecter.",
+              "error")
 
     # Lot 12 : « Voir / Agir comme » et date simulée, une fois la session
     # RÉELLE (celle de l'Admin) validée ci-dessus — g.user devient le compte
@@ -259,11 +265,25 @@ def generer_lien_reset(user_id: int, current_user_id: int | None = None) -> str:
     lien de réinitialisation » de la fiche (Admin/RH : le RH ne fixe plus
     lui-même un mot de passe, décision du gérant, lot 10) —
     `current_user_id` est alors celui qui a déclenché l'envoi."""
+    return generer_lien_reset_annulable(user_id, current_user_id)[0]
+
+
+def generer_lien_reset_annulable(user_id: int, current_user_id: int | None = None):
+    """Lot 25 (UT-02) : (lien, annuler) — `annuler()` rend le lien précédent
+    si l'e-mail du nouveau n'est pas parti."""
     jeton = secrets.token_urlsafe(32)
     jeton_hash = hashlib.sha256(jeton.encode()).hexdigest()
     expire_le = datetime.datetime.now(datetime.timezone.utc) + RESET_TOKEN_TTL
-    utilisateurs_repo.set_reset_token(user_id, jeton_hash, expire_le, current_user_id=current_user_id)
+    ancien = utilisateurs_repo.set_reset_token(user_id, jeton_hash, expire_le, current_user_id=current_user_id)
 
+    def annuler():
+        if isinstance(ancien, dict):  # compte relu à l'écriture
+            utilisateurs_repo.restaurer_reset_token(user_id, jeton_hash, ancien, current_user_id=current_user_id)
+
+    return _lien_reset(jeton), annuler
+
+
+def _lien_reset(jeton: str) -> str:
     # PROMPT_CORRECTIONS.md P0 #3 : on construit le lien à partir
     # d'APP_BASE_URL (voir config.py), jamais avec
     # url_for(..., _external=True) — celui-ci utiliserait l'en-tête Host de
@@ -337,7 +357,7 @@ def login():
         ) >= MAX_TENTATIVES_IP
 
         if trop_de_tentatives_email or trop_de_tentatives_ip:
-            error = "Trop de tentatives. Réessayez dans quelques minutes."
+            error = f"Trop de tentatives. Réessayez dans {FENETRE_TENTATIVES_MINUTES}\u00a0minutes."
         else:
             user = get_user_by_email(email)
             if user is None:
@@ -491,7 +511,7 @@ def mot_de_passe_oublie():
                 if (user is not None and user["actif"]
                         and not utilisateurs_repo.lien_reset_recent(user["id"], DELAI_NOUVEAU_LIEN_MINUTES,
                                                                     RESET_TOKEN_TTL)):
-                    lien = generer_lien_reset(user["id"])
+                    lien, annuler = generer_lien_reset_annulable(user["id"])
                     # En arrière-plan (audit n°2) : un envoi SMTP synchrone
                     # rendait la réponse nettement plus lente quand l'email
                     # existe, ce qui permettait de deviner les comptes réels.
@@ -503,14 +523,15 @@ def mot_de_passe_oublie():
                         "compte Kairos.\n\n"
                         f"Ce lien est valable 1 heure\u00a0: {lien}\n\n"
                         "Si vous n’êtes pas à l’origine de cette demande, ignorez cet "
-                        "email — rien ne change sur votre compte.",
+                        "e-mail — rien ne change sur votre compte.",
+                        si_echec=annuler,
                     )
 
         # Envoi en arrière-plan : son échec éventuel n'est pas connu ici
         # (et le signaler révélerait que le compte existe) — d'où un
         # message qui ne promet pas que l'e-mail est déjà parti.
         flash(
-            "Si un compte actif existe avec cet email, un lien de "
+            "Si un compte actif existe avec cet e-mail, un lien de "
             "réinitialisation va lui être envoyé. Rien reçu d’ici quelques "
             "minutes\u202f? Vérifiez vos courriers indésirables ou contactez le RH.",
             "success",

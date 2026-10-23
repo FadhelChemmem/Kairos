@@ -20,6 +20,7 @@
       clearTimeout(minuteurTheme);
       minuteurTheme = setTimeout(function () { racine.classList.remove('k-theme-transition'); }, 260);
       racine.dataset.theme = suivant;
+      if (window.kairosCouleurTheme) window.kairosCouleurTheme();
       bouton.setAttribute('aria-pressed', suivant === 'dark' ? 'true' : 'false');
       window.kairosThemeChoisi = true;
       try { localStorage.setItem('kairos-theme', suivant); } catch (e) { /* session en cours seulement */ }

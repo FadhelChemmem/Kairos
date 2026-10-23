@@ -28,7 +28,10 @@
   // appliquée — même si la phase change avant la réponse.
   var repriseDue = false;
   function recalculer(e) {
-    if (e && e.target === champLie) repriseDue = !!(champClient && !clientModifie && champLie.value);
+    // Lot 25 (PR-04) : la reprise est due dès qu'une phase liée est
+    // choisie — un client saisi à la main est gardé, les lots sont repris
+    // quand même (comme dans la fenêtre « + Nouveau projet »).
+    if (e && e.target === champLie) repriseDue = !!champLie.value;
     var reprendreClient = repriseDue && !!(champLie && champLie.value);
     if ((modifieManuellement && !reprendreClient) || !urlCodePropose || !window.fetch) return;
     var numero = ++derniereDemande;

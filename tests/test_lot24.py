@@ -109,7 +109,7 @@ class TestCles(_Env):
         ok = self.push.endpoint_valide
         self.assertTrue(ok("https://fcm.googleapis.com/fcm/send/x"))
         self.assertTrue(ok("https://wns2-par02p.notify.windows.com/w/?token=x"))
-        for mauvais in ("http://fcm.googleapis.com/x", "https://u:p@fcm.googleapis.com/x", "https://x:8443/a",
+        for mauvais in ("http://fcm.googleapis.com/x", "https://u:p@fcm.googleapis.com/x", "https://fcm.googleapis.com:8443/a",
                         "javascript:alert(1)", "https://" + "a" * 1000, None, 3):
             self.assertFalse(ok(mauvais), mauvais)
 
@@ -179,6 +179,7 @@ class TestEnvoi(_Env):
             return _Reponse(code)
 
         with mock.patch("app.repositories.push.notifications_a_pousser", return_value=[notif]), \
+             mock.patch("app.repositories.push.reserver", side_effect=lambda ids: list(ids)), \
              mock.patch("app.repositories.push.abonnements",
                         return_value=[nav.abonnement("https://fcm.googleapis.com/a"),
                                       nav.abonnement("https://fcm.googleapis.com/b")]), \
@@ -193,8 +194,23 @@ class TestEnvoi(_Env):
     def test_message_court_vers_la_notification(self):
         m = self.push.message_de({"id": 12, "message": "x " * 400, "projet_code": None})
         self.assertEqual(m["url"], "/notifications?ouvrir=12")
-        self.assertEqual(m["titre"], "Kairos")
+        self.assertEqual(m["titre"], "Projet")
         self.assertLessEqual(len(m["texte"]), self.push.MAX_TEXTE)
+
+    def test_titre_parlant_lot24b(self):
+        t = self.push.titre_de
+        self.assertEqual(t({"categorie": "rh_info", "est_rappel": True, "message": "x"}), "Daily log à remplir")
+        self.assertEqual(t({"categorie": "rh_info", "message": "Daily log du 21/10/2026 corrigé par Rim."}),
+                         "Daily log corrigé")
+        self.assertEqual(t({"categorie": "rh_info", "message": "Congé accepté."}), "Informations RH")
+        self.assertEqual(t({"categorie": "projet", "projet_code": "26101X", "tache_titre": " Plans  RDC "}),
+                         "26101X · Plans RDC")
+        self.assertEqual(t({"categorie": "projet", "projet_code": "26101X"}), "Projet 26101X")
+        # Projet plus visible : ni code ni titre de tâche.
+        self.assertEqual(t({"categorie": "projet", "projet_code": None, "tache_titre": "Secret"}), "Projet")
+        long = t({"categorie": "projet", "projet_code": "26101X", "tache_titre": "a" * 200})
+        self.assertEqual(len(long), self.push.MAX_TITRE)
+        self.assertTrue(long.endswith("…"))
 
 
 class TestAvecLiensLineaire(unittest.TestCase):
@@ -219,8 +235,9 @@ class TestHorlogeRalentie(unittest.TestCase):
         b = avancer(depart, 601)
         self.assertEqual(a.date(), depart.date())
         self.assertLess(a, b)              # toujours croissant
-        self.assertEqual(a, datetime.datetime(2026, 10, 17, 23, 59, 0, 360_000, tzinfo=tz))
-        self.assertEqual(avancer(depart, 10 ** 9).time(), datetime.time.max)
+        # Lot 25 : ralenti asymptotique (pente initiale 1/1000).
+        self.assertAlmostEqual((a - datetime.datetime(2026, 10, 17, 23, 59, tzinfo=tz)).total_seconds(), 0.36, delta=0.005)
+        self.assertEqual(avancer(depart, 10 ** 9).date(), depart.date())
 
 
 class TestPhotosValides(unittest.TestCase):

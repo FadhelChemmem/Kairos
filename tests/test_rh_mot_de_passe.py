@@ -244,7 +244,7 @@ class TestCreationParLeRH(_Base):
         m[MDP].assert_not_called()
         self.assertEqual(m[JETON].call_args.args[0], 11)
         self.assertEqual(m[ENVOYER].call_args.args[0], "nouvel@midgard.tn")
-        self.assertTrue(any("Un email lui a été envoyé" in f for f in self._flashes()))
+        self.assertTrue(any("Un e-mail lui a été envoyé" in f for f in self._flashes()))
 
     def test_sans_smtp_le_compte_existe_et_le_message_le_dit(self):
         self._smtp(None)

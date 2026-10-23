@@ -66,6 +66,9 @@ class TestAncienParticipant(_AncienParticipant):
         self.assertLess(r.status_code, 400, r.get_data(as_text=True)[:300])
         self.assertEqual(self.sql("SELECT contenu FROM post WHERE id = %s", (self.sien,))[0]["contenu"],
                          "Relevé corrigé @Rim Inter")
+        # Lot 25 (revue R-05) : la mention est bien enregistrée et prévient Rim.
+        self.assertEqual(self.compter("SELECT count(*) AS n FROM notification WHERE utilisateur_id = %s "
+                                      "AND post_id = %s AND message LIKE %s", (self.inter, self.sien, "%mentionn%")), 1)
 
     def test_rajout_propose_depuis_la_fiche(self):
         self.retirer(self.urbs)

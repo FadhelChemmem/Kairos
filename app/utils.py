@@ -235,15 +235,16 @@ def il_y_a(dt) -> str:
     secondes = delta.total_seconds()
 
     if secondes < 60:
-        return "à l'instant"
+        return "à l’instant"
+    # Lot 25 (UX U7) : espace insécable entre le nombre et l'unité.
     if secondes < 3600:
-        return f"il y a {int(secondes // 60)} min"
+        return f"il y a {int(secondes // 60)}\u00a0min"
     if secondes < 24 * 3600:
-        return f"il y a {int(secondes // 3600)} h"
+        return f"il y a {int(secondes // 3600)}\u00a0h"
     if secondes < 2 * 24 * 3600:
         return "hier"
     if secondes < 7 * 24 * 3600:
-        return f"il y a {int(secondes // (24 * 3600))} j"
+        return f"il y a {int(secondes // (24 * 3600))}\u00a0j"
     # Au-delà d'une semaine : « le 5 oct. » (« le 5 oct. 2025 » une autre
     # année) — même format que le reste de l'appli (lot 10, audit front §7).
     return "le " + date_courte(dt, avec_annee=dt.year != now.year)
@@ -519,19 +520,47 @@ def texte_avec_mentions(contenu: str | None, mentions: list[dict] | None):
     # Lot 23 : adresses web cliquables ; les mentions ne sont cherchées
     # qu'en dehors des liens.
     html = str(avec_liens(contenu))
-    noms = sorted(
-        {f"@{m.get('prenom', '')} {m.get('nom', '')}".strip() for m in (mentions or [])},
-        key=len, reverse=True,
-    )
-    if noms:
+    tagues = {f"@{m.get('prenom', '')} {m.get('nom', '')}".strip() for m in (mentions or [])}
+    if tagues:
+        # Lot 25 (U8) : les noms des autres personnes actives entrent aussi
+        # dans l'expression (les plus longs d'abord), sans mise en forme :
+        # « @Ali Ben Salah », non tagué, n'est plus coupé par « @Ali Ben ».
+        noms = sorted(tagues | _noms_connus(), key=len, reverse=True)
+        cles = {n.casefold() for n in tagues}
         motif = re.compile(
             "(" + "|".join(re.escape(str(escape(n))) for n in noms) + r")(?!\w)", re.IGNORECASE,
         )
+
+        def remplacer(x):
+            texte = x.group(1)
+            if str(Markup(texte).unescape()).casefold() not in cles:
+                return texte
+            return f'<span class="post-comment-mention">{texte}</span>'
+
         morceaux = re.split(r"(<a [^>]*>.*?</a>)", html)
-        html = "".join(m if m.startswith("<a ") else
-                       motif.sub(lambda x: f'<span class="post-comment-mention">{x.group(1)}</span>', m)
-                       for m in morceaux)
+        html = "".join(m if m.startswith("<a ") else motif.sub(remplacer, m) for m in morceaux)
     return Markup(html)
+
+
+def _noms_connus() -> set[str]:
+    """« @Prénom Nom » des personnes actives, une fois par requête (U8).
+    Vide hors requête ou si la base ne répond pas : on retombe sur les
+    seules personnes taguées."""
+    try:
+        from flask import g, has_app_context
+
+        if not has_app_context():
+            return set()
+        if "noms_mentionnables" not in g:
+            from app.repositories import utilisateurs as utilisateurs_repo
+
+            g.noms_mentionnables = {
+                f"@{u['prenom']} {u['nom']}".strip()
+                for u in utilisateurs_repo.list_actifs() if isinstance(u, dict) and u.get("prenom")
+            }
+        return set(g.noms_mentionnables)
+    except Exception:
+        return set()
 
 
 def parser_montant(texte: str | None):
@@ -548,9 +577,19 @@ def parser_montant(texte: str | None):
         valeur = Decimal(nettoye)
     except InvalidOperation:
         raise ValueError(texte) from None
-    if not valeur.is_finite() or valeur < 0 or valeur >= Decimal("10000000000"):
+    if not valeur.is_finite() or valeur < 0:
         raise ValueError(texte)
-    return valeur.quantize(Decimal("0.01"))
+    # Lot 25 (PR-05) : borne contrôlée APRÈS l'arrondi (9 999 999 999,995
+    # devenait 10 000 000 000,00, hors de la colonne : erreur générique).
+    if valeur >= Decimal("100000000000"):
+        raise ValueError(texte)
+    try:
+        arrondi = valeur.quantize(Decimal("0.01"))
+    except InvalidOperation:
+        raise ValueError(texte) from None
+    if arrondi >= Decimal("10000000000"):
+        raise ValueError(texte)
+    return arrondi
 
 
 def montant_fr(valeur) -> str:

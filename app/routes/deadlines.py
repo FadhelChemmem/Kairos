@@ -59,25 +59,31 @@ def liste():
         filtres["chef"] = next(iter(ids_entiers([request.args.get("chef") or ""])), None)
         equipe = request.args.get("equipe") or None
         filtres["equipe"] = equipe if equipe in {code for code, _ in EQUIPE_CHOICES} else None
-        mes_taches = taches.list_deadlines_tous(filtres["chef"], filtres["equipe"], limit=500)
+        limite = 500
+        mes_taches = taches.list_deadlines_tous(filtres["chef"], filtres["equipe"], limit=limite + 1)
         sans_echeance = taches.list_deadlines_tous(filtres["chef"], filtres["equipe"], sans_echeance=True, limit=300)
         chefs = projets.list_chefs_de_projet(g.user["id"])
         bloquees = taches.list_bloquees(tous=True, chef_id=filtres["chef"], equipe_code=filtres["equipe"])
     elif g.user["role"] == "client":
         # Lot 18 : tous les projets de son équipe ; ni motifs de blocage ni
         # tâches sans échéance (vue d'information, pas de pilotage).
-        mes_taches = taches.list_deadlines_equipe(g.user["id"], limit=500)
+        limite = 500
+        mes_taches = taches.list_deadlines_equipe(g.user["id"], limit=limite + 1)
         bloquees = []
     else:
-        mes_taches = taches.list_deadlines(g.user["id"], limit=200)
+        limite = 200
+        mes_taches = taches.list_deadlines(g.user["id"], limit=limite + 1)
         bloquees = taches.list_bloquees(g.user["id"])
+    # Lot 25 (PR-10) : liste coupée au plafond, et on le dit (« 500+ »).
+    coupee = len(mes_taches) > limite
+    mes_taches = mes_taches[:limite]
     # « Aujourd'hui » au fuseau de la personne (lot 11 : Guyane / Tunis),
     # comme le Daily log — et non la date du serveur ; date simulée de
     # l'Admin en mode test (lot 12, app/horloge.py).
     aujourdhui = dl.aujourdhui_pour(g.user)
     gantt = build_gantt(mes_taches, aujourdhui, window_days=jours_utiles_gantt(mes_taches, aujourdhui))
     contexte = dict(
-        gantt=gantt, nb_taches=len(mes_taches), vue_admin=admin, tous=tous,
+        gantt=gantt, nb_taches=len(mes_taches), liste_coupee=coupee, vue_admin=admin, tous=tous,
         filtres=filtres, chefs=chefs, sans_echeance=sans_echeance,
         # Lot 14 (revue produit P0-1) : section « Bloquées (n) » sous le
         # Gantt, même portée que la vue affichée (filtres compris).

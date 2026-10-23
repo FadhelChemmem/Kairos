@@ -57,7 +57,14 @@ stop()  {
     echo "  git switch --detach avant-deploiement"
     echo "  git tag -f deploye HEAD"
     echo "  sudo docker tag ${image:-kairos-web}:avant-deploiement ${image:-kairos-web}:latest"
-    echo "  sudo bash scripts/restore_db.sh $(sed -n 's/^sauvegarde=//p' "$REPERES")"
+    # Lot 25 (revue RS C.2-7) : sauvegarde inconnue — la dire, plutôt qu'une
+    # commande sans argument.
+    note_sauvegarde="$(sed -n 's/^sauvegarde=//p' "$REPERES")"
+    if [ -n "$note_sauvegarde" ]; then
+      echo "  sudo bash scripts/restore_db.sh $note_sauvegarde"
+    else
+      echo "  (sauvegarde inconnue : choisir la dernière d'avant le déploiement, sudo bash scripts/restore_db.sh backups/kairos_…sql.gz)"
+    fi
     echo "  rm -f $REPERES"
   fi
   exit 1
@@ -71,6 +78,7 @@ if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   stop "des fichiers suivis sont modifiés localement (voir ci-dessus)."
 fi
 avant="$(git rev-parse --short HEAD)"
+depart="$(git rev-parse HEAD)"
 echo "Version actuelle : $avant $(git log -1 --format=%s)"
 
 etape "2/6 Récupération de la nouvelle version (GitHub)"
@@ -112,6 +120,19 @@ sauvegarde="$(printf '%s\n' "$sortie_sauvegarde" | sed -n 's/^Sauvegarde base é
 etape "4/6 Repères de retour arrière"
 image="$(docker compose images web --format json 2>/dev/null | grep -o '"Repository":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
 image="${image:-kairos-web}"
+# Lot 25 (BD-03) : repères laissés par une tentative déjà défaite par le
+# retour arrière imprimé (sans sa dernière ligne `rm -f`) — le serveur est
+# reparti de la version notée, qui est aussi la dernière déployée : ils
+# sont périmés (la sauvegarde notée ne contient pas ce qui a été écrit
+# depuis). Ils sont écartés et refaits pour ce déploiement.
+if [ -f "$REPERES" ]; then
+  avant_note="$(sed -n 's/^avant=//p' "$REPERES")"
+  avant_note="$(git rev-parse -q --verify "${avant_note:-x}^{commit}" 2>/dev/null || true)"
+  if [ -n "$avant_note" ] && [ "$avant_note" = "$depart" ] && [ "$avant_note" = "$deploye" ]; then
+    rouge "Repères d'une tentative défaite par un retour arrière : écartés, nouveaux repères pour ce déploiement."
+    rm -f "$REPERES"
+  fi
+fi
 if [ -f "$REPERES" ]; then
   # Relance après un échec : les repères d'AVANT la première tentative
   # restent (l'image en place peut déjà être la nouvelle, la base déjà migrée).

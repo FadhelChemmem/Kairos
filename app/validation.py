@@ -75,7 +75,7 @@ def ordre_dates(debut: datetime.date | None, fin: datetime.date | None,
 
 def email_invalide(email: str) -> str | None:
     if len(email) > MAX_EMAIL or not _EMAIL.fullmatch(email):
-        return "Adresse email invalide."
+        return "Adresse e-mail invalide."
     return None
 
 

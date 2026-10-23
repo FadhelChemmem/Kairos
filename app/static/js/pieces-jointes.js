@@ -110,7 +110,7 @@
         var ext = (/\.\w+$/.exec(f.name || '') || [''])[0].toLowerCase();
         if (extensions.length && extensions.indexOf(ext) < 0) { avertir('Type de fichier non accepté : « ' + f.name + ' ».'); return; }
         if (fichiers.length >= max) { avertir('Au plus ' + max + ' fichiers par post.'); return; }
-        if (total + f.size > TOTAL_MAX) { avertir('25 Mo au plus par post : « ' + f.name + ' » n’est pas joint.'); return; }
+        if (total + f.size > TOTAL_MAX) { avertir('25 Mo au plus par post : « ' + f.name + ' » n’est pas joint.'); return; }
         fichiers.push(f);
         noms.push(f.name);
         total += f.size;

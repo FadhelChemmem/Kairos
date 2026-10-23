@@ -78,7 +78,9 @@ class TestDateCourte(unittest.TestCase):
         self.assertEqual(date_courte(datetime.date(annee, 10, 5)), "5 oct.")
         self.assertEqual(date_courte(datetime.date(2026, 10, 5), False), "5 oct.")
         self.assertEqual(date_courte(datetime.date(2026, 6, 1), True), "1er juin 2026")
-        self.assertEqual(date_courte(datetime.date(2026, 9, 23)), "23 sept.")
+        # Lot 25 (N-CI) : plus d'année en dur (rouge dès le 01/01/2027).
+        self.assertEqual(date_courte(datetime.date(annee, 9, 23)), "23 sept.")
+        self.assertEqual(date_courte(datetime.date(annee - 1, 9, 23)), f"23 sept. {annee - 1}")
         self.assertEqual(date_courte(None), "")
 
 

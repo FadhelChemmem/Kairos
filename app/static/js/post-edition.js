@@ -78,7 +78,7 @@
     var carte = form.closest('.post-card');
     var K = window.Kairos;
     if (!modifie(form) || !K || !K.confirmer) { fermer(carte); return; }
-    K.confirmer(e.target, 'Abandonner les modifications ?', { libelleOk: 'Abandonner', libelleAnnuler: 'Continuer', danger: true })
+    K.confirmer(e.target, 'Abandonner les modifications\u202f? La saisie sera perdue.', { libelleOk: 'Abandonner', libelleAnnuler: 'Continuer la saisie', danger: true })
       .then(function (oui) { if (oui) fermer(carte); });
   });
 

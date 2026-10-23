@@ -1,0 +1,141 @@
+/* Lot 25 — vérification complète du 23/10/2026 et demandes du gérant. */
+
+/* Notifications Windows : appareils activés (U4). */
+.push-appareils { margin-top: 12px; }
+.push-appareils-liste { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; }
+.push-appareil { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.push-appareil form { margin: 0; }
+
+/* Fiche projet (demande du gérant, 23/10) : « ← Retour aux projets » ; le
+   nom revient dans la barre collante quand l'en-tête a défilé. */
+.subbar-nom { transition: opacity .2s ease; }
+.subbar-nom.subbar-nom-cache { opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .subbar-nom { transition: none; } }
+
+/* Panneau d'une tâche (demande du gérant, 23/10) : fermeture fluide. Le
+   panneau glisse vers la droite pendant que la page reprend sa largeur
+   (View Transitions, tache-dialog.js) : plus de saut du tableau, du fil ni
+   de la colonne de droite à la fin de l'animation. */
+html.k-vt-panneau #dialog-tache { view-transition-name: kairos-panneau; }
+html.k-vt-panneau main { view-transition-name: kairos-page; transition: none !important; }
+html.k-vt-panneau .bandeau-admin { transition: none !important; }
+::view-transition-group(kairos-page) { animation-duration: var(--duree-base, 200ms); animation-timing-function: var(--courbe-entree, ease); }
+::view-transition-old(kairos-page), ::view-transition-new(kairos-page) {
+  height: 100%; object-fit: none; object-position: left top;
+  animation-duration: var(--duree-base, 200ms); animation-timing-function: var(--courbe-entree, ease);
+}
+::view-transition-old(kairos-panneau) { animation: k-panneau-sortie var(--duree-base, 200ms) var(--courbe-entree, ease) forwards; }
+::view-transition-group(root) { animation-duration: var(--duree-base, 200ms); }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}
+
+/* Tâches sans JavaScript (TA-08) : le titre devient un lien, la tâche
+   demandée s'affiche sous la fiche, les questions (motif du blocage,
+   clôture) sont visibles. */
+html:not(.k-js) .taskrow-titre[data-ouvrir-tache] { display: none; }
+.taskrow-titre-lien { text-decoration: none; color: inherit; }
+.tache-sans-js { margin: 16px auto; max-width: 720px; }
+.tache-sans-js form.tache-blocage[hidden] { display: block; position: static; }
+
+/* Post ouvert depuis une notification (FL-01) : visible sous les barres
+   collantes (barre du haut 56 px + sous-barre). */
+.fil-item, [id^="post-"] { scroll-margin-top: 120px; }
+
+/* Lot 25 (U3) : commentaire visé par une notification, signalé une fois. */
+.post-comment { scroll-margin-top: 120px; }
+.post-comment.post-signale { animation: post-signale 2.4s ease-out 1; border-radius: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .post-comment.post-signale { animation: none; box-shadow: 0 0 0 3px var(--accent-fill); }
+}
+
+/* Lot 25 (U1, majeure) : sur téléphone, le champ « Filtrer les posts » de la
+   fiche était écrasé (15 px à 390 px) par « Me concernant » et « + Nouveau
+   post ». Il garde une largeur utile ; les boutons passent à la ligne. */
+.fil-outils { flex-wrap: wrap; row-gap: 8px; }
+.fil-outils > .fil-filtre { flex: 1 1 200px; min-width: 0; }
+@media (max-width: 480px) {
+  .fil-outils > .fil-filtre { flex-basis: 100%; }
+}
+
+/* Lot 25 (Daily log U2) : sur téléphone, libellés courts dans la bande de
+   la semaine (« Manq. », « Auj. ») au lieu de « Manq… », « Aujou… ». */
+@media (max-width: 480px) {
+  .dl9 .dl-jour-etat.dl-jour-etat-court { font-size: 0; }
+  .dl9 .dl-jour-etat.dl-jour-etat-court::after { content: attr(data-court); font-size: 10.5px; }
+}
+
+/* Lot 25 (Daily log U5) : « + Afficher 5 de plus » en retrait, comme
+   « + Ajouter un projet » (il touchait les bords de la carte). */
+.dl9 .dl-principal > .dl-afficher-plus { width: auto; margin: 6px 24px 8px; }
+@media (max-width: 760px) {
+  .dl9 .dl-principal > .dl-afficher-plus { margin-inline: 16px; }
+}
+
+/* Lot 25 (comptes U6) : bandeau de l'Admin sur téléphone — « Voir : » ou
+   « Agir : » écrit, pas seulement la couleur. */
+.bandeau-admin-court { display: none; font-weight: 700; }
+@media (max-width: 600px) {
+  .bandeau-admin-court { display: inline; }
+}
+
+/* Lot 25 (UX-A1) : groupe des états de la tâche sans changer la grille. */
+.tache-etats-groupe { display: contents; }
+
+/* Lot 25 (UX U14) : « 13 oct. · 9 j de retard » (le point fait la séparation). */
+.taskrow-retard-jours, .ptable-rendu-retard .ptable-retard-jours { margin-left: 0; }
+
+/* Lot 25 (UX U20) : filtre « Chef de projet » — la coche se voit aussi sur
+   les puces rondes (le nom est déjà en infobulle). */
+.chip-opt.chip-avatar { position: relative; }
+.chip-opt.chip-avatar.chip-selected::after {
+  content: "✓"; content: "✓" / ""; position: absolute; right: 0; bottom: 0;
+  width: 13px; height: 13px; border-radius: 999px; display: grid; place-items: center;
+  font-size: 9px; line-height: 1; background: var(--accent-fill); color: #ffffff;
+}
+
+/* Lot 25 (UX U9) : l'anneau de focus de l'en-tête du panneau ne touche plus
+   le « × » (marge plutôt que remplissage à droite). */
+.tache-fenetre-entete { padding-right: 0; margin-right: 48px; }
+
+/* Lot 25 (UX U2) : fiche projet sur téléphone — les heures de la tâche ne
+   passent plus sous les avatars des intervenants (troisième ligne). */
+@media (max-width: 480px) {
+  .carte-taches .taskrow {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-areas: "titre titre titre ouvrir" "etat date date date" "heures heures interv interv";
+  }
+}
+
+/* Lot 25 (UX U6) : carte avec deux étiquettes (« Épinglé » + type) sur
+   téléphone — les étiquettes s'empilent, le code du projet garde sa place. */
+@media (max-width: 480px) {
+  .post-entete-droite:has(.pill-epingle) { flex-direction: column; align-items: flex-end; gap: 4px; }
+  .post-entete-droite .pill-epingle { margin-right: 0; }
+}
+
+/* Lot 25 (UX U4) : projet visé rappelé à gauche des boutons de publication. */
+.post-dialog-cible { margin-right: auto; align-self: center; min-width: 0; max-width: 55%; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-muted); }
+.post-dialog-cible:empty { display: none; }
+
+/* Lot 25 (décision du gérant, option 2) : appli installée en « Window
+   Controls Overlay » — la barre du haut de Kairos occupe la barre de titre
+   de Windows : elle sert de poignée pour déplacer la fenêtre, ses boutons
+   et champs restent cliquables, et son contenu s'arrête avant les boutons
+   Réduire / Agrandir / Fermer. */
+@media (display-mode: window-controls-overlay) {
+  .topbar {
+    -webkit-app-region: drag; app-region: drag;
+    height: max(56px, env(titlebar-area-height, 0px));
+  }
+  .topbar-inner {
+    padding-left: max(32px, calc(env(titlebar-area-x, 0px) + 16px));
+    padding-right: max(32px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 16px));
+    max-width: none;
+  }
+  .topbar :is(a, button, input, select, textarea, label, [popover], [role="listbox"], .topbar-search-box,
+              .notifs-popover, .menu-compte, .recherche-resultats) {
+    -webkit-app-region: no-drag; app-region: no-drag;
+  }
+}

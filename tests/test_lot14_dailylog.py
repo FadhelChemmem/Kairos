@@ -77,13 +77,10 @@ class TestLignesProposees(unittest.TestCase):
         sortie = [(l["projet_id"], l["tache_id"]) for l in self.appel(taches, projets)]
         self.assertEqual(sortie, [(2, 20), (1, 10), (3, None)])
 
-    def test_sql_en_cours_a_cette_date(self):
-        import inspect
-        source = inspect.getsource(dl.lignes_proposees)
-        self.assertIn("ORDER BY t.date_echeance NULLS LAST", source)
-        self.assertIn("p.date_cloture >= %(date)s", source)          # projet clos APRÈS cette date
-        self.assertIn("t.date_fin, (t.updated_at", source)           # tâche close APRÈS cette date
-        self.assertIn("v_projet_action", source)
+    def test_taille_des_pages(self):
+        # Lot 25 (revue R-07) : la requête « en cours à cette date » est
+        # éprouvée sur une vraie base (tests_integration : lignes_proposees),
+        # plus par la lecture de son texte (inspect.getsource).
         self.assertEqual(dl.PROPOSEES_PAR_PAGE, 5)
 
     def test_plafond_par_requete(self):

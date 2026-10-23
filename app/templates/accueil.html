@@ -134,7 +134,8 @@
       <section class="card acc-carte" aria-labelledby="acc-projets-titre">
         <div class="carte-entete carte-entete-souple">
           <h2 class="carte-titre" id="acc-projets-titre">Mes projets</h2>
-          <a href="{{ url_for('projets.liste') }}" class="lien-carte lien-carte-petit">Tout voir<span class="sr-only"> mes projets</span></a>
+          {# Lot 25 (UX U19) : pas de « Tout voir » sur une carte vide. #}
+          {% if mes_projets %}<a href="{{ url_for('projets.liste') }}" class="lien-carte lien-carte-petit">Tout voir<span class="sr-only"> mes projets</span></a>{% endif %}
         </div>
         <ul class="acc-projets" role="list">
           {% for p in mes_projets %}

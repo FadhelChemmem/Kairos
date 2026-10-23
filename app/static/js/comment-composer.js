@@ -71,7 +71,8 @@
 
     function requete() {
       var avant = ta.value.slice(0, ta.selectionStart);
-      var m = /(^|\s)@([^\s@]{0,24}(?: [^\s@]{0,24})?)$/.exec(avant);
+      // Lot 25 (U4) : jusqu'à quatre mots (« @élodie ben salah »).
+      var m = /(^|\s)@([^\s@]{0,24}(?: [^\s@]{0,24}){0,3})$/.exec(avant);
       if (!m) return null;
       return { debut: avant.length - m[2].length - 1, texte: norm(m[2]) };
     }

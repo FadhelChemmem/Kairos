@@ -28,7 +28,7 @@ def contexte_fil_accueil(user_id: int) -> dict:
     lus = posts.list_feed_mes_projets(user_id, limit=taille + 1, categorie=categorie,
                                       avant=film.curseur_demande())
     fil, curseur = film.page(lus, taille)
-    non_vus = marquer_nouveaux(user_id, categorie, fil, instant)
+    non_vus = marquer_nouveaux(user_id, categorie, fil, instant, suite=bool(curseur))
     return dict(fil=fil, fil_entrees=film.regrouper(fil), fil_categorie=categorie, fil_non_vus=non_vus,
                 fil_suite_id="fil-suite", fil_suite_cible="#fil-liste",
                 fil_suite_url=url_for("main.accueil", fil=categorie, avant=curseur) if curseur else None)
@@ -46,7 +46,7 @@ def _instant_lecture():
         return None
 
 
-def marquer_nouveaux(user_id: int, categorie: str, fil: list[dict], instant=None) -> dict:
+def marquer_nouveaux(user_id: int, categorie: str, fil: list[dict], instant=None, suite: bool = False) -> dict:
     """Lot 17 (demande du gérant) : posts arrivés depuis la dernière visite
     de leur catégorie (hors les siens) marqués « nouveau » ; nombre de
     nouveautés des AUTRES catégories pour leurs onglets ; la catégorie
@@ -72,15 +72,21 @@ def marquer_nouveaux(user_id: int, categorie: str, fil: list[dict], instant=None
         c = "activite" if p.get("est_activite") else "echanges"
         if p.get("created_at") and (c not in affiches or p["created_at"] > affiches[c]):
             affiches[c] = p["created_at"]
-    instants = {c: affiches.get(c, instant) for c in vues}
+    # Lot 25 (FL-03) : sur « Tout », une catégorie absente d'une première
+    # page suivie d'autres (`suite`) n'est pas marquée vue (ses nouveautés
+    # sont peut-être plus bas) ; sans suite, tout le fil est là : vue.
+    incomplet = categorie == "tout" and suite
+    instants = {c: affiches.get(c, None if incomplet else instant) for c in vues}
+    instants = {c: v for c, v in instants.items() if v is not None}
     # Ni en « Voir comme » ni en « Agir comme » : l'Admin qui teste ne
     # consomme pas les nouveautés de la personne.
     if not g.get("lecture_seule") and not g.get("mode_admin"):
         try:
-            posts.marquer_fil_vu(user_id, vues, instants)
+            if instants:
+                posts.marquer_fil_vu(user_id, tuple(instants), instants)
         except Exception:
             current_app.logger.exception("Posts non vus\u00a0: enregistrement impossible")
-    return {c: n for c, n in non_vus.items() if c not in vues and n}
+    return {c: n for c, n in non_vus.items() if c not in instants and n}
 
 
 def _fil_partiel(user_id: int):

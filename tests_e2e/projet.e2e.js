@@ -155,6 +155,10 @@ const options = (p) => p.$$eval('#carte-intervenants [role=option] .search-combo
     await p.waitForSelector('#dialog-tache .tache-dialog-erreur');
     etape('session expirée : « Recharger la page »',
       (await p.locator('#dialog-tache .tache-dialog-erreur').innerText()).includes('session a expiré'));
+    // Lot 25 (UX-E1) : pointeur hors de la liste avant la fermeture — sinon,
+    // la frise reprenant sa largeur, la ligne de la tâche 6 passe sous lui et
+    // la tâche est préchargée au survol (aucun « Chargement… » à voir).
+    await p.mouse.move(2, 2);
     await p.keyboard.press('Escape');
     // Fin de l'animation de fermeture (180 ms) avant la tâche suivante.
     await attendre(() => p.evaluate(() => !document.getElementById('dialog-tache').open));

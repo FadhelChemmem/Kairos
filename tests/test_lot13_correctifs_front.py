@@ -43,7 +43,7 @@ class TestCorrectifsCss(unittest.TestCase):
             self.assertRegex(CSS, re.escape("content: " + contenu + "; content: " + contenu + ' / "";'))
 
     def test_toasts_en_popover_et_regions_live_persistantes(self):
-        self.assertIn('<div id="k-toasts" class="k-toasts" popover="manual"><div id="k-annonce" class="sr-only" '
+        self.assertIn('<div id="k-toasts" class="k-toasts" popover="manual" role="region" aria-label="Messages"><div id="k-annonce" class="sr-only" '
                       'role="status" aria-atomic="true"></div><div id="k-alerte" class="sr-only" role="alert" '
                       'aria-atomic="true"></div></div>', BASE)
         corps = " ".join(regles(r"^\s*\.k-toasts\s*$"))

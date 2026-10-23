@@ -47,7 +47,7 @@
           {# Revue produit P1-5 : échéance dépassée en rouge, avec « +2 j ». #}
           {% set p_echeance = p.prochain_rendu or p.prochaine_deadline %}
           {% set p_retard = en_retard_de(p_echeance, today()) if p_echeance and p.etat in ('en_cours', 'bloque') else '' %}
-          {% set p_retard_html %}{% if p_retard %}<span class="ptable-retard-jours" aria-hidden="true">{{ p_retard.split(' ')[-2] }}&nbsp;j de retard</span><span class="sr-only">, {{ p_retard }}</span>{% endif %}{% endset %}
+          {% set p_retard_html %}{% if p_retard %}<span class="ptable-retard-jours" aria-hidden="true"><span class="sep-point"> · </span>{{ p_retard.split(' ')[-2] }}&nbsp;j de retard</span><span class="sr-only">, {{ p_retard }}</span>{% endif %}{% endset %}
           {% if p.prochain_rendu %}
             <span role="cell" class="ptable-rendu{{ ' ptable-rendu-retard' if p_retard }}" title="Rendu client&nbsp;: {{ p.prochain_rendu_titre }}"><span class="ptable-mobile-libelle">Rendu </span>{{ p.prochain_rendu|date_courte }}{{ p_retard_html }}</span>
           {% elif p.prochaine_deadline %}

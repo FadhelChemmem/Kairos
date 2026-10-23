@@ -126,11 +126,29 @@ def list_auteurs() -> list[dict]:
     """Personnes ayant au moins une entrée dans le journal — alimente le
     filtre "Auteur" (inclut les comptes désactivés : on veut pouvoir
     retrouver l'historique de quelqu'un qui est parti)."""
+    # Lot 25 (UT-01) : auteurs distincts par un parcours « à saut » des
+    # index (un EXISTS par compte devenait un parcours complet du journal
+    # par compte sans entrée : 2 s à 150 000 entrées).
     sql = """
+        WITH RECURSIVE auteurs AS (
+            (SELECT utilisateur_id AS id FROM audit_log WHERE utilisateur_id IS NOT NULL
+             ORDER BY utilisateur_id LIMIT 1)
+            UNION ALL
+            SELECT (SELECT a.utilisateur_id FROM audit_log a WHERE a.utilisateur_id > auteurs.id
+                    ORDER BY a.utilisateur_id LIMIT 1)
+            FROM auteurs WHERE auteurs.id IS NOT NULL
+        ), admins AS (
+            (SELECT admin_reel_id AS id FROM audit_log WHERE admin_reel_id IS NOT NULL
+             ORDER BY admin_reel_id LIMIT 1)
+            UNION ALL
+            SELECT (SELECT a.admin_reel_id FROM audit_log a WHERE a.admin_reel_id > admins.id
+                    ORDER BY a.admin_reel_id LIMIT 1)
+            FROM admins WHERE admins.id IS NOT NULL
+        )
         SELECT u.id, u.prenom, u.nom
         FROM utilisateur u
-        WHERE EXISTS (SELECT 1 FROM audit_log a WHERE a.utilisateur_id = u.id)
-           OR EXISTS (SELECT 1 FROM audit_log a WHERE a.admin_reel_id = u.id)
+        WHERE u.id IN (SELECT id FROM auteurs WHERE id IS NOT NULL
+                       UNION SELECT id FROM admins WHERE id IS NOT NULL)
         ORDER BY u.prenom, u.nom
     """
     with db.get_cursor() as cur:

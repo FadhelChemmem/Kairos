@@ -61,7 +61,7 @@
       </div>
       <div class="form-row">
         <label for="honoraires">Honoraires <span class="label-note">— facultatif</span></label>
-        <input type="text" id="honoraires" name="honoraires" inputmode="decimal" placeholder="12 500,00" value="{{ saisie.honoraires if saisie else '' }}"{{ err.attrs(erreurs, 'honoraires') }}>
+        <input type="text" id="honoraires" name="honoraires" inputmode="decimal" placeholder="ex. 12 500,00" value="{{ saisie.honoraires if saisie else '' }}"{{ err.attrs(erreurs, 'honoraires') }}>
         {{ err.message(erreurs, 'honoraires') }}
       </div>
     </div>

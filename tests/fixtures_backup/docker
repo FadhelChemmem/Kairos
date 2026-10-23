@@ -10,6 +10,11 @@ if [ -n "${FAKE_DOCKER_LOG:-}" ]; then
   echo "$args" >> "$FAKE_DOCKER_LOG"
 fi
 case "$args" in
+  *" ps "*)
+    # Lot 25 (BD-02) : services en marche ; web arrêté si demandé.
+    [ "${FAKE_DOCKER_WEB_ARRETE:-0}" = "1" ] || echo web
+    echo db
+    ;;
   *pg_dump*)
     if [ "${FAKE_DOCKER_FAIL_DB:-0}" = "1" ]; then
       echo "pg_dump: fake failure" >&2
@@ -23,10 +28,15 @@ case "$args" in
       echo "tar: fake failure" >&2
       exit 2
     fi
+    if [ "${FAKE_DOCKER_DOCKER_KO:-0}" = "1" ]; then
+      echo "service \"web\" is not running" >&2
+      exit 1
+    fi
     tar czf - -C "$FAKE_UPLOADS_DIR" .
     if [ "${FAKE_DOCKER_TAR_CHANGED:-0}" = "1" ]; then
+      # Le script fait traduire le statut 1 de tar en 99 dans le conteneur.
       echo "tar: ./note.pdf: file changed as we read it" >&2
-      exit 1
+      exit 99
     fi
     ;;
   *)

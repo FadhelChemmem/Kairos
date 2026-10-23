@@ -956,8 +956,12 @@
           if (h === 'push' && !(win.history.state && win.history.state.kairosPartiel)) {
             try { win.history.replaceState(etatHistorique(o, null), '', win.location.href); } catch (e) { /* Retour = rechargement */ }
           }
-          if (h === 'push') win.history.pushState(etatHistorique(o, o.saisie), '', o.url);
-          else if (h === 'replace') win.history.replaceState(etatHistorique(o, o.saisie), '', o.url);
+          // Lot 25 (UT-04) : « defaut=1 » (Effacer les filtres) a servi une
+          // fois ; l'adresse gardée ne l'a plus (F5 ou Retour n'oublient
+          // pas un choix fait entre-temps ailleurs).
+          var adresseGardee = sansGeste(o.url);
+          if (h === 'push') win.history.pushState(etatHistorique(o, o.saisie), '', adresseGardee);
+          else if (h === 'replace') win.history.replaceState(etatHistorique(o, o.saisie), '', adresseGardee);
         }
         if (o.synchroniser) synchroniserFormulaires();
         if (racine) K.initialiser(racine);
@@ -1271,11 +1275,21 @@
   /** Lot 24 (filtres, contre-expertise FI-04) : « choix=1 » (Filtrer sans
    *  JavaScript, « Afficher tous les projets ») a servi une fois ; retiré de
    *  l'adresse, un F5 ou un Retour ne réécrit pas le choix mémorisé. */
+  function sansGeste(adresse) {
+    try {
+      var url = new URL(adresse, win.location.href);
+      if (!url.searchParams.has('defaut') && !url.searchParams.has('choix')) return adresse;
+      url.searchParams.delete('defaut');
+      url.searchParams.delete('choix');
+      return url.pathname + url.search + url.hash;
+    } catch (e) { return adresse; }
+  }
   function retirerChoix() {
     try {
       var url = new URL(win.location.href);
-      if (!url.searchParams.has('choix')) return;
+      if (!url.searchParams.has('choix') && !url.searchParams.has('defaut')) return;
       url.searchParams.delete('choix');
+      url.searchParams.delete('defaut');
       win.history.replaceState(win.history.state, '', url.pathname + url.search + url.hash);
     } catch (e) { /* navigateur ancien : sans effet */ }
   }

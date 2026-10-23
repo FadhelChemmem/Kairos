@@ -296,7 +296,7 @@
         chip.classList.toggle('chip-mode-contient', it.mode === 'contient');
         chip.classList.toggle('chip-mode-egal', it.mode === 'egal');
         badge.textContent = it.mode ? SYMB[it.mode] : '';
-        chip.title = (opt.title ? opt.title + ' — ' : '') + ARIA[it.mode].replace(/^ : /, '');
+        chip.title = (opt.title ? opt.title + ' — ' : '') + ARIA[it.mode].replace(/^[\s\u00a0\u202f]*:\s*/, '');
         chip.setAttribute('aria-pressed', it.mode ? 'true' : 'false');
         chip.setAttribute('aria-label', opt.textContent + ARIA[it.mode]);
       }

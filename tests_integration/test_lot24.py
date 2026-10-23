@@ -413,6 +413,7 @@ class TestNotificationsWindows(_Lot20):
                                                 "VAPID_PUBLIC_KEY": cles["VAPID_PUBLIC_KEY"]})
         self.env.start()
         self.app.config["PUSH_DELAI"] = 0
+        push._derniers_essais.clear()
         self.envois = []
         self.envoyer = mock.patch("app.push.envoyer", side_effect=lambda a, m, **k: self.envois.append((a, m)) or 201)
         self.envoyer.start()
@@ -422,11 +423,21 @@ class TestNotificationsWindows(_Lot20):
         self.env.stop()
         super().tearDown()
 
-    def abonner(self, uid, endpoint="https://fcm.googleapis.com/fcm/send/abc"):
+    def cle_navigateur(self):
+        """Clé publique P-256 valide (lot 25, PU-03 : un point hors courbe est
+        refusé)."""
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        point = ec.generate_private_key(ec.SECP256R1()).public_key().public_bytes(
+            serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
+        return self.push.b64url(point)
+
+    def abonner(self, uid, endpoint="https://fcm.googleapis.com/fcm/send/abc", cle=None, auth=b"a" * 16):
         self.login(uid)
-        cle = self.push.b64url(b"\x04" + b"\x01" * 64)
         return self.client.post("/push/abonnement", json={"endpoint": endpoint,
-                                                          "keys": {"p256dh": cle, "auth": self.push.b64url(b"a" * 16)}})
+                                                          "keys": {"p256dh": cle or self.cle_navigateur(),
+                                                                   "auth": self.push.b64url(auth)}})
 
     def test_manifeste_et_service_worker(self):
         m = self.client.get("/manifest.webmanifest")
@@ -450,7 +461,7 @@ class TestNotificationsWindows(_Lot20):
         self.assertEqual(r.status_code, 400)
         # Agir comme : le navigateur de l'Admin ne s'abonne jamais pour un autre.
         self.entrer(self.inter, mode="agir")
-        cle = self.push.b64url(b"\x04" + b"\x01" * 64)
+        cle = self.cle_navigateur()
         r = self.client.post("/push/abonnement", json={"endpoint": "https://fcm.googleapis.com/fcm/send/admin",
                                                        "keys": {"p256dh": cle, "auth": self.push.b64url(b"a" * 16)}})
         self.assertEqual(r.status_code, 403)

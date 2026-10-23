@@ -318,7 +318,7 @@ class TestUtilisateursFormulaires(_Base):
         html = resp.get_data(as_text=True)
         self.assertRegex(html, r'id="email"[^>]* aria-invalid="true" aria-describedby="err-email" autofocus')
         self.assertNotRegex(html, r'id="prenom"[^>]*autofocus')
-        self.assertIn("Un compte existe déjà avec l’email pris@x.tn.", html)
+        self.assertIn("Un compte existe déjà avec l’e-mail pris@x.tn.", html)
 
     def test_mot_de_passe_actuel_faux(self):
         with patch("app.routes.utilisateurs.verify_password", return_value=False), \

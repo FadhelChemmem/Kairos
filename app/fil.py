@@ -71,7 +71,7 @@ def _categorie_memorisee(page: str) -> str | None:
 
     from . import filtres_memoire
 
-    valeur = filtres_memoire._lire("fil_" + page)
+    valeur = filtres_memoire.lire("fil_" + page)
     if valeur is None and not g.get("admin_reel"):
         valeur = request.cookies.get(COOKIE_CATEGORIE + page)
     return valeur

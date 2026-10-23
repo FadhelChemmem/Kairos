@@ -24,7 +24,8 @@
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
   {# Lot 24 : application installable (Chrome / Edge « Installer Kairos »). #}
   <link rel="manifest" href="{{ url_for('push.manifeste') }}">
-  <meta name="theme-color" content="#ffffff">
+  {# Lot 25 : la couleur de la barre de titre suit le thème (kairos-amorce.js, kairos-ui.js). #}
+  <meta name="theme-color" content="#ffffff" id="k-theme-color">
   {# Lot 13 : Plus Jakarta Sans auto-hébergée (licence OFL, static/fonts/
      OFL.txt), plus de Google Fonts. Trois graisses (400, 600, 700 : le
      navigateur prend la plus proche pour 500 et 800), sous-ensemble latin
@@ -219,7 +220,7 @@
    dans la fenêtre modale ouverte. Régions live PERSISTANTES, vides au
    chargement (audit a11y R2) : le texte des toasts et de Kairos.annoncer()
    y est écrit — k-annonce (role=status), k-alerte (role=alert). #}
-<div id="k-toasts" class="k-toasts" popover="manual"><div id="k-annonce" class="sr-only" role="status" aria-atomic="true"></div><div id="k-alerte" class="sr-only" role="alert" aria-atomic="true"></div></div>
+<div id="k-toasts" class="k-toasts" popover="manual" role="region" aria-label="Messages"><div id="k-annonce" class="sr-only" role="status" aria-atomic="true"></div><div id="k-alerte" class="sr-only" role="alert" aria-atomic="true"></div></div>
 {% with messages = get_flashed_messages(with_categories=true) %}
   {% if messages %}
   {% set types = {'success': 'succes', 'error': 'erreur', 'warning': 'avertissement'} %}
@@ -240,7 +241,7 @@
    qui le voient (personnes_mentionnables) — pas un client d'une autre équipe. #}
 {% set mentionnables = personnes_mentionnables if personnes_mentionnables is defined else (utilisateurs_actifs if utilisateurs_actifs is defined else []) %}
 {% if mentionnables %}
-<script type="application/json" id="kairos-personnes">{{ mentionnables|map('personne_mentionnable')|list|tojson }}</script>
+<script type="application/json" id="kairos-personnes">{{ mentionnables|rejectattr('id', 'equalto', g.user.id if g.user else none)|map('personne_mentionnable')|list|tojson }}</script>
 {% endif %}
 </body>
 </html>

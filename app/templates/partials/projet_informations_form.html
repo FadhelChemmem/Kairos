@@ -29,7 +29,7 @@
     </div>
     <div class="form-row">
       <label for="dialog-info-honoraires">Honoraires</label>
-      <input type="text" id="dialog-info-honoraires" name="honoraires" inputmode="decimal" placeholder="12 500,00" value="{{ montant_fr(projet.honoraires) }}">
+      <input type="text" id="dialog-info-honoraires" name="honoraires" inputmode="decimal" placeholder="ex. 12 500,00" value="{{ montant_fr(projet.honoraires) }}">
     </div>
   </div>
   <div class="form-row">
@@ -89,6 +89,11 @@
         <option value="{{ p.id }}" {{ 'selected' if p.id == projet.phase_liee_id }}>{{ p.code }}_{{ p.nom }}</option>
       {% endfor %}
     </select>
+    {% if projet.phase_liee_id and not projets_phase_liee %}
+    {# Lot 25 (PR-01) : phase liée d'une autre équipe, que la personne ne voit
+       pas : conservée tant qu'elle n'en choisit pas une autre. #}
+    <p class="aide-champ">Liée à un projet que vous ne voyez pas (autre équipe)&#8239;: ce lien est conservé.</p>
+    {% endif %}
   </div>
 
   <div class="fenetre-actions">

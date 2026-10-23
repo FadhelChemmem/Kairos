@@ -19,7 +19,14 @@
       {% if projet.phase_liee_id and phase_liee_visible|default(false) %}
         <a href="{{ url_for('projets.detail', projet_id=projet.phase_liee_id) }}" class="fiche-phase-liee">Phase liée&nbsp;: {{ projet.phase_liee_code }}_{{ projet.phase_liee_nom }}</a>
       {% endif %}
+      {% for suite in phases_suivantes|default([]) %}
+        <a href="{{ url_for('projets.detail', projet_id=suite.id) }}" class="fiche-phase-liee">Phase suivante&nbsp;: {{ suite.code }}_{{ suite.nom }}</a>
+      {% endfor %}
     </div>
+    {# Lot 25 (annexe C, U5) : on dit pourquoi les actions ont disparu. #}
+    {% if lecture_seule|default(false) and not projet_clos|default(false) and g.user.role not in ('client', 'rh') %}
+    <p class="aide-champ fiche-lecture-seule">Vous n’êtes plus rattaché(e) à ce projet&#8239;: consultation seule (vos anciens posts et commentaires restent modifiables).</p>
+    {% endif %}
   </div>
   <div class="fiche-entete-droite">
     <div class="fiche-heures">

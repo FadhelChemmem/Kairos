@@ -95,7 +95,7 @@ class TestClotureDuProjet(_Projets):
         self.assertEqual(r.status_code, 200)
         page = self.texte(r)
         self.assertIn(f'id="projet-{self.p1}-cloture-confirmation"', page)
-        self.assertIn("Clore le projet et ses 2 tâches", page)
+        self.assertIn("Clore le projet et ses 2 tâches ouvertes", page)
         self.assertEqual(sorted(int(x) for x in re.findall(r'name="taches_a_clore" value="(\d+)"', page)),
                          sorted([self.t1, self.t_bloquee]))
         self.assertIn('name="confirmer_cloture" value="1"', page)
@@ -120,7 +120,7 @@ class TestClotureDuProjet(_Projets):
 
     def test_abandon_et_liste_changee(self):
         r = self.informations(self.p1, etat="abandonne")
-        self.assertIn("Clore le projet et ses 2 tâches", self.texte(r))
+        self.assertIn("Abandonner le projet et ses 2 tâches ouvertes", self.texte(r))
         # Une tâche créée entre-temps : la confirmation est redemandée.
         nouvelle = self.tache(self.p1, self.chef)
         r = self.informations(self.p1, etat="abandonne", confirmer_cloture="1",
@@ -138,11 +138,13 @@ class TestClotureDuProjet(_Projets):
     def test_fragment_ajax_et_sans_tache_ouverte_pas_de_confirmation(self):
         r = self.client.post(f"/projets/{self.p1}/informations",
                              data={"nom": "Projet", "etat": "termine", "lots": "GO"},
-                             headers={"X-Requested-With": "XMLHttpRequest"})
+                             # Lot 25 (revue R-11) : requête partielle (kairos-partiel).
+                             headers={"X-Kairos-Partiel": "#informations-form", "X-Requested-With": "XMLHttpRequest"})
         self.assertEqual(r.status_code, 200)
         self.assertTrue(r.get_data(as_text=True).lstrip().startswith("{#") is False)
         self.assertNotIn("<html", r.get_data(as_text=True))
-        self.assertIn(f'id="projet-{self.p1}-cloture-confirmation"', r.get_data(as_text=True))
+        self.assertIn("projet-cloture-confirmation", r.get_data(as_text=True))
+        self.assertIn(f'id="projet-{self.p1}-cloture-titre"', r.get_data(as_text=True))
         # Projet sans tâche ouverte : clos directement.
         p = self.projet(self.chef)
         r = self.informations(p, etat="termine")
@@ -262,7 +264,7 @@ class TestTacheExistante(_Projets):
                                       "AND action = 'INSERT' AND utilisateur_id = %s", (self.cochef,)), 1)
         # Retrait.
         r = self.client.post(f"/projets/{self.p1}/taches/{self.t1}/intervenants/{self.inter}/retirer")
-        self.assertIn("retiré de la tâche", self.flash(r))
+        self.assertIn("retiré(e) de la tâche", self.flash(r))
         self.assertEqual(self.compter("SELECT count(*) AS n FROM tache_intervenant WHERE tache_id = %s AND utilisateur_id = %s",
                                       (self.t1, self.inter)), 0)
         self.assertIn("vous a retiré de la tâche", self.notifs(self.inter)[-1]["message"])
@@ -309,7 +311,7 @@ class TestTacheExistante(_Projets):
         t = self.sql("SELECT date_echeance, type_deadline FROM tache WHERE id = %s", (self.t1,))[0]
         self.assertEqual((t["date_echeance"], t["type_deadline"]), (nouvelle, "interne"))
         post = self.posts(self.p1, "echeance_tache")[-1]
-        self.assertTrue(post["contenu"].startswith("Échéance : "))
+        self.assertTrue(post["contenu"].startswith("Échéance\u00a0: "))
         self.assertIn("(rendu client) → ", post["contenu"])
         self.assertIn("Échéance de la tâche", self.notifs(self.inter)[-1]["message"])
         # Sans échéance.
@@ -335,7 +337,7 @@ class TestTacheExistante(_Projets):
         r = self.client.post(f"/projets/{self.p1}/intervenants/{self.chef}/retirer")
         self.assertIn("Le chef de projet titulaire ne se retire pas", self.flash(r))
         r = self.client.post(f"/projets/{self.p1}/intervenants/{self.inter}/retirer")
-        self.assertIn("retiré du projet et de 1 tâche en cours", self.flash(r))
+        self.assertIn("retiré(e) du projet et de 1 tâche en cours", self.flash(r))
         self.assertEqual(self.compter("SELECT count(*) AS n FROM projet_intervenant WHERE projet_id = %s AND utilisateur_id = %s",
                                       (self.p1, self.inter)), 0)
         self.assertEqual(self.compter("SELECT count(*) AS n FROM tache_intervenant WHERE tache_id = %s", (self.t1,)), 0)
@@ -348,7 +350,7 @@ class TestTacheExistante(_Projets):
         self.assertEqual(self.compter("SELECT count(*) AS n FROM projet_co_chef WHERE projet_id = %s", (self.p1,)), 0)
         # Plus rien à retirer.
         r = self.client.post(f"/projets/{self.p1}/intervenants/{self.inter}/retirer")
-        self.assertIn("n'est pas rattachée au projet", self.flash(r))
+        self.assertIn("n’est pas rattachée au projet", self.flash(r))
 
     def test_creation_de_tache_personne_ecartee_et_co_chef_signale(self):
         self.login(self.chef)
@@ -419,9 +421,11 @@ class TestNotificationsEtDroits(_Projets):
         n = self.notifs(self.inter)[-1]
         self.login(self.inter)
         r = self.client.post(f"/notifications/{n['id']}/ouvrir")
-        # Lot 23 (décision du gérant) : sur « Tout », chargé jusqu'au post.
-        self.assertTrue(r.headers["Location"].endswith(f"/projets/{self.p1}?fil=tout&jusqua={post_id}#post-{post_id}"),
-                        r.headers["Location"])
+        # Lot 23 (décision du gérant) : sur « Tout », chargé jusqu'au post ;
+        # lot 25 (U3) : le commentaire visé est nommé.
+        c = self.sql("SELECT max(id) AS id FROM post_commentaire WHERE post_id = %s", (post_id,))[0]["id"]
+        self.assertTrue(r.headers["Location"].endswith(
+            f"/projets/{self.p1}?fil=tout&jusqua={post_id}&commentaire={c}#post-{post_id}"), r.headers["Location"])
 
     def test_reponse_previent_l_auteur_du_commentaire(self):
         self.login(self.chef)

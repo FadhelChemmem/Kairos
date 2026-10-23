@@ -366,8 +366,14 @@ class TestVoirCommeRoutes(_Base):
     def test_non_admin_jamais(self):
         comptes = {**COMPTES, 1: {**ADMIN, "role": "chef_de_projet"}}
         self.session(mode_admin=self.MODE, date_simulee={"admin": 1, "date": "2030-01-01"})
-        resp, _ = self.requete("get", "/accueil", comptes=comptes)
+        resp, mocks = self.requete("get", "/accueil", comptes=comptes, espions=[
+            ("app.repositories.audit.journaliser_mode", None),
+            ("app.repositories.notifications.purger_rappels_simules", None)])
         self.assertNotIn("bandeau-admin", self.texte(resp))
+        # Lot 25 (UT-03) : le mode tombé est clos au journal (SORTIE).
+        sorties = [c.args for c in mocks["app.repositories.audit.journaliser_mode"].call_args_list]
+        self.assertEqual([(a[0], a[1], a[4]["raison"]) for a in sorties],
+                         [("mode_voir_comme", "SORTIE", "admin_retire"), ("date_simulee", "SORTIE", "admin_retire")])
         with self.client.session_transaction() as s:
             self.assertNotIn("mode_admin", s)
             self.assertNotIn("date_simulee", s)

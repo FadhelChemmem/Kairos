@@ -26,7 +26,9 @@ mimetypes.add_type("font/woff2", ".woff2")
 
 # Préfixes des API qui répondent TOUJOURS en JSON, erreurs comprises
 # (Daily log v9, lot 10).
-API_JSON_PREFIXES = ("/dailylog/api/", "/dailylog/recherche-projets")
+API_JSON_PREFIXES = ("/dailylog/api/", "/dailylog/recherche-projets",
+                     # Lot 25 (PU-09) : carte « Notifications Windows » (fetch).
+                     "/push/cle", "/push/etat", "/push/abonnement", "/push/desabonnement", "/push/essai")
 
 # Pages d'erreur HTML (lot 11) : titre et message, jamais de détail technique.
 PAGES_ERREUR = {
@@ -154,6 +156,11 @@ def create_app(config_class=Config) -> Flask:
         ))
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "same-origin")
+        # Lot 25 (RS-09) : ni caméra, ni micro, ni position, ni paiement ;
+        # fenêtre isolée des pages d'autres origines.
+        response.headers.setdefault("Permissions-Policy",
+                                    "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+        response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
         if app.config.get("SESSION_COOKIE_SECURE"):
             response.headers.setdefault(
                 "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
@@ -245,9 +252,9 @@ def create_app(config_class=Config) -> Flask:
             # Plus de session : 401, la page propose de se reconnecter.
             if g.get("user") is None:
                 return partiel.session_expiree()
-            return partiel.refuser("Votre session a expiré ou le formulaire n'est plus valide. "
+            return partiel.refuser("Votre session a expiré ou le formulaire n’est plus valide. "
                                    "Rechargez la page, puis réessayez.", 400, erreur="csrf")
-        flash("Votre session a expiré ou le formulaire n'est plus valide. "
+        flash("Votre session a expiré ou le formulaire n’est plus valide. "
               "Veuillez réessayer.", "error")
         retour = _chemin_interne(request.referrer)
         if not utils.is_safe_next(retour):

@@ -16,7 +16,7 @@ from flask import (
 from .. import fil as film
 from .. import filtres_memoire, horloge, mailer, partiel
 from ..auth import (
-    MOT_DE_PASSE_MIN_LEN, generer_lien_reset, hash_password, login_required,
+    MOT_DE_PASSE_MIN_LEN, generer_lien_reset_annulable, hash_password, login_required,
     password_fingerprint, role_required, verify_password,
 )
 from ..repositories import dailylog as dailylog_repo
@@ -96,7 +96,7 @@ def _envoyer_lien_mot_de_passe(user_id: int, email: str, creation: bool) -> bool
                                    mailer.masquer(email))
         return False
     try:
-        lien = generer_lien_reset(user_id, current_user_id=g.user["id"])
+        lien, annuler = generer_lien_reset_annulable(user_id, current_user_id=g.user["id"])
     except Exception:
         current_app.logger.exception("Lien de réinitialisation impossible à générer (id=%s)", user_id)
         return False
@@ -108,9 +108,9 @@ def _envoyer_lien_mot_de_passe(user_id: int, email: str, creation: bool) -> bool
             f"Adresse e-mail\u00a0: {email}\n\n"
             "Pour définir votre mot de passe et activer votre "
             f"compte, utilisez ce lien (valable 1 heure)\u00a0: {lien}\n\n"
-            "Si ce lien a expiré, utilisez \"Mot de passe "
-            "oublié\u202f?\" sur la page de connexion avec cette même "
-            "adresse email pour en recevoir un nouveau."
+            "Si ce lien a expiré, utilisez «\u00a0Mot de passe "
+            "oublié\u202f?\u00a0» sur la page de connexion avec cette même "
+            "adresse e-mail pour en recevoir un nouveau."
         )
     else:
         sujet = "Kairos — réinitialisation de votre mot de passe"
@@ -123,7 +123,14 @@ def _envoyer_lien_mot_de_passe(user_id: int, email: str, creation: bool) -> bool
             "pas choisi un nouveau. Si vous n’attendiez pas ce message, "
             "prévenez l’administrateur."
         )
-    return mailer.envoyer(email, sujet, corps)
+    if mailer.envoyer(email, sujet, corps):
+        return True
+    # Lot 25 (UT-02) : rien n'est parti — le lien déjà reçu reste le bon.
+    try:
+        annuler()
+    except Exception:
+        current_app.logger.exception("Lien précédent non rétabli (id=%s)", user_id)
+    return False
 
 
 def _message_garde_admin(exc: Exception) -> str | None:
@@ -158,7 +165,7 @@ def _enregistrer_avatar_si_fourni(user_id: int, current_user_id: int) -> None:
             pass
         flash("Photo de profil ignorée\u00a0: 10\u00a0Mo au plus." if trop_grande else
               "Photo de profil ignorée\u00a0: fichier illisible ou format non accepté (jpg, png, gif, webp).", "error")
-        return
+        return False
     _, chemin = save_upload(fichier, f"avatars/{user_id}")
     # Fichier orphelin sur disque si l'UPDATE échoue juste après (audit
     # sécurité/qualité externe, 2026-09-28, item P0-3).
@@ -173,6 +180,7 @@ def _enregistrer_avatar_si_fourni(user_id: int, current_user_id: int) -> None:
             delete_upload(ancien)
         except Exception:
             current_app.logger.warning("Ancienne photo de profil non supprimée\u00a0: %s", ancien)
+    return True
 
 
 # Rôles qui ne voient des projets que par leur équipe (lot 13, audit rôles M4).
@@ -236,7 +244,11 @@ def _resume_erreurs(erreurs: dict) -> str:
     messages sous les champs)."""
     manquants = [c for c in ("prenom", "nom", "email") if erreurs.get(c) == "Obligatoire."]
     if manquants:
-        return "Prénom, nom et email sont obligatoires."
+        # Lot 25 (U9) : seulement les champs qui manquent vraiment.
+        noms = [{"prenom": "prénom", "nom": "nom", "email": "adresse e-mail"}[c] for c in manquants]
+        texte = noms[0] if len(noms) == 1 else ", ".join(noms[:-1]) + " et " + noms[-1]
+        accord = "est obligatoire" if len(noms) == 1 else "sont obligatoires"
+        return f"{texte[0].upper()}{texte[1:]} {accord}."
     return next(iter(erreurs.values()))
 
 
@@ -470,6 +482,9 @@ def liste():
         actif_param = None
     filtres_memoire.memoriser("equipe", {"filtres_actifs": "1", "equipe_code": equipe_code, "role": role,
                                          "actif": actif_param})
+    sans_choix = filtres_memoire.apres_geste_sans_js()
+    if sans_choix is not None:
+        return sans_choix
     actif = {"actifs": True, "inactifs": False}.get(actif_param)
 
     tous = utilisateurs_repo.list_tous(q=q, equipe_code=equipe_code, role=role, actif=actif)
@@ -565,7 +580,7 @@ def creer():
                     erreurs["role"] = ("Il y a déjà un compte RH actif. Désactivez-le d’abord "
                                        "pour en créer un nouveau.")
                 elif "idx_utilisateur_email_lower" in str(exc):
-                    erreurs["email"] = f"Un compte existe déjà avec l’email {email}."
+                    erreurs["email"] = f"Un compte existe déjà avec l’e-mail {email}."
                 else:
                     flash("Impossible de créer ce compte.", "error")
             else:
@@ -579,14 +594,16 @@ def creer():
                     current_app.logger.exception("Photo de profil non enregistrée (id=%s)", user_id)
                     flash("Photo de profil non enregistrée — ajoutez-la depuis la fiche.", "error")
                 if not actif_compte:
+                    # Lot 25 (U2) : la réactivation n'envoie rien d'elle-même.
                     flash(
                         f"Compte créé pour {prenom} {nom} (inactif) — aucun "
-                        "email envoyé. Réactivez le compte pour qu’il puisse "
-                        "définir son mot de passe.", "success",
+                        "e-mail envoyé. Après l’avoir réactivé, envoyez-lui un lien depuis sa fiche "
+                        "(«\u00a0Envoyer un lien de réinitialisation\u00a0») pour qu’il définisse "
+                        "son mot de passe.", "success",
                     )
                 elif _envoyer_lien_mot_de_passe(user_id, email, creation=True):
                     flash(
-                        f"Compte créé pour {prenom} {nom}. Un email lui a été "
+                        f"Compte créé pour {prenom} {nom}. Un e-mail lui a été "
                         "envoyé pour qu’il définisse son mot de passe.", "success",
                     )
                 else:
@@ -631,6 +648,10 @@ def _rendre_mon_profil(erreurs_infos=None, erreurs_mdp=None, statut=200):
         erreurs_infos=erreurs_infos or {}, erreurs_mdp=erreurs_mdp or {},
         # Lot 24 : notifications Windows (app/push.py).
         push_categories=push_repo.get_categories(g.user["id"]), push_libelles=push.CATEGORIES,
+        # Lot 25 (U4) : appareils activés, chacun retirable.
+        push_appareils=[{**a, "libelle": push.appareil_libelle(a["navigateur"])}
+                        for a in push_repo.appareils(g.user["id"])] if push.actif() else [],
+        push_actif=push.actif(),
     ), statut
 
 
@@ -663,8 +684,10 @@ def mon_profil():
             current_user_id=user_id,
         )
         photo = bool(request.files.get("avatar") and request.files["avatar"].filename)
-        _enregistrer_avatar_si_fourni(user_id, user_id)
-        flash("Vos informations ont été mises à jour.", "success")
+        enregistree = _enregistrer_avatar_si_fourni(user_id, user_id)
+        # Lot 25 (U1) : photo refusée — le succès ne la compte plus.
+        flash("Vos informations ont été mises à jour, sauf la photo." if photo and enregistree is False
+              else "Vos informations ont été mises à jour.", "success")
         if partiel.est_partiel():
             # Formulaire remplacé en place ; la photo suit dans l'en-tête de
             # la carte et dans la barre du haut (hors cible).
@@ -702,7 +725,7 @@ def mon_mot_de_passe():
 
     cle_mdp = f"changement-mdp|{user_id}"
     if securite_repo.compter_tentatives_recentes("connexion", cle_mdp, FENETRE_TENTATIVES_MINUTES) >= MAX_TENTATIVES:
-        erreurs["mot_de_passe_actuel"] = "Trop de tentatives. Réessayez dans quelques minutes."
+        erreurs["mot_de_passe_actuel"] = f"Trop de tentatives. Réessayez dans {FENETRE_TENTATIVES_MINUTES}\u00a0minutes."
     elif hash_actuel is None or not verify_password(actuel, hash_actuel):
         securite_repo.enregistrer_tentative("connexion", cle_mdp)
         erreurs["mot_de_passe_actuel"] = "Mot de passe actuel incorrect."
@@ -870,7 +893,7 @@ def fiche(user_id: int):
                     erreurs["role"] = ("Il y a déjà un compte RH actif. Désactivez-le d’abord "
                                        "pour en attribuer ce rôle.")
                 elif "idx_utilisateur_email_lower" in str(exc):
-                    erreurs["email"] = f"Un compte existe déjà avec l’email {email}."
+                    erreurs["email"] = f"Un compte existe déjà avec l’e-mail {email}."
                 elif "rôle RH" in str(exc):
                     # trg_check_passage_role_rh (migration 0005).
                     erreurs["role"] = (

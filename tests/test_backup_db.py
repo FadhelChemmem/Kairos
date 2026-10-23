@@ -175,6 +175,23 @@ class BackupDbTestCase(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len([n for n in self._backups() if n.endswith(".tar.gz")]), 1)
 
+    def test_web_arrete_conteneur_ponctuel(self):
+        """Lot 25 (BD-02) : web arrêté (migration en échec) — la sauvegarde
+        passe par un conteneur ponctuel, la relance reste possible."""
+        log = self.tmp / "docker.log"
+        result = self._run(env_extra={"FAKE_DOCKER_WEB_ARRETE": "1", "FAKE_DOCKER_LOG": str(log)})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        appels = log.read_text(encoding="utf-8")
+        self.assertIn("compose run --rm --no-deps -T web", appels)
+        self.assertNotIn("exec -T web", appels)
+
+    def test_echec_de_docker_n_est_pas_un_fichier_modifie(self):
+        """Lot 25 (BD-02) : « service web is not running » (statut 1) n'est
+        plus pris pour « un fichier a changé »."""
+        result = self._run(env_extra={"FAKE_DOCKER_DOCKER_KO": "1"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("un fichier a changé", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

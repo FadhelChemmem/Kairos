@@ -2,11 +2,14 @@
 {% set petat = projet_etat_style(projet.etat) %}
 <div class="subbar" id="projet-subbar"{% if oob %} data-partiel-oob{% endif %}>
   <div class="subbar-inner">
-    <nav aria-label="Fil d’Ariane" class="subbar-ariane">
-      <a href="{{ url_for('projets.liste') }}" class="lien-retour">Projets</a>
-      <span aria-hidden="true">›</span>
+    {# Lot 25 (demande du gérant, 23/10) : le nom est juste en dessous —
+       cette ligne ramène à la liste des projets (filtres mémorisés). Le nom
+       n'y revient que quand l'en-tête de la fiche a défilé hors de l'écran
+       (projet-subbar.js). #}
+    <nav aria-label="Navigation" class="subbar-ariane">
+      <a href="{{ url_for('projets.liste') }}" class="lien-retour"><span aria-hidden="true">←</span> Retour aux projets</a>
     </nav>
-    <span class="subbar-nom">{{ projet.code }}_{{ projet.nom }}</span>
+    <span class="subbar-nom" data-subbar-nom aria-hidden="true">{{ projet.code }}_{{ projet.nom }}</span>
     {# Lot 16 : l'état n'est plus répété ici (il est dans l'en-tête de la fiche). #}
   </div>
 </div>

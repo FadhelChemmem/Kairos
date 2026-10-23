@@ -934,13 +934,15 @@ label, .label { font-size: 12px; color: var(--text-muted); font-weight: 600; dis
    liste réserve la place de ses puces — largeur (listes fixes : 4 états,
    5 phases, 2 lots) et, quand elles passent sur deux lignes faute de
    place, hauteur. Les groupes se rangent alors comme après. */
-.projets-filtres select[name="etat"][data-chip-select]:not([data-chip-init]) { width: 365px; max-width: 100%; }
-.projets-filtres select[name="phase"][data-chip-select]:not([data-chip-init]) { width: 383px; max-width: 100%; }
-.projets-filtres select[data-chip-tristate]:not([data-chip-init]) { width: 109px; max-width: 100%; }
-.projets-filtres select[name="chef_id"][data-chip-select]:not([data-chip-init]) { height: 32px; }
-@media (max-width: 452px) { .projets-filtres select[name="phase"][data-chip-select]:not([data-chip-init]) { height: 68px; } }
-@media (max-width: 434px) { .projets-filtres select[name="etat"][data-chip-select]:not([data-chip-init]) { height: 68px; } }
-@media (max-width: 329px) { .projets-filtres select[name="chef_id"][data-chip-select]:not([data-chip-init]) { height: 72px; } }
+/* Lot 25 (annexe A, U1) : réserves seulement avec JavaScript — sans lui,
+   la liste native des chefs garde sa hauteur. */
+html.k-js .projets-filtres select[name="etat"][data-chip-select]:not([data-chip-init]) { width: 365px; max-width: 100%; }
+html.k-js .projets-filtres select[name="phase"][data-chip-select]:not([data-chip-init]) { width: 383px; max-width: 100%; }
+html.k-js .projets-filtres select[data-chip-tristate]:not([data-chip-init]) { width: 109px; max-width: 100%; }
+html.k-js .projets-filtres select[name="chef_id"][data-chip-select]:not([data-chip-init]) { height: 32px; }
+@media (max-width: 452px) { html.k-js .projets-filtres select[name="phase"][data-chip-select]:not([data-chip-init]) { height: 68px; } }
+@media (max-width: 434px) { html.k-js .projets-filtres select[name="etat"][data-chip-select]:not([data-chip-init]) { height: 68px; } }
+@media (max-width: 329px) { html.k-js .projets-filtres select[name="chef_id"][data-chip-select]:not([data-chip-init]) { height: 72px; } }
 .filtres-une-ligne .filtre-groupe:last-child { flex: 1 1 260px; }
 .chip-opt.chip-avatar { flex-shrink: 0; }
 

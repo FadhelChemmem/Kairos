@@ -45,7 +45,7 @@ class TestCsrfAvantEmpreinte(_Base):
         with self.client.session_transaction() as s:
             messages = [m for _, m in s.get("_flashes", [])]
         self.assertFalse(any("Le mode a changé" in m for m in messages), messages)
-        self.assertTrue(any("formulaire n'est plus valide" in m for m in messages), messages)
+        self.assertTrue(any("formulaire n’est plus valide" in m for m in messages), messages)
         self.assertEqual(self.sql("SELECT etat FROM tache WHERE id = %s", (self.t1,))[0]["etat"], "en_cours")
 
 

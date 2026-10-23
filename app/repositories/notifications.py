@@ -110,6 +110,8 @@ _SELECT_AFFICHE = """
                     ELSE n.message END AS message,
                n.lu, n.created_at,
                n.post_id, n.tache_id, n.projet_id, n.simulee,
+               -- Lot 24b : titre de la notification Windows.
+               (n.rappel_jours IS NOT NULL) AS est_rappel,
                p.projet_id AS post_projet_id,
                t.projet_id AS tache_projet_id, t.titre AS tache_titre,
                -- Lot 24 (MX-03) : ni le code d'un projet que la personne ne
@@ -145,10 +147,14 @@ def get_notification(notification_id: int, user_id: int) -> dict | None:
         SELECT n.id, n.categorie, n.message, n.lu, n.created_at,
                n.post_id, n.tache_id, n.rappel_jours, n.projet_id,
                p.projet_id AS post_projet_id,
-               t.projet_id AS tache_projet_id
+               t.projet_id AS tache_projet_id,
+               -- Lot 25 (U2, U3) : post supprimé ; commentaire visé.
+               (p.supprime_le IS NOT NULL) AS post_supprime,
+               CASE WHEN c.supprime_le IS NULL THEN c.id END AS commentaire_id
         FROM notification n
         LEFT JOIN post p ON p.id = n.post_id
         LEFT JOIN tache t ON t.id = n.tache_id
+        LEFT JOIN post_commentaire c ON c.id = n.commentaire_id
         WHERE n.id = %s AND n.utilisateur_id = %s
     """
     return db.query_one(sql, (notification_id, user_id))
